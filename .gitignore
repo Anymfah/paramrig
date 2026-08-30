@@ -1,0 +1,21 @@
+# Local secrets and machine configuration
+.env
+.env.*
+!.env.example
+.DS_Store
+.codex/
+
+# Dependencies and generated caches
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+coverage/
+*.log
+
+# Internal discovery sessions; keep the public design artifacts and sources
+workproduct/**/session.json
+workproduct/bmg/
+workproduct/lean-mvp/

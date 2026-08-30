@@ -1,0 +1,27 @@
+{
+  "calibration": {
+    "rendered_square_matches_1600_known_pixels": true,
+    "identity_iou": 1,
+    "one_pixel_shift_iou": 0.9512195121951219
+  },
+  "assets": {
+    "symbol": {
+      "foreground_iou": 0.9988186650915535,
+      "foreground_iou_percent": 99.8819,
+      "native_pixel_disagreements": 66,
+      "boundary_mean_source_px": 0.06344400751232059,
+      "boundary_p95_source_px": 0.14785401754949432,
+      "boundary_max_source_px": 0.24877773919351528,
+      "pure_vector_no_font_or_raster": true
+    },
+    "logo": {
+      "foreground_iou": 0.9970915490857023,
+      "foreground_iou_percent": 99.7092,
+      "native_pixel_disagreements": 195,
+      "boundary_mean_source_px": 0.06043137253659671,
+      "boundary_p95_source_px": 0.1471957633713288,
+      "boundary_max_source_px": 0.2790344362902596,
+      "pure_vector_no_font_or_raster": true
+    }
+  }
+}

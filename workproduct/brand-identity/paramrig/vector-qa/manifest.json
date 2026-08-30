@@ -1,0 +1,36 @@
+{
+  "source_sha256": "64a4172924498b1d93d21adc56fd5f221717dc60eca51438c2b1f71bf3728bbd",
+  "reference": "workproduct/brand-identity/paramrig/reference/coform-approved-board.png",
+  "scale": 4,
+  "method": "Grayscale subpixel contours at 50%; sigma 0.45px; cubic fitting tolerance 0.22px",
+  "assets": {
+    "symbol": {
+      "file": "workproduct/brand-identity/paramrig/reference/svg-v1/paramrig-coform-symbol.svg",
+      "width": 333,
+      "height": 281,
+      "source_box": [
+        950,
+        189,
+        1283,
+        470
+      ],
+      "paths": 2,
+      "bytes": 2735,
+      "curve_commands": 55
+    },
+    "logo": {
+      "file": "workproduct/brand-identity/paramrig/reference/svg-v1/paramrig-coform-logo.svg",
+      "width": 383,
+      "height": 404,
+      "source_box": [
+        914,
+        189,
+        1297,
+        593
+      ],
+      "paths": 1,
+      "bytes": 11691,
+      "curve_commands": 235
+    }
+  }
+}

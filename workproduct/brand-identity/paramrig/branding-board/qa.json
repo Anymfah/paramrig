@@ -1,0 +1,690 @@
+{
+  "masters_sha256": {
+    "paramrig-wordmark.svg": "93ec13f12e1905aa1f9cd616858e4d6fdb04a598b5a084c24b3d549744c7ee78",
+    "paramrig-coform-logo.svg": "ee76542210ebbc3f797bc95c025c2d64d521f53c41f439ee9b8fd885decb88f9",
+    "paramrig-coform-symbol.svg": "60881480cf56de25c2acb3833d13f95b61b5862d18231d2616f22878670e3e22"
+  },
+  "text_bounds": [
+    {
+      "text": "Visual identity / 03",
+      "bounds": [
+        1264.37125,
+        49.112,
+        1402.4402499999999,
+        63.64
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "The signature",
+      "bounds": [
+        96.37125,
+        160.112,
+        197.17425,
+        174.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Coform",
+      "bounds": [
+        97.216875,
+        690.408,
+        178.671375,
+        708.24
+      ],
+      "size": 24,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Two complementary forms. One shared result.",
+      "bounds": [
+        96.41765625,
+        728.626,
+        477.33928125000017,
+        744.97
+      ],
+      "size": 18,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "The idea",
+      "bounds": [
+        1000.37125,
+        164.112,
+        1061.791,
+        176.16
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "AI builds",
+      "bounds": [
+        1002.16,
+        236.448,
+        1245.4850000000001,
+        284.6403409090909
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "the tools.",
+      "bounds": [
+        1002.385,
+        308.448,
+        1260.1670000000001,
+        356.64
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "You shape",
+      "bounds": [
+        1000.675,
+        420.448,
+        1287.963,
+        478.304
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "the result.",
+      "bounds": [
+        1002.385,
+        492.448,
+        1284.411,
+        540.6403409090909
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Your eye. Your decisions.",
+      "bounds": [
+        1000.2353125,
+        601.14,
+        1225.1003125,
+        619.3
+      ],
+      "size": 20,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Open-source creative tools",
+      "bounds": [
+        1000.86375,
+        708.112,
+        1198.69575,
+        722.576
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "A quiet palette",
+      "bounds": [
+        64.66,
+        812.112,
+        171.82224999999997,
+        826.576
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Carbon",
+      "bounds": [
+        89.216875,
+        882.168,
+        168.515125,
+        900.24
+      ],
+      "size": 24,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "#1C201C",
+      "bounds": [
+        88.5825,
+        920.272,
+        151.16925000000003,
+        932.176
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Primary ink / dark canvas",
+      "bounds": [
+        89.33546875,
+        984.598,
+        250.08478125000002,
+        997.31
+      ],
+      "size": 14,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Chalk",
+      "bounds": [
+        633.216875,
+        882.168,
+        696.959375,
+        900.24
+      ],
+      "size": 24,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "#F4F3EB",
+      "bounds": [
+        632.5825,
+        920.272,
+        700.63675,
+        932.1761196418882
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Light canvas / active controls",
+      "bounds": [
+        633.33546875,
+        984.598,
+        819.49478125,
+        997.394
+      ],
+      "size": 14,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Stone",
+      "bounds": [
+        1177.284375,
+        882.432,
+        1241.638125,
+        900.24
+      ],
+      "size": 24,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "#C8CCC0",
+      "bounds": [
+        1176.5825,
+        920.272,
+        1249.0900000000001,
+        932.176
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Supporting neutral",
+      "bounds": [
+        1176.81090625,
+        984.598,
+        1298.72946875,
+        997.394
+      ],
+      "size": 14,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Typography",
+      "bounds": [
+        64.37125,
+        1068.112,
+        151.336,
+        1082.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Every detail.",
+      "bounds": [
+        69.595,
+        1128.448,
+        410.051,
+        1186.56
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "In your hands.",
+      "bounds": [
+        69.595,
+        1200.448,
+        454.26300000000003,
+        1258.56
+      ],
+      "size": 64,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Public Sans / Regular + Semibold",
+      "bounds": [
+        65.9078125,
+        1297.14,
+        369.76875000000007,
+        1315.42
+      ],
+      "size": 20,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Custom lettering for the logo. One family for everything else.",
+      "bounds": [
+        64.86375,
+        1332.112,
+        511.1282500000001,
+        1346.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Clarity at every size.",
+      "bounds": [
+        985.6225,
+        1088.224,
+        1275.3494999999998,
+        1117.28
+      ],
+      "size": 32,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Tune the shape. Keep what feels right.",
+      "bounds": [
+        984.4640625,
+        1137.14,
+        1335.7103125,
+        1155.42
+      ],
+      "size": 20,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Radius",
+      "bounds": [
+        985.52625,
+        1204.112,
+        1033.7917499999999,
+        1216.160150614754
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "48.00 px",
+      "bounds": [
+        1401.1785,
+        1204.272,
+        1470.9859999999999,
+        1218.576
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "Rotation",
+      "bounds": [
+        985.52625,
+        1252.432,
+        1045.28825,
+        1264.16
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "12.00\u00b0",
+      "bounds": [
+        1401.61725,
+        1250.6135,
+        1455.783,
+        1264.176
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "Layers",
+      "bounds": [
+        985.52625,
+        1300.432,
+        1032.60775,
+        1314.64
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "8",
+      "bounds": [
+        1401.19225,
+        1300.272,
+        1410.013,
+        1312.17325
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "In context / Visual concepts",
+      "bounds": [
+        65.52625,
+        1420.112,
+        267.27975000000004,
+        1434.576
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Contour study",
+      "bounds": [
+        382.917734375,
+        1493.369,
+        493.1035,
+        1508.805
+      ],
+      "size": 17,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Export settings",
+      "bounds": [
+        851.22390625,
+        1492.878,
+        950.45284375,
+        1505.394
+      ],
+      "size": 14,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Geometry",
+      "bounds": [
+        112.86375,
+        1570.272,
+        185.256,
+        1584.64
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Radius",
+      "bounds": [
+        113.52625,
+        1618.112,
+        161.79175,
+        1630.160150614754
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "48 px",
+      "bounds": [
+        280.1785,
+        1618.272,
+        322.78599999999994,
+        1632.576
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "Rotation",
+      "bounds": [
+        113.52625,
+        1698.432,
+        173.28825,
+        1710.16
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "12\u00b0",
+      "bounds": [
+        280.61725,
+        1696.6135,
+        307.58299999999997,
+        1710.0
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "Layers",
+      "bounds": [
+        113.52625,
+        1778.432,
+        160.60774999999998,
+        1792.64
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "8",
+      "bounds": [
+        280.19225,
+        1778.272,
+        289.013,
+        1790.17325
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": true
+    },
+    {
+      "text": "SVG / 2D",
+      "bounds": [
+        112.92675,
+        1860.272,
+        177.79175,
+        1872.6195
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Preview",
+      "bounds": [
+        393.52625,
+        1580.432,
+        450.2605,
+        1592.16
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "100%",
+      "bounds": [
+        916.745,
+        1844.256,
+        955.5519999999999,
+        1856.176
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Made with a human eye.",
+      "bounds": [
+        1065.52625,
+        1498.112,
+        1241.0082499999999,
+        1512.64
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Make it",
+      "bounds": [
+        1070.294375,
+        1556.504,
+        1298.691125,
+        1610.72
+      ],
+      "size": 72,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "yours.",
+      "bounds": [
+        1065.3005,
+        1651.056,
+        1256.017375,
+        1700.88
+      ],
+      "size": 72,
+      "weight": 600,
+      "tabular": false
+    },
+    {
+      "text": "Build the tools with AI.",
+      "bounds": [
+        1065.9078125,
+        1735.14,
+        1270.5003125,
+        1750.2001882684426
+      ],
+      "size": 20,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Put your eye into every detail.",
+      "bounds": [
+        1065.9078125,
+        1767.14,
+        1335.7303125,
+        1785.3
+      ],
+      "size": 20,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "paramrig.com",
+      "bounds": [
+        1369.22,
+        1860.4425,
+        1469.11675,
+        1874.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "ParamRig / Coform",
+      "bounds": [
+        65.52625,
+        1968.272,
+        203.54075000000003,
+        1982.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Approved logo. Proposed palette, type and applications.",
+      "bounds": [
+        64.5775,
+        1997.598,
+        423.59721874999985,
+        2010.394
+      ],
+      "size": 14,
+      "weight": 400,
+      "tabular": false
+    },
+    {
+      "text": "Brand study / August 2026",
+      "bounds": [
+        1273.52625,
+        1968.112,
+        1470.559,
+        1982.736
+      ],
+      "size": 16,
+      "weight": 400,
+      "tabular": false
+    }
+  ],
+  "typeface": "Public Sans",
+  "shaping": "HarfBuzz; single H advance calibrated at both weights",
+  "contrast_calibration": "black/white = 21; identity = 1",
+  "contrast": {
+    "#1C201C on #F4F3EB": 14.82,
+    "#1C201C on #E8EBE2": 13.68,
+    "#62695E on #F4F3EB": 5.1,
+    "#C8CCC0 on #1C201C": 10.1
+  }
+}

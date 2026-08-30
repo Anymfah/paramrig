@@ -1,0 +1,502 @@
+{
+  "masters": {
+    "paramrig-wordmark.svg": "93ec13f12e1905aa1f9cd616858e4d6fdb04a598b5a084c24b3d549744c7ee78",
+    "paramrig-coform-logo.svg": "ee76542210ebbc3f797bc95c025c2d64d521f53c41f439ee9b8fd885decb88f9",
+    "paramrig-coform-symbol.svg": "60881480cf56de25c2acb3833d13f95b61b5862d18231d2616f22878670e3e22"
+  },
+  "shaping": "HarfBuzz; single H advance calibrated to font metric",
+  "text": [
+    {
+      "text": "Typography study / Same content, same sizes",
+      "font": "A",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        880.36,
+        55.112,
+        1252.258,
+        71.888
+      ]
+    },
+    {
+      "text": "A / Uncut Sans",
+      "font": "A",
+      "size": 32,
+      "weight": 600,
+      "bounds": [
+        64.55466666666666,
+        143.088,
+        281.12,
+        169.52
+      ]
+    },
+    {
+      "text": "One family for titles, text and controls.",
+      "font": "A",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        64.99,
+        187.112,
+        371.6199999999999,
+        203.6
+      ]
+    },
+    {
+      "text": "You shape",
+      "font": "A",
+      "size": 64,
+      "weight": 600,
+      "bounds": [
+        65.38666666666667,
+        273.2,
+        364.43733333333336,
+        330.8
+      ]
+    },
+    {
+      "text": "the result.",
+      "font": "A",
+      "size": 64,
+      "weight": 600,
+      "bounds": [
+        64.832,
+        344.56,
+        362.432,
+        391.024
+      ]
+    },
+    {
+      "text": "Ask AI to build your tools. Adjust each detail until",
+      "font": "A",
+      "size": 20,
+      "weight": 400,
+      "bounds": [
+        64.4,
+        429.8,
+        497.0399999999998,
+        448.0
+      ]
+    },
+    {
+      "text": "it looks right to you. Bring the result into your project.",
+      "font": "A",
+      "size": 20,
+      "weight": 400,
+      "bounds": [
+        65.32,
+        459.8,
+        537.4000000000001,
+        478.32
+      ]
+    },
+    {
+      "text": "a g R t & 012",
+      "font": "A",
+      "size": 64,
+      "weight": 500,
+      "bounds": [
+        66.98666666666666,
+        525.176,
+        430.91200000000003,
+        584.824
+      ]
+    },
+    {
+      "text": "Same 64 px / 600 headings \u00b7 20 px / 400 body",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        64.56,
+        598.544,
+        403.79200000000003,
+        613.456
+      ]
+    },
+    {
+      "text": "Geometry",
+      "font": "A",
+      "size": 24,
+      "weight": 600,
+      "bounds": [
+        97.144,
+        677.84,
+        210.20800000000003,
+        699.8
+      ]
+    },
+    {
+      "text": "Reset",
+      "font": "A",
+      "size": 14,
+      "weight": 400,
+      "bounds": [
+        673.19,
+        682.2,
+        707.3779999999999,
+        692.224
+      ]
+    },
+    {
+      "text": "Radius",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        97.36,
+        746.8,
+        143.11999999999998,
+        758.256
+      ]
+    },
+    {
+      "text": "48.00 px",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        640.8,
+        746.544,
+        704.784,
+        761.2
+      ]
+    },
+    {
+      "text": "Rotation",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        97.36,
+        814.8,
+        154.896,
+        826.256
+      ]
+    },
+    {
+      "text": "12.00\u00b0",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        641.6,
+        814.288,
+        690.08,
+        826.256
+      ]
+    },
+    {
+      "text": "Layers",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        97.36,
+        882.8,
+        142.28799999999998,
+        897.2
+      ]
+    },
+    {
+      "text": "8",
+      "font": "A",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        641.056,
+        882.544,
+        649.024,
+        894.256
+      ]
+    },
+    {
+      "text": "Export settings",
+      "font": "A",
+      "size": 16,
+      "weight": 500,
+      "bounds": [
+        113.26933333333334,
+        965.8,
+        221.712,
+        980.456
+      ]
+    },
+    {
+      "text": "Parameters in the same family \u2014 no monospace.",
+      "font": "A",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        65.53,
+        1051.22,
+        452.43999999999994,
+        1067.6
+      ]
+    },
+    {
+      "text": "No font chosen yet. Custom logo remains unchanged.",
+      "font": "A",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        65.53,
+        1081.112,
+        494.3799999999999,
+        1097.888
+      ]
+    },
+    {
+      "text": "B / Familjen Grotesk",
+      "font": "B",
+      "size": 32,
+      "weight": 600,
+      "bounds": [
+        834.1200056959193,
+        143.94000610277067,
+        1109.6133064811424,
+        171.33333333333334
+      ]
+    },
+    {
+      "text": "One family for titles, text and controls.",
+      "font": "B",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        832.63,
+        187.76,
+        1113.43,
+        203.0
+      ]
+    },
+    {
+      "text": "You shape",
+      "font": "B",
+      "size": 64,
+      "weight": 600,
+      "bounds": [
+        832.4400040685138,
+        275.3333333333333,
+        1117.8266381870703,
+        328.6666666666667
+      ]
+    },
+    {
+      "text": "the result.",
+      "font": "B",
+      "size": 64,
+      "weight": 600,
+      "bounds": [
+        833.6,
+        347.3333333333333,
+        1106.3732893933845,
+        390.8
+      ]
+    },
+    {
+      "text": "Ask AI to build your tools. Adjust each detail until",
+      "font": "B",
+      "size": 20,
+      "weight": 400,
+      "bounds": [
+        832.2666666666667,
+        430.4,
+        1235.15,
+        447.3333333333333
+      ]
+    },
+    {
+      "text": "it looks right to you. Bring the result into your project.",
+      "font": "B",
+      "size": 20,
+      "weight": 400,
+      "bounds": [
+        833.2333333333333,
+        460.4,
+        1267.7,
+        477.56666666666666
+      ]
+    },
+    {
+      "text": "a g R t & 012",
+      "font": "B",
+      "size": 64,
+      "weight": 500,
+      "bounds": [
+        834.1066577159364,
+        528.6533333333333,
+        1175.306687822938,
+        582.4400008137028
+      ]
+    },
+    {
+      "text": "Same 64 px / 600 headings \u00b7 20 px / 400 body",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        832.5333333333333,
+        599.12,
+        1139.6266666666663,
+        612.8533333333334
+      ]
+    },
+    {
+      "text": "Geometry",
+      "font": "B",
+      "size": 24,
+      "weight": 600,
+      "bounds": [
+        864.6600036616624,
+        679.1149996948615,
+        966.4499884047358,
+        699.0
+      ]
+    },
+    {
+      "text": "Reset",
+      "font": "B",
+      "size": 14,
+      "weight": 400,
+      "bounds": [
+        1441.05,
+        682.9,
+        1472.4333333333334,
+        692.175
+      ]
+    },
+    {
+      "text": "Radius",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        865.2,
+        747.12,
+        910.0,
+        758.2
+      ]
+    },
+    {
+      "text": "48.00 px",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        1408.72,
+        747.4133333333333,
+        1466.6,
+        760.6666666666666
+      ]
+    },
+    {
+      "text": "Rotation",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        865.2,
+        815.12,
+        919.6266666666667,
+        826.2
+      ]
+    },
+    {
+      "text": "12.00\u00b0",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        1409.4133333333334,
+        815.4133333333333,
+        1453.3466666666668,
+        826.1866666666666
+      ]
+    },
+    {
+      "text": "Layers",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        865.2,
+        883.6,
+        908.5333333333333,
+        896.6666666666666
+      ]
+    },
+    {
+      "text": "8",
+      "font": "B",
+      "size": 16,
+      "weight": 400,
+      "bounds": [
+        1408.7733333333333,
+        883.4133333333333,
+        1416.2933333333333,
+        894.1866666666666
+      ]
+    },
+    {
+      "text": "Export settings",
+      "font": "B",
+      "size": 16,
+      "weight": 500,
+      "bounds": [
+        881.106663818707,
+        966.0199969486147,
+        982.6400093575818,
+        979.8600002034257
+      ]
+    },
+    {
+      "text": "Parameters in the same family \u2014 no monospace.",
+      "font": "B",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        833.35,
+        1051.76,
+        1200.28,
+        1067.0
+      ]
+    },
+    {
+      "text": "No font chosen yet. Custom logo remains unchanged.",
+      "font": "B",
+      "size": 18,
+      "weight": 400,
+      "bounds": [
+        833.35,
+        1081.76,
+        1232.6799999999998,
+        1097.21
+      ]
+    },
+    {
+      "text": "ParamRig / Typeface comparison",
+      "font": "A",
+      "size": 15,
+      "weight": 400,
+      "bounds": [
+        65.275,
+        1157.26,
+        285.88000000000005,
+        1171.24
+      ]
+    },
+    {
+      "text": "Static specimens \u00b7 English reference language",
+      "font": "A",
+      "size": 15,
+      "weight": 400,
+      "bounds": [
+        1176.525,
+        1157.26,
+        1482.7050000000002,
+        1171.24
+      ]
+    }
+  ]
+}

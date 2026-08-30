@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="383" height="86" viewBox="0 0 383 86" fill="currentColor" role="img" aria-label="ParamRig">
+  <title>ParamRig — custom wordmark</title>
+  <g fill-rule="evenodd">
+    <path data-letter="P" transform="translate(2 0)" d="M0 1H22C36 1 45.5 8.9 45.5 22C45.5 35.1 36 43 22 43H12V64H0Z M12 12V32H21.5C29.5 32 33.5 28.5 33.5 22C33.5 15.5 29.5 12 21.5 12Z"/>
+    <path data-letter="a" transform="translate(50 0)" d="M21.3 19C26.8 19 31.4 21.5 34 25.3V20H46V64H34V58.9C31 62.7 26.5 65 21.3 65C9 65 0 55 0 42C0 29 9 19 21.3 19Z M34 42C34 34.8 29.1 29 23 29C16.9 29 12 34.8 12 42C12 49.2 16.9 55 23 55C29.1 55 34 49.2 34 42Z"/>
+    <path data-letter="r" transform="translate(105 0)" d="M0 20H12V26.3C15.3 21.5 20.1 19 27 19V31C17.5 31 12 35 12 44V64H0Z"/>
+    <path data-letter="a" transform="translate(134 0)" d="M21.3 19C26.8 19 31.4 21.5 34 25.3V20H46V64H34V58.9C31 62.7 26.5 65 21.3 65C9 65 0 55 0 42C0 29 9 19 21.3 19Z M34 42C34 34.8 29.1 29 23 29C16.9 29 12 34.8 12 42C12 49.2 16.9 55 23 55C29.1 55 34 49.2 34 42Z"/>
+    <path data-letter="m" transform="translate(188 0)" d="M0 20H12V25.5C15.2 21.3 20.3 19 25.8 19C32.8 19 37.2 21.9 40 26.8C44 21.6 49.6 19 55.5 19C65.3 19 70 25 70 36V64H58V38.2C58 32.8 55.8 30 51 30C45.9 30 41 33.5 41 40V64H29V38.2C29 32.8 26.8 30 22.5 30C17.4 30 12 33.5 12 40V64H0Z"/>
+    <path data-letter="R" transform="translate(266 0)" d="M0 1H22C36 1 45.5 8.9 45.5 22C45.5 32 40 38.3 31.8 41.1L47 64H33L19.3 43H12V64H0Z M12 12V32H21.5C29.5 32 33.5 28.5 33.5 22C33.5 15.5 29.5 12 21.5 12Z"/>
+    <path data-letter="i" transform="translate(319 0)" d="M0 20H12V64H0Z"/>
+    <circle cx="325" cy="7" r="7"/>
+    <path data-letter="g" transform="translate(336 0)" d="M34 20H46V61.5C46 76 37.5 84 23 84C14.8 84 7.5 81 2 76L8.5 67.5C12.5 71.6 17.3 73.5 23 73.5C30.7 73.5 34 69.7 34 62V59C30.7 63 26.5 65 21 65C9 65 0 55 0 42C0 29 9 19 21 19C26.5 19 31 21.8 34 25.5Z M34 42C34 34.8 29.1 29 23 29C16.9 29 12 34.8 12 42C12 49.2 16.9 55 23 55C29.1 55 34 49.2 34 42Z"/>
+  </g>
+</svg>

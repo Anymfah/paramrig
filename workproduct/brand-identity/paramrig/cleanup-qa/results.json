@@ -1,0 +1,27 @@
+{
+  "calibration": "0/90 degree joins and exact known mask shifts passed",
+  "assets": {
+    "symbol": {
+      "curve_commands_before": 55,
+      "curve_commands_after": 17,
+      "bytes_before": 2735,
+      "bytes_after": 870,
+      "p95_distance_from_v1_px": 0.9291214887442462,
+      "max_distance_from_v1_px": 1.3550559799109203,
+      "foreground_iou_vs_v1": 0.9931342568610085
+    },
+    "logo": {
+      "curve_commands_before": 235,
+      "curve_commands_after": 162,
+      "bytes_before": 11691,
+      "bytes_after": 7245,
+      "p95_distance_from_v1_px": 0.7027846732587846,
+      "max_distance_from_v1_px": 1.3542391122535737,
+      "foreground_iou_vs_v1": 0.9914621478031531
+    }
+  },
+  "symbol_joins": {
+    "intentional_cusps": 1,
+    "max_other_join_angle_degrees": 0.027479988059420448
+  }
+}
