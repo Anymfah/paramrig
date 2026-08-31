@@ -1,0 +1,226 @@
+/* ParamRig tokens — Carbon / Chalk / Stone.
+   Components consume semantic roles only. Appearance follows data-theme. */
+
+@font-face {
+  font-family: 'Public Sans';
+  src: url('/fonts/PublicSans.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2010-2027, U+20AC;
+}
+
+@font-face {
+  font-family: 'Public Sans Fallback';
+  src: local('Helvetica Neue'), local('Arial'), local('Liberation Sans');
+  size-adjust: 104%;
+  ascent-override: 95%;
+  descent-override: 22.5%;
+  line-gap-override: 0%;
+}
+
+:root {
+  color-scheme: dark;
+
+  --carbon: #1c201c;
+  --chalk: #f4f3eb;
+  --stone: #c8ccc0;
+
+  --hue-neutral: 135;
+
+  --surface: #191d1a;
+  --surface-raised: #222723;
+  --surface-overlay: #303731;
+  --surface-inset: #141816;
+  --surface-preview: #141c1c;
+  --surface-canvas: var(--chalk);
+
+  --text-primary: var(--chalk);
+  --text-secondary: #afb8ad;
+  --text-muted: #8b9388;
+  --text-on-accent: var(--carbon);
+
+  --border-hairline: rgb(244 243 235 / 0.07);
+  --border-default: rgb(244 243 235 / 0.11);
+  --border-strong: rgb(244 243 235 / 0.16);
+  --highlight-top: rgb(244 243 235 / 0.06);
+  --rule: #383f39;
+
+  --scrollbar-size: 0.5rem;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--text-primary) 38%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-primary) 58%, transparent);
+
+  --accent: var(--chalk);
+  --accent-hover: #fffdf6;
+  --accent-subtle: rgb(244 243 235 / 0.12);
+  --focus-ring: var(--stone);
+
+  --success: #9bb59a;
+  --danger: #d8a39a;
+  --warning: #cfc4a4;
+
+  --elevation-raised: inset 0 1px 0 0 var(--highlight-top);
+  --elevation-overlay: inset 0 1px 0 0 rgb(244 243 235 / 0.1),
+    0 24px 60px -20px rgb(0 0 0 / 0.55);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+  --space-10: 8rem;
+
+  --nav-width: 13rem;
+  --inspector-width: 20rem;
+  --timeline-height: 14.5rem;
+  --header-height: 4rem;
+
+  --font-sans: 'Public Sans', 'Public Sans Fallback', ui-sans-serif, sans-serif;
+  --font-display: var(--font-sans);
+  --font-mono: var(--font-sans);
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.25rem, 0.6vw + 1rem, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1vw + 1.1rem, 2rem);
+  --text-3xl: clamp(1.75rem, 1.6vw + 1.1rem, 2.5rem);
+
+  --leading-tight: 1.15;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --leading-label: 1.25;
+  --tracking-display: -0.025em;
+  --tracking-label: 0.08em;
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --duration-instant: 120ms;
+  --duration-fast: 160ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+
+  --z-sticky: 10;
+  --z-header: 20;
+  --z-overlay: 40;
+  --z-modal: 60;
+  --z-popover: 80;
+  --z-toast: 100;
+  --z-tooltip: 110;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+    --surface: var(--chalk);
+    --surface-raised: #e8ebe2;
+    --surface-overlay: #fffdf6;
+    --surface-inset: #e8ebe2;
+    --surface-preview: #e8ebe2;
+    --surface-canvas: var(--chalk);
+    --text-primary: var(--carbon);
+    --text-secondary: #62695e;
+    --text-muted: #62695e;
+    --text-on-accent: var(--chalk);
+    --border-hairline: rgb(28 32 28 / 0.05);
+    --border-default: rgb(28 32 28 / 0.08);
+    --border-strong: rgb(28 32 28 / 0.12);
+    --highlight-top: transparent;
+    --rule: #d7dad0;
+    --accent: var(--carbon);
+    --accent-hover: #101410;
+    --accent-subtle: rgb(28 32 28 / 0.08);
+    --focus-ring: var(--carbon);
+    --elevation-raised: 0 1px 2px rgb(28 32 28 / 0.05), 0 8px 24px -12px rgb(28 32 28 / 0.1);
+    --elevation-overlay: 0 1px 2px rgb(28 32 28 / 0.06), 0 16px 40px -16px rgb(28 32 28 / 0.18);
+    --scrollbar-thumb: var(--text-muted);
+    --scrollbar-thumb-hover: var(--text-primary);
+  }
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --surface: var(--chalk);
+  --surface-raised: #e8ebe2;
+  --surface-overlay: #fffdf6;
+  --surface-inset: #e8ebe2;
+  --surface-preview: #e8ebe2;
+  --surface-canvas: var(--chalk);
+  --text-primary: var(--carbon);
+  --text-secondary: #62695e;
+  --text-muted: #62695e;
+  --text-on-accent: var(--chalk);
+  --border-hairline: rgb(28 32 28 / 0.05);
+  --border-default: rgb(28 32 28 / 0.08);
+  --border-strong: rgb(28 32 28 / 0.12);
+  --highlight-top: transparent;
+  --rule: #d7dad0;
+  --accent: var(--carbon);
+  --accent-hover: #101410;
+  --accent-subtle: rgb(28 32 28 / 0.08);
+  --focus-ring: var(--carbon);
+  --elevation-raised: 0 1px 2px rgb(28 32 28 / 0.05), 0 8px 24px -12px rgb(28 32 28 / 0.1);
+  --elevation-overlay: 0 1px 2px rgb(28 32 28 / 0.06), 0 16px 40px -16px rgb(28 32 28 / 0.18);
+  --scrollbar-thumb: var(--text-muted);
+  --scrollbar-thumb-hover: var(--text-primary);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+@media (prefers-contrast: more) {
+  :root[data-theme='dark'],
+  :root:not([data-theme='light']) {
+    --border-hairline: rgb(244 243 235 / 0.24);
+    --border-default: rgb(244 243 235 / 0.4);
+    --border-strong: rgb(244 243 235 / 0.64);
+    --text-muted: var(--text-secondary);
+    --scrollbar-thumb: var(--text-secondary);
+    --scrollbar-thumb-hover: var(--text-primary);
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root[data-theme='light'] {
+    --border-hairline: rgb(28 32 28 / 0.22);
+    --border-default: rgb(28 32 28 / 0.34);
+    --border-strong: rgb(28 32 28 / 0.48);
+    --text-muted: var(--text-secondary);
+    --scrollbar-thumb: var(--text-secondary);
+    --scrollbar-thumb-hover: var(--text-primary);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --elevation-raised: none;
+    --elevation-overlay: none;
+    --border-hairline: var(--border-default);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0.01ms;
+    --duration-fast: 0.01ms;
+    --duration-base: 0.01ms;
+    --duration-slow: 0.01ms;
+  }
+  .skeleton::after { animation: none; }
+}

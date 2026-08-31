@@ -1,0 +1,12 @@
+---
+description: Mandatory local Docker runtime for ParamRig
+alwaysApply: true
+---
+
+- Launch persistent services only with the root Docker Compose project; never run `npm run dev` or Vite directly on macOS.
+- Keep port 5174 fixed. Do not pick a fallback port.
+- Before any `docker compose up`, inspect active Compose projects. If `site-anym`, `stellary`, `helios`, or another development project is already running, warn the user and wait for a decision; never start both stacks or stop the other one silently. `stellary-ci` may remain active.
+- Run one-off tasks with `docker compose run --rm` and do not leave a watch mode running unless asked.
+- Serialize rebuilds with `COMPOSE_PARALLEL_LIMIT=1 docker compose up -d --build`.
+- Never run `docker compose down -v` or delete Compose volumes without an explicit request.
+- Read `docs/local-docker-development.md` before changing the runtime.

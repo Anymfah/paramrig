@@ -19,3 +19,6 @@ coverage/
 workproduct/**/session.json
 workproduct/bmg/
 workproduct/lean-mvp/
+
+# Playwright CLI session artifacts
+.playwright-cli/

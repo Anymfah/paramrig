@@ -12,7 +12,54 @@ Official website: [paramrig.com](https://paramrig.com) — planned, not yet laun
 
 ## Status
 
-ParamRig is currently in product discovery. The target customer, underserved needs, MVP scope, prototype, and success metrics are being defined before implementation.
+A local frontend is available for the library, SVG editor, and 3D editor
+with timeline. Discovery notes still apply to product strategy; they are not
+the application itself.
+
+## Run locally
+
+The workbench runs as the Docker Compose project `paramrig`. Do not start
+Vite on the host.
+
+```bash
+docker compose up -d
+```
+
+Then open [http://localhost:5174/](http://localhost:5174/).
+
+See [`docs/local-docker-development.md`](docs/local-docker-development.md)
+for stop/start, rebuilds, and one-off commands.
+
+- Library: `/`
+- Example rig: `/r/contour-bloom`, `/r/tidal-planet`
+- Docs: `/docs`
+- QA fixtures: `/?fixture=empty`, `/?fixture=error`, `/?fixture=loading` (holds the skeleton), `/?fixture=long`
+
+```bash
+docker compose run --rm app npm test
+docker compose run --rm app npm run lint
+docker compose run --rm app npm run build
+```
+
+Example rigs come from `src/rigs/registry.ts`. See
+[`docs/ADDING-A-RIG.md`](docs/ADDING-A-RIG.md) to add another study without
+editing the workspace shell.
+
+QA captures from the implementation pass live in
+[`workproduct/ui-implementation/qa/`](workproduct/ui-implementation/qa/).
+
+## Workspace UI
+
+Shared controls live in `src/ui/`: `Button`, `NumberField`, `SliderField`,
+`ColorField`, `CurveField`, `GradientField`, `SelectField`, `SwitchField`,
+`Tooltip`. The workspace shell (`Inspector`, `Timeline`, `ExportAction`,
+`RigPreview`) binds them through `RigSession` — do not branch on a rig name
+in the chrome.
+
+Known limits of this build: bundled examples only (no disk watch), export
+does not write back to source, 3D is a bounded study, and there is no auth,
+AI chat, or telemetry. Human visual review against
+[`assets/ui-mockups/`](assets/ui-mockups/) is the next useful step.
 
 ## Initial audience
 
@@ -25,14 +72,14 @@ English is the canonical language for the application, APIs, rig definitions, do
 ## Product framing
 
 Internal product-discovery sessions are kept locally and are not published.
-
-No application architecture or framework has been selected yet.
+The local UI uses Vite, React, and TypeScript. See `package.json`.
 
 ## Brand
 
 The approved Coform logo and the current branding study are available in
-[`assets/brand/`](assets/brand/). This repository currently contains product
-framing, brand assets, and their generation scripts, not a working application.
+[`assets/brand/`](assets/brand/). The application self-hosts Public Sans
+(WOFF2) from `public/fonts/`. The custom wordmark is vector geometry, not a
+font.
 
 ## Contributions
 
@@ -41,6 +88,7 @@ messages, are documented in [`AGENTS.md`](AGENTS.md).
 
 ## Licensing status
 
-ParamRig is intended to be open source. A project license has not been selected
-yet; public repository access alone does not grant an open-source license.
-Bundled third-party fonts retain their accompanying license notices.
+No project license has been selected yet; public repository access alone does
+not grant an open-source license. Runtime dependencies and their licenses are
+listed in `package.json`. Bundled third-party fonts retain their accompanying
+license notices.

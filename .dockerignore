@@ -1,0 +1,11 @@
+.git
+.cursor
+.codex
+node_modules
+dist
+coverage
+.playwright-cli
+*.log
+.env
+.env.*
+workproduct
