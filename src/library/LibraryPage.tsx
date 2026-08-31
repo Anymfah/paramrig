@@ -56,6 +56,12 @@ export function LibraryPage() {
       <main id="main" className="library-main scroll-area">
         <h1>Your rigs</h1>
         <p className="lede">Tools built around what you want to create.</p>
+        {import.meta.env.MODE === 'demo' && (
+          <p className="status-msg" role="note">
+            Public demo. Drafts and snapshots stay in this browser, with no cloud backup.{' '}
+            <a href="https://paramrig.com/docs/persistence/">About local data</a>
+          </p>
+        )}
         <label className="search-field">
           <IconSearch />
           <span className="visually-hidden">Find a rig</span>
