@@ -10,7 +10,7 @@ const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
 const DEFAULT_HEIGHT = 600
 const DEFAULT_BACKGROUND = '#151516'
-const DEFAULT_SHAPE_FILL = '#1C1D1E'
+export const DEFAULT_SHAPE_FILL = '#1C1D1E'
 const DEFAULT_PATH_STROKE = '#D4E7E1'
 export const MAX_DOCUMENT_SIZE = 10000
 

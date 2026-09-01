@@ -1,5 +1,6 @@
-import { createVectorElement } from '@/vector/document'
+import { createVectorElement, DEFAULT_SHAPE_FILL } from '@/vector/document'
 import { chains, chainToRun, commitWorld, extendNetwork, insertNodeOnSegment, newId, normalizeWorld, runPathData, worldNetwork, type AbsNetwork, type Box } from '@/vector/network'
+import { computeFaces } from '@/vector/planar'
 import type { VectorElement, VectorPoint } from '@/vector/types'
 
 /**
@@ -126,14 +127,18 @@ export type PenStyle = Pick<VectorElement, 'fill' | 'stroke' | 'strokeWidth'>
 export function penCommit(draft: PenDraft, style?: Partial<PenStyle>): { element: VectorElement } | { id: string; patch: Partial<VectorElement> } | null {
   const world = { ...draft.world, nodes: draft.world.nodes.filter((node) => draft.world.segments.some((segment) => segment.a === node.id || segment.b === node.id)) }
   if (world.segments.length === 0) return null
+  const closes = computeFaces(world).length > 0
   if (draft.element) {
     if (world.segments.length === draft.baseline.segments && world.nodes.length === draft.baseline.nodes) return null
     const box: Box = { ...draft.element, rotation: draft.element.rotation }
     const edit = commitWorld(box, world)
-    return { id: draft.element.id, patch: { ...edit, kind: 'path' } }
+    // A stroke-only object that just gained its first closed region receives the default fill.
+    const hadRegions = computeFaces(worldNetwork(draft.element)).length > 0
+    const unfilled = draft.element.fill === 'none' && !(draft.element.fills?.length)
+    return { id: draft.element.id, patch: { ...edit, kind: 'path', ...(closes && !hadRegions && unfilled ? { fill: DEFAULT_SHAPE_FILL } : {}) } }
   }
   const built = normalizeWorld(world)
-  return { element: createVectorElement('path', built, { ...style, network: built.network }) }
+  return { element: createVectorElement('path', built, { ...style, network: built.network, ...(closes && style?.fill === undefined ? { fill: DEFAULT_SHAPE_FILL } : {}) }) }
 }
 
 /** Path data for what has been placed plus the rubber band towards the cursor. */
