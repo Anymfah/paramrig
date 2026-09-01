@@ -107,3 +107,70 @@ describe('face caching', () => {
     expect(faces.length).toBeGreaterThan(0)
   })
 })
+
+/** The 3:2 Lissajous curve: 2·3·2 − 3 − 2 = 7 self-crossings, so eight bounded regions. */
+function lissajous(count: number): AbsNetwork {
+  const nodes = []
+  const segments = []
+  for (let index = 0; index < count; index += 1) {
+    const t = (index / count) * Math.PI * 2
+    nodes.push({ id: `n${index}`, point: { x: 400 * Math.cos(3 * t), y: 300 * Math.sin(2 * t) } })
+  }
+  for (let index = 0; index < count; index += 1) segments.push({ id: `s${index}`, a: `n${index}`, b: `n${(index + 1) % count}` })
+  return { nodes, segments }
+}
+
+describe('coincident points', () => {
+  it('finds the same regions whether or not the sampling lands on the crossings', () => {
+    // At 120 and 300 steps several nodes fall exactly on a self-crossing; at 90 none do.
+    expect(computeFaces(lissajous(90))).toHaveLength(8)
+    expect(computeFaces(lissajous(120))).toHaveLength(8)
+    expect(computeFaces(lissajous(300))).toHaveLength(8)
+  })
+
+  it('splits the traversal where a curve runs back through one of its own nodes', () => {
+    const world = lissajous(120)
+    const shared = world.nodes.filter((node) => world.nodes.some((other) => other.id !== node.id
+      && Math.abs(other.point.x - node.point.x) < 0.05 && Math.abs(other.point.y - node.point.y) < 0.05))
+
+    expect(shared.length).toBeGreaterThan(0)
+    expect(computeFaces(world).every((face) => face.area > 0)).toBe(true)
+  })
+
+  it('keeps both faces of two squares that touch at one corner', () => {
+    const corner = (dx: number, dy: number, tag: string): AbsNetwork => {
+      const points = [{ x: dx, y: dy }, { x: dx + 100, y: dy }, { x: dx + 100, y: dy + 100 }, { x: dx, y: dy + 100 }]
+      return {
+        nodes: points.map((point, index) => ({ id: `${tag}${index}`, point })),
+        segments: points.map((_, index) => ({ id: `${tag}e${index}`, a: `${tag}${index}`, b: `${tag}${(index + 1) % 4}` })),
+      }
+    }
+    const first = corner(0, 0, 'a')
+    const second = corner(100, 100, 'b')
+    const world = { nodes: [...first.nodes, ...second.nodes], segments: [...first.segments, ...second.segments] }
+
+    const faces = computeFaces(world)
+
+    expect(faces).toHaveLength(2)
+    expect(faces.map((face) => Math.round(face.area))).toEqual([10000, 10000])
+  })
+
+  it('keeps a loop drawn between two nodes that sit on the same point', () => {
+    const world: AbsNetwork = {
+      nodes: [
+        { id: 'a', point: { x: 0, y: 0 } },
+        { id: 'b', point: { x: 0, y: 0 } },
+        { id: 'c', point: { x: 0, y: -60 } },
+      ],
+      segments: [
+        { id: 'loop', a: 'a', b: 'b', ah: { x: 90, y: 90 }, bh: { x: -90, y: 90 } },
+        { id: 'stem', a: 'a', b: 'c' },
+      ],
+    }
+
+    const faces = computeFaces(world)
+
+    expect(faces).toHaveLength(1)
+    expect(faces[0]!.area).toBeGreaterThan(1000)
+  })
+})

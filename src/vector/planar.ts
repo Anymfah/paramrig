@@ -84,7 +84,26 @@ function arrangeFaces(world: AbsNetwork): Face[] {
     if (cell) cell.push(vertex)
     else grid.set(key, [vertex])
   }
+  const vertexAt = (point: VectorPoint): Vertex | null => {
+    const cx = Math.floor(point.x / MERGE_TOLERANCE)
+    const cy = Math.floor(point.y / MERGE_TOLERANCE)
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (const vertex of grid.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          if (Math.abs(vertex.point.x - point.x) < MERGE_TOLERANCE && Math.abs(vertex.point.y - point.y) < MERGE_TOLERANCE) return vertex
+        }
+      }
+    }
+    return null
+  }
+  // Nodes that sit on the same point become one vertex: a curve that runs back through one of its
+  // own nodes has to split the traversal there, or its sub-loops cancel out and no face is found.
   for (const node of world.nodes) {
+    const shared = vertexAt(node.point)
+    if (shared) {
+      nodeVertex.set(node.id, shared.id)
+      continue
+    }
     const id = `n:${node.id}`
     addVertex({ id, point: node.point, nodeId: node.id })
     nodeVertex.set(node.id, id)
@@ -92,15 +111,8 @@ function arrangeFaces(world: AbsNetwork): Face[] {
   const splits = new Map<string, Array<{ t: number; vertex: string }>>()
   for (const segment of world.segments) splits.set(segment.id, [])
   const crossingVertex = (point: VectorPoint): string => {
-    const cx = Math.floor(point.x / MERGE_TOLERANCE)
-    const cy = Math.floor(point.y / MERGE_TOLERANCE)
-    for (let dx = -1; dx <= 1; dx += 1) {
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (const vertex of grid.get(`${cx + dx}:${cy + dy}`) ?? []) {
-          if (Math.abs(vertex.point.x - point.x) < MERGE_TOLERANCE && Math.abs(vertex.point.y - point.y) < MERGE_TOLERANCE) return vertex.id
-        }
-      }
-    }
+    const shared = vertexAt(point)
+    if (shared) return shared.id
     const id = `x:${vertices.size}`
     addVertex({ id, point, nodeId: null })
     return id
@@ -119,7 +131,8 @@ function arrangeFaces(world: AbsNetwork): Face[] {
         if (!hit) continue
         const tFirst = firstSamples[p]!.t + (firstSamples[p + 1]!.t - firstSamples[p]!.t) * hit.u
         const tSecond = secondSamples[q]!.t + (secondSamples[q + 1]!.t - secondSamples[q]!.t) * hit.v
-        const sharesEndpoint = !self && (first.a === second.a || first.a === second.b || first.b === second.a || first.b === second.b)
+        const sharesEndpoint = !self && (nodeVertex.get(first.a) === nodeVertex.get(second.a) || nodeVertex.get(first.a) === nodeVertex.get(second.b)
+          || nodeVertex.get(first.b) === nodeVertex.get(second.a) || nodeVertex.get(first.b) === nodeVertex.get(second.b))
         const atFirstEnd = tFirst < 1e-4 || tFirst > 1 - 1e-4
         const atSecondEnd = tSecond < 1e-4 || tSecond > 1 - 1e-4
         if (atFirstEnd && atSecondEnd) continue
@@ -142,7 +155,13 @@ function arrangeFaces(world: AbsNetwork): Face[] {
       stops.push(item)
     }
     const endVertex = nodeVertex.get(segment.b)!
-    if (stops[stops.length - 1]!.vertex !== endVertex) stops.push({ t: 1, vertex: endVertex })
+    const box = bounds.get(segment.id)!
+    // A segment whose ends merged into one vertex still closes a loop, unless it has no extent.
+    const extent = Math.max(box.right - box.left, box.bottom - box.top)
+    const closesOnItself = stops.length === 1 && stops[0]!.vertex === endVertex
+    if (stops[stops.length - 1]!.vertex !== endVertex || (closesOnItself && extent > MERGE_TOLERANCE)) {
+      stops.push({ t: 1, vertex: endVertex })
+    }
     const sampleList = samples.get(segment.id)!
     for (let index = 0; index + 1 < stops.length; index += 1) {
       const from = stops[index]!
