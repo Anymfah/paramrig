@@ -1,11 +1,11 @@
 import type { ParamValue } from '@/rigs/types'
 
 export function SurfaceStudiesPreview({ values }: { values: Record<string, ParamValue> }) {
-  const azimuth = Number(values.azimuth) || 210
-  const elevation = Number(values.elevation) || 42
-  const softness = Number(values.softness) || 0.35
-  const radius = Number(values.radius) || 20
-  const gap = Number(values.gap) || 24
+  const azimuth = Number(values.azimuth ?? 210)
+  const elevation = Number(values.elevation ?? 42)
+  const softness = Number(values.softness ?? 0.35)
+  const radius = Number(values.radius ?? 20)
+  const gap = Number(values.gap ?? 24)
   const hairline = Boolean(values.hairline)
   const x = Math.cos((azimuth * Math.PI) / 180) * 18
   const y = Math.sin((elevation * Math.PI) / 180) * 10

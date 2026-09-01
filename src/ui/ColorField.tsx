@@ -1,9 +1,8 @@
 import * as Popover from '@radix-ui/react-popover'
-import { useEffect, useId, useMemo, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useId, useMemo, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { hexToRgb, hsvToHex, rgbToHsv } from '@/ui/color'
-import { IconReset } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
-import { Tooltip } from '@/ui/Tooltip'
+import { IconPipette } from '@/ui/icons'
 
 type ColorFieldProps = {
   label: string
@@ -11,18 +10,30 @@ type ColorFieldProps = {
   onChange: (value: string) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
-  onReset?: () => void
-  resetDisabled?: boolean
+  onGestureCancel?: () => void
 }
 
-export function ColorField({ label, value, onChange, onGestureStart, onGestureEnd, onReset, resetDisabled }: ColorFieldProps) {
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> }
+
+export function ColorField({
+  label,
+  value,
+  onChange,
+  onGestureStart,
+  onGestureEnd,
+  onGestureCancel,
+}: ColorFieldProps) {
   const id = useId()
   const rgb = hexToRgb(value) ?? { r: 28, g: 32, b: 28 }
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
   const [draft, setDraft] = useState(value)
+  const [canPick, setCanPick] = useState(false)
   useEffect(() => {
     setDraft(value)
   }, [value])
+  useEffect(() => {
+    setCanPick(typeof window !== 'undefined' && 'EyeDropper' in window)
+  }, [])
   const hueFill = hsv.h / 360
 
   const hueGradient = useMemo(
@@ -39,52 +50,81 @@ export function ColorField({ label, value, onChange, onGestureStart, onGestureEn
       setDraft(value)
       return
     }
-    onChange(next.toUpperCase())
-    setDraft(next.toUpperCase())
+    const hex = next.toUpperCase()
+    if (hex !== value) onChange(hex)
+    setDraft(hex)
+  }
+
+  const pickFromScreen = async () => {
+    const Ctor = (window as Window & { EyeDropper?: EyeDropperCtor }).EyeDropper
+    if (!Ctor) return
+    onGestureStart?.()
+    try {
+      const result = await new Ctor().open()
+      const hex = result.sRGBHex.toUpperCase()
+      onChange(hex)
+      setDraft(hex)
+      onGestureEnd?.()
+    } catch {
+      onGestureCancel?.()
+    }
+  }
+
+  const nudgeSV = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const fine = event.shiftKey ? 0.01 : 0.04
+    let s = hsv.s
+    let v = hsv.v
+    if (event.key === 'ArrowLeft') s -= fine
+    else if (event.key === 'ArrowRight') s += fine
+    else if (event.key === 'ArrowDown') v -= fine
+    else if (event.key === 'ArrowUp') v += fine
+    else return
+    event.preventDefault()
+    if (!event.repeat) onGestureStart?.()
+    onChange(hsvToHex(hsv.h, Math.min(1, Math.max(0, s)), Math.min(1, Math.max(0, v))))
   }
 
   return (
-    <div className="field">
-      <div className="field__head">
-        <span className="field__label" id={id}>
-          {label}
-        </span>
-        {onReset ? (
-          <Tooltip content={resetDisabled ? 'Already at the default' : 'Reset this control'}>
-            <IconButton label={`Reset ${label}`} onClick={onReset} disabled={resetDisabled}>
-              <IconReset />
-            </IconButton>
-          </Tooltip>
-        ) : null}
-      </div>
+    <div className="control control--color">
+      <span className="control__label" id={id}>
+        {label}
+      </span>
       <Popover.Root>
         <div className="color-field">
           <Popover.Trigger className="color-swatch" aria-labelledby={id} aria-label={`${label} color ${value}`}>
             <span className="color-swatch__chip" style={{ background: value }} />
           </Popover.Trigger>
           <input
-            className="number-field__input color-field__hex"
+            className="color-field__hex"
             value={draft}
             spellCheck={false}
             autoComplete="off"
             aria-label={`${label} hex`}
-            onFocus={onGestureStart}
             onChange={(event) => setDraft(event.target.value)}
-            onBlur={() => {
-              commitHex(draft)
-              onGestureEnd?.()
-            }}
+            onBlur={() => commitHex(draft)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') commitHex(draft)
               if (event.key === 'Escape') setDraft(value)
             }}
           />
+          {canPick ? (
+            <IconButton label={`Pick ${label} from screen`} onClick={() => void pickFromScreen()}>
+              <IconPipette />
+            </IconButton>
+          ) : null}
         </div>
         <Popover.Portal>
           <Popover.Content className="popover color-popover" sideOffset={8} align="end" aria-label={`${label} picker`}>
             <div
               className="sv-plane"
               style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hsvToHex(hsv.h, 1, 1)})` }}
+              role="slider"
+              tabIndex={0}
+              aria-label={`${label} saturation and brightness`}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(hsv.s * 100)}
+              aria-valuetext={`${Math.round(hsv.s * 100)}% saturation, ${Math.round(hsv.v * 100)}% brightness`}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId)
                 onGestureStart?.()
@@ -95,6 +135,13 @@ export function ColorField({ label, value, onChange, onGestureStart, onGestureEn
                 pickSV(event, hsv.h, onChange)
               }}
               onPointerUp={onGestureEnd}
+              onPointerCancel={onGestureCancel}
+              onKeyDown={nudgeSV}
+              onKeyUp={(event) => {
+                if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                  onGestureEnd?.()
+                }
+              }}
             >
               <span className="sv-plane__thumb" style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }} />
             </div>
@@ -109,6 +156,7 @@ export function ColorField({ label, value, onChange, onGestureStart, onGestureEn
               style={{ '--p': String(hueFill), '--hue-ramp': hueGradient } as CSSProperties}
               onPointerDown={onGestureStart}
               onPointerUp={onGestureEnd}
+              onPointerCancel={onGestureCancel}
               onChange={(event) => onChange(hsvToHex(Number(event.target.value), hsv.s, hsv.v))}
             />
             <p className="field__hint">Hex entry stays available if the plane is hard to use.</p>

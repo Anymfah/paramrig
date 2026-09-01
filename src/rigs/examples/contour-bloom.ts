@@ -9,6 +9,7 @@ export const contourBloomManifest: RigManifest = {
   renderer: 'svg',
   rendererLabel: 'SVG',
   collection: 'examples',
+  title: 'Examples/SVG',
   sourceFile: 'examples/contour-bloom.rig.tsx',
   tags: ['svg', 'shape', 'relief'],
   groups: [

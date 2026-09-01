@@ -1,0 +1,22 @@
+---
+description: Controller grab handles must ship an enlarged click helper (slider pattern)
+alwaysApply: true
+---
+
+# Controller hit targets
+
+Every grab handle on an inspector control — slider thumb, curve knob, gradient stop, color cursor, and any future `kind` or custom instrument — must be easy to click. The visible glyph stays small. The pointer target does not.
+
+Use `--hit-target` (32px) in CSS and `HIT_TARGET_PX` in JS. On coarse pointers, `--hit-target-coarse` / `HIT_TARGET_COARSE_PX` (44px). Reference: `.slider` thumbs in `src/styles/components.css` (transparent border on a `--thumb-size` box, `background-clip: padding-box`).
+
+**Do**
+
+- Transparent padding, a transparent border, or a dedicated hit layer (`curve-field__hit`) at least `--hit-target`.
+- Put pointer events on the helper. The ink (`::before`, SVG handle, 12px chip) is paint only.
+- Keep a non-drag alternative (number field, arrows, buttons).
+
+**Do not**
+
+- A 12px thumb or stop whose box *is* the hit target.
+- Growing the visible glyph to 32px to fake a hit area.
+- Shipping a new controller `kind` without a helper. The catalog on `/docs/controls` must show the same target as the inspector.

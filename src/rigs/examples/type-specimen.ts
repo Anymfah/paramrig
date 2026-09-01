@@ -8,6 +8,7 @@ export const typeSpecimenManifest: RigManifest = {
   renderer: 'html',
   rendererLabel: 'HTML / CSS',
   collection: 'examples',
+  title: 'Examples/HTML',
   sourceFile: 'examples/type-specimen.rig.tsx',
   tags: ['html', 'type', 'rhythm'],
   groups: [
@@ -15,6 +16,8 @@ export const typeSpecimenManifest: RigManifest = {
     { id: 'measure', label: 'Measure' },
   ],
   parameters: [
+    {kind:'text',id:'headline',label:'Display text',group:'type',defaultValue:'Aa'},
+    {kind:'text',id:'copy',label:'Body text',group:'type',multiline:true,defaultValue:'Make it your own. Type, space, rhythm. The agent built the specimen; you decide the measure.'},
     { kind: 'number', id: 'display', label: 'Display size', group: 'type', min: 28, max: 88, step: 1, unit: 'px', defaultValue: 56 },
     { kind: 'number', id: 'body', label: 'Body size', group: 'type', min: 14, max: 24, step: 0.5, unit: 'px', defaultValue: 18 },
     { kind: 'number', id: 'tracking', label: 'Display tracking', group: 'type', min: -0.06, max: 0.04, step: 0.005, unit: 'em', defaultValue: -0.03 },

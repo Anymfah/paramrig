@@ -1,3 +1,4 @@
+import { controllerManifest } from '@/rigs/controller-catalog'
 import { contourBloomManifest } from '@/rigs/examples/contour-bloom'
 import { surfaceStudiesManifest } from '@/rigs/examples/surface-studies'
 import { tidalPlanetManifest } from '@/rigs/examples/tidal-planet'
@@ -17,6 +18,7 @@ const EXAMPLES: RigManifest[] = [
   tidalPlanetManifest,
   surfaceStudiesManifest,
   typeSpecimenManifest,
+  controllerManifest,
 ]
 
 function longNameStudy(): RigManifest {
@@ -25,6 +27,7 @@ function longNameStudy(): RigManifest {
     id: 'long-name-study',
     name: 'Bartholomew Featherstonehaugh contour reconstruction',
     summary: 'SVG · Extremely long source paths must wrap, not clip, in the library and inspector.',
+    title: 'Examples/SVG',
     sourceFile: 'examples/projects/bartholomew-featherstonehaugh/contour-reconstruction.rig.tsx',
   }
 }
@@ -76,7 +79,7 @@ export function searchRigs(rigs: RigManifest[], query: string): RigManifest[] {
   const q = query.trim().toLowerCase()
   if (!q) return rigs
   return rigs.filter((rig) => {
-    const hay = [rig.name, rig.summary, rig.description, rig.rendererLabel, rig.sourceFile, ...rig.tags]
+    const hay = [rig.name, rig.title, rig.summary, rig.description, rig.rendererLabel, rig.sourceFile, ...rig.tags]
       .join(' ')
       .toLowerCase()
     return hay.includes(q)

@@ -13,7 +13,7 @@ export type GradientStop = {
   color: string
 }
 
-export type ParamValue = number | string | boolean | BezierCurve | GradientStop[]
+export type ParamValue = number | string | boolean | null | BezierCurve | GradientStop[] | ParamValue[] | { [key: string]: ParamValue }
 
 export type NumberParam = {
   kind: 'number'
@@ -24,9 +24,18 @@ export type NumberParam = {
   max: number
   step: number
   unit?: string
+  /** Display-only unit conversions. Stored values remain in the base unit. */
+  units?: { value: string; label: string; factor: number; step?: number }[]
   defaultValue: number
   sliderMin?: number
   sliderMax?: number
+  view?: 'field' | 'stepper' | 'slider' | 'knob' | 'angle' | 'seed'
+  scale?: 'linear' | 'log'
+  stops?: number[]
+  readOnly?: boolean
+  role?: 'duration' | 'playhead'
+  defaultSource?: import('./extended-types').ValueSource
+  hidden?: boolean
 }
 
 export type ColorParam = {
@@ -35,6 +44,9 @@ export type ColorParam = {
   label: string
   group: string
   defaultValue: string
+  alpha?: boolean
+  channels?: boolean
+  hidden?: boolean
 }
 
 export type SelectParam = {
@@ -42,9 +54,11 @@ export type SelectParam = {
   id: string
   label: string
   group: string
-  options: { value: string; label: string }[]
+  options: { value: string; label: string; preview?: string }[]
   defaultValue: string
   appliesToTracks?: boolean
+  view?: 'search' | 'visual' | 'font'
+  hidden?: boolean
 }
 
 export type CurveParam = {
@@ -53,6 +67,7 @@ export type CurveParam = {
   label: string
   group: string
   defaultValue: BezierCurve
+  hidden?: boolean
 }
 
 export type SwitchParam = {
@@ -61,6 +76,7 @@ export type SwitchParam = {
   label: string
   group: string
   defaultValue: boolean
+  hidden?: boolean
 }
 
 export type GradientParam = {
@@ -69,6 +85,7 @@ export type GradientParam = {
   label: string
   group: string
   defaultValue: GradientStop[]
+  hidden?: boolean
 }
 
 export type ParameterDef =
@@ -78,11 +95,17 @@ export type ParameterDef =
   | CurveParam
   | SwitchParam
   | GradientParam
+  | import('./extended-types').ExtendedParameter
 
 export type Keyframe = {
+  id?: string
   time: number
   value: number
+  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out' | 'step'
 }
+
+export type KeyframeRef = { paramId: string; id: string }
+export type LoopRange = { start: number; end: number }
 
 export type AnimTrack = {
   paramId: string
@@ -100,6 +123,14 @@ export type AnimationDef = {
 export type ParamGroup = {
   id: string
   label: string
+  /** Optional secondary inspector tab. Groups without one remain visible in every tab. */
+  tab?: string
+  defaultOpen?: boolean
+}
+
+export type InspectorCategory = {
+  id: string
+  label: string
 }
 
 export type RendererKind = 'svg' | 'three' | 'html'
@@ -112,8 +143,12 @@ export type RigManifest = {
   renderer: RendererKind
   rendererLabel: string
   collection: 'examples' | 'project'
+  /** Storybook-style path. Folders are `/` segments; the leaf is `name`. */
+  title: string
   sourceFile: string
   tags: string[]
+  /** Optional second-level navigation for rigs with several families of controls. */
+  inspectorCategories?: InspectorCategory[]
   groups: ParamGroup[]
   parameters: ParameterDef[]
   animation?: AnimationDef
@@ -124,7 +159,11 @@ export type Snapshot = {
   name: string
   createdAt: string
   values: Record<string, ParamValue>
+  valueSources?: Record<string, import('./extended-types').ValueSource>
   tracks?: AnimTrack[]
+  loop?: boolean
+  loopRange?: LoopRange | null
+  duration?: number
 }
 
 export type ExportDocument = {
@@ -133,12 +172,14 @@ export type ExportDocument = {
   name: string
   exportedAt: string
   values: Record<string, ParamValue>
+  valueSources: Record<string, import('./extended-types').ValueSource>
   animation?: {
     duration: number
     fps: number
     loop: boolean
     playhead: number
     tracks: AnimTrack[]
+    loopRange?: LoopRange | null
   }
 }
 
@@ -146,12 +187,15 @@ export type StoredDraft = {
   version: 1
   rigId: string
   values: Record<string, ParamValue>
+  valueSources?: Record<string, import('./extended-types').ValueSource>
   snapshots: Snapshot[]
   compare: 'original' | 'current'
   activeSnapshotId: string | null
   playhead: number
   loop: boolean
   tracks?: AnimTrack[]
+  loopRange?: LoopRange | null
+  duration?: number
 }
 
 export type PanelPrefs = {
@@ -160,6 +204,7 @@ export type PanelPrefs = {
   inspectorWidth: number
   timelineHeight: number
   navCollapsed: boolean
+  navCompact: boolean
   inspectorCollapsed: boolean
   timelineCollapsed: boolean
 }

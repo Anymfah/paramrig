@@ -8,6 +8,7 @@ export const surfaceStudiesManifest: RigManifest = {
   renderer: 'html',
   rendererLabel: 'HTML / CSS',
   collection: 'examples',
+  title: 'Examples/HTML',
   sourceFile: 'examples/surface-studies.rig.tsx',
   tags: ['html', 'material', 'light'],
   groups: [

@@ -40,3 +40,11 @@
   `COMPOSE_PARALLEL_LIMIT=1 docker compose up -d --build`.
 - Never use `docker compose down -v` without an explicit request.
 - See `docs/local-docker-development.md` for commands and routes.
+
+## Inspector control handles
+
+Every grab handle on a controller (slider thumb, curve knob, gradient stop,
+color cursor, custom instrument, and any new `kind`) needs an enlarged click
+helper. The visible glyph stays small; the hit box is `--hit-target` (32px) or
+`--hit-target-coarse` (44px). Follow the slider thumb in `src/styles/components.css`
+and `.cursor/rules/controller-hit-targets.mdc`.

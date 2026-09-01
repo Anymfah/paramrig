@@ -37,7 +37,9 @@ export function isBezier(value: ParamValue): value is BezierCurve {
 }
 
 export function isGradient(value: ParamValue): value is GradientStop[] {
-  return Array.isArray(value)
+  return Array.isArray(value) && value.length > 0 && value.every(stop =>
+    typeof stop === 'object' && stop !== null && 'color' in stop && typeof stop.color === 'string' &&
+    't' in stop && typeof stop.t === 'number')
 }
 
 export function sampleBezier(curve: BezierCurve, t: number): number {
@@ -74,8 +76,13 @@ export function interpolateNumber(track: AnimTrack, time: number, duration: numb
     const b = frames[i + 1]
     if (!a || !b) continue
     if (t >= a.time && t <= b.time) {
-      if (track.interpolation === 'step' || b.time === a.time) return a.value
-      const u = (t - a.time) / (b.time - a.time)
+      if (t === b.time) return b.value
+      const easing = a.easing ?? track.interpolation
+      if (easing === 'step' || b.time === a.time) return a.value
+      const linear = (t - a.time) / (b.time - a.time)
+      const u = easing === 'ease-in' ? linear * linear
+        : easing === 'ease-out' ? 1 - (1 - linear) ** 2
+          : easing === 'ease-in-out' ? linear * linear * (3 - 2 * linear) : linear
       return a.value + (b.value - a.value) * u
     }
   }
@@ -86,7 +93,7 @@ export function upsertKeyframe(track: AnimTrack, time: number, value: number, to
   const frames = [...track.keyframes]
   const existing = frames.findIndex((frame) => Math.abs(frame.time - time) <= tolerance)
   if (existing >= 0) {
-    frames[existing] = { time: frames[existing]?.time ?? time, value }
+    frames[existing] = { ...frames[existing], time: frames[existing]?.time ?? time, value }
   } else {
     frames.push({ time, value })
   }

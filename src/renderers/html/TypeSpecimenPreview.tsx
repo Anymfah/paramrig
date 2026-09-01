@@ -3,7 +3,7 @@ import type { ParamValue } from '@/rigs/types'
 export function TypeSpecimenPreview({ values }: { values: Record<string, ParamValue> }) {
   const display = Number(values.display) || 56
   const body = Number(values.body) || 18
-  const tracking = Number(values.tracking) || -0.03
+  const tracking = typeof values.tracking === 'number' ? values.tracking : -0.03
   const leading = Number(values.leading) || 1.5
   const measureCh = Number(values.measureCh) || 42
   const weight = Number(values.weight) || 600
@@ -20,10 +20,10 @@ export function TypeSpecimenPreview({ values }: { values: Record<string, ParamVa
             margin: 0,
           }}
         >
-          Aa
+          {String(values.headline ?? 'Aa')}
         </p>
-        <p style={{ fontSize: body, lineHeight: leading, margin: 0 }}>
-          Make it your own. Type, space, rhythm. The agent built the specimen; you decide the measure.
+        <p style={{ fontSize: body, lineHeight: leading, margin: 0, whiteSpace: 'pre-wrap' }}>
+          {String(values.copy ?? 'Make it your own. Type, space, rhythm.')}
         </p>
       </article>
     </div>

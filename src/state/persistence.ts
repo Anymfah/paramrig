@@ -3,18 +3,27 @@ import type { PanelPrefs, StoredDraft } from '@/rigs/types'
 const DRAFTS_KEY = 'paramrig.drafts.v1'
 const PREFS_KEY = 'paramrig.prefs.v1'
 const TABS_KEY = 'paramrig.tabs.v1'
+const NAV_FOLDERS_KEY = 'paramrig.nav-folders.v1'
 
 export const NAV_WIDTH_MIN = 176
 export const NAV_WIDTH_MAX = 320
 export const NAV_WIDTH_DEFAULT = 240
+export const NAV_WIDTH_COMPACT = 48
+export const NAV_COMPACT_EXPAND_SLACK = 24
 const LEGACY_NAV_WIDTH = 208
+
+export const INSPECTOR_WIDTH_MIN = 272
+export const INSPECTOR_WIDTH_MAX = 380
+export const INSPECTOR_WIDTH_DEFAULT = 320
+export const CANVAS_MIN_WIDTH = 360
 
 export const defaultPrefs = (): PanelPrefs => ({
   version: 1,
   navWidth: NAV_WIDTH_DEFAULT,
-  inspectorWidth: 320,
+  inspectorWidth: INSPECTOR_WIDTH_DEFAULT,
   timelineHeight: 232,
   navCollapsed: false,
+  navCompact: false,
   inspectorCollapsed: false,
   timelineCollapsed: false,
 })
@@ -57,8 +66,9 @@ export function loadPrefs(): PanelPrefs {
       NAV_WIDTH_MIN,
       NAV_WIDTH_MAX,
     ),
-    inspectorWidth: clamp(stored.inspectorWidth, 260, 420),
-    timelineHeight: clamp(stored.timelineHeight, 148, 360),
+    inspectorWidth: clamp(stored.inspectorWidth, INSPECTOR_WIDTH_MIN, INSPECTOR_WIDTH_MAX),
+    timelineHeight: clamp(stored.timelineHeight, 180, 4000),
+    navCompact: Boolean(stored.navCompact),
   }
 }
 
@@ -78,6 +88,19 @@ export function loadTabs(): string[] {
 export function saveTabs(tabs: string[]): void {
   try {
     localStorage.setItem(TABS_KEY, JSON.stringify(tabs))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadCollapsedFolders(): string[] {
+  const stored = readJson<string[]>(NAV_FOLDERS_KEY)
+  return Array.isArray(stored) ? stored.filter((path) => typeof path === 'string') : []
+}
+
+export function saveCollapsedFolders(paths: string[]): void {
+  try {
+    localStorage.setItem(NAV_FOLDERS_KEY, JSON.stringify(paths))
   } catch {
     /* ignore */
   }

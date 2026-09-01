@@ -1,5 +1,6 @@
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, type CSSProperties } from 'react'
 import { NumberField } from '@/ui/NumberField'
+import { fineStep, nudgeNumber } from '@/ui/numeric'
 
 type SliderFieldProps = {
   label: string
@@ -14,8 +15,7 @@ type SliderFieldProps = {
   onChange: (value: number) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
-  onReset?: () => void
-  resetDisabled?: boolean
+  onGestureCancel?: () => void
 }
 
 export function SliderField({
@@ -31,21 +31,40 @@ export function SliderField({
   onChange,
   onGestureStart,
   onGestureEnd,
-  onReset,
-  resetDisabled,
+  onGestureCancel,
 }: SliderFieldProps) {
   const id = useId()
   const trackMin = sliderMin ?? min
   const trackMax = sliderMax ?? max
   const inputRef = useRef<HTMLInputElement>(null)
   const fill = (Math.min(trackMax, Math.max(trackMin, value)) - trackMin) / (trackMax - trackMin || 1)
+  const origin = trackMin < 0 && trackMax > 0 ? (0 - trackMin) / (trackMax - trackMin) : null
+  const dragging = useRef(false)
+  const overflow = value < trackMin ? 'start' : value > trackMax ? 'end' : undefined
 
   useEffect(() => {
-    inputRef.current?.style.setProperty('--p', String(fill))
-  }, [fill])
+    const el = inputRef.current
+    if (!el) return
+    const blockWheel = (event: WheelEvent) => event.preventDefault()
+    el.addEventListener('wheel', blockWheel, { passive: false })
+    return () => el.removeEventListener('wheel', blockWheel)
+  }, [])
+
+  const finish = (cancelled: boolean) => {
+    if (!dragging.current) return
+    dragging.current = false
+    inputRef.current?.removeAttribute('data-scrubbing')
+    if (cancelled) onGestureCancel?.()
+    else onGestureEnd?.()
+  }
+
+  const wrapStyle = {
+    '--p': String(fill),
+    ...(origin !== null ? { '--origin': String(origin) } : {}),
+  } as CSSProperties
 
   return (
-    <div className="slider-field">
+    <div className="control control--slider">
       <NumberField
         id={id}
         label={label}
@@ -54,40 +73,66 @@ export function SliderField({
         max={max}
         step={step}
         unit={unit}
+        variant="slider"
         disabled={disabled}
         onChange={onChange}
         onGestureStart={onGestureStart}
         onGestureEnd={onGestureEnd}
-        onReset={onReset}
-        resetDisabled={resetDisabled}
+        onGestureCancel={onGestureCancel}
       />
-      <input
-        ref={inputRef}
-        className="slider"
-        type="range"
-        min={trackMin}
-        max={trackMax}
-        step={step}
-        value={Math.min(trackMax, Math.max(trackMin, value))}
-        disabled={disabled}
-        aria-label={`${label} slider`}
-        aria-valuetext={unit ? `${value}${unit}` : String(value)}
-        onPointerDown={onGestureStart}
-        onPointerUp={onGestureEnd}
-        onPointerCancel={onGestureEnd}
-        onLostPointerCapture={onGestureEnd}
-        onChange={(event) => onChange(Number(event.target.value))}
-        onKeyDown={(event) => {
-          if (event.key === 'Home') {
-            event.preventDefault()
-            onChange(trackMin)
-          }
-          if (event.key === 'End') {
-            event.preventDefault()
-            onChange(trackMax)
-          }
-        }}
-      />
+      <div className="slider-wrap" data-overflow={overflow} style={wrapStyle}>
+        {origin !== null ? <span className="slider__origin" /> : null}
+        <span className="slider__track" aria-hidden="true">
+          <span className="slider__fill" />
+        </span>
+        {overflow === 'start' ? <span className="slider__overflow slider__overflow--start" aria-hidden="true" /> : null}
+        {overflow === 'end' ? <span className="slider__overflow slider__overflow--end" aria-hidden="true" /> : null}
+        <input
+          ref={inputRef}
+          className="slider"
+          type="range"
+          min={trackMin}
+          max={trackMax}
+          step={step}
+          value={Math.min(trackMax, Math.max(trackMin, value))}
+          disabled={disabled}
+          aria-label={`${label} slider`}
+          aria-description="Drag the handle or use the arrow keys. Hold Shift for finer changes. Press Home or End for the limits, and Escape to cancel a drag."
+          aria-valuetext={unit ? `${value}${unit}` : String(value)}
+          onPointerDown={(event) => {
+            dragging.current = true
+            event.currentTarget.setPointerCapture(event.pointerId)
+            event.currentTarget.setAttribute('data-scrubbing', 'true')
+            onGestureStart?.()
+          }}
+          onPointerUp={() => finish(false)}
+          onPointerCancel={() => finish(true)}
+          onLostPointerCapture={() => {
+            if (dragging.current) finish(true)
+          }}
+          onChange={(event) => onChange(Number(event.target.value))}
+          onKeyDown={(event) => {
+            if (event.key === 'Home') {
+              event.preventDefault()
+              onChange(trackMin)
+            }
+            if (event.key === 'End') {
+              event.preventDefault()
+              onChange(trackMax)
+            }
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowDown' || event.key === 'ArrowRight' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              const increment = event.shiftKey ? fineStep(step) : step
+              const direction = event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -1 : 1
+              onChange(nudgeNumber(value, direction, { min, max, step: increment }))
+            }
+            if (event.key === 'Escape' && dragging.current) {
+              event.preventDefault()
+              finish(true)
+            }
+          }}
+        />
+      </div>
     </div>
   )
 }

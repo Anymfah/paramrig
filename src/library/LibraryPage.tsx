@@ -1,7 +1,8 @@
+import { useNavColumn } from '@/shell/useLayout'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { RigNavigation } from '@/shell/RigNavigation'
-import { ShellNavResize, useNavColumn } from '@/shell/ResizeHandle'
+import { ShellNavResize } from '@/shell/ResizeHandle'
 import { loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
@@ -39,7 +40,7 @@ export function LibraryPage() {
     }
   }, [fixture])
 
-  const { dataNav, style } = useNavColumn()
+  const { dataNav, style, compact } = useNavColumn()
   const visible = useMemo(() => searchRigs(rigs ?? [], query), [rigs, query])
 
   return (
@@ -52,7 +53,7 @@ export function LibraryPage() {
       data-nav={dataNav}
       style={style}
     >
-      <RigNavigation rigs={fixture === 'loading' ? listExampleRigs() : (rigs ?? [])} activeId={undefined} />
+      <RigNavigation rigs={fixture === 'loading' ? listExampleRigs() : (rigs ?? [])} activeId={undefined} compact={compact} onNavigate={() => setMobilePanel('main')} />
       <main id="main" className="library-main scroll-area">
         <h1>Your rigs</h1>
         <p className="lede">Tools built around what you want to create.</p>
@@ -96,14 +97,14 @@ export function LibraryPage() {
             <h2>{query ? 'No rigs match that search' : 'No example rigs in this view'}</h2>
             <p className="lede">
               {query
-                ? `Nothing in Creative studies matches “${query}”. Clear the search to see the bundled examples.`
+                ? `No example rig matches “${query}”. Clear the search to see the bundled examples.`
                 : 'This empty list is a local fixture. Example rigs ship with the app; they are not discovered from disk.'}
             </p>
             {query ? (
               <Button variant="ghost" onClick={() => setParams({})}>
                 Clear search
               </Button>
-            ) : null}
+            ) : <Button variant="ghost" onClick={() => setParams({})}>Show examples</Button>}
           </div>
         ) : (
           <div className="rig-grid">

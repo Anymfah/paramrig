@@ -31,6 +31,37 @@ describe('RigSession', () => {
     expect(session.viewValues().twist).toBe(40)
   })
 
+  it('cancels a gesture without pushing history', () => {
+    const session = new RigSession(contourBloomManifest)
+    session.setValue('amplitude', 0.4)
+    session.beginGesture()
+    session.setValue('amplitude', 0.1)
+    session.setValue('amplitude', 0.55)
+    session.cancelGesture()
+    expect(session.viewValues().amplitude).toBe(0.4)
+    expect(session.canUndo()).toBe(true)
+    session.undo()
+    expect(session.viewValues().amplitude).toBe(
+      contourBloomManifest.parameters.find((p) => p.id === 'amplitude')?.defaultValue,
+    )
+    expect(session.canRedo()).toBe(true)
+  })
+
+  it('resets a section as a single undo step', () => {
+    const session = new RigSession(contourBloomManifest)
+    session.setValue('lobes', 12)
+    session.setValue('amplitude', 0.4)
+    session.setValue('layers', 10)
+    session.resetParams(['lobes', 'amplitude'])
+    expect(session.viewValues().lobes).toBe(6)
+    expect(session.viewValues().amplitude).toBe(0.18)
+    expect(session.viewValues().layers).toBe(10)
+    session.undo()
+    expect(session.viewValues().lobes).toBe(12)
+    expect(session.viewValues().amplitude).toBe(0.4)
+    expect(session.viewValues().layers).toBe(10)
+  })
+
   it('keeps snapshots isolated from later edits', () => {
     const session = new RigSession(contourBloomManifest)
     session.setValue('lobes', 8)
@@ -114,14 +145,14 @@ describe('RigSession', () => {
     expect(typeof doc.values.rotationY).toBe('number')
   })
 
-  it('keeps inspector live values current while Original preview uses the snapshot', () => {
+  it('compares the reference animation at the same playhead as the edited animation', () => {
     const session = new RigSession(tidalPlanetManifest)
     session.captureSnapshot('Baseline')
     session.setPlayhead(2.4)
     session.setCompare('original')
     expect(session.liveNumber('rotationY')).toBeCloseTo(108, 5)
-    expect(session.previewNumber('rotationY')).toBe(0)
-    expect(session.previewValues().rotationY).toBe(0)
+    expect(session.previewNumber('rotationY')).toBe(108)
+    expect(session.previewValues().rotationY).toBe(108)
     session.setCompare('current')
     expect(session.previewNumber('rotationY')).toBeCloseTo(108, 5)
   })
