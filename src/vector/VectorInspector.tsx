@@ -15,6 +15,7 @@ import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation 
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorElement } from '@/vector/document'
+import { FRAME_CUSTOM, FRAME_PRESETS, framePresetBounds, matchFramePreset } from '@/vector/frames'
 import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_FACES, TEXT_WEIGHTS } from '@/vector/text'
 import { outlineText } from '@/vector/textOutline'
 import { components, connectNodes, mergeNetworks, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
@@ -327,10 +328,13 @@ export function VectorInspector({
               ) : null}
             </section>
             <AppearancePanel elements={selectedElements} leaves={leaves} onUpdate={onUpdate} onUpdateElements={onUpdateElements} gesture={gesture} />
+            {single && single.kind === 'frame' ? (
+              <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
+            ) : null}
             {single && single.kind === 'text' ? (
               <TextPanel element={single} onUpdate={onUpdate} onOutline={outlineTextElement} gesture={gesture} />
             ) : null}
-            {single && single.kind !== 'group' && single.kind !== 'text' ? (
+            {single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' ? (
               <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
             ) : null}
             {combinable.length > 1 ? (
@@ -351,7 +355,7 @@ export function VectorInspector({
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
-            ) : single && single.kind !== 'group' && single.kind !== 'text' && (single.strokeWidth > 0 || single.network) ? (
+            ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
                   {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" onClick={outline}>Outline stroke</Button> : null}
@@ -580,6 +584,42 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
   )
 }
 
+function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
+  element: VectorElement
+  elements: VectorElement[]
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
+}) {
+  const preset = matchFramePreset(element.width, element.height)
+  const children = leafElements(elements, [element.id]).filter((leaf) => leaf.id !== element.id)
+  const applyPreset = (value: string) => {
+    const found = FRAME_PRESETS.find((item) => item.value === value)
+    if (!found) return
+    const bounds = framePresetBounds(element, found)
+    // The frame's own children ride along so the layout inside it survives the resize.
+    onUpdateElements([
+      { id: element.id, patch: bounds },
+      ...children.map((child) => ({ id: child.id, patch: { x: child.x + bounds.x - element.x, y: child.y + bounds.y - element.y } })),
+    ])
+  }
+  return (
+    <section className="vector-panel" aria-label="Frame">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Frame</h2>
+        <span className="vector-panel__meta">{children.length === 0 ? 'Empty' : `${children.length} ${children.length === 1 ? 'object' : 'objects'}`}</span>
+      </div>
+      <SelectField
+        label="Size"
+        value={preset}
+        options={[{ value: FRAME_CUSTOM, label: 'Custom' }, ...FRAME_PRESETS.map((item) => ({ value: item.value, label: `${item.label} · ${item.width} × ${item.height}` }))]}
+        onChange={applyPreset}
+      />
+      <SwitchField label="Clip content" checked={element.clipContent !== false} onChange={(clipContent) => onUpdate(element.id, { clipContent })} />
+      <p className="vector-panel__hint">A frame keeps its own box and exports at its own size. Drop layers onto it to put them inside.</p>
+    </section>
+  )
+}
+
 function TextPanel({ element, onUpdate, onOutline, gesture }: {
   element: VectorElement
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
@@ -654,6 +694,7 @@ function kindLabel(element: VectorElement): string {
     case 'path': return 'Path'
     case 'group': return 'Group'
     case 'text': return 'Text'
+    case 'frame': return 'Frame'
   }
 }
 

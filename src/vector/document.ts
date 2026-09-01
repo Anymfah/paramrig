@@ -1,7 +1,7 @@
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, sanitizeParents, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorElementKind } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPreset } from '@/vector/types'
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
@@ -14,6 +14,7 @@ const DEFAULT_BACKGROUND = '#151516'
 export const DEFAULT_SHAPE_FILL = '#1C1D1E'
 const DEFAULT_PATH_STROKE = '#D4E7E1'
 export const DEFAULT_TEXT_FILL = '#D4E7E1'
+export const DEFAULT_FRAME_FILL = '#E9EEED'
 export const MAX_DOCUMENT_SIZE = 10000
 
 function readAll(): Record<string, VectorDocument> {
@@ -111,7 +112,7 @@ export function vectorManifest(document: VectorDocument): RigManifest {
 }
 
 export type CreateElementOptions = Partial<Pick<VectorElement,
-  'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff'
+  'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff' | 'clipContent'
   | 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'textAlign' | 'textSizing'>>
 
 export function createVectorElement(
@@ -122,6 +123,7 @@ export function createVectorElement(
   const isPath = kind === 'path'
   const isGroup = kind === 'group'
   const isText = kind === 'text'
+  const isFrame = kind === 'frame'
   const element: VectorElement = {
     id: crypto.randomUUID(),
     kind,
@@ -131,8 +133,8 @@ export function createVectorElement(
     width: Math.max(1, round(bounds.width)),
     height: Math.max(1, round(bounds.height)),
     rotation: 0,
-    fill: options.fill ?? (isText ? DEFAULT_TEXT_FILL : isPath || isGroup ? 'none' : DEFAULT_SHAPE_FILL),
-    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup || isText ? 'none' : DEFAULT_SHAPE_FILL),
+    fill: options.fill ?? (isText ? DEFAULT_TEXT_FILL : isFrame ? DEFAULT_FRAME_FILL : isPath || isGroup ? 'none' : DEFAULT_SHAPE_FILL),
+    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup || isText || isFrame ? 'none' : DEFAULT_SHAPE_FILL),
     strokeWidth: options.strokeWidth ?? (isPath ? 2 : 0),
     opacity: 1,
     visible: true,
@@ -140,6 +142,7 @@ export function createVectorElement(
   }
   if (options.network) element.network = options.network
   if (options.regionsOff?.length) element.regionsOff = options.regionsOff
+  if (isFrame) element.clipContent = options.clipContent ?? true
   if (isText) {
     element.text = options.text ?? DEFAULT_TEXT.text
     element.fontFamily = options.fontFamily ?? DEFAULT_TEXT.fontFamily
@@ -160,15 +163,30 @@ function defaultName(kind: VectorElementKind): string {
     case 'path': return 'Path'
     case 'group': return 'Group'
     case 'text': return 'Text'
+    case 'frame': return 'Frame'
   }
 }
 
 export function serializeVectorDocument(document: VectorDocument): string {
+  return serializeVectorMarkup(document.elements, { x: 0, y: 0, width: document.width, height: document.height })
+}
+
+/** SVG for a subset of a document over an arbitrary box, with an optional painted background. */
+export function serializeVectorMarkup(
+  elements: VectorElement[],
+  viewBox: { x: number; y: number; width: number; height: number },
+  background?: string,
+): string {
   const defs: string[] = []
-  const lines = serializeNodes(buildTree(document.elements), 1, defs)
+  const lines = serializeNodes(buildTree(elements), 1, defs)
   const body = lines.join('\n')
   const defsMarkup = defs.length ? `  <defs>${defs.join('')}</defs>\n` : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${document.width} ${document.height}" width="${document.width}" height="${document.height}">\n${defsMarkup}${body}${body ? '\n' : ''}</svg>\n`
+  const width = round(viewBox.width)
+  const height = round(viewBox.height)
+  const paint = background
+    ? `  <rect x="${round(viewBox.x)}" y="${round(viewBox.y)}" width="${width}" height="${height}" fill="${escapeXml(background)}"/>\n`
+    : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${round(viewBox.x)} ${round(viewBox.y)} ${width} ${height}" width="${width}" height="${height}">\n${defsMarkup}${paint}${body}${body ? '\n' : ''}</svg>\n`
 }
 
 /** Markup for one element's paint layers plus the defs it needs; used by exports and thumbnails. */
@@ -195,6 +213,27 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
   return nodes.flatMap((node) => {
     const element = node.element
     if (!element.visible) return []
+    if (element.kind === 'frame') {
+      const model = renderModel(element, 'svg')
+      const background = defsToSvg(model.defs)
+      if (background) defs.push(background)
+      const children = serializeNodes(node.children, depth + 1, defs)
+      const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
+      const body = layersToSvg(model, element.id)
+      if (element.clipContent && children.length) {
+        const clipId = `frame-clip-${element.id}`
+        defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.d}" transform="${model.transform}"/></clipPath>`)
+        return [
+          `${indent}<g id="${escapeXml(element.id)}"${opacity}>`,
+          ...(body ? [`${indent}  ${body}`] : []),
+          `${indent}  <g clip-path="url(#${escapeXml(clipId)})">`,
+          ...children,
+          `${indent}  </g>`,
+          `${indent}</g>`,
+        ]
+      }
+      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
+    }
     if (element.kind === 'group') {
       const children = serializeNodes(node.children, depth + 1, defs)
       if (children.length === 0) return []
@@ -264,9 +303,26 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     elements: sanitizeParents(elements),
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
+    ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : new Date(0).toISOString(),
   }
+}
+
+export const MAX_EXPORT_PRESETS = 12
+
+export function sanitizeExportPresets(value: unknown): VectorExportPreset[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const presets = value.slice(0, MAX_EXPORT_PRESETS).flatMap((candidate): VectorExportPreset[] => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const source = candidate as Partial<VectorExportPreset>
+    if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string' || !source.name.trim()) return []
+    const target = source.target === 'frame' || source.target === 'selection' ? source.target : 'document'
+    const format = source.format === 'png' ? 'png' : 'svg'
+    const scale = source.scale === 1 || source.scale === 2 || source.scale === 3 ? source.scale : 1
+    return [{ id: source.id, name: source.name.trim().slice(0, 60), target, format, scale, transparent: source.transparent === true }]
+  })
+  return presets.length ? presets : undefined
 }
 
 export const MAX_VERSIONS = 20
@@ -298,7 +354,7 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text') return null
+  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame') return null
   if (source.kind === 'text' && typeof source.text !== 'string') return null
   if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string') return null
   if (![source.x, source.y, source.width, source.height, source.rotation, source.strokeWidth, source.opacity].every(Number.isFinite)) return null
@@ -309,7 +365,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const strokes = sanitizePaints(source.strokes)
   const strokeSides = source.kind === 'rectangle' && !source.network ? sanitizeStrokeSides(source.strokeSides) : undefined
   const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
-  const network = source.kind === 'group' || source.kind === 'text' ? null : sanitizeNetwork(source.network)
+  const network = source.kind === 'group' || source.kind === 'text' || source.kind === 'frame' ? null : sanitizeNetwork(source.network)
   if (source.kind === 'path' && !network) return null
   const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
@@ -342,6 +398,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
     ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
+    ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
   }
 }
 

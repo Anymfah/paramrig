@@ -16,7 +16,7 @@ import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, pe
 import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
-import { buildTree, childrenOf, descendantIds, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
+import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorGuide, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
@@ -190,7 +190,7 @@ export function VectorCanvas({
   const elements = document.elements
   const selectedElements = useMemo(() => elements.filter((element) => selectedIds.includes(element.id)), [elements, selectedIds])
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
-  const editing = (tool === 'node' || tool === 'bucket') && selected && selected.kind !== 'group' && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
+  const editing = (tool === 'node' || tool === 'bucket') && selected && !isContainer(selected) && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
   const textEditing = textEditId ? elements.find((element) => element.id === textEditId && element.kind === 'text') ?? null : null
   const selectedLeaves = useMemo(() => leafElements(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
   const tree = useMemo(() => buildTree(elements), [elements])
@@ -698,14 +698,15 @@ export function VectorCanvas({
       if (tool === 'text') {
         addText(bounds.width >= 8 && bounds.height >= 8 ? (viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds) : null, active.start)
       } else if (bounds.width >= 2 && bounds.height >= 2) {
-        onAddElements([createVectorElement(tool === 'ellipse' ? 'ellipse' : 'rectangle', viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds)])
+        const kind = tool === 'ellipse' ? 'ellipse' : tool === 'frame' ? 'frame' : 'rectangle'
+        onAddElements([createVectorElement(kind, viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds)])
       }
     } else if (active.kind === 'marquee') {
       const bounds = boundsBetween(active.start, active.current, false)
       const scope = enteredGroupId
       const candidates = bounds.width < 2 && bounds.height < 2 ? [] : childrenOf(elements, scope).filter((element) => element.visible && !element.locked)
       const hits = candidates.filter((element) => {
-        const leaves = element.kind === 'group' ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
+        const leaves = isContainer(element) ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
         return leaves.some((leaf) => intersects(bounds, selectionBounds([leaf])))
       }).map((element) => element.id)
       onSelectIds(active.additive ? [...new Set([...selectedIds, ...hits])] : hits)
@@ -725,7 +726,7 @@ export function VectorCanvas({
         } else {
           const candidates = childrenOf(elements, enteredGroupId).filter((element) => element.visible && !element.locked)
           const hits = candidates.filter((element) => {
-            const leaves = element.kind === 'group' ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
+            const leaves = isContainer(element) ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
             return leaves.some((leaf) => elementInLasso(leaf, polygon))
           }).map((element) => element.id)
           onSelectIds(active.additive ? [...new Set([...selectedIds, ...hits])] : hits)
@@ -813,7 +814,7 @@ export function VectorCanvas({
 
   const onShapePointerDown = (element: VectorElement, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -829,7 +830,7 @@ export function VectorCanvas({
       onSelectIds([resolvedElement.id])
       onSelectNodes([])
       setSelectedSegment(null)
-      if (resolvedElement.kind === 'group') onToolChange('select')
+      if (isContainer(resolvedElement)) onToolChange('select')
       return
     }
     let ids = selectedIds
@@ -895,7 +896,7 @@ export function VectorCanvas({
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
     if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
-    if (resolvedElement.kind === 'group') {
+    if (isContainer(resolvedElement)) {
       onEnterGroup(resolvedElement.id)
       onSelectIds([resolveSelection(elements, element.id, resolvedElement.id)])
       return
@@ -921,7 +922,7 @@ export function VectorCanvas({
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -957,7 +958,7 @@ export function VectorCanvas({
       const draft = penDraftRef.current
       const threshold = PEN_CLOSE_PX / zoom
       if (!draft) {
-        const base = selected && selected.kind !== 'group' && !selected.locked ? selected : null
+        const base = selected && !isContainer(selected) && selected.kind !== 'text' && !selected.locked ? selected : null
         const nodeId = nodeNear(base, at)
         if (base && nodeId) {
           setPenDraft(penFromNode(base, nodeId))
@@ -1413,7 +1414,7 @@ export function VectorCanvas({
   }, [viewportSize.width, viewportSize.height, zoom, pan.x, pan.y, document.width, document.height])
 
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
-  const penTarget = tool === 'pen' && !penDraft && selected && selected.kind !== 'group' && !selected.locked ? selected : null
+  const penTarget = tool === 'pen' && !penDraft && selected && !isContainer(selected) && selected.kind !== 'text' && !selected.locked ? selected : null
 
   return (
     <div
@@ -1695,6 +1696,48 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
       {nodes.map((node) => {
         const element = node.element
         if (!element.visible) return null
+        if (element.kind === 'frame') {
+          const clipId = `frame-clip-${element.id}`
+          const children = (
+            <ShapeTree
+              nodes={node.children}
+              zoom={zoom}
+              coarse={coarse}
+              pixelPreview={pixelPreview}
+              selectedIds={selectedIds}
+              editingId={editingId}
+              textEditingId={textEditingId}
+              inheritedLocked={inheritedLocked || element.locked}
+              viewBounds={viewBounds}
+              onPointerDown={onPointerDown}
+              onHover={onHover}
+            />
+          )
+          return (
+            <g key={element.id} data-vector-frame={element.id} opacity={element.opacity}>
+              <VectorShape
+                element={element}
+                locked={inheritedLocked || element.locked}
+                zoom={zoom}
+                coarse={coarse}
+                pixelPreview={pixelPreview}
+                selected={selectedIds.includes(element.id)}
+                editing={false}
+                hideText={false}
+                hitTarget={withinView(element, viewBounds)}
+                onPointerDown={onPointerDown}
+                onHover={onHover}
+              />
+              {element.clipContent ? (
+                <>
+                  <defs><FrameClip id={clipId} element={element} /></defs>
+                  <g clipPath={`url(#${clipId})`}>{children}</g>
+                </>
+              ) : children}
+              <FrameLabel element={element} zoom={zoom} onPointerDown={onPointerDown} />
+            </g>
+          )
+        }
         if (element.kind === 'group') {
           return (
             <g key={element.id} data-vector-group={element.id} opacity={element.opacity}>
@@ -1794,6 +1837,34 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
     </>
   )
 })
+
+/** The frame's name above its top-left corner, at a constant screen size, and a way to grab it. */
+function FrameLabel({ element, zoom, onPointerDown }: {
+  element: VectorElement
+  zoom: number
+  onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
+}) {
+  const center = elementCenter(element)
+  return (
+    <text
+      className="vector-frame-label"
+      x={element.x}
+      y={element.y - 6 / zoom}
+      fontSize={11 / zoom}
+      transform={`rotate(${element.rotation} ${center.x} ${center.y})`}
+      pointerEvents={element.locked ? 'none' : 'auto'}
+      onPointerDown={(event) => onPointerDown(element, event)}
+    >
+      {element.name}
+    </text>
+  )
+}
+
+/** Clip shape of a frame: its box, turned with it. */
+function FrameClip({ id, element }: { id: string; element: VectorElement }) {
+  const model = renderModel(element, 'canvas')
+  return <clipPath id={id}><path d={model.d} transform={model.transform} /></clipPath>
+}
 
 /** One `<text>` with a `<tspan>` per line; the paint rides on the text itself. */
 function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>; transform: string }) {

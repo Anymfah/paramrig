@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -13,12 +13,14 @@ import { readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
 import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
-import { createVectorDocument, createVectorElement, serializeVectorDocument } from '@/vector/document'
+import { createVectorDocument, createVectorElement, MAX_EXPORT_PRESETS } from '@/vector/document'
+import { DEFAULT_EXPORT, embedFonts, exportBounds, exportFileName, exportMarkup, rasterize, type ExportSettings } from '@/vector/export'
+import { VectorExportMenu } from '@/vector/VectorExportMenu'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
 import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
-import { childrenOf, leafElements } from '@/vector/tree'
+import { ancestorIds, childrenOf, isContainer, leafElements } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
@@ -57,6 +59,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const importInput = useRef<HTMLInputElement>(null)
   const projectInput = useRef<HTMLInputElement>(null)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
+  const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT)
+  const [exportError, setExportError] = useState<string | null>(null)
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
@@ -285,13 +289,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'p' && event.shiftKey) chooseTool('pencil')
       else if (key === 'p') chooseTool('pen')
       else if (key === 't') chooseTool('text')
+      else if (key === 'f') chooseTool('frame')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
         const selected = current.selected
         if (current.selectedIds.length === 1 && selected) {
           event.preventDefault()
-          if (selected.kind === 'group') {
+          if (isContainer(selected)) {
             current.setEnteredGroupId(selected.id)
             const first = childrenOf(current.document?.elements ?? [], selected.id).at(-1)
             if (first) current.setSelectedIds([first.id])
@@ -330,14 +335,44 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     )
   }
 
-  const download = () => {
-    const blob = new Blob([serializeVectorDocument(document)], { type: 'image/svg+xml' })
-    const href = URL.createObjectURL(blob)
-    const anchor = window.document.createElement('a')
-    anchor.href = href
-    anchor.download = `${slug(document.name)}.svg`
-    anchor.click()
-    URL.revokeObjectURL(href)
+  /** The frame an export means: the selected one, the one holding the selection, or the only one. */
+  const frames = document.elements.filter((element) => element.kind === 'frame')
+  const selectedFrame = selectedElements.find((element) => element.kind === 'frame')
+    ?? frames.find((frame) => selectedIds.some((id) => ancestorIds(document.elements, id).includes(frame.id)))
+    ?? (frames.length === 1 ? frames[0] : undefined)
+    ?? null
+
+  const runExport = async (settings: ExportSettings) => {
+    setExportError(null)
+    const selection = { frameId: selectedFrame?.id ?? null, selectedIds }
+    const bounds = exportBounds(document, settings.target, selection)
+    const markup = exportMarkup(document, settings, selection)
+    if (!markup || !bounds) {
+      setExportError('There is nothing to export with those settings.')
+      return
+    }
+    const embedded = await embedFonts(markup)
+    const name = exportFileName(document, settings, selectedFrame?.name)
+    if (settings.format === 'svg') {
+      downloadBlob(new Blob([embedded], { type: 'image/svg+xml' }), name)
+      return
+    }
+    const png = await rasterize(embedded, bounds, settings.scale)
+    if (!png) {
+      setExportError('That drawing could not be rendered to PNG in this browser.')
+      return
+    }
+    downloadBlob(png, name)
+  }
+
+  const savePreset = (name: string, settings: ExportSettings) => {
+    const presets = [...(document.exportPresets ?? []), { id: crypto.randomUUID(), name: name.trim().slice(0, 60), ...settings }].slice(-MAX_EXPORT_PRESETS)
+    editor.updateDocument({ exportPresets: presets })
+  }
+
+  const deletePreset = (id: string) => {
+    const presets = (document.exportPresets ?? []).filter((preset) => preset.id !== id)
+    editor.updateDocument({ exportPresets: presets.length ? presets : undefined })
   }
 
   const selectFromLayers = (id: string, mode: 'replace' | 'toggle' | 'range') => {
@@ -419,7 +454,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
           saveBadge={<VectorSaveBadge file={file} />}
-          saveMessage={file.message}
+          saveMessage={file.message ?? exportError}
         />
       }
     >
@@ -431,7 +466,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             onNewDocument={newDocument}
             onOpenProject={requestOpen}
             onImportSvg={() => importInput.current?.click()}
-            onExportSvg={download}
           />
           <Tooltip content="Undo · ⌘Z">
             <IconButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconUndo /></IconButton>
@@ -452,6 +486,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
           <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
+          <ToolButton label="Frame · F" active={tool === 'frame'} onClick={() => chooseTool('frame')}><IconFrame /></ToolButton>
           <ToolButton label="Text · T" active={tool === 'text'} onClick={() => chooseTool('text')}><IconText /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
@@ -473,6 +508,16 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             </Tooltip>
           </div>
           <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} />
+          <VectorExportMenu
+            settings={exportSettings}
+            onSettings={setExportSettings}
+            frameName={selectedFrame?.name ?? null}
+            selectionCount={selectedIds.length}
+            presets={document.exportPresets ?? []}
+            onExport={(settings) => void runExport(settings)}
+            onSavePreset={savePreset}
+            onDeletePreset={deletePreset}
+          />
           {selectedIds.length > 0 ? (
             <div className="workspace-toolbar__group vector-toolbar__selection">
               {canUngroup ? (
@@ -522,7 +567,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onToolChange={chooseTool}
           onAddElements={(elements) => {
             editor.addElements(elements)
-            if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text') chooseTool('select')
+            if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'frame') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
@@ -553,7 +598,7 @@ function expandMoves(elements: VectorElement[], patches: ElementPatch[]): Elemen
   for (const { id, patch } of patches) {
     const element = elements.find((item) => item.id === id)
     if (!element) continue
-    if (element.kind !== 'group') {
+    if (!isContainer(element)) {
       updates.push({ id, patch })
       continue
     }
@@ -712,6 +757,11 @@ function steppedZoom(current: number, direction: -1 | 1): number {
   return [...levels].reverse().find((level) => level < current - 0.001) ?? 0.1
 }
 
-function slug(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'untitled'
+function downloadBlob(blob: Blob, name: string): void {
+  const href = URL.createObjectURL(blob)
+  const anchor = window.document.createElement('a')
+  anchor.href = href
+  anchor.download = name
+  anchor.click()
+  URL.revokeObjectURL(href)
 }

@@ -3,6 +3,11 @@ import type { VectorElement } from '@/vector/types'
 
 export type TreeNode = { element: VectorElement; children: TreeNode[]; depth: number }
 
+/** Kinds that hold children through `parentId`: groups, which hug their content, and frames, which keep their own box. */
+export function isContainer(element: Pick<VectorElement, 'kind'>): boolean {
+  return element.kind === 'group' || element.kind === 'frame'
+}
+
 export type LayerRow = {
   element: VectorElement
   depth: number
@@ -18,7 +23,7 @@ export function buildTree(elements: VectorElement[], parentId: string | null = n
     .map((element) => ({
       element,
       depth,
-      children: element.kind === 'group' ? buildTree(elements, element.id, depth + 1) : [],
+      children: isContainer(element) ? buildTree(elements, element.id, depth + 1) : [],
     }))
 }
 
@@ -34,7 +39,7 @@ export function descendantIds(elements: VectorElement[], id: string): string[] {
     for (const element of elements) {
       if (element.parentId === current) {
         result.push(element.id)
-        if (element.kind === 'group') stack.push(element.id)
+        if (isContainer(element)) stack.push(element.id)
       }
     }
   }
@@ -54,13 +59,17 @@ export function ancestorIds(elements: VectorElement[], id: string): string[] {
   return result
 }
 
-/** Leaves reachable from a set of ids (groups expand to their descendants, leaves pass through). */
+/**
+ * Elements a selection actually acts on: a group expands to its descendants, a frame expands to
+ * its descendants and stays in the set itself because it has a box and a background of its own.
+ */
 export function leafElements(elements: VectorElement[], ids: string[]): VectorElement[] {
   const wanted = new Set<string>()
   for (const id of ids) {
     const element = elements.find((item) => item.id === id)
     if (!element) continue
-    if (element.kind === 'group') {
+    if (isContainer(element)) {
+      if (element.kind === 'frame') wanted.add(id)
       for (const descendant of descendantIds(elements, id)) wanted.add(descendant)
     } else {
       wanted.add(id)
@@ -90,7 +99,7 @@ export function sanitizeParents(elements: VectorElement[]): VectorElement[] {
   const cleaned = elements.map((element) => {
     if (!element.parentId) return stripParent(element)
     const parent = byId.get(element.parentId)
-    if (!parent || parent.kind !== 'group' || parent.id === element.id) return stripParent(element)
+    if (!parent || !isContainer(parent) || parent.id === element.id) return stripParent(element)
     const seen = new Set<string>([element.id])
     let cursor: VectorElement | undefined = parent
     while (cursor) {
@@ -100,6 +109,7 @@ export function sanitizeParents(elements: VectorElement[]): VectorElement[] {
     }
     return element
   })
+  // A group with nothing in it is meaningless; an empty frame is a perfectly good artboard.
   const withoutEmptyGroups = cleaned.filter((element) => element.kind !== 'group' || cleaned.some((child) => child.parentId === element.id))
   const stillValid = withoutEmptyGroups.length === cleaned.length ? withoutEmptyGroups : sanitizeParents(withoutEmptyGroups)
   return syncGroupBounds(flattenTree(buildTree(stillValid)))
@@ -202,7 +212,7 @@ export function moveInTree(elements: VectorElement[], id: string, target: { pare
   if (!element) return elements
   if (target.parentId === id || (target.parentId && descendantIds(elements, id).includes(target.parentId))) return elements
   const parent = target.parentId ? elements.find((item) => item.id === target.parentId) : null
-  if (target.parentId && (!parent || parent.kind !== 'group')) return elements
+  if (target.parentId && (!parent || !isContainer(parent))) return elements
   const movedIds = new Set([id, ...descendantIds(elements, id)])
   const block = elements.filter((item) => movedIds.has(item.id)).map((item) => item.id === id
     ? (target.parentId ? { ...item, parentId: target.parentId } : stripParent(item))

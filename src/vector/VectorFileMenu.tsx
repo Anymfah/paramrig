@@ -1,16 +1,15 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { ReactNode } from 'react'
 import { IconButton } from '@/ui/Button'
-import { IconCode, IconDoc, IconDownload, IconFolderOpen, IconImport, IconPlus } from '@/ui/icons'
+import { IconDoc, IconDownload, IconFolderOpen, IconImport, IconPlus } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import type { ProjectFile } from '@/vector/useProjectFile'
 
-export function VectorFileMenu({ file, onNewDocument, onOpenProject, onImportSvg, onExportSvg }: {
+export function VectorFileMenu({ file, onNewDocument, onOpenProject, onImportSvg }: {
   file: ProjectFile
   onNewDocument: () => void
   onOpenProject: () => void
   onImportSvg: () => void
-  onExportSvg: () => void
 }) {
   return (
     <DropdownMenu.Root modal={false}>
@@ -26,7 +25,6 @@ export function VectorFileMenu({ file, onNewDocument, onOpenProject, onImportSvg
           <FileItem label={file.linked ? 'Save a copy…' : 'Save as…'} shortcut="⇧⌘S" onSelect={() => void file.saveAs()}><IconDownload /></FileItem>
           <DropdownMenu.Separator className="menu__sep" />
           <FileItem label="Import SVG…" onSelect={onImportSvg}><IconImport /></FileItem>
-          <FileItem label="Export SVG" onSelect={onExportSvg}><IconCode /></FileItem>
           {file.linked ? (
             <>
               <DropdownMenu.Separator className="menu__sep" />

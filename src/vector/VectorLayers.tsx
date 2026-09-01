@@ -5,8 +5,8 @@ import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/Conte
 import { ThemeToggle } from '@/ui/ThemeToggle'
 import { Tooltip } from '@/ui/Tooltip'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
-import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconGroup, IconLock, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
-import { childrenOf, flattenForLayers, siblingIndex, type LayerRow } from '@/vector/tree'
+import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
+import { childrenOf, flattenForLayers, isContainer, siblingIndex, type LayerRow } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
 
 type VectorLayersProps = {
@@ -62,7 +62,7 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
     const hovered = document.elements.find((element) => element.id === target.id)
     if (!dragged || !hovered) return
     if (target.edge === 'inside') {
-      if (hovered.kind !== 'group') return
+      if (!isContainer(hovered)) return
       onMoveInTree(draggingId, { parentId: hovered.id, index: childrenOf(document.elements, hovered.id).length })
       return
     }
@@ -141,7 +141,7 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
                     event.dataTransfer.dropEffect = 'move'
                     const rect = event.currentTarget.getBoundingClientRect()
                     const ratio = (event.clientY - rect.top) / rect.height
-                    const edge: DropTarget['edge'] = element.kind === 'group' && ratio > 0.3 && ratio < 0.7 ? 'inside' : ratio < 0.5 ? 'before' : 'after'
+                    const edge: DropTarget['edge'] = isContainer(element) && ratio > 0.3 && ratio < 0.7 ? 'inside' : ratio < 0.5 ? 'before' : 'after'
                     setDropTarget((current) => current?.id === element.id && current.edge === edge ? current : { id: element.id, edge })
                   }}
                   onDragLeave={(event) => {
@@ -207,7 +207,7 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(element.name)
   const inputRef = useRef<HTMLInputElement>(null)
-  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'path' || element.network ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
+  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'frame' ? IconFrame : element.kind === 'text' ? IconText : element.kind === 'path' || element.network ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
   const startRename = () => {
     setDraft(element.name)
     if (compact) {
@@ -260,10 +260,10 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
         data-hidden={!element.visible || undefined}
         data-locked={element.locked || undefined}
         data-depth={row.depth}
-        data-group={element.kind === 'group' || undefined}
+        data-group={isContainer(element) || undefined}
         style={{ '--depth': row.depth } as CSSProperties}
       >
-        {row.hasChildren || element.kind === 'group' ? (
+        {row.hasChildren || isContainer(element) ? (
           <button
             type="button"
             className="vector-layer__disclosure"
@@ -293,8 +293,8 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
               onKeyDown={(event) => {
                 if (event.key === 'ArrowDown') onFocusRow(1, event)
                 else if (event.key === 'ArrowUp') onFocusRow(-1, event)
-                else if (event.key === 'ArrowLeft' && element.kind === 'group' && !row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
-                else if (event.key === 'ArrowRight' && element.kind === 'group' && row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
+                else if (event.key === 'ArrowLeft' && isContainer(element) && !row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
+                else if (event.key === 'ArrowRight' && isContainer(element) && row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
                 else if (event.key === 'F2') { event.preventDefault(); startRename() }
                 else if ((event.key === 'Backspace' || event.key === 'Delete')) { event.preventDefault(); onRemove(selected ? selectedIds : [element.id]) }
               }}

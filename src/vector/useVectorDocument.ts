@@ -17,7 +17,7 @@ type VectorHistory = {
   future: VectorDocument[]
 }
 
-export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides'>>
+export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets'>>
 
 function clone(document: VectorDocument): VectorDocument {
   return structuredClone(document)

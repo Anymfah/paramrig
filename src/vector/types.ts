@@ -1,6 +1,6 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame'
 
 export type VectorPoint = { x: number; y: number }
 
@@ -102,12 +102,24 @@ export type VectorElement = {
   letterSpacing?: number
   textAlign?: VectorTextAlign
   textSizing?: VectorTextSizing
+  /** Frames only: whether children are cut off at the frame's edge. */
+  clipContent?: boolean
   /** Editable geometry as a graph; primitives without one use their implicit outline. */
   network?: VectorNetwork
   /** Face keys whose fill is switched off with the paint bucket. */
   regionsOff?: string[]
   /** Group membership. Descendants sit immediately before their group in `elements`. */
   parentId?: string
+}
+
+/** A saved export setting, applied from the export menu. */
+export type VectorExportPreset = {
+  id: string
+  name: string
+  target: 'document' | 'selection' | 'frame'
+  format: 'svg' | 'png'
+  scale: 1 | 2 | 3
+  transparent: boolean
 }
 
 export type VectorGuide = {
@@ -135,6 +147,8 @@ export type VectorDocument = {
   guides: VectorGuide[]
   /** Named snapshots, oldest first. */
   versions?: VectorVersion[]
+  /** Export settings the user saved with this document. */
+  exportPresets?: VectorExportPreset[]
   createdAt: string
   updatedAt: string
 }
