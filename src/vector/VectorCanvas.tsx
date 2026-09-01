@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
@@ -626,6 +626,7 @@ export function VectorCanvas({
   }
 
   const finish = (event: ReactPointerEvent<SVGSVGElement>) => {
+    flushPointerMove()
     const active = interaction.current
     if (!active || active.kind === 'modal' || active.pointerId !== event.pointerId) return
     if (active.kind === 'create') {
@@ -710,6 +711,7 @@ export function VectorCanvas({
   }
 
   const abort = (event: ReactPointerEvent<SVGSVGElement>) => {
+    flushPointerMove()
     const active = interaction.current
     if (!active || active.kind === 'modal') return
     cancelInteraction()
@@ -955,7 +957,7 @@ export function VectorCanvas({
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  const onCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+  const applyCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     const active = interaction.current
     const at = point(event.nativeEvent)
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
@@ -1131,6 +1133,38 @@ export function VectorCanvas({
     }
   }
 
+  /**
+   * Pointer moves are coalesced to one per frame: only the latest position matters, and a drag
+   * that outruns the display would otherwise re-arrange the edited network several times a frame.
+   */
+  const pendingMove = useRef<ReactPointerEvent<SVGSVGElement> | null>(null)
+  const moveFrame = useRef<number | null>(null)
+  const moveHandler = useRef(applyCanvasPointerMove)
+  moveHandler.current = applyCanvasPointerMove
+
+  const flushPointerMove = useCallback(() => {
+    if (moveFrame.current !== null) {
+      cancelAnimationFrame(moveFrame.current)
+      moveFrame.current = null
+    }
+    const latest = pendingMove.current
+    pendingMove.current = null
+    if (latest) moveHandler.current(latest)
+  }, [])
+
+  useEffect(() => flushPointerMove, [flushPointerMove])
+
+  const onCanvasPointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
+    pendingMove.current = event
+    if (moveFrame.current !== null) return
+    moveFrame.current = requestAnimationFrame(() => {
+      moveFrame.current = null
+      const latest = pendingMove.current
+      pendingMove.current = null
+      if (latest) moveHandler.current(latest)
+    })
+  }, [])
+
   const onGuidePointerDown = (guide: VectorGuide, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0 || tool !== 'select' && tool !== 'transform') return
     event.stopPropagation()
@@ -1288,6 +1322,26 @@ export function VectorCanvas({
   const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' ? selected : null
   const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
+  const shapePointerDown = useRef(onShapePointerDown)
+  shapePointerDown.current = onShapePointerDown
+  const stableShapePointerDown = useCallback((element: VectorElement, event: ReactPointerEvent<SVGElement>) => {
+    shapePointerDown.current(element, event)
+  }, [])
+
+  /** Visible document rectangle, padded, so off-screen shapes can skip their hit companion. */
+  const viewBounds = useMemo(() => {
+    if (!viewportSize.width || !viewportSize.height) return null
+    const halfWidth = viewportSize.width / 2 / zoom
+    const halfHeight = viewportSize.height / 2 / zoom
+    const pad = 64 / zoom
+    return {
+      x: document.width / 2 - pan.x / zoom - halfWidth - pad,
+      y: document.height / 2 - pan.y / zoom - halfHeight - pad,
+      width: (halfWidth + pad) * 2,
+      height: (halfHeight + pad) * 2,
+    }
+  }, [viewportSize.width, viewportSize.height, zoom, pan.x, pan.y, document.width, document.height])
+
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
   const penTarget = tool === 'pen' && !penDraft && selected && selected.kind !== 'group' && !selected.locked ? selected : null
 
@@ -1373,7 +1427,8 @@ export function VectorCanvas({
               selectedIds={selectedIds}
               editingId={editing?.id ?? null}
               inheritedLocked={false}
-              onPointerDown={onShapePointerDown}
+              viewBounds={viewBounds}
+              onPointerDown={stableShapePointerDown}
               onHover={setHoveredId}
             />
           </g>
@@ -1538,7 +1593,7 @@ function nodeModalMap(mode: VectorTransformMode, axis: VectorTransformAxis, orig
   return (point) => ({ x: origin.x + (point.x - origin.x) * factorX, y: origin.y + (point.y - origin.y) * factorY })
 }
 
-function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, inheritedLocked, onPointerDown, onHover }: {
+function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, inheritedLocked, viewBounds, onPointerDown, onHover }: {
   nodes: TreeNode[]
   zoom: number
   coarse: boolean
@@ -1546,6 +1601,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
   selectedIds: string[]
   editingId: string | null
   inheritedLocked: boolean
+  viewBounds: Bounds | null
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
@@ -1565,6 +1621,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 selectedIds={selectedIds}
                 editingId={editingId}
                 inheritedLocked={inheritedLocked || element.locked}
+                viewBounds={viewBounds}
                 onPointerDown={onPointerDown}
                 onHover={onHover}
               />
@@ -1574,13 +1631,15 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
         return (
           <VectorShape
             key={element.id}
-            element={inheritedLocked ? { ...element, locked: true } : element}
+            element={element}
+            locked={inheritedLocked || element.locked}
             zoom={zoom}
             coarse={coarse}
             pixelPreview={pixelPreview}
             selected={selectedIds.includes(element.id)}
             editing={element.id === editingId}
-            onPointerDown={(event) => onPointerDown(element, event)}
+            hitTarget={withinView(element, viewBounds)}
+            onPointerDown={onPointerDown}
             onHover={onHover}
           />
         )
@@ -1589,32 +1648,39 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
   )
 }
 
-function VectorShape({ element, zoom, coarse, pixelPreview, selected, editing, onPointerDown, onHover }: {
+/**
+ * One painted shape plus its stroke hit companion. Memoised on primitive props so a gesture
+ * re-renders only the object it edits; the hit companion is skipped for shapes outside the view.
+ */
+const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hitTarget, onPointerDown, onHover }: {
   element: VectorElement
+  locked: boolean
   zoom: number
   coarse: boolean
   pixelPreview: VectorPixelPreview
   selected: boolean
   editing: boolean
-  onPointerDown: (event: ReactPointerEvent<SVGElement>) => void
+  hitTarget: boolean
+  onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
   const rendered = previewGeometry(element, pixelPreview)
-  const hittable = isHittable(element)
-  const model = useMemo(() => renderModel(rendered, 'canvas'), [rendered])
+  const hittable = isHittable({ ...element, locked }) && hitTarget
+  const model = renderModel(rendered, 'canvas')
+  const pointerDown = (event: ReactPointerEvent<SVGElement>) => onPointerDown(element, event)
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
-  const fillEvents = fillPointerEvents({ ...element, fill: model.layers.some((layer) => layer.kind === 'fill') ? '#000000' : 'none' })
+  const fillEvents = fillPointerEvents({ locked, visible: element.visible, fill: hitTarget && model.layers.some((layer) => layer.kind === 'fill') ? '#000000' : 'none' })
   return (
     <>
       {model.defs.length ? <defs><RenderDefs defs={model.defs} /></defs> : null}
       <g
         data-vector-element={element.id}
         data-selected={selected || undefined}
-        data-locked={element.locked || undefined}
+        data-locked={locked || undefined}
         data-editing={editing || undefined}
         opacity={model.opacity}
         pointerEvents={fillEvents}
-        onPointerDown={onPointerDown}
+        onPointerDown={pointerDown}
         {...hover}
       >
         {model.layers.map((layer, index) => (
@@ -1629,12 +1695,22 @@ function VectorShape({ element, zoom, coarse, pixelPreview, selected, editing, o
           d={model.d}
           transform={model.transform}
           strokeWidth={strokeHitWidth(rendered.strokeWidth * (element.strokeAlign && element.strokeAlign !== 'center' ? 2 : 1), zoom, coarse)}
-          onPointerDown={onPointerDown}
+          onPointerDown={pointerDown}
           {...hover}
         />
       ) : null}
     </>
   )
+})
+
+/** Whether an element's box, generously padded for rotation and stroke, meets the visible area. */
+function withinView(element: VectorElement, view: Bounds | null): boolean {
+  if (!view) return true
+  const centerX = element.x + element.width / 2
+  const centerY = element.y + element.height / 2
+  const reach = Math.hypot(element.width, element.height) / 2 + element.strokeWidth + 8
+  return centerX + reach >= view.x && centerX - reach <= view.x + view.width
+    && centerY + reach >= view.y && centerY - reach <= view.y + view.height
 }
 
 export function RenderDefs({ defs }: { defs: RenderDef[] }) {

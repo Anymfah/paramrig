@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { chains, extendNetwork, networkFromRuns, runPathData, worldNetwork, type AbsNetwork } from '@/vector/network'
-import { computeFaces, faceContainsPoint, loopToRun } from '@/vector/planar'
+import { computeFaces, faceContainsPoint, loopToRun, networkFingerprint } from '@/vector/planar'
 import type { VectorElement } from '@/vector/types'
 
 const rect: VectorElement = { id: 'r', kind: 'rectangle', name: 'R', x: 0, y: 0, width: 100, height: 100, rotation: 0, fill: '#000000', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }
@@ -67,5 +67,43 @@ describe('planar faces', () => {
     expect(faces).toHaveLength(1)
     expect(faces[0]!.area).toBeCloseTo(Math.PI * 2500, -2)
     expect(runPathData(loopToRun(ellipse, faces[0]!.outer))).toContain('C')
+  })
+})
+
+describe('face caching', () => {
+  it('gives equal networks the same fingerprint and a different one once a node moves', () => {
+    const world = square()
+    const moved = { ...world, nodes: world.nodes.map((node, index) => index === 0 ? { ...node, point: { x: 5, y: 5 } } : node) }
+
+    expect(networkFingerprint(world)).toBe(networkFingerprint(square()))
+    expect(networkFingerprint(moved)).not.toBe(networkFingerprint(world))
+  })
+
+  it('reuses the arrangement of an unchanged network', () => {
+    const first = computeFaces(square())
+    const second = computeFaces(square())
+
+    expect(second).toBe(first)
+  })
+
+  it('re-arranges once the geometry changes', () => {
+    const world = square()
+    const wider = { ...world, nodes: world.nodes.map((node) => ({ ...node, point: { x: node.point.x * 2, y: node.point.y } })) }
+
+    const faces = computeFaces(wider)
+
+    expect(faces).toHaveLength(1)
+    expect(faces[0]!.area).toBeCloseTo(20000)
+  })
+
+  it('still finds a crossing between two tight curves after adaptive sampling', () => {
+    const curves = networkFromRuns([
+      { points: [{ anchor: { x: 0, y: 0 }, out: { x: 120, y: 0 } }, { anchor: { x: 0, y: 100 }, in: { x: 120, y: 100 } }], closed: false },
+      { points: [{ anchor: { x: 100, y: 0 }, out: { x: -20, y: 0 } }, { anchor: { x: 100, y: 100 }, in: { x: -20, y: 100 } }], closed: false },
+    ])
+
+    const faces = computeFaces(curves)
+
+    expect(faces.length).toBeGreaterThan(0)
   })
 })

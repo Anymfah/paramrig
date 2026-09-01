@@ -76,3 +76,26 @@ describe('render model', () => {
     expect(key).toBe('ok')
   })
 })
+
+describe('render model caching', () => {
+  it('reuses the model of an element that has not changed', () => {
+    const element: VectorElement = { id: 'cached', kind: 'rectangle', name: 'R', x: 0, y: 0, width: 40, height: 20, rotation: 0, fill: '#112233', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }
+
+    const first = renderModel(element, 'canvas')
+    const second = renderModel({ ...element }, 'canvas')
+
+    expect(second).toBe(first)
+  })
+
+  it('builds a new model once a property changes, and per prefix', () => {
+    const element: VectorElement = { id: 'cached2', kind: 'rectangle', name: 'R', x: 0, y: 0, width: 40, height: 20, rotation: 0, fill: '#112233', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }
+
+    const first = renderModel(element, 'canvas')
+    const widened = renderModel({ ...element, width: 80 }, 'canvas')
+    const exported = renderModel(element, 'svg')
+
+    expect(widened).not.toBe(first)
+    expect(exported).not.toBe(first)
+    expect(widened.d).not.toBe(first.d)
+  })
+})

@@ -1,3 +1,4 @@
+import { createLruCache } from '@/vector/cache'
 import { cubicAt, isStraight, segmentCubic, subCubic, type AbsNetwork, type AbsSegment, type Run } from '@/vector/network'
 import type { VectorPoint } from '@/vector/types'
 
@@ -9,24 +10,58 @@ export type FaceLoop = { pieces: FacePiece[]; vertices: string[] }
 export type Face = { key: string; outer: FaceLoop; holes: FaceLoop[]; area: number }
 
 const CURVE_SAMPLES = 24
+const MIN_CURVE_SAMPLES = 8
+const MAX_CURVE_SAMPLES = 32
+const FACE_CACHE_SIZE = 240
+const MERGE_TOLERANCE = 0.05
 const EPSILON = 1e-6
 
 type Vertex = { id: string; point: VectorPoint; nodeId: string | null }
 type Piece = { id: string; segmentId: string; index: number; t0: number; t1: number; from: string; to: string; polyline: VectorPoint[] }
 type HalfEdge = { id: number; piece: Piece; reversed: boolean; from: string; to: string; angle: number; twin: number; next: number }
 
+const faceCache = createLruCache<Face[]>(FACE_CACHE_SIZE)
+
+/** Fingerprint of a world network: identical geometry gives an identical key. */
+export function networkFingerprint(world: AbsNetwork): string {
+  const nodes = world.nodes.map((node) => `${node.id},${fixed(node.point.x)},${fixed(node.point.y)},${node.radius ?? ''},${node.handles ?? ''}`).join(';')
+  const segments = world.segments.map((segment) => `${segment.id},${segment.a},${segment.b},${handleKey(segment.ah)},${handleKey(segment.bh)}`).join(';')
+  return `${nodes}|${segments}`
+}
+
+function handleKey(point: VectorPoint | undefined): string {
+  return point ? `${fixed(point.x)}:${fixed(point.y)}` : ''
+}
+
+function fixed(value: number): string {
+  return (Math.round(value * 100) / 100).toString()
+}
+
 /**
  * Computes the bounded faces of the planar arrangement formed by the network's segments,
  * splitting segments where they cross. Curves are sampled for topology only; callers render each
  * piece from the exact cubic via `pieceCubic`.
+ *
+ * Results are cached by network fingerprint and shared between callers, so treat them as frozen.
  */
 export function computeFaces(world: AbsNetwork): Face[] {
+  const key = networkFingerprint(world)
+  const cached = faceCache.get(key)
+  if (cached) return cached
+  const faces = arrangeFaces(world)
+  faceCache.set(key, faces)
+  return faces
+}
+
+export const faceCacheStats = { get size() { return faceCache.size } }
+
+function arrangeFaces(world: AbsNetwork): Face[] {
   if (world.segments.length < 2) return []
   const cubics = new Map(world.segments.map((segment) => [segment.id, segmentCubic(world, segment)]))
   const samples = new Map<string, Array<{ t: number; point: VectorPoint }>>()
   for (const segment of world.segments) {
     const cubic = cubics.get(segment.id)!
-    const count = isStraight(segment) ? 1 : CURVE_SAMPLES
+    const count = isStraight(segment) ? 1 : curveSamples(cubic)
     const list: Array<{ t: number; point: VectorPoint }> = []
     for (let index = 0; index <= count; index += 1) {
       const t = index / count
@@ -38,46 +73,60 @@ export function computeFaces(world: AbsNetwork): Face[] {
   // Vertices: original nodes plus crossing points.
   const vertices = new Map<string, Vertex>()
   const nodeVertex = new Map<string, string>()
+  // Vertices bucketed on a 0.05 grid so merging a crossing into an existing point is a
+  // nine-cell lookup instead of a scan of every vertex found so far.
+  const grid = new Map<string, Vertex[]>()
+  const cellKey = (point: VectorPoint) => `${Math.floor(point.x / MERGE_TOLERANCE)}:${Math.floor(point.y / MERGE_TOLERANCE)}`
+  const addVertex = (vertex: Vertex) => {
+    vertices.set(vertex.id, vertex)
+    const key = cellKey(vertex.point)
+    const cell = grid.get(key)
+    if (cell) cell.push(vertex)
+    else grid.set(key, [vertex])
+  }
   for (const node of world.nodes) {
     const id = `n:${node.id}`
-    vertices.set(id, { id, point: node.point, nodeId: node.id })
+    addVertex({ id, point: node.point, nodeId: node.id })
     nodeVertex.set(node.id, id)
   }
   const splits = new Map<string, Array<{ t: number; vertex: string }>>()
   for (const segment of world.segments) splits.set(segment.id, [])
   const crossingVertex = (point: VectorPoint): string => {
-    for (const vertex of vertices.values()) {
-      if (Math.abs(vertex.point.x - point.x) < 0.05 && Math.abs(vertex.point.y - point.y) < 0.05) return vertex.id
+    const cx = Math.floor(point.x / MERGE_TOLERANCE)
+    const cy = Math.floor(point.y / MERGE_TOLERANCE)
+    for (let dx = -1; dx <= 1; dx += 1) {
+      for (let dy = -1; dy <= 1; dy += 1) {
+        for (const vertex of grid.get(`${cx + dx}:${cy + dy}`) ?? []) {
+          if (Math.abs(vertex.point.x - point.x) < MERGE_TOLERANCE && Math.abs(vertex.point.y - point.y) < MERGE_TOLERANCE) return vertex.id
+        }
+      }
     }
     const id = `x:${vertices.size}`
-    vertices.set(id, { id, point, nodeId: null })
+    addVertex({ id, point, nodeId: null })
     return id
   }
   const bounds = new Map(world.segments.map((segment) => [segment.id, boundsOf(samples.get(segment.id)!.map((item) => item.point))]))
-  for (let i = 0; i < world.segments.length; i += 1) {
+  for (const [i, j] of candidatePairs(world.segments, bounds)) {
     const first = world.segments[i]!
     const firstSamples = samples.get(first.id)!
-    for (let j = i; j < world.segments.length; j += 1) {
-      const second = world.segments[j]!
-      if (!overlaps(bounds.get(first.id)!, bounds.get(second.id)!)) continue
-      const secondSamples = samples.get(second.id)!
-      const self = i === j
-      for (let p = 0; p + 1 < firstSamples.length; p += 1) {
-        for (let q = self ? p + 2 : 0; q + 1 < secondSamples.length; q += 1) {
-          if (self && p === 0 && q + 1 === secondSamples.length && firstSamples[0]!.point === secondSamples[q + 1]!.point) continue
-          const hit = intersectSegments(firstSamples[p]!.point, firstSamples[p + 1]!.point, secondSamples[q]!.point, secondSamples[q + 1]!.point)
-          if (!hit) continue
-          const tFirst = firstSamples[p]!.t + (firstSamples[p + 1]!.t - firstSamples[p]!.t) * hit.u
-          const tSecond = secondSamples[q]!.t + (secondSamples[q + 1]!.t - secondSamples[q]!.t) * hit.v
-          const sharesEndpoint = !self && (first.a === second.a || first.a === second.b || first.b === second.a || first.b === second.b)
-          const atFirstEnd = tFirst < 1e-4 || tFirst > 1 - 1e-4
-          const atSecondEnd = tSecond < 1e-4 || tSecond > 1 - 1e-4
-          if (atFirstEnd && atSecondEnd) continue
-          if (sharesEndpoint && (atFirstEnd || atSecondEnd)) continue
-          const vertex = atFirstEnd ? nodeVertex.get(tFirst < 0.5 ? first.a : first.b)! : atSecondEnd ? nodeVertex.get(tSecond < 0.5 ? second.a : second.b)! : crossingVertex(hit.point)
-          if (!atFirstEnd) splits.get(first.id)!.push({ t: tFirst, vertex })
-          if (!atSecondEnd) splits.get(second.id)!.push({ t: tSecond, vertex })
-        }
+    const second = world.segments[j]!
+    const secondSamples = samples.get(second.id)!
+    const self = i === j
+    for (let p = 0; p + 1 < firstSamples.length; p += 1) {
+      for (let q = self ? p + 2 : 0; q + 1 < secondSamples.length; q += 1) {
+        if (self && p === 0 && q + 1 === secondSamples.length && firstSamples[0]!.point === secondSamples[q + 1]!.point) continue
+        const hit = intersectSegments(firstSamples[p]!.point, firstSamples[p + 1]!.point, secondSamples[q]!.point, secondSamples[q + 1]!.point)
+        if (!hit) continue
+        const tFirst = firstSamples[p]!.t + (firstSamples[p + 1]!.t - firstSamples[p]!.t) * hit.u
+        const tSecond = secondSamples[q]!.t + (secondSamples[q + 1]!.t - secondSamples[q]!.t) * hit.v
+        const sharesEndpoint = !self && (first.a === second.a || first.a === second.b || first.b === second.a || first.b === second.b)
+        const atFirstEnd = tFirst < 1e-4 || tFirst > 1 - 1e-4
+        const atSecondEnd = tSecond < 1e-4 || tSecond > 1 - 1e-4
+        if (atFirstEnd && atSecondEnd) continue
+        if (sharesEndpoint && (atFirstEnd || atSecondEnd)) continue
+        const vertex = atFirstEnd ? nodeVertex.get(tFirst < 0.5 ? first.a : first.b)! : atSecondEnd ? nodeVertex.get(tSecond < 0.5 ? second.a : second.b)! : crossingVertex(hit.point)
+        if (!atFirstEnd) splits.get(first.id)!.push({ t: tFirst, vertex })
+        if (!atSecondEnd) splits.get(second.id)!.push({ t: tSecond, vertex })
       }
     }
   }
@@ -244,6 +293,52 @@ function loopPolygon(world: AbsNetwork, loop: FaceLoop): VectorPoint[] {
   })
 }
 
+/**
+ * Segment pairs worth intersecting, as index pairs with `i <= j` (a pair `[i, i]` asks for the
+ * self-intersection pass). A sweep along x over the segment boxes replaces the all-pairs loop:
+ * only boxes that still overlap the sweep line are compared.
+ */
+function candidatePairs(segments: AbsSegment[], bounds: Map<string, Bounds>): Array<[number, number]> {
+  const order = segments
+    .map((segment, index) => ({ index, box: bounds.get(segment.id)! }))
+    .sort((a, b) => a.box.left - b.box.left)
+  const pairs: Array<[number, number]> = []
+  let active: Array<{ index: number; box: Bounds }> = []
+  for (const entry of order) {
+    active = active.filter((candidate) => candidate.box.right >= entry.box.left - 0.1)
+    pairs.push([entry.index, entry.index])
+    for (const candidate of active) {
+      if (candidate.box.top > entry.box.bottom + 0.1 || entry.box.top > candidate.box.bottom + 0.1) continue
+      pairs.push(candidate.index < entry.index ? [candidate.index, entry.index] : [entry.index, candidate.index])
+    }
+    active.push(entry)
+  }
+  return pairs
+}
+
+/**
+ * Sampling steps for one cubic, from how far its control polygon strays from the chord:
+ * a nearly flat curve needs eight, a tight one thirty-two.
+ */
+function curveSamples(cubic: Cubic): number {
+  const chord = Math.hypot(cubic[3].x - cubic[0].x, cubic[3].y - cubic[0].y)
+  const deviation = Math.max(distanceToChord(cubic[1], cubic[0], cubic[3]), distanceToChord(cubic[2], cubic[0], cubic[3]))
+  const ratio = deviation / Math.max(1, chord)
+  if (ratio < 0.05) return MIN_CURVE_SAMPLES
+  if (ratio < 0.12) return 12
+  if (ratio < 0.25) return 16
+  if (ratio < 0.5) return CURVE_SAMPLES
+  return MAX_CURVE_SAMPLES
+}
+
+function distanceToChord(point: VectorPoint, from: VectorPoint, to: VectorPoint): number {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const length = Math.hypot(dx, dy)
+  if (length < 1e-9) return Math.hypot(point.x - from.x, point.y - from.y)
+  return Math.abs((point.x - from.x) * dy - (point.y - from.y) * dx) / length
+}
+
 function angleOf(from: VectorPoint, to: VectorPoint): number {
   return Math.atan2(to.y - from.y, to.x - from.x)
 }
@@ -267,15 +362,13 @@ function intersectSegments(p1: VectorPoint, p2: VectorPoint, p3: VectorPoint, p4
   return { point: { x: p1.x + (p2.x - p1.x) * u, y: p1.y + (p2.y - p1.y) * u }, u: Math.min(1, Math.max(0, u)), v: Math.min(1, Math.max(0, v)) }
 }
 
-function boundsOf(points: VectorPoint[]) {
+type Bounds = { left: number; right: number; top: number; bottom: number }
+
+function boundsOf(points: VectorPoint[]): Bounds {
   return {
     left: Math.min(...points.map((point) => point.x)), right: Math.max(...points.map((point) => point.x)),
     top: Math.min(...points.map((point) => point.y)), bottom: Math.max(...points.map((point) => point.y)),
   }
-}
-
-function overlaps(a: ReturnType<typeof boundsOf>, b: ReturnType<typeof boundsOf>): boolean {
-  return a.left <= b.right + 0.1 && b.left <= a.right + 0.1 && a.top <= b.bottom + 0.1 && b.top <= a.bottom + 0.1
 }
 
 export function pointInPolygon(point: VectorPoint, polygon: VectorPoint[]): boolean {

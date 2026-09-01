@@ -1,3 +1,4 @@
+import { createLruCache } from '@/vector/cache'
 import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
 import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNetwork, type AbsNetwork, type Run } from '@/vector/network'
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
@@ -77,8 +78,25 @@ export function outlinePathData(element: VectorElement): string {
   return localGeometry(element).strokeRuns.map(runPathData).join(' ')
 }
 
-/** Builds paint layers and the defs they need. `prefix` keeps ids unique per canvas or export. */
+const MODEL_CACHE_SIZE = 240
+const modelCache = createLruCache<RenderModel>(MODEL_CACHE_SIZE)
+
+/**
+ * Builds paint layers and the defs they need. `prefix` keeps ids unique per canvas or export.
+ *
+ * Models are cached by element content, so callers must treat the result as frozen: a shape that
+ * has not changed reuses the model from the previous frame instead of re-arranging its faces.
+ */
 export function renderModel(element: VectorElement, prefix: string): RenderModel {
+  const key = `${prefix}\u0000${JSON.stringify(element)}`
+  const cached = modelCache.get(key)
+  if (cached) return cached
+  const model = buildRenderModel(element, prefix)
+  modelCache.set(key, model)
+  return model
+}
+
+function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
   const defs: RenderDef[] = []
   const layers: RenderLayer[] = []
   const geometry = localGeometry(element)
