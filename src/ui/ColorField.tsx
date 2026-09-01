@@ -1,13 +1,18 @@
 import * as Popover from '@radix-ui/react-popover'
-import { useEffect, useId, useMemo, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { hexToRgb, hsvToHex, rgbToHsv } from '@/ui/color'
 import { IconButton } from '@/ui/Button'
-import { IconPipette } from '@/ui/icons'
+import { IconNone, IconPipette } from '@/ui/icons'
+import { Tooltip } from '@/ui/Tooltip'
 
 type ColorFieldProps = {
   label: string
   value: string
   onChange: (value: string) => void
+  /** Adds a "None" toggle; `value` may then be `'none'`. */
+  allowNone?: boolean
+  /** Shown instead of the value when several selected items disagree. */
+  mixed?: boolean
   onGestureStart?: () => void
   onGestureEnd?: () => void
   onGestureCancel?: () => void
@@ -19,18 +24,23 @@ export function ColorField({
   label,
   value,
   onChange,
+  allowNone = false,
+  mixed = false,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
 }: ColorFieldProps) {
   const id = useId()
-  const rgb = hexToRgb(value) ?? { r: 28, g: 32, b: 28 }
+  const none = value === 'none'
+  const lastHex = useRef(none ? '#808080' : value)
+  if (!none && hexToRgb(value)) lastHex.current = value
+  const rgb = hexToRgb(none ? lastHex.current : value) ?? { r: 28, g: 32, b: 28 }
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
-  const [draft, setDraft] = useState(value)
+  const [draft, setDraft] = useState(displayValue(value, mixed))
   const [canPick, setCanPick] = useState(false)
   useEffect(() => {
-    setDraft(value)
-  }, [value])
+    setDraft(displayValue(value, mixed))
+  }, [value, mixed])
   useEffect(() => {
     setCanPick(typeof window !== 'undefined' && 'EyeDropper' in window)
   }, [])
@@ -45,9 +55,15 @@ export function ColorField({
   )
 
   const commitHex = (raw: string) => {
-    const next = raw.startsWith('#') ? raw : `#${raw}`
+    const trimmed = raw.trim()
+    if (allowNone && (trimmed === '' || /^none$/i.test(trimmed))) {
+      if (!none) onChange('none')
+      setDraft('None')
+      return
+    }
+    const next = trimmed.startsWith('#') ? trimmed : `#${trimmed}`
     if (!hexToRgb(next)) {
-      setDraft(value)
+      setDraft(displayValue(value, mixed))
       return
     }
     const hex = next.toUpperCase()
@@ -90,8 +106,8 @@ export function ColorField({
     <div className="control control--color control--field">
       <Popover.Root>
         <div className="color-field">
-          <Popover.Trigger className="color-swatch" aria-label={`${label} color ${value}`}>
-            <span className="color-swatch__chip" style={{ background: value }} />
+          <Popover.Trigger className="color-swatch" aria-label={`${label} color ${mixed ? 'mixed' : none ? 'none' : value}`} data-none={none || undefined} data-mixed={mixed || undefined}>
+            <span className="color-swatch__chip" style={{ background: none || mixed ? undefined : value }} />
           </Popover.Trigger>
           <label className="color-field__label" htmlFor={hexId}>
             {label}
@@ -106,9 +122,16 @@ export function ColorField({
             onBlur={() => commitHex(draft)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') commitHex(draft)
-              if (event.key === 'Escape') setDraft(value)
+              if (event.key === 'Escape') setDraft(displayValue(value, mixed))
             }}
           />
+          {allowNone ? (
+            <Tooltip content={none ? 'Restore color' : 'No color'}>
+              <IconButton label={none ? `Restore ${label} color` : `Remove ${label} color`} aria-pressed={none} onClick={() => onChange(none ? lastHex.current : 'none')}>
+                <IconNone />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           {canPick ? (
             <IconButton label={`Pick ${label} from screen`} onClick={() => void pickFromScreen()}>
               <IconPipette />
@@ -177,4 +200,9 @@ function pickSV(
   const s = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width))
   const v = 1 - Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height))
   onChange(hsvToHex(hue, s, v))
+}
+
+function displayValue(value: string, mixed: boolean): string {
+  if (mixed) return 'Mixed'
+  return value === 'none' ? 'None' : value
 }

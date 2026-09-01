@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultVectorNodes, moveVectorNode, nodeIndicesInBounds, nodeWorldPosition, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
+import { defaultVectorNodes, elementFromWorldNodes, minimumNodeCount, moveVectorNode, nodeIndicesInBounds, nodeWorldPosition, pathEndpoints, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
 import type { VectorElement } from '@/vector/types'
 
 const rectangle: VectorElement = {
@@ -62,5 +62,31 @@ describe('vector paths', () => {
     expect(nodeWorldPosition(next, result.vectorNodes[0]!).y).toBeCloseTo(-20)
     expect(nodeWorldPosition(next, result.vectorNodes[1]!).x).toBeCloseTo(200)
     expect(nodeWorldPosition(next, result.vectorNodes[1]!).y).toBeCloseTo(180)
+  })
+})
+
+describe('open paths', () => {
+  const open: VectorElement = {
+    id: 'open', kind: 'path', name: 'Path', x: 0, y: 0, width: 100, height: 100, rotation: 0,
+    fill: 'none', stroke: '#FFFFFF', strokeWidth: 2, opacity: 1, visible: true, locked: false, closed: false,
+    vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }],
+  }
+
+  it('omits the closing segment and Z', () => {
+    expect(vectorPathData(open)).toBe('M 0 0 L 100 0 L 100 100')
+    expect(vectorPathData({ ...open, closed: true })).toBe('M 0 0 L 100 0 L 100 100 L 0 0 Z')
+    expect(minimumNodeCount(open)).toBe(2)
+    expect(minimumNodeCount({ closed: true })).toBe(3)
+  })
+
+  it('exposes both endpoints in world space', () => {
+    expect(pathEndpoints(open)).toEqual({ start: { x: 0, y: 0 }, end: { x: 100, y: 100 } })
+    expect(pathEndpoints({ ...open, closed: true })).toBeNull()
+  })
+
+  it('builds a box from world nodes', () => {
+    const built = elementFromWorldNodes([{ anchor: { x: 20, y: 30 } }, { anchor: { x: 120, y: 30 }, out: { x: 140, y: 60 } }])
+    expect(built).toMatchObject({ x: 20, y: 30, width: 120, height: 30 })
+    expect(built.vectorNodes[1]).toEqual({ x: 0.8333, y: 0, out: { x: 0.1667, y: 1 } })
   })
 })

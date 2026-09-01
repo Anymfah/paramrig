@@ -1,3 +1,28 @@
+/* Vector editor chrome — palette roles only. Appearance follows data-theme. */
+:root {
+  --vector-selection: var(--accent);
+  --vector-selection-fill: color-mix(in srgb, var(--accent) 12%, transparent);
+  --vector-handle-fill: var(--surface);
+  --vector-snap: #e0968f;
+  --vector-guide: #6fb8a6;
+  --vector-guide-hover: #9ad6c6;
+  --vector-hud-bg: color-mix(in srgb, var(--surface-overlay) 96%, transparent);
+  --vector-grid: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  --vector-layout-grid: color-mix(in srgb, var(--vector-guide) 26%, transparent);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --vector-snap: #b2554b;
+    --vector-guide: #2a8f78;
+    --vector-guide-hover: #1d6f5c;
+  }
+}
+:root[data-theme='light'] {
+  --vector-snap: #b2554b;
+  --vector-guide: #2a8f78;
+  --vector-guide-hover: #1d6f5c;
+}
+
 .library-titlebar {
   display: flex;
   align-items: center;
@@ -160,11 +185,11 @@
   vector-effect: non-scaling-stroke;
 }
 .vector-layout-grid__line {
-  stroke: color-mix(in srgb, #4c8dff 24%, transparent);
+  stroke: var(--vector-layout-grid);
   stroke-width: 1;
 }
 .vector-pixel-grid__line {
-  stroke: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  stroke: var(--vector-grid);
   stroke-width: 0.75;
 }
 .vector-shapes[data-pixel-preview] [data-vector-element] {
@@ -174,7 +199,7 @@
 .vector-canvas[data-outlines='all'] [data-vector-element],
 .vector-canvas[data-outlines='selected'] [data-vector-element][data-selected='true'] {
   fill: transparent !important;
-  stroke: #8ab4ff !important;
+  stroke: var(--vector-selection) !important;
   stroke-width: 1 !important;
   vector-effect: non-scaling-stroke;
 }
@@ -237,7 +262,7 @@
   writing-mode: vertical-rl;
 }
 .vector-axis-guide {
-  stroke: #4c8dff;
+  stroke: var(--vector-selection);
   stroke-width: 1;
   stroke-dasharray: 4 4;
   opacity: 0.72;
@@ -246,7 +271,7 @@
 }
 .vector-selection > rect {
   fill: none;
-  stroke: #4c8dff;
+  stroke: var(--vector-selection);
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -268,15 +293,15 @@
   cursor: var(--cursor-rotate);
 }
 .vector-selection__handle {
-  fill: var(--surface-canvas);
-  stroke: #4c8dff;
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 .vector-nodes__outline {
   fill: none;
-  stroke: #4c8dff;
+  stroke: var(--vector-selection);
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -293,30 +318,30 @@
 .vector-nodes__control-hit { cursor: crosshair; }
 .vector-nodes__point,
 .vector-nodes__control {
-  fill: var(--surface-canvas);
-  stroke: #4c8dff;
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
   stroke-width: 1.25;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
-.vector-nodes__point[data-selected='true'] { fill: #4c8dff; }
+.vector-nodes__point[data-selected='true'] { fill: var(--vector-selection); }
 .vector-nodes__control-line {
-  stroke: #4c8dff;
+  stroke: var(--vector-selection);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 .vector-draft {
-  fill: color-mix(in srgb, #4c8dff 12%, transparent);
-  stroke: #4c8dff;
+  fill: var(--vector-selection-fill);
+  stroke: var(--vector-selection);
   stroke-width: 1.25;
   stroke-dasharray: 4 4;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
 .vector-marquee {
-  fill: color-mix(in srgb, #4c8dff 10%, transparent);
-  stroke: #4c8dff;
+  fill: var(--vector-selection-fill);
+  stroke: var(--vector-selection);
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;

@@ -165,7 +165,7 @@ function RigThumb({ rig }: { rig: RigManifest }) {
     const document = getVectorDocument(id)
     return document ? (
       <svg className="vector-thumb" viewBox={`0 0 ${document.width} ${document.height}`} aria-hidden="true">
-        {document.elements.filter((element) => element.visible).map((element) => {
+        {document.elements.filter((element) => element.visible && element.kind !== 'group').map((element) => {
           const transform = `rotate(${element.rotation} ${element.x + element.width / 2} ${element.y + element.height / 2})`
           if (element.vectorNodes) return <path key={element.id} d={vectorPathData(element)} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
           return element.kind === 'ellipse'

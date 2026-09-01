@@ -4,6 +4,15 @@ import type { VectorElement, VectorNode, VectorPoint } from '@/vector/types'
 
 const KAPPA = 0.27614237
 
+/** Minimum node count a path can be reduced to. */
+export function minimumNodeCount(element: Pick<VectorElement, 'closed'>): number {
+  return isClosedPath(element) ? 3 : 2
+}
+
+export function isClosedPath(element: Pick<VectorElement, 'closed'>): boolean {
+  return element.closed !== false
+}
+
 export function defaultVectorNodes(element: VectorElement): VectorNode[] {
   if (element.kind === 'ellipse') {
     return [
@@ -16,7 +25,11 @@ export function defaultVectorNodes(element: VectorElement): VectorNode[] {
   return [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
 }
 
-export function vectorPathData(element: VectorElement, nodes = element.vectorNodes ?? defaultVectorNodes(element)): string {
+export function vectorPathData(
+  element: VectorElement,
+  nodes = element.vectorNodes ?? defaultVectorNodes(element),
+  closed = isClosedPath(element),
+): string {
   if (!nodes.length) return ''
   const anchor = (node: VectorNode) => ({ x: element.x + node.x * element.width, y: element.y + node.y * element.height })
   const control = (node: VectorNode, part: 'in' | 'out') => {
@@ -26,7 +39,8 @@ export function vectorPathData(element: VectorElement, nodes = element.vectorNod
   }
   const first = anchor(nodes[0]!)
   const commands = [`M ${round(first.x)} ${round(first.y)}`]
-  for (let index = 0; index < nodes.length; index += 1) {
+  const segments = closed ? nodes.length : nodes.length - 1
+  for (let index = 0; index < segments; index += 1) {
     const current = nodes[index]!
     const next = nodes[(index + 1) % nodes.length]!
     const end = anchor(next)
@@ -38,7 +52,14 @@ export function vectorPathData(element: VectorElement, nodes = element.vectorNod
       commands.push(`L ${round(end.x)} ${round(end.y)}`)
     }
   }
-  return `${commands.join(' ')} Z`
+  return closed ? `${commands.join(' ')} Z` : commands.join(' ')
+}
+
+/** World positions of the two free ends of an open path, or `null` for closed shapes. */
+export function pathEndpoints(element: VectorElement): { start: VectorPoint; end: VectorPoint } | null {
+  const nodes = element.vectorNodes
+  if (isClosedPath(element) || !nodes || nodes.length < 2) return null
+  return { start: nodeWorldPosition(element, nodes[0]!), end: nodeWorldPosition(element, nodes[nodes.length - 1]!) }
 }
 
 export function moveVectorNode(
@@ -106,9 +127,9 @@ export function transformVectorNodes(
   return normalizeAbsoluteNodes(element, transformed)
 }
 
-export function nodeWorldPosition(element: VectorElement, node: VectorNode): VectorPoint {
+export function nodeWorldPosition(element: VectorElement, node: VectorNode, part: 'anchor' | 'in' | 'out' = 'anchor'): VectorPoint {
   const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
-  return rotatePoint(nodePosition(element, node), center, element.rotation)
+  return rotatePoint(nodePosition(element, node, part), center, element.rotation)
 }
 
 export function nodeIndicesInBounds(
@@ -123,9 +144,10 @@ export function nodeIndicesInBounds(
   })
 }
 
-type AbsoluteNode = { anchor: VectorPoint; in?: VectorPoint; out?: VectorPoint }
+/** A node expressed in the element's local (unrotated) document coordinates. */
+export type AbsoluteNode = { anchor: VectorPoint; in?: VectorPoint; out?: VectorPoint }
 
-function absoluteNodes(element: VectorElement, nodes: VectorNode[]): AbsoluteNode[] {
+export function absoluteNodes(element: VectorElement, nodes: VectorNode[]): AbsoluteNode[] {
   return nodes.map((node) => {
     const anchor = { x: element.x + node.x * element.width, y: element.y + node.y * element.height }
     return {
@@ -136,8 +158,22 @@ function absoluteNodes(element: VectorElement, nodes: VectorNode[]): AbsoluteNod
   })
 }
 
-function normalizeAbsoluteNodes(
-  element: VectorElement,
+/** Nodes in world coordinates (rotation applied). */
+export function worldNodes(element: VectorElement, nodes = element.vectorNodes ?? defaultVectorNodes(element)): AbsoluteNode[] {
+  const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+  return absoluteNodes(element, nodes).map((node) => ({
+    anchor: rotatePoint(node.anchor, center, element.rotation),
+    in: node.in ? rotatePoint(node.in, center, element.rotation) : undefined,
+    out: node.out ? rotatePoint(node.out, center, element.rotation) : undefined,
+  }))
+}
+
+/**
+ * Rebuilds the element box from local absolute nodes and re-normalises them.
+ * The world centre of the new box is placed so the geometry does not move when rotated.
+ */
+export function normalizeAbsoluteNodes(
+  element: Pick<VectorElement, 'x' | 'y' | 'width' | 'height' | 'rotation'>,
   absolute: AbsoluteNode[],
 ): Pick<VectorElement, 'x' | 'y' | 'width' | 'height'> & { vectorNodes: VectorNode[] } {
   const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
@@ -163,6 +199,11 @@ function normalizeAbsoluteNodes(
     height: round(height),
     vectorNodes: normalized.map(roundNode),
   }
+}
+
+/** Builds a fresh unrotated box + nodes from world-space nodes (used by the pen and by ungrouping). */
+export function elementFromWorldNodes(absolute: AbsoluteNode[]): Pick<VectorElement, 'x' | 'y' | 'width' | 'height'> & { vectorNodes: VectorNode[] } {
+  return normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, absolute)
 }
 
 function nodePointTransform(
@@ -208,7 +249,7 @@ export function nodePosition(element: VectorElement, node: VectorNode, part: 'an
   return { x: anchor.x + node[part]!.x * element.width, y: anchor.y + node[part]!.y * element.height }
 }
 
-function roundNode(node: VectorNode): VectorNode {
+export function roundNode(node: VectorNode): VectorNode {
   return {
     x: round(node.x), y: round(node.y),
     ...(node.in ? { in: { x: round(node.in.x), y: round(node.in.y) } } : {}),
