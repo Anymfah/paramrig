@@ -109,6 +109,14 @@ export function useVectorDocument(documentId: string) {
     }), record)
   }, [replace])
 
+  /** Arbitrary element-list edit recorded as one undo entry (or folded into an open gesture). */
+  const editElements = useCallback((edit: (elements: VectorElement[]) => VectorElement[], record = true) => {
+    replace((current) => {
+      const elements = edit(current.elements)
+      return elements === current.elements ? current : { ...current, elements }
+    }, record)
+  }, [replace])
+
   const updateDocument = useCallback((patch: DocumentPatch, record = true) => {
     replace((current) => ({ ...current, ...patch }), record)
   }, [replace])
@@ -317,6 +325,7 @@ export function useVectorDocument(documentId: string) {
     cancelGesture,
     updateElement,
     updateElements,
+    editElements,
     updateDocument,
     setGuides,
     addElement,

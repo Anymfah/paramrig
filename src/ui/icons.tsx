@@ -284,3 +284,13 @@ export function IconFolderLayer(props: LucideProps) {
     </svg>
   )
 }
+
+export function IconPencilTool(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 20c3-1 4-2 5-4l9-9a2.1 2.1 0 0 0-3-3l-9 9c-2 1-3 2-4 5Z" />
+      <path d="m13.5 6.5 4 4" />
+      <path d="M4 20c2-6 6-9 11-13" strokeDasharray="1 2.5" opacity="0.6" />
+    </svg>
+  )
+}

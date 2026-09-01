@@ -1,8 +1,10 @@
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, sanitizeParents, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorElementKind, VectorNode } from '@/vector/types'
-import { isClosedPath, vectorPathData } from '@/vector/vectorPath'
+import type { VectorDocument, VectorElement, VectorElementKind, VectorNode, VectorSubpath } from '@/vector/types'
+import { isClosedPath, normalizeSubpaths, subpathRanges } from '@/vector/vectorPath'
+import { sanitizePaints } from '@/vector/paints'
+import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
@@ -87,7 +89,7 @@ export function vectorManifest(document: VectorDocument): RigManifest {
   }
 }
 
-export type CreateElementOptions = Partial<Pick<VectorElement, 'name' | 'fill' | 'stroke' | 'strokeWidth' | 'vectorNodes' | 'closed'>>
+export type CreateElementOptions = Partial<Pick<VectorElement, 'name' | 'fill' | 'stroke' | 'strokeWidth' | 'vectorNodes' | 'closed' | 'subpaths' | 'fillRule'>>
 
 export function createVectorElement(
   kind: VectorElementKind,
@@ -114,6 +116,8 @@ export function createVectorElement(
   }
   if (options.vectorNodes) element.vectorNodes = options.vectorNodes
   if (isPath && options.closed === false) element.closed = false
+  if (isPath && options.subpaths && options.subpaths.length > 1) element.subpaths = options.subpaths
+  if (options.fillRule === 'evenodd') element.fillRule = 'evenodd'
   return element
 }
 
@@ -127,37 +131,72 @@ function defaultName(kind: VectorElementKind): string {
 }
 
 export function serializeVectorDocument(document: VectorDocument): string {
-  const lines = serializeNodes(buildTree(document.elements), 1)
+  const defs: string[] = []
+  const lines = serializeNodes(buildTree(document.elements), 1, defs)
   const body = lines.join('\n')
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${document.width} ${document.height}" width="${document.width}" height="${document.height}">\n${body}${body ? '\n' : ''}</svg>\n`
+  const defsMarkup = defs.length ? `  <defs>${defs.join('')}</defs>\n` : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${document.width} ${document.height}" width="${document.width}" height="${document.height}">\n${defsMarkup}${body}${body ? '\n' : ''}</svg>\n`
 }
 
-function serializeNodes(nodes: TreeNode[], depth: number): string[] {
+/** Markup for one element's paint layers plus the defs it needs; used by exports and thumbnails. */
+export function elementMarkup(element: VectorElement, prefix: string): { defs: string; body: string } {
+  const model = renderModel(element, prefix)
+  return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id) }
+}
+
+function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): string[] {
   const indent = '  '.repeat(depth)
   return nodes.flatMap((node) => {
     const element = node.element
     if (!element.visible) return []
     if (element.kind === 'group') {
-      const children = serializeNodes(node.children, depth + 1)
+      const children = serializeNodes(node.children, depth + 1, defs)
       if (children.length === 0) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
-    const common = [
-      `fill="${escapeXml(element.fill)}"`,
-      `stroke="${escapeXml(element.stroke)}"`,
-      `stroke-width="${element.strokeWidth}"`,
-      `opacity="${element.opacity}"`,
-      `transform="rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})"`,
-    ].join(' ')
-    if (element.vectorNodes) {
-      return [`${indent}<path id="${escapeXml(element.id)}" d="${vectorPathData(element)}" ${common}/>`]
+    const simple = !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+      && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius && !element.vectorNodes?.some((item) => item.radius)
+    const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
+    if (simple) {
+      const common = [
+        `fill="${escapeXml(element.fill)}"`,
+        ...(element.fillRule === 'evenodd' && element.vectorNodes ? ['fill-rule="evenodd"'] : []),
+        `stroke="${escapeXml(element.stroke)}"`,
+        `stroke-width="${element.strokeWidth}"`,
+        `opacity="${element.opacity}"`,
+        `transform="${transform}"`,
+      ].join(' ')
+      if (element.vectorNodes) {
+        return [`${indent}<path id="${escapeXml(element.id)}" d="${renderModel(element, 'svg').d}" ${common}/>`]
+      }
+      if (element.kind === 'ellipse') {
+        return [`${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
+      }
+      return [`${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
     }
-    if (element.kind === 'ellipse') {
-      return [`${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
-    }
-    return [`${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
+    const markup = elementMarkup(element, 'svg')
+    if (markup.defs) defs.push(markup.defs)
+    if (!markup.body) return []
+    const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
+    return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>${markup.body}</g>`]
   })
+}
+
+function sanitizeStrokeSides(value: unknown): VectorElement['strokeSides'] | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Record<string, unknown>
+  const sides = { top: source.top !== false, right: source.right !== false, bottom: source.bottom !== false, left: source.left !== false }
+  return sides.top && sides.right && sides.bottom && sides.left ? undefined : sides
+}
+
+function sanitizeCornerRadius(value: unknown): VectorElement['cornerRadius'] | undefined {
+  if (typeof value === 'number') return Number.isFinite(value) && value > 0 ? Math.min(10000, value) : undefined
+  if (Array.isArray(value) && value.length === 4 && value.every((item) => typeof item === 'number' && Number.isFinite(item))) {
+    const radii = value.map((item) => Math.max(0, Math.min(10000, item as number))) as [number, number, number, number]
+    return radii.some(Boolean) ? radii : undefined
+  }
+  return undefined
 }
 
 export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
@@ -203,11 +242,18 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const fill = sanitizePaint(source.fill)
   const stroke = sanitizePaint(source.stroke)
   if (!fill || !stroke) return null
+  const fills = sanitizePaints(source.fills)
+  const strokes = sanitizePaints(source.strokes)
+  const strokeSides = source.kind === 'rectangle' ? sanitizeStrokeSides(source.strokeSides) : undefined
+  const cornerRadius = source.kind === 'rectangle' ? sanitizeCornerRadius(source.cornerRadius) : undefined
   const vectorNodes = source.kind === 'group' ? null : sanitizeNodes(source.vectorNodes)
   if (source.kind === 'path' && !vectorNodes) return null
-  const closed = source.kind === 'path' && source.closed === false ? false : undefined
-  if (closed === false && vectorNodes && vectorNodes.length < 2) return null
-  if (closed !== false && vectorNodes && vectorNodes.length < 3) return null
+  const subpaths = vectorNodes && source.kind === 'path' ? sanitizeSubpaths(source.subpaths, vectorNodes.length) : undefined
+  const closed = source.kind === 'path' && !subpaths && source.closed === false ? false : undefined
+  if (vectorNodes) {
+    const ranges = subpathRanges({ closed, subpaths }, vectorNodes.length)
+    if (ranges.some((range) => range.end - range.start < (range.closed ? 3 : 2))) return null
+  }
   return {
     id: source.id,
     kind: source.kind,
@@ -225,6 +271,19 @@ function sanitizeElement(value: unknown): VectorElement | null {
     locked: source.locked === true,
     ...(vectorNodes ? { vectorNodes } : {}),
     ...(closed === false ? { closed } : {}),
+    ...(subpaths ? { subpaths } : {}),
+    ...(source.fillRule === 'evenodd' ? { fillRule: 'evenodd' as const } : {}),
+    ...(fills ? { fills } : {}),
+    ...(strokes ? { strokes } : {}),
+    ...(source.strokeAlign === 'inside' || source.strokeAlign === 'outside' ? { strokeAlign: source.strokeAlign } : {}),
+    ...(source.strokeCap === 'round' || source.strokeCap === 'square' ? { strokeCap: source.strokeCap } : {}),
+    ...(source.strokeJoin === 'round' || source.strokeJoin === 'bevel' ? { strokeJoin: source.strokeJoin } : {}),
+    ...(Array.isArray(source.strokeDash) && source.strokeDash.length === 2 && source.strokeDash.every((item) => typeof item === 'number' && Number.isFinite(item) && item >= 0) && source.strokeDash[0]! > 0 ? { strokeDash: [source.strokeDash[0]!, source.strokeDash[1]!] as [number, number] } : {}),
+    ...(isArrowhead(source.strokeArrowStart) ? { strokeArrowStart: source.strokeArrowStart } : {}),
+    ...(isArrowhead(source.strokeArrowEnd) ? { strokeArrowEnd: source.strokeArrowEnd } : {}),
+    ...(strokeSides ? { strokeSides } : {}),
+    ...(cornerRadius !== undefined ? { cornerRadius } : {}),
+    ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
   }
 }
@@ -239,16 +298,33 @@ function sanitizeNodes(value: unknown): VectorNode[] | null {
   const nodes = value.map((candidate) => {
     const anchor = point(candidate)
     if (!anchor) return null
-    const source = candidate as { in?: unknown; out?: unknown }
+    const source = candidate as { in?: unknown; out?: unknown; handles?: unknown; radius?: unknown }
     const input = source.in === undefined ? undefined : point(source.in)
     const output = source.out === undefined ? undefined : point(source.out)
     if (source.in !== undefined && !input || source.out !== undefined && !output) return null
-    return { ...anchor, ...(input ? { in: input } : {}), ...(output ? { out: output } : {}) }
+    const handles = source.handles === 'mirrored' || source.handles === 'asymmetric' || source.handles === 'independent' ? source.handles : undefined
+    const radius = finiteIn(source.radius, 0, 10000) && source.radius > 0 ? source.radius : undefined
+    return { ...anchor, ...(input ? { in: input } : {}), ...(output ? { out: output } : {}), ...(handles ? { handles } : {}), ...(radius ? { radius } : {}) }
   })
   return nodes.every(Boolean) ? nodes as VectorNode[] : null
 }
 
+function sanitizeSubpaths(value: unknown, nodeCount: number): VectorSubpath[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const valid = value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const source = candidate as { start?: unknown; closed?: unknown }
+    if (typeof source.start !== 'number' || !Number.isInteger(source.start)) return []
+    return [{ start: source.start, closed: source.closed !== false }]
+  })
+  return normalizeSubpaths(valid, nodeCount)
+}
+
 export { isClosedPath }
+
+function isArrowhead(value: unknown): value is Exclude<VectorElement['strokeArrowStart'], undefined | 'none'> {
+  return value === 'arrow' || value === 'triangle' || value === 'circle' || value === 'square' || value === 'bar'
+}
 
 function finiteIn(value: unknown, min: number, max: number): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max

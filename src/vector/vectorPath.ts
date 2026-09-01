@@ -1,16 +1,83 @@
 import { rotatePoint } from '@/vector/directTransform'
 import type { VectorTransformAxis, VectorTransformMode } from '@/vector/transform'
-import type { VectorElement, VectorNode, VectorPoint } from '@/vector/types'
+import type { VectorElement, VectorHandleMode, VectorNode, VectorPoint, VectorSubpath } from '@/vector/types'
 
 const KAPPA = 0.27614237
 
-/** Minimum node count a path can be reduced to. */
-export function minimumNodeCount(element: Pick<VectorElement, 'closed'>): number {
-  return isClosedPath(element) ? 3 : 2
+/** A resolved sub-path: node indices `[start, end)` and whether it closes. */
+export type SubpathRange = { start: number; end: number; closed: boolean }
+
+type PathLike = Pick<VectorElement, 'closed' | 'subpaths'>
+
+/** Sub-paths of an element for a given node count. */
+export function subpathRanges(element: PathLike, nodeCount: number): SubpathRange[] {
+  const declared = element.subpaths && element.subpaths.length ? element.subpaths : [{ start: 0, closed: element.closed !== false }]
+  const ranges: SubpathRange[] = []
+  for (let index = 0; index < declared.length; index += 1) {
+    const current = declared[index]!
+    const next = declared[index + 1]
+    const end = next ? next.start : nodeCount
+    if (current.start >= end) continue
+    ranges.push({ start: current.start, end, closed: current.closed })
+  }
+  return ranges
 }
 
-export function isClosedPath(element: Pick<VectorElement, 'closed'>): boolean {
+export function subpathOfNode(element: PathLike, nodeCount: number, index: number): SubpathRange | null {
+  return subpathRanges(element, nodeCount).find((range) => index >= range.start && index < range.end) ?? null
+}
+
+/** Neighbouring node indices along the sub-path, honouring open ends. */
+export function neighbours(element: PathLike, nodeCount: number, index: number): { previous: number | null; next: number | null } {
+  const range = subpathOfNode(element, nodeCount, index)
+  if (!range) return { previous: null, next: null }
+  const size = range.end - range.start
+  const local = index - range.start
+  const previous = local > 0 ? index - 1 : range.closed && size > 1 ? range.end - 1 : null
+  const next = local < size - 1 ? index + 1 : range.closed && size > 1 ? range.start : null
+  return { previous, next }
+}
+
+/** Normalises declared sub-paths: sorted, first at 0, within range, no duplicates. */
+export function normalizeSubpaths(subpaths: VectorSubpath[] | undefined, nodeCount: number): VectorSubpath[] | undefined {
+  if (!subpaths || subpaths.length === 0) return undefined
+  const sorted = [...subpaths].filter((subpath) => subpath.start >= 0 && subpath.start < nodeCount).sort((a, b) => a.start - b.start)
+  const unique: VectorSubpath[] = []
+  for (const subpath of sorted) {
+    if (unique.length && unique[unique.length - 1]!.start === subpath.start) continue
+    unique.push({ start: subpath.start, closed: subpath.closed })
+  }
+  if (unique.length === 0) return undefined
+  if (unique[0]!.start !== 0) unique[0] = { ...unique[0]!, start: 0 }
+  if (unique.length === 1) return undefined
+  return unique
+}
+
+/** Element fields describing the given sub-path ranges. */
+export function subpathFields(ranges: SubpathRange[]): Pick<VectorElement, 'closed' | 'subpaths'> {
+  if (ranges.length <= 1) {
+    const closed = ranges[0]?.closed ?? true
+    return { closed: closed ? undefined : false, subpaths: undefined }
+  }
+  return { closed: undefined, subpaths: ranges.map((range) => ({ start: range.start, closed: range.closed })) }
+}
+
+/** Whether every sub-path of the element is closed. */
+export function isClosedPath(element: PathLike, nodeCount?: number): boolean {
+  if (element.subpaths && element.subpaths.length) return element.subpaths.every((subpath) => subpath.closed)
+  void nodeCount
   return element.closed !== false
+}
+
+/** Smallest node count the sub-path containing `index` can keep. */
+export function minimumNodeCount(element: PathLike, nodeCount = 0, index = 0): number {
+  const range = subpathOfNode(element, nodeCount, index)
+  const closed = range ? range.closed : isClosedPath(element)
+  return closed ? 3 : 2
+}
+
+export function handleMode(node: Pick<VectorNode, 'in' | 'out' | 'handles'>): VectorHandleMode {
+  return node.handles ?? 'mirrored'
 }
 
 export function defaultVectorNodes(element: VectorElement): VectorNode[] {
@@ -28,7 +95,7 @@ export function defaultVectorNodes(element: VectorElement): VectorNode[] {
 export function vectorPathData(
   element: VectorElement,
   nodes = element.vectorNodes ?? defaultVectorNodes(element),
-  closed = isClosedPath(element),
+  closedOverride?: boolean,
 ): string {
   if (!nodes.length) return ''
   const anchor = (node: VectorNode) => ({ x: element.x + node.x * element.width, y: element.y + node.y * element.height })
@@ -37,28 +104,39 @@ export function vectorPathData(
     const offset = node[part]
     return offset ? { x: point.x + offset.x * element.width, y: point.y + offset.y * element.height } : point
   }
-  const first = anchor(nodes[0]!)
-  const commands = [`M ${round(first.x)} ${round(first.y)}`]
-  const segments = closed ? nodes.length : nodes.length - 1
-  for (let index = 0; index < segments; index += 1) {
-    const current = nodes[index]!
-    const next = nodes[(index + 1) % nodes.length]!
-    const end = anchor(next)
-    if (current.out || next.in) {
-      const a = control(current, 'out')
-      const b = control(next, 'in')
-      commands.push(`C ${round(a.x)} ${round(a.y)} ${round(b.x)} ${round(b.y)} ${round(end.x)} ${round(end.y)}`)
-    } else {
-      commands.push(`L ${round(end.x)} ${round(end.y)}`)
+  const ranges = closedOverride === undefined
+    ? subpathRanges(element, nodes.length)
+    : subpathRanges({ ...element, subpaths: undefined, closed: closedOverride }, nodes.length)
+  const commands: string[] = []
+  for (const range of ranges) {
+    const size = range.end - range.start
+    const first = anchor(nodes[range.start]!)
+    commands.push(`M ${round(first.x)} ${round(first.y)}`)
+    const segments = range.closed ? size : size - 1
+    for (let step = 0; step < segments; step += 1) {
+      const index = range.start + step
+      const current = nodes[index]!
+      const next = nodes[range.start + ((step + 1) % size)]!
+      const end = anchor(next)
+      if (current.out || next.in) {
+        const a = control(current, 'out')
+        const b = control(next, 'in')
+        commands.push(`C ${round(a.x)} ${round(a.y)} ${round(b.x)} ${round(b.y)} ${round(end.x)} ${round(end.y)}`)
+      } else {
+        commands.push(`L ${round(end.x)} ${round(end.y)}`)
+      }
     }
+    if (range.closed) commands.push('Z')
   }
-  return closed ? `${commands.join(' ')} Z` : commands.join(' ')
+  return commands.join(' ')
 }
 
-/** World positions of the two free ends of an open path, or `null` for closed shapes. */
+/** World positions of the two free ends of a single open path, or `null` for closed or multi-sub-path shapes. */
 export function pathEndpoints(element: VectorElement): { start: VectorPoint; end: VectorPoint } | null {
   const nodes = element.vectorNodes
-  if (isClosedPath(element) || !nodes || nodes.length < 2) return null
+  if (!nodes || nodes.length < 2) return null
+  const ranges = subpathRanges(element, nodes.length)
+  if (ranges.length !== 1 || ranges[0]!.closed) return null
   return { start: nodeWorldPosition(element, nodes[0]!), end: nodeWorldPosition(element, nodes[nodes.length - 1]!) }
 }
 
@@ -83,12 +161,33 @@ export function moveVectorNode(
   } else {
     target[part] = localPointer
     const opposite = part === 'in' ? 'out' : 'in'
-    if (mirrorHandles && target[opposite]) {
-      target[opposite] = { x: target.anchor.x * 2 - localPointer.x, y: target.anchor.y * 2 - localPointer.y }
+    const mode = mirrorHandles ? handleMode(nodes[index]!) : 'independent'
+    const other = target[opposite]
+    if (other && mode !== 'independent') {
+      const direction = { x: target.anchor.x - localPointer.x, y: target.anchor.y - localPointer.y }
+      const length = Math.hypot(direction.x, direction.y)
+      if (mode === 'mirrored' || length < 1e-6) {
+        target[opposite] = { x: target.anchor.x * 2 - localPointer.x, y: target.anchor.y * 2 - localPointer.y }
+      } else {
+        const keep = Math.hypot(other.x - target.anchor.x, other.y - target.anchor.y)
+        target[opposite] = { x: target.anchor.x + direction.x / length * keep, y: target.anchor.y + direction.y / length * keep }
+      }
     }
   }
 
-  return normalizeAbsoluteNodes(element, absolute)
+  const result = normalizeAbsoluteNodes(element, absolute)
+  result.vectorNodes = result.vectorNodes.map((node, position) => withNodeMeta(node, nodes[position]))
+  return result
+}
+
+/** Carries handle mode and radius from a source node onto re-normalised geometry. */
+export function withNodeMeta(node: VectorNode, source: VectorNode | undefined): VectorNode {
+  if (!source) return node
+  return {
+    ...node,
+    ...(source.handles ? { handles: source.handles } : {}),
+    ...(source.radius ? { radius: source.radius } : {}),
+  }
 }
 
 export function transformVectorNodes(
@@ -99,6 +198,7 @@ export function transformVectorNodes(
   axis: VectorTransformAxis,
   start: VectorPoint,
   current: VectorPoint,
+  originOverride?: VectorPoint,
 ): Pick<VectorElement, 'x' | 'y' | 'width' | 'height'> & { vectorNodes: VectorNode[] } {
   const selected = new Set(indices)
   if (selected.size === 0) return unchanged(element, nodes)
@@ -110,7 +210,7 @@ export function transformVectorNodes(
   }))
   const anchors = absolute.filter((_, index) => selected.has(index)).map((node) => node.anchor)
   if (anchors.length === 0) return unchanged(element, nodes)
-  const origin = {
+  const origin = originOverride ?? {
     x: anchors.reduce((sum, point) => sum + point.x, 0) / anchors.length,
     y: anchors.reduce((sum, point) => sum + point.y, 0) / anchors.length,
   }
@@ -124,7 +224,48 @@ export function transformVectorNodes(
     in: node.in ? rotatePoint(node.in, center, -element.rotation) : undefined,
     out: node.out ? rotatePoint(node.out, center, -element.rotation) : undefined,
   }))
+  const result = normalizeAbsoluteNodes(element, transformed)
+  result.vectorNodes = result.vectorNodes.map((node, position) => withNodeMeta(node, nodes[position]))
+  return result
+}
+
+/** Maps the selected nodes (anchors and handles, world space) from one box to another. */
+export function scaleNodesToBounds(
+  element: VectorElement,
+  nodes: VectorNode[],
+  indices: number[],
+  from: { x: number; y: number; width: number; height: number },
+  to: { x: number; y: number; width: number; height: number },
+): Pick<VectorElement, 'x' | 'y' | 'width' | 'height'> & { vectorNodes: VectorNode[] } {
+  const selected = new Set(indices)
+  const sx = from.width > 0 ? to.width / from.width : 1
+  const sy = from.height > 0 ? to.height / from.height : 1
+  const map = (point: VectorPoint): VectorPoint => ({ x: to.x + (point.x - from.x) * sx, y: to.y + (point.y - from.y) * sy })
+  const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+  const world = worldNodes(element, nodes)
+  const transformed = world.map((node, index) => selected.has(index) ? {
+    ...node,
+    anchor: map(node.anchor),
+    ...(node.in ? { in: map(node.in) } : {}),
+    ...(node.out ? { out: map(node.out) } : {}),
+  } : node).map((node) => ({
+    ...node,
+    anchor: rotatePoint(node.anchor, center, -element.rotation),
+    ...(node.in ? { in: rotatePoint(node.in, center, -element.rotation) } : {}),
+    ...(node.out ? { out: rotatePoint(node.out, center, -element.rotation) } : {}),
+  }))
   return normalizeAbsoluteNodes(element, transformed)
+}
+
+/** Bounds of selected anchors in world space. */
+export function nodeSelectionBounds(element: VectorElement, nodes: VectorNode[], indices: number[]): { x: number; y: number; width: number; height: number } | null {
+  const points = indices.flatMap((index) => nodes[index] ? [nodeWorldPosition(element, nodes[index]!)] : [])
+  if (points.length === 0) return null
+  const left = Math.min(...points.map((point) => point.x))
+  const top = Math.min(...points.map((point) => point.y))
+  const right = Math.max(...points.map((point) => point.x))
+  const bottom = Math.max(...points.map((point) => point.y))
+  return { x: left, y: top, width: right - left, height: bottom - top }
 }
 
 export function nodeWorldPosition(element: VectorElement, node: VectorNode, part: 'anchor' | 'in' | 'out' = 'anchor'): VectorPoint {
@@ -145,7 +286,7 @@ export function nodeIndicesInBounds(
 }
 
 /** A node expressed in the element's local (unrotated) document coordinates. */
-export type AbsoluteNode = { anchor: VectorPoint; in?: VectorPoint; out?: VectorPoint }
+export type AbsoluteNode = { anchor: VectorPoint; in?: VectorPoint; out?: VectorPoint; handles?: VectorHandleMode; radius?: number }
 
 export function absoluteNodes(element: VectorElement, nodes: VectorNode[]): AbsoluteNode[] {
   return nodes.map((node) => {
@@ -154,6 +295,8 @@ export function absoluteNodes(element: VectorElement, nodes: VectorNode[]): Abso
       anchor,
       in: node.in ? { x: anchor.x + node.in.x * element.width, y: anchor.y + node.in.y * element.height } : undefined,
       out: node.out ? { x: anchor.x + node.out.x * element.width, y: anchor.y + node.out.y * element.height } : undefined,
+      ...(node.handles ? { handles: node.handles } : {}),
+      ...(node.radius ? { radius: node.radius } : {}),
     }
   })
 }
@@ -191,6 +334,8 @@ export function normalizeAbsoluteNodes(
     y: (node.anchor.y - top) / height,
     ...(node.in ? { in: { x: (node.in.x - node.anchor.x) / width, y: (node.in.y - node.anchor.y) / height } } : {}),
     ...(node.out ? { out: { x: (node.out.x - node.anchor.x) / width, y: (node.out.y - node.anchor.y) / height } } : {}),
+    ...(node.handles ? { handles: node.handles } : {}),
+    ...(node.radius ? { radius: node.radius } : {}),
   }))
   return {
     x: round(worldCenter.x - width / 2),
@@ -254,6 +399,8 @@ export function roundNode(node: VectorNode): VectorNode {
     x: round(node.x), y: round(node.y),
     ...(node.in ? { in: { x: round(node.in.x), y: round(node.in.y) } } : {}),
     ...(node.out ? { out: { x: round(node.out.x), y: round(node.out.y) } } : {}),
+    ...(node.handles ? { handles: node.handles } : {}),
+    ...(node.radius ? { radius: Math.round(node.radius * 100) / 100 } : {}),
   }
 }
 

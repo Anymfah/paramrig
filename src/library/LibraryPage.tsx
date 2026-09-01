@@ -13,8 +13,7 @@ import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
 import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
-import { createVectorDocument, getVectorDocument } from '@/vector/document'
-import { vectorPathData } from '@/vector/vectorPath'
+import { createVectorDocument, elementMarkup, getVectorDocument } from '@/vector/document'
 
 export function LibraryPage() {
   const [params, setParams] = useSearchParams()
@@ -159,20 +158,29 @@ function SkeletonCard() {
   )
 }
 
+function thumbnailMarkup(elements: Array<Parameters<typeof elementMarkup>[0]>, prefix: string): string {
+  const defs: string[] = []
+  const bodies: string[] = []
+  for (const element of elements) {
+    if (!element.visible || element.kind === 'group') continue
+    const markup = elementMarkup(element, prefix)
+    if (markup.defs) defs.push(markup.defs)
+    bodies.push(`<g opacity="${element.opacity}">${markup.body}</g>`)
+  }
+  return `${defs.length ? `<defs>${defs.join('')}</defs>` : ''}${bodies.join('')}`
+}
+
 function RigThumb({ rig }: { rig: RigManifest }) {
   const id = rig.id
   if (rig.renderer === 'vector') {
     const document = getVectorDocument(id)
     return document ? (
-      <svg className="vector-thumb" viewBox={`0 0 ${document.width} ${document.height}`} aria-hidden="true">
-        {document.elements.filter((element) => element.visible && element.kind !== 'group').map((element) => {
-          const transform = `rotate(${element.rotation} ${element.x + element.width / 2} ${element.y + element.height / 2})`
-          if (element.vectorNodes) return <path key={element.id} d={vectorPathData(element)} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
-          return element.kind === 'ellipse'
-            ? <ellipse key={element.id} cx={element.x + element.width / 2} cy={element.y + element.height / 2} rx={element.width / 2} ry={element.height / 2} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
-            : <rect key={element.id} x={element.x} y={element.y} width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
-        })}
-      </svg>
+      <svg
+        className="vector-thumb"
+        viewBox={`0 0 ${document.width} ${document.height}`}
+        aria-hidden="true"
+        dangerouslySetInnerHTML={{ __html: thumbnailMarkup(document.elements, `thumb-${document.id}`) }}
+      />
     ) : null
   }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />

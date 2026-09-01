@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconGrid, IconGroup, IconLock, IconMinus, IconNode, IconPen, IconPlus, IconRectangle, IconRedo, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconGrid, IconGroup, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
 import { createVectorElement, serializeVectorDocument } from '@/vector/document'
@@ -118,6 +118,16 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         else group()
         return
       }
+      if (meta && key === 'e') {
+        event.preventDefault()
+        window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="combine"]')?.click()
+        return
+      }
+      if (meta && key === 'j') {
+        event.preventDefault()
+        window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="join"]')?.click()
+        return
+      }
       if (meta && event.shiftKey && key === 'l') {
         event.preventDefault()
         if (current.selectedElements.length === 0) return
@@ -143,6 +153,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       }
       if (event.repeat && !['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) return
       if (key === 'v') chooseTool('select')
+      else if (key === 'p' && event.shiftKey) chooseTool('pencil')
       else if (key === 'p') chooseTool('pen')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
@@ -260,6 +271,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onUpdateDocument={editor.updateDocument}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
+          onEditElements={editor.editElements}
+          onSelectIds={editor.setSelectedIds}
           onSelectNodes={setSelectedNodeIndices}
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
@@ -286,6 +299,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           />
           <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
+          <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -353,6 +367,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onUpdateElements={editor.updateElements}
           onDuplicateElements={editor.duplicateElements}
           onSetGuides={editor.setGuides}
+          onEditElements={editor.editElements}
           onEscape={() => {
             if (editor.enteredGroupId) {
               editor.setSelectedIds([editor.enteredGroupId])

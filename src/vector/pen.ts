@@ -1,13 +1,13 @@
 import { createVectorElement } from '@/vector/document'
 import type { VectorElement, VectorPoint } from '@/vector/types'
-import { elementFromWorldNodes, isClosedPath, worldNodes, type AbsoluteNode } from '@/vector/vectorPath'
+import { elementFromWorldNodes, normalizeAbsoluteNodes, subpathFields, subpathRanges, worldNodes, type AbsoluteNode, type SubpathRange } from '@/vector/vectorPath'
 
 export type PenDraft = {
   /** World-space nodes placed so far. */
   nodes: AbsoluteNode[]
   closed: boolean
-  /** Set when the draft extends an existing open path. */
-  continue?: { id: string; end: 'start' | 'end' }
+  /** Set when the draft extends an existing open sub-path. */
+  continue?: { id: string; end: 'start' | 'end'; subpath: number; element: VectorElement }
 }
 
 export function penStart(point: VectorPoint): PenDraft {
@@ -55,12 +55,19 @@ export function penCanClose(draft: PenDraft, point: VectorPoint, threshold: numb
   return Math.hypot(point.x - first.x, point.y - first.y) <= threshold
 }
 
-/** Starts a draft from an open path so new anchors extend it from `end`. */
-export function penFromElement(element: VectorElement, end: 'start' | 'end'): PenDraft | null {
-  if (isClosedPath(element) || !element.vectorNodes || element.vectorNodes.length < 2) return null
-  const nodes = worldNodes(element)
-  const ordered = end === 'end' ? nodes : [...nodes].reverse().map((node) => ({ anchor: node.anchor, ...(node.out ? { in: node.out } : {}), ...(node.in ? { out: node.in } : {}) }))
-  return { nodes: ordered, closed: false, continue: { id: element.id, end } }
+/** Starts a draft from an open sub-path so new anchors extend it from `end`. */
+export function penFromElement(element: VectorElement, end: 'start' | 'end', subpath = 0): PenDraft | null {
+  if (!element.vectorNodes || element.vectorNodes.length < 2) return null
+  const ranges = subpathRanges(element, element.vectorNodes.length)
+  const range = ranges[subpath]
+  if (!range || range.closed) return null
+  const nodes = worldNodes(element).slice(range.start, range.end)
+  const ordered = end === 'end' ? nodes : [...nodes].reverse().map((node) => ({ ...node, ...(node.out ? { in: node.out } : { in: undefined }), ...(node.in ? { out: node.in } : { out: undefined }) })).map(stripUndefined)
+  return { nodes: ordered, closed: false, continue: { id: element.id, end, subpath, element } }
+}
+
+function stripUndefined(node: AbsoluteNode): AbsoluteNode {
+  return { anchor: node.anchor, ...(node.in ? { in: node.in } : {}), ...(node.out ? { out: node.out } : {}), ...(node.handles ? { handles: node.handles } : {}), ...(node.radius ? { radius: node.radius } : {}) }
 }
 
 export type PenStyle = Pick<VectorElement, 'fill' | 'stroke' | 'strokeWidth'>
@@ -70,7 +77,20 @@ export function penCommit(draft: PenDraft, style?: Partial<PenStyle>): { element
   if (draft.nodes.length < 2) return null
   const built = elementFromWorldNodes(draft.nodes)
   if (draft.continue) {
-    return { id: draft.continue.id, patch: { ...built, rotation: 0, closed: draft.closed, kind: 'path' } }
+    const source = draft.continue.element
+    const sourceNodes = source.vectorNodes ?? []
+    const world = worldNodes(source, sourceNodes)
+    const ranges = subpathRanges(source, sourceNodes.length)
+    const merged: AbsoluteNode[] = []
+    const nextRanges: SubpathRange[] = []
+    ranges.forEach((range, position) => {
+      const run = position === draft.continue!.subpath ? draft.nodes : world.slice(range.start, range.end)
+      const closed = position === draft.continue!.subpath ? draft.closed : range.closed
+      nextRanges.push({ start: merged.length, end: merged.length + run.length, closed })
+      merged.push(...run)
+    })
+    const box = normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, merged)
+    return { id: draft.continue.id, patch: { ...box, ...subpathFields(nextRanges), rotation: 0, kind: 'path' } }
   }
   const element = createVectorElement('path', built, { ...style, vectorNodes: built.vectorNodes, closed: draft.closed })
   return { element }

@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { insertNode, nearestSegment, toggleNodeType } from '@/vector/bezier'
+import { bendSegment, insertNode, isSmoothNode, nearestSegment, seedHandles, toggleNodeType } from '@/vector/bezier'
+import { pencilNodes } from '@/vector/pencil'
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, type DirectResizeHandle } from '@/vector/directTransform'
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
+import { layerAttributes, markerShape, outlinePathData, renderModel, type RenderDef } from '@/vector/render'
 import { penAddAnchor, penCanClose, penClose, penCommit, penDragHandle, penFromElement, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { scaleElementsToBounds, transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
-import { absoluteNodes, defaultVectorNodes, isClosedPath, minimumNodeCount, moveVectorNode, nodeIndicesInBounds, nodePosition, nodeWorldPosition, normalizeAbsoluteNodes, pathEndpoints, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
+import { defaultVectorNodes, elementFromWorldNodes, moveVectorNode, neighbours, nodeIndicesInBounds, nodePosition, nodeSelectionBounds, nodeWorldPosition, scaleNodesToBounds, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
+import { combineElements, deleteNodes, joinNodes, openEndpoints as openEndpointsOf } from '@/vector/subpaths'
 import type { VectorDocument, VectorElement, VectorGuide, VectorNode, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
@@ -41,6 +44,10 @@ type Interaction =
   | { kind: 'rotate'; pointerId: number; start: Point; elements: VectorElement[]; center: Point; single: VectorElement | null }
   | { kind: 'node'; pointerId: number; start: Point; anchorStart: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; nodeIndex: number; part: NodePart; targets: SnapTarget[] }
   | { kind: 'pen'; pointerId: number; anchorIndex: number }
+  | { kind: 'pencil'; pointerId: number; points: Point[] }
+  | { kind: 'bend'; pointerId: number; element: VectorElement; nodes: VectorNode[]; segmentIndex: number; t: number }
+  | { kind: 'node-resize'; pointerId: number; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; bounds: Bounds; handle: DirectResizeHandle }
+  | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; center: Point }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
   | { kind: 'modal'; target: 'elements'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; elements: VectorElement[]; preview: VectorElement[] }
@@ -66,6 +73,7 @@ type VectorCanvasProps = {
   onUpdateElements: (updates: Array<{ id: string; patch: Partial<VectorElement> }>, record?: boolean) => void
   onDuplicateElements: (ids: string[], offset: number) => { ids: string[]; idMap: Record<string, string> }
   onSetGuides: (guides: VectorGuide[], record?: boolean) => void
+  onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onEscape: () => void
   onGestureStart: () => void
   onGestureEnd: () => void
@@ -97,6 +105,7 @@ export function VectorCanvas({
   onUpdateElements,
   onDuplicateElements,
   onSetGuides,
+  onEditElements,
   onEscape,
   onGestureStart,
   onGestureEnd,
@@ -120,7 +129,7 @@ export function VectorCanvas({
   const penDraftRef = useRef<PenDraft | null>(null)
   const selectedGuideRef = useRef<string | null>(null)
   const enteredGroupRef = useRef(enteredGroupId)
-  const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup })
+  const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements })
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   const [panning, setPanning] = useState(false)
@@ -131,6 +140,7 @@ export function VectorCanvas({
   const [penDraft, setPenDraftState] = useState<PenDraft | null>(null)
   const [penCursor, setPenCursor] = useState<Point | null>(null)
   const [penCloseHint, setPenCloseHint] = useState(false)
+  const [pencilPoints, setPencilPoints] = useState<Point[] | null>(null)
   const [snapMatches, setSnapMatches] = useState<SnapMatch[]>([])
   const [hud, setHud] = useState<VectorHud | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -161,7 +171,7 @@ export function VectorCanvas({
   selectedIdsRef.current = selectedIds
   selectedNodeIndicesRef.current = selectedNodeIndices
   enteredGroupRef.current = enteredGroupId
-  callbacks.current = { onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup }
+  callbacks.current = { onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements }
 
   const point = useCallback((event: Pick<PointerEvent, 'clientX' | 'clientY'>): Point => {
     const svg = svgRef.current
@@ -275,12 +285,13 @@ export function VectorCanvas({
     setSnapMatches([])
     setHud(null)
     setDraftGuide(null)
+    setPencilPoints(null)
   }, [])
 
   const cancelInteraction = useCallback(() => {
     const active = interaction.current
     if (!active) return
-    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create'
+    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create' || active.kind === 'pencil'
     if (!passive) callbacks.current.onGestureCancel()
     if (active.kind === 'move' && active.originalIds.length) callbacks.current.onSelectIds(active.originalIds)
     clearInteraction()
@@ -438,11 +449,9 @@ export function VectorCanvas({
         const nodeIndices = selectedNodeIndicesRef.current
         if (nodeIndices.length === 0) return
         const nodes = editingElement.vectorNodes ?? defaultVectorNodes(editingElement)
-        const selectedSet = new Set(nodeIndices)
-        if (nodes.length - selectedSet.size < minimumNodeCount(editingElement)) return
-        const remaining = nodes.filter((_, index) => !selectedSet.has(index))
-        const rebuilt = normalizeNodesOf(editingElement, remaining)
-        callbacks.current.onUpdate(editingElement.id, rebuilt)
+        const rebuilt = deleteNodes(editingElement, nodes, nodeIndices)
+        if (!rebuilt) return
+        callbacks.current.onUpdate(editingElement.id, { ...rebuilt, kind: editingElement.kind === 'group' ? editingElement.kind : 'path' })
         callbacks.current.onSelectNodes([])
         return
       }
@@ -578,6 +587,15 @@ export function VectorCanvas({
       else {
         onGestureCancel()
         if (active.toggleOnClick) onSelectIds(selectedIds.filter((id) => id !== active.toggleOnClick))
+      }
+    } else if (active.kind === 'pencil') {
+      const nodes = pencilNodes(active.points, zoom)
+      if (nodes.length >= 2) {
+        const first = nodes[0]!.anchor
+        const last = nodes[nodes.length - 1]!.anchor
+        const closed = nodes.length >= 3 && Math.hypot(first.x - last.x, first.y - last.y) <= PEN_CLOSE_PX / zoom
+        const built = elementFromWorldNodes(closed ? nodes.slice(0, -1) : nodes)
+        onAddElements([createVectorElement('path', built, { vectorNodes: built.vectorNodes, closed, name: 'Pencil' })])
       }
     } else if (active.kind === 'pen' || active.kind === 'guide-create') {
       /* draft-only */
@@ -717,16 +735,24 @@ export function VectorCanvas({
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'rectangle' || tool === 'ellipse'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
-    const at = point(event.nativeEvent)
+    const rawAt = point(event.nativeEvent)
+    const at = tool === 'pen' && event.shiftKey && penDraftRef.current ? constrainAngle(penDraftRef.current.nodes[penDraftRef.current.nodes.length - 1]!.anchor, rawAt) : rawAt
+    if (tool === 'pencil') {
+      onSelectIds([])
+      interaction.current = { kind: 'pencil', pointerId: event.pointerId, points: [rawAt] }
+      setPencilPoints([rawAt])
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
     if (tool === 'pen') {
       const draft = penDraftRef.current
       const threshold = PEN_CLOSE_PX / zoom
       if (!draft) {
         const endpoint = findOpenEndpoint(elements, at, threshold)
-        const next = endpoint ? penFromElement(endpoint.element, endpoint.end) : null
+        const next = endpoint ? penFromElement(endpoint.element, endpoint.end, endpoint.subpath) : null
         const started = next ?? penStart(snapFreePoint(at, snapTargetsFor([])).point)
         setPenDraft(started)
         onSelectIds(endpoint ? [endpoint.element.id] : [])
@@ -739,6 +765,32 @@ export function VectorCanvas({
         setPenDraft(penClose(draft))
         penDraftRef.current = penClose(draft)
         commitPen()
+        return
+      }
+      const target = findOpenEndpoint(elements, at, threshold)
+      if (target && !(draft.continue && target.element.id === draft.continue.id && target.subpath === draft.continue.subpath)) {
+        // Joining onto another free end: commit the draft, merge both objects, connect the ends.
+        const result = penCommit(draft)
+        if (result) {
+          const source = 'element' in result ? result.element : { ...draft.continue!.element, ...result.patch }
+          const joinIndex = 'element' in result ? source.vectorNodes!.length - 1 : lastNodeOfSubpath(source, draft.continue!.subpath)
+          const same = target.element.id === source.id
+          const nodesOf = (element: VectorElement) => element.vectorNodes ?? defaultVectorNodes(element)
+          const combined = same ? null : combineElements([source, target.element], nodesOf)
+          const base: VectorElement = combined ? { ...source, ...combined, kind: 'path', rotation: 0 } : source
+          const offset = same ? 0 : (source.vectorNodes?.length ?? 0)
+          const joined = joinNodes(base, base.vectorNodes!, joinIndex, offset + target.index)
+          const final: VectorElement = joined ? { ...base, ...joined } : base
+          setPenDraft(null)
+          setPenCloseHint(false)
+          onEditElements((current) => {
+            const without = current.filter((element) => element.id !== final.id && element.id !== target.element.id)
+            const anchor = current.findIndex((element) => element.id === target.element.id || element.id === final.id)
+            const at = Math.max(0, Math.min(without.length, anchor < 0 ? without.length : anchor))
+            return [...without.slice(0, at), final, ...without.slice(at)]
+          })
+          onSelectIds([final.id])
+        }
         return
       }
       const snapped = snapFreePoint(at, snapTargetsFor(draft.continue ? [draft.continue.id] : [])).point
@@ -782,16 +834,57 @@ export function VectorCanvas({
     const at = point(event.nativeEvent)
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
       const draft = penDraftRef.current
-      const snapped = snapFreePoint(at, snapTargetsFor(draft?.continue ? [draft.continue.id] : [])).point
+      const last = draft?.nodes[draft.nodes.length - 1]?.anchor
+      const constrained = event.shiftKey && last ? constrainAngle(last, at) : at
+      const snapped = snapFreePoint(constrained, snapTargetsFor(draft?.continue ? [draft.continue.id] : [])).point
       setPenCursor(snapped)
       setPenCloseHint(!!draft && penCanClose(draft, at, PEN_CLOSE_PX / zoom))
+      if (last) {
+        const length = Math.hypot(snapped.x - last.x, snapped.y - last.y)
+        const angle = normalizeDegrees(Math.atan2(-(snapped.y - last.y), snapped.x - last.x) * 180 / Math.PI)
+        showHud(`${round(length)} · ${round(angle)}°`, event.nativeEvent)
+      }
     }
     if (!active || active.kind === 'modal' || active.pointerId !== event.pointerId) return
     if (active.kind === 'pen') {
       const draft = penDraftRef.current
       if (!draft) return
-      const next = penDragHandle(draft, active.anchorIndex, at, event.altKey)
+      const anchor = draft.nodes[active.anchorIndex]!.anchor
+      const handleAt = event.shiftKey ? constrainAngle(anchor, at) : at
+      const next = penDragHandle(draft, active.anchorIndex, handleAt, event.altKey)
       setPenDraft(next)
+      showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'pencil') {
+      const last = active.points[active.points.length - 1]!
+      if (Math.hypot(at.x - last.x, at.y - last.y) * zoom < 1.5) return
+      active.points.push(at)
+      setPencilPoints([...active.points])
+      return
+    }
+    if (active.kind === 'bend') {
+      onUpdate(active.element.id, bendSegment(active.element, active.nodes, active.segmentIndex, active.t, at), false)
+      return
+    }
+    if (active.kind === 'node-resize') {
+      const pointer = snapFreePoint(at, []).point
+      const next = resizeBounds(active.bounds, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
+      onUpdate(active.element.id, scaleNodesToBounds(active.element, active.nodes, active.nodeIndices, active.bounds, next), false)
+      showHud(`${round(next.width)} × ${round(next.height)}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'node-rotate') {
+      let current = at
+      const startAngle = Math.atan2(active.start.y - active.center.y, active.start.x - active.center.x)
+      let delta = Math.atan2(at.y - active.center.y, at.x - active.center.x) - startAngle
+      if (event.shiftKey) {
+        delta = snapAngle(delta * 180 / Math.PI) * Math.PI / 180
+        const radius = Math.hypot(at.x - active.center.x, at.y - active.center.y)
+        current = { x: active.center.x + Math.cos(startAngle + delta) * radius, y: active.center.y + Math.sin(startAngle + delta) * radius }
+      }
+      onUpdate(active.element.id, transformVectorNodes(active.element, active.nodes, active.nodeIndices, 'rotate', null, active.start, current, active.center), false)
+      showHud(`${round(normalizeDegrees(delta * 180 / Math.PI))}°`, event.nativeEvent)
       return
     }
     if (active.kind === 'create') {
@@ -941,7 +1034,27 @@ export function VectorCanvas({
     if (event.button !== 0 || !editing) return
     event.stopPropagation()
     if (tool === 'pen') return
-    const nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
+    let nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
+    if (part === 'anchor' && (event.metaKey || event.ctrlKey)) {
+      // ⌘ on a smooth node makes it a corner; ⌘-drag on a corner pulls out mirrored handles.
+      const node = nodes[nodeIndex]!
+      if (isSmoothNode(node)) {
+        onUpdate(editing.id, toggleNodeType(editing, nodes, nodeIndex))
+        onSelectNodes([nodeIndex])
+        return
+      }
+      nodes = seedHandles(nodes, nodeIndex)
+      onSelectNodes([nodeIndex])
+      onGestureStart()
+      onUpdate(editing.id, { vectorNodes: nodes }, false)
+      interaction.current = {
+        kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: nodeWorldPosition(editing, nodes[nodeIndex]!),
+        element: structuredClone({ ...editing, vectorNodes: nodes }), nodes, nodeIndices: [nodeIndex], nodeIndex, part: 'out', targets: [],
+      }
+      setDirectCursor('crosshair')
+      svgRef.current?.setPointerCapture(event.pointerId)
+      return
+    }
     if (part === 'anchor' && event.shiftKey) {
       onSelectNodes(selectedNodeIndices.includes(nodeIndex)
         ? selectedNodeIndices.filter((index) => index !== nodeIndex)
@@ -979,6 +1092,13 @@ export function VectorCanvas({
     const hit = nearestSegment(editing, nodes, at)
     if (!hit) return
     onGestureStart()
+    if (event.metaKey || event.ctrlKey) {
+      onSelectNodes([])
+      interaction.current = { kind: 'bend', pointerId: event.pointerId, element: structuredClone(editing), nodes: structuredClone(nodes), segmentIndex: hit.index, t: hit.t }
+      setDirectCursor('move')
+      svgRef.current?.setPointerCapture(event.pointerId)
+      return
+    }
     const inserted = insertNode(editing, nodes, hit.index, hit.t)
     const { insertedIndex, ...patch } = inserted
     onUpdate(editing.id, patch, false)
@@ -992,15 +1112,39 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  const startNodeResize = (handle: DirectResizeHandle, event: ReactPointerEvent<SVGElement>) => {
+    if (!editing || event.button !== 0) return
+    event.stopPropagation()
+    const nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
+    const bounds = nodeSelectionBounds(editing, nodes, selectedNodeIndices)
+    if (!bounds) return
+    onGestureStart()
+    interaction.current = { kind: 'node-resize', pointerId: event.pointerId, element: structuredClone(editing), nodes, nodeIndices: [...selectedNodeIndices], bounds, handle }
+    setDirectCursor(resizeCursor(handle, 0))
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+  const startNodeRotate = (event: ReactPointerEvent<SVGElement>) => {
+    if (!editing || event.button !== 0) return
+    event.stopPropagation()
+    const nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
+    const bounds = nodeSelectionBounds(editing, nodes, selectedNodeIndices)
+    if (!bounds) return
+    onGestureStart()
+    interaction.current = { kind: 'node-rotate', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(editing), nodes, nodeIndices: [...selectedNodeIndices], center: elementCenter(bounds) }
+    setTransformStatus({ mode: 'rotate', axis: null })
+    setDirectCursor('var(--cursor-rotate)')
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+  const nodeBox = editing && selectedNodeIndices.length > 1 ? nodeSelectionBounds(editing, editing.vectorNodes ?? defaultVectorNodes(editing), selectedNodeIndices) : null
+
   const showHandles = (tool === 'select') && selectedLeaves.length > 0 && !editing
   const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' ? selected : null
   const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
-  const openEndpoints = tool === 'pen' && !penDraft ? elements.flatMap((element) => {
-    if (!isHittable(element)) return []
-    const ends = pathEndpoints(element)
-    return ends ? [{ id: element.id, ...ends }] : []
+  const openEndpoints = tool === 'pen' ? elements.flatMap((element) => {
+    if (!isHittable(element) || !element.vectorNodes) return []
+    return openEndpointsOf(element).map((end) => ({ id: `${element.id}-${end.index}`, point: end.point }))
   }) : []
 
   return (
@@ -1111,6 +1255,13 @@ export function VectorCanvas({
               onSegmentPointerDown={onSegmentPointerDown}
             />
           ) : null}
+          {nodeBox && nodeBox.width + nodeBox.height > 0 ? (
+            <g className="vector-selection vector-node-box">
+              <rect x={nodeBox.x} y={nodeBox.y} width={nodeBox.width} height={nodeBox.height} />
+              <Handles bounds={nodeBox} zoom={zoom} rotation={0} onResize={startNodeResize} onRotate={(_corner, event) => startNodeRotate(event)} />
+            </g>
+          ) : null}
+          {pencilPoints && pencilPoints.length > 1 ? <polyline className="vector-pencil__path" points={pencilPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
           {singleDirect ? (
             <Selection
               element={singleDirect}
@@ -1130,10 +1281,7 @@ export function VectorCanvas({
           ) : null}
           {tool === 'select' && selectedElements.length > 1 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} thin />) : null}
           {openEndpoints.map((endpoint) => (
-            <g key={endpoint.id} className="vector-pen__endpoints">
-              <circle className="vector-pen__endpoint" cx={endpoint.start.x} cy={endpoint.start.y} r={4 / zoom} />
-              <circle className="vector-pen__endpoint" cx={endpoint.end.x} cy={endpoint.end.y} r={4 / zoom} />
-            </g>
+            <circle key={endpoint.id} className="vector-pen__endpoint" cx={endpoint.point.x} cy={endpoint.point.y} r={4 / zoom} />
           ))}
           {penDraft ? <PenPreview draft={penDraft} cursor={penCursor} zoom={zoom} closeHint={penCloseHint} /> : null}
           {snapMatches.map((match, index) => (
@@ -1170,20 +1318,22 @@ export function VectorCanvas({
   )
 }
 
-function findOpenEndpoint(elements: VectorElement[], at: Point, threshold: number): { element: VectorElement; end: 'start' | 'end' } | null {
+function findOpenEndpoint(elements: VectorElement[], at: Point, threshold: number): { element: VectorElement; end: 'start' | 'end'; subpath: number; index: number } | null {
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index]!
-    if (!isHittable(element)) continue
-    const ends = pathEndpoints(element)
-    if (!ends) continue
-    if (Math.hypot(ends.end.x - at.x, ends.end.y - at.y) <= threshold) return { element, end: 'end' }
-    if (Math.hypot(ends.start.x - at.x, ends.start.y - at.y) <= threshold) return { element, end: 'start' }
+    if (!isHittable(element) || !element.vectorNodes) continue
+    for (const end of openEndpointsOf(element)) {
+      if (Math.hypot(end.point.x - at.x, end.point.y - at.y) <= threshold) return { element, end: end.end, subpath: end.subpath, index: end.index }
+    }
   }
   return null
 }
 
-function normalizeNodesOf(element: VectorElement, nodes: VectorNode[]) {
-  return normalizeAbsoluteNodes(element, absoluteNodes(element, nodes))
+function lastNodeOfSubpath(element: VectorElement, subpath: number): number {
+  const nodes = element.vectorNodes ?? []
+  const declared = element.subpaths && element.subpaths.length ? element.subpaths : [{ start: 0, closed: element.closed !== false }]
+  const next = declared[subpath + 1]
+  return (next ? next.start : nodes.length) - 1
 }
 
 function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, inheritedLocked, onPointerDown, onHover }: {
@@ -1248,43 +1398,68 @@ function VectorShape({ element, zoom, coarse, pixelPreview, selected, editing, o
   onHover: (id: string | null) => void
 }) {
   const rendered = previewGeometry(element, pixelPreview)
-  const transform = `rotate(${rendered.rotation} ${rendered.x + rendered.width / 2} ${rendered.y + rendered.height / 2})`
   const hittable = isHittable(element)
-  const common = {
-    'data-vector-element': element.id,
-    'data-selected': selected || undefined,
-    'data-locked': element.locked || undefined,
-    fill: rendered.fill,
-    stroke: rendered.stroke,
-    strokeWidth: rendered.strokeWidth,
-    opacity: rendered.opacity,
-    transform,
-    pointerEvents: fillPointerEvents(element),
-    onPointerDown,
-    onPointerEnter: hittable ? () => onHover(element.id) : undefined,
-    onPointerLeave: hittable ? () => onHover(null) : undefined,
-  }
-  const shape = rendered.vectorNodes || rendered.kind === 'path'
-    ? <path {...common} data-editing={editing || undefined} d={vectorPathData(rendered)} />
-    : rendered.kind === 'ellipse' ? (
-      <ellipse {...common} cx={rendered.x + rendered.width / 2} cy={rendered.y + rendered.height / 2} rx={rendered.width / 2} ry={rendered.height / 2} />
-    ) : (
-      <rect {...common} x={rendered.x} y={rendered.y} width={rendered.width} height={rendered.height} />
-    )
-  if (!hittable) return shape
+  const model = renderModel(rendered, 'canvas')
+  const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
+  const fillEvents = fillPointerEvents({ ...element, fill: model.layers.some((layer) => layer.kind === 'fill') ? '#000000' : 'none' })
   return (
     <>
-      {shape}
-      <path
-        className="vector-hit"
+      {model.defs.length ? <defs><RenderDefs defs={model.defs} /></defs> : null}
+      <g
         data-vector-element={element.id}
-        d={vectorPathData(rendered)}
-        transform={transform}
-        strokeWidth={strokeHitWidth(rendered.strokeWidth, zoom, coarse)}
+        data-selected={selected || undefined}
+        data-locked={element.locked || undefined}
+        data-editing={editing || undefined}
+        opacity={model.opacity}
+        pointerEvents={fillEvents}
         onPointerDown={onPointerDown}
-        onPointerEnter={() => onHover(element.id)}
-        onPointerLeave={() => onHover(null)}
-      />
+        {...hover}
+      >
+        {model.layers.map((layer, index) => (
+          <path key={index} d={layer.d} transform={model.transform} {...layerAttributes(layer)} pointerEvents={layer.kind === 'fill' ? fillEvents : 'none'} />
+        ))}
+        {model.layers.length === 0 ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents="none" /> : null}
+      </g>
+      {hittable ? (
+        <path
+          className="vector-hit"
+          data-vector-element={element.id}
+          d={model.d}
+          transform={model.transform}
+          strokeWidth={strokeHitWidth(rendered.strokeWidth * (element.strokeAlign && element.strokeAlign !== 'center' ? 2 : 1), zoom, coarse)}
+          onPointerDown={onPointerDown}
+          {...hover}
+        />
+      ) : null}
+    </>
+  )
+}
+
+export function RenderDefs({ defs }: { defs: RenderDef[] }) {
+  return (
+    <>
+      {defs.map((def) => {
+        switch (def.type) {
+          case 'linearGradient':
+            return <linearGradient key={def.id} id={def.id} x1={def.x1} y1={def.y1} x2={def.x2} y2={def.y2}>{def.stops.map((stop, index) => <stop key={index} offset={`${stop.t * 100}%`} stopColor={stop.color} />)}</linearGradient>
+          case 'radialGradient':
+            return <radialGradient key={def.id} id={def.id}>{def.stops.map((stop, index) => <stop key={index} offset={`${stop.t * 100}%`} stopColor={stop.color} />)}</radialGradient>
+          case 'pattern': {
+            const tile = def.mode === 'tile'
+            const size = tile ? Math.max(1, Math.min(def.width, def.height) / 2) : def.width
+            const height = tile ? size : def.height
+            return <pattern key={def.id} id={def.id} patternUnits="userSpaceOnUse" x={def.x} y={def.y} width={size} height={height}><image href={def.image} x={0} y={0} width={size} height={height} preserveAspectRatio={def.mode === 'fit' ? 'xMidYMid meet' : def.mode === 'fill' ? 'xMidYMid slice' : 'none'} /></pattern>
+          }
+          case 'clipPath':
+            return <clipPath key={def.id} id={def.id}><path d={def.d} /></clipPath>
+          case 'mask':
+            return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" /></mask>
+          case 'marker': {
+            const shape = markerShape(def.shape)
+            return <marker key={def.id} id={def.id} markerUnits="strokeWidth" markerWidth={shape.size} markerHeight={shape.size} refX={shape.refX} refY={shape.size / 2} orient={def.end ? 'auto' : 'auto-start-reverse'}><path d={shape.d} fill={shape.fill ? def.color : 'none'} stroke={def.color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" /></marker>
+          }
+        }
+      })}
     </>
   )
 }
@@ -1376,12 +1551,12 @@ function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onSegm
   const hitRadius = 5 / zoom
   const pointRadius = 3.5 / zoom
   const controlRadius = 3 / zoom
-  const closed = isClosedPath(element)
   const shown = new Set<number>()
   for (const index of selectedIndices) {
     shown.add(index)
-    shown.add(closed ? (index + 1) % nodes.length : Math.min(nodes.length - 1, index + 1))
-    shown.add(closed ? (index - 1 + nodes.length) % nodes.length : Math.max(0, index - 1))
+    const around = neighbours(element, nodes.length, index)
+    if (around.next !== null) shown.add(around.next)
+    if (around.previous !== null) shown.add(around.previous)
   }
   return (
     <g className="vector-nodes" transform={`rotate(${element.rotation} ${cx} ${cy})`}>
@@ -1396,8 +1571,9 @@ function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onSegm
           if (!node[part]) return null
           if (!selectedNode) {
             // Neighbouring nodes only show the handle that faces a selected node.
-            const facing = part === 'out' ? (closed ? (index + 1) % nodes.length : index + 1) : (closed ? (index - 1 + nodes.length) % nodes.length : index - 1)
-            if (!selectedIndices.includes(facing)) return null
+            const around = neighbours(element, nodes.length, index)
+            const facing = part === 'out' ? around.next : around.previous
+            if (facing === null || !selectedIndices.includes(facing)) return null
           }
           const handle = nodePosition(element, node, part)
           return <g key={`${index}-${part}`}>
@@ -1463,7 +1639,7 @@ function HoverOutline({ element, leaves }: { element: VectorElement; leaves: Vec
     return <rect className="vector-hover" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} />
   }
   const center = elementCenter(element)
-  return <path className="vector-hover" d={vectorPathData(element)} transform={`rotate(${element.rotation} ${center.x} ${center.y})`} />
+  return <path className="vector-hover" d={outlinePathData(element)} transform={`rotate(${element.rotation} ${center.x} ${center.y})`} />
 }
 
 function GroupFrame({ element }: { element: VectorElement }) {
@@ -1473,8 +1649,8 @@ function GroupFrame({ element }: { element: VectorElement }) {
 function Selection({ element, zoom, onResize, onRotate }: {
   element: VectorElement
   zoom: number
-  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGCircleElement>) => void
-  onRotate: (corner: Corner, event: ReactPointerEvent<SVGCircleElement>) => void
+  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGElement>) => void
+  onRotate: (corner: Corner, event: ReactPointerEvent<SVGElement>) => void
 }) {
   const cx = element.x + element.width / 2
   const cy = element.y + element.height / 2
@@ -1490,8 +1666,8 @@ function MultiSelection({ bounds, leaves, zoom, onResize, onRotate }: {
   bounds: Bounds
   leaves: VectorElement[]
   zoom: number
-  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGCircleElement>) => void
-  onRotate: (event: ReactPointerEvent<SVGCircleElement>) => void
+  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGElement>) => void
+  onRotate: (event: ReactPointerEvent<SVGElement>) => void
 }) {
   return (
     <g className="vector-selection vector-multi-selection" data-count={leaves.length}>
@@ -1505,8 +1681,8 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
   bounds: Bounds
   zoom: number
   rotation: number
-  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGCircleElement>) => void
-  onRotate: (corner: Corner, event: ReactPointerEvent<SVGCircleElement>) => void
+  onResize: (handle: DirectResizeHandle, event: ReactPointerEvent<SVGElement>) => void
+  onRotate: (corner: Corner, event: ReactPointerEvent<SVGElement>) => void
 }) {
   const cx = bounds.x + bounds.width / 2
   const cy = bounds.y + bounds.height / 2
@@ -1531,12 +1707,10 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
     <>
       {visiblePoints.map((item) => (
         <g key={item.handle}>
-          {item.corner ? <circle
+          {item.corner ? <path
             className="vector-selection__rotate-hit"
             data-vector-rotate={item.corner}
-            cx={item.x}
-            cy={item.y}
-            r={27 / zoom}
+            d={rotateZonePath(item.x, item.y, 22 / zoom, item.corner)}
             onPointerDown={(event) => onRotate(item.corner!, event)}
           /> : null}
           <circle
@@ -1555,6 +1729,16 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
   )
 }
 
+/** Three-quarter arc around a corner that leaves the quadrant pointing into the box uncovered. */
+function rotateZonePath(cx: number, cy: number, r: number, corner: Corner): string {
+  const skip: Record<Corner, number> = { nw: 0, ne: 90, se: 180, sw: 270 }
+  const start = ((skip[corner] + 90) * Math.PI) / 180
+  const end = ((skip[corner] + 360) * Math.PI) / 180
+  const from = { x: cx + Math.cos(start) * r, y: cy + Math.sin(start) * r }
+  const to = { x: cx + Math.cos(end) * r, y: cy + Math.sin(end) * r }
+  return `M ${from.x} ${from.y} A ${r} ${r} 0 1 1 ${to.x} ${to.y}`
+}
+
 function formatRulerValue(value: number): string {
   return Number.isInteger(value) ? String(value) : String(round(value))
 }
@@ -1571,6 +1755,16 @@ function previewGeometry(element: VectorElement, mode: VectorPixelPreview): Vect
     height: Math.max(step, snap(element.height)),
     strokeWidth: snap(element.strokeWidth),
   }
+}
+
+/** Snaps the direction from `origin` to `point` onto 45° increments, keeping the projected length. */
+function constrainAngle(origin: Point, point: Point): Point {
+  const dx = point.x - origin.x
+  const dy = point.y - origin.y
+  const angle = Math.atan2(dy, dx)
+  const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
+  const length = Math.hypot(dx, dy) * Math.cos(angle - snapped)
+  return { x: round(origin.x + Math.cos(snapped) * length), y: round(origin.y + Math.sin(snapped) * length) }
 }
 
 function normalizeDegrees(value: number): number {
