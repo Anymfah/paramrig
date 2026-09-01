@@ -1,123 +1,154 @@
 import { createVectorElement } from '@/vector/document'
+import { chains, chainToRun, commitWorld, extendNetwork, insertNodeOnSegment, newId, normalizeWorld, runPathData, worldNetwork, type AbsNetwork, type Box } from '@/vector/network'
 import type { VectorElement, VectorPoint } from '@/vector/types'
-import { elementFromWorldNodes, normalizeAbsoluteNodes, subpathFields, subpathRanges, worldNodes, type AbsoluteNode, type SubpathRange } from '@/vector/vectorPath'
 
+/**
+ * A pen session works on a world-space copy of one element's network. Anchors are appended from
+ * `current`; clicking another node connects to it; clicking the stroke's first node closes it.
+ */
 export type PenDraft = {
-  /** World-space nodes placed so far. */
-  nodes: AbsoluteNode[]
-  closed: boolean
-  /** Set when the draft extends an existing open sub-path. */
-  continue?: { id: string; end: 'start' | 'end'; subpath: number; element: VectorElement }
+  /** Element being extended, or null when the pen started on empty canvas. */
+  element: VectorElement | null
+  world: AbsNetwork
+  /** Node the next segment will start from, or null after closing. */
+  current: string | null
+  /** First node placed in this stroke; connecting back to it closes the stroke. */
+  start: string | null
+  /** Handle pulled out of `current` for the next segment. */
+  pendingOut?: VectorPoint
+  /** Last segment created, whose end handle the pointer drag adjusts. */
+  lastSegment: string | null
+  /** Number of nodes and segments before the session, to detect a no-op. */
+  baseline: { nodes: number; segments: number }
 }
 
 export function penStart(point: VectorPoint): PenDraft {
-  return { nodes: [{ anchor: point }], closed: false }
+  const { network, nodeId } = extendNetwork({ nodes: [], segments: [] }, null, point)
+  return { element: null, world: network, current: nodeId, start: nodeId, lastSegment: null, baseline: { nodes: 0, segments: 0 } }
+}
+
+/** Starts extending an existing element from one of its nodes. */
+export function penFromNode(element: VectorElement, nodeId: string): PenDraft {
+  const world = worldNetwork(element)
+  return { element, world, current: nodeId, start: nodeId, lastSegment: null, baseline: { nodes: world.nodes.length, segments: world.segments.length } }
+}
+
+/** Starts a disconnected stroke inside an existing element's network. */
+export function penFromPoint(element: VectorElement, point: VectorPoint): PenDraft {
+  const world = worldNetwork(element)
+  const { network, nodeId } = extendNetwork(world, null, point)
+  return { element, world: network, current: nodeId, start: nodeId, lastSegment: null, baseline: { nodes: world.nodes.length, segments: world.segments.length } }
+}
+
+/** Starts extending an element from a new node dropped on one of its segments. */
+export function penFromSegment(element: VectorElement, segmentId: string, t: number): PenDraft {
+  const world = worldNetwork(element)
+  const inserted = insertNodeOnSegment(element, world, segmentId, t)
+  const next = worldNetwork({ ...element, ...inserted, kind: 'path' })
+  return { element, world: next, current: inserted.nodeId, start: inserted.nodeId, lastSegment: null, baseline: { nodes: world.nodes.length, segments: world.segments.length } }
 }
 
 export function penAddAnchor(draft: PenDraft, point: VectorPoint): PenDraft {
-  return { ...draft, nodes: [...draft.nodes, { anchor: point }] }
+  const { network, nodeId, segmentId } = extendNetwork(draft.world, draft.current, point)
+  const world = draft.pendingOut && segmentId
+    ? { ...network, segments: network.segments.map((segment) => segment.id === segmentId ? { ...segment, ah: draft.pendingOut } : segment) }
+    : network
+  return { ...draft, world, current: nodeId, start: draft.current ? draft.start : nodeId, lastSegment: segmentId, pendingOut: undefined }
+}
+
+/** Connects the current node to an existing node. Reaching the stroke's first node closes it. */
+export function penConnect(draft: PenDraft, nodeId: string): PenDraft {
+  if (!draft.current) return { ...draft, current: nodeId, start: nodeId, pendingOut: undefined, lastSegment: null }
+  if (nodeId === draft.current) return draft
+  const exists = draft.world.segments.some((segment) => (segment.a === draft.current && segment.b === nodeId) || (segment.b === draft.current && segment.a === nodeId))
+  if (exists) return { ...draft, current: nodeId === draft.start ? null : nodeId, pendingOut: undefined, lastSegment: null }
+  const segmentId = newId()
+  const segment = { id: segmentId, a: draft.current, b: nodeId, ...(draft.pendingOut ? { ah: draft.pendingOut } : {}) }
+  const closes = nodeId === draft.start
+  return { ...draft, world: { ...draft.world, segments: [...draft.world.segments, segment] }, current: closes ? null : nodeId, lastSegment: segmentId, pendingOut: undefined }
+}
+
+/** Splits a segment of the draft and connects to the new node. */
+export function penConnectSegment(draft: PenDraft, segmentId: string, t: number): PenDraft {
+  const inserted = insertNodeOnSegment({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, draft.world, segmentId, t)
+  const world = worldNetwork({ ...inserted, rotation: 0, kind: 'path' })
+  return penConnect({ ...draft, world }, inserted.nodeId)
 }
 
 /**
- * Drags the out handle of node `index` to `point`. The in handle mirrors it unless `alt`
- * is held, in which case an existing in handle stays put (a cusp).
+ * Drags the handle at the end of the last segment; the mirrored handle is kept for the next segment.
+ * With `alt`, only the outgoing handle changes.
  */
-export function penDragHandle(draft: PenDraft, index: number, point: VectorPoint, alt = false): PenDraft {
-  const node = draft.nodes[index]
-  if (!node) return draft
-  const anchor = node.anchor
-  const moved = Math.hypot(point.x - anchor.x, point.y - anchor.y) > 0.5
-  const out = moved ? point : undefined
-  const mirrored = moved ? { x: anchor.x * 2 - point.x, y: anchor.y * 2 - point.y } : undefined
-  const next: AbsoluteNode = {
-    anchor,
-    ...(alt && node.in ? { in: node.in } : mirrored ? { in: mirrored } : {}),
-    ...(out ? { out } : {}),
-  }
-  const nodes = [...draft.nodes]
-  nodes[index] = next
-  return { ...draft, nodes }
+export function penDragHandle(draft: PenDraft, point: VectorPoint, alt = false): PenDraft {
+  if (!draft.current) return draft
+  const node = draft.world.nodes.find((item) => item.id === draft.current)!
+  const moved = Math.hypot(point.x - node.point.x, point.y - node.point.y) > 0.5
+  const mirrored = moved ? { x: node.point.x * 2 - point.x, y: node.point.y * 2 - point.y } : undefined
+  const segments = draft.world.segments.map((segment) => {
+    if (segment.id !== draft.lastSegment || alt) return segment
+    const key = segment.b === draft.current ? 'bh' : 'ah'
+    if (!mirrored) { const { [key]: _drop, ...rest } = segment; return rest }
+    return { ...segment, [key]: mirrored }
+  })
+  const nodes = draft.world.nodes.map((item) => item.id === draft.current ? { ...item, handles: alt ? 'independent' as const : 'mirrored' as const } : item)
+  return { ...draft, world: { nodes, segments }, pendingOut: moved ? point : undefined }
 }
 
 export function penRemoveLast(draft: PenDraft): PenDraft | null {
-  if (draft.nodes.length <= 1) return null
-  return { ...draft, nodes: draft.nodes.slice(0, -1) }
+  if (!draft.lastSegment) return draft.element ? null : null
+  const segment = draft.world.segments.find((item) => item.id === draft.lastSegment)
+  if (!segment) return draft
+  const segments = draft.world.segments.filter((item) => item.id !== draft.lastSegment)
+  const used = new Set(segments.flatMap((item) => [item.a, item.b]))
+  const previous = segment.a
+  const nodes = draft.world.nodes.filter((node) => used.has(node.id) || node.id === previous)
+  if (nodes.length === 0) return null
+  return { ...draft, world: { nodes, segments }, current: previous, lastSegment: null, pendingOut: undefined }
 }
 
-export function penClose(draft: PenDraft): PenDraft {
-  return { ...draft, closed: true }
-}
-
-/** Whether a click at `point` would close the path on its first anchor. */
 export function penCanClose(draft: PenDraft, point: VectorPoint, threshold: number): boolean {
-  if (draft.nodes.length < 3) return false
-  const first = draft.nodes[0]!.anchor
-  return Math.hypot(point.x - first.x, point.y - first.y) <= threshold
+  if (!draft.current || !draft.start || draft.start === draft.current) return false
+  const start = draft.world.nodes.find((node) => node.id === draft.start)
+  if (!start) return false
+  const placed = draft.world.segments.length - draft.baseline.segments
+  return placed >= 2 && Math.hypot(point.x - start.point.x, point.y - start.point.y) <= threshold
 }
 
-/** Starts a draft from an open sub-path so new anchors extend it from `end`. */
-export function penFromElement(element: VectorElement, end: 'start' | 'end', subpath = 0): PenDraft | null {
-  if (!element.vectorNodes || element.vectorNodes.length < 2) return null
-  const ranges = subpathRanges(element, element.vectorNodes.length)
-  const range = ranges[subpath]
-  if (!range || range.closed) return null
-  const nodes = worldNodes(element).slice(range.start, range.end)
-  const ordered = end === 'end' ? nodes : [...nodes].reverse().map((node) => ({ ...node, ...(node.out ? { in: node.out } : { in: undefined }), ...(node.in ? { out: node.in } : { out: undefined }) })).map(stripUndefined)
-  return { nodes: ordered, closed: false, continue: { id: element.id, end, subpath, element } }
-}
-
-function stripUndefined(node: AbsoluteNode): AbsoluteNode {
-  return { anchor: node.anchor, ...(node.in ? { in: node.in } : {}), ...(node.out ? { out: node.out } : {}), ...(node.handles ? { handles: node.handles } : {}), ...(node.radius ? { radius: node.radius } : {}) }
+/** Node of the draft near a point, if any. */
+export function penNodeAt(draft: PenDraft, point: VectorPoint, threshold: number): string | null {
+  const hit = draft.world.nodes.find((node) => Math.hypot(node.point.x - point.x, node.point.y - point.y) <= threshold)
+  return hit ? hit.id : null
 }
 
 export type PenStyle = Pick<VectorElement, 'fill' | 'stroke' | 'strokeWidth'>
 
-/** A new element for a fresh draft, or a geometry patch for a continued one. Returns null for a single lonely anchor. */
+/** A new element, a patch for the extended element, or null when nothing was drawn. */
 export function penCommit(draft: PenDraft, style?: Partial<PenStyle>): { element: VectorElement } | { id: string; patch: Partial<VectorElement> } | null {
-  if (draft.nodes.length < 2) return null
-  const built = elementFromWorldNodes(draft.nodes)
-  if (draft.continue) {
-    const source = draft.continue.element
-    const sourceNodes = source.vectorNodes ?? []
-    const world = worldNodes(source, sourceNodes)
-    const ranges = subpathRanges(source, sourceNodes.length)
-    const merged: AbsoluteNode[] = []
-    const nextRanges: SubpathRange[] = []
-    ranges.forEach((range, position) => {
-      const run = position === draft.continue!.subpath ? draft.nodes : world.slice(range.start, range.end)
-      const closed = position === draft.continue!.subpath ? draft.closed : range.closed
-      nextRanges.push({ start: merged.length, end: merged.length + run.length, closed })
-      merged.push(...run)
-    })
-    const box = normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, merged)
-    return { id: draft.continue.id, patch: { ...box, ...subpathFields(nextRanges), rotation: 0, kind: 'path' } }
+  const world = { ...draft.world, nodes: draft.world.nodes.filter((node) => draft.world.segments.some((segment) => segment.a === node.id || segment.b === node.id)) }
+  if (world.segments.length === 0) return null
+  if (draft.element) {
+    if (world.segments.length === draft.baseline.segments && world.nodes.length === draft.baseline.nodes) return null
+    const box: Box = { ...draft.element, rotation: draft.element.rotation }
+    const edit = commitWorld(box, world)
+    return { id: draft.element.id, patch: { ...edit, kind: 'path' } }
   }
-  const element = createVectorElement('path', built, { ...style, vectorNodes: built.vectorNodes, closed: draft.closed })
-  return { element }
+  const built = normalizeWorld(world)
+  return { element: createVectorElement('path', built, { ...style, network: built.network }) }
 }
 
-/** Path data for the placed segments plus the rubber-band segment towards the cursor. */
+/** Path data for what has been placed plus the rubber band towards the cursor. */
 export function penPreviewData(draft: PenDraft, cursor?: VectorPoint | null): string {
-  const nodes = draft.nodes
-  if (nodes.length === 0) return ''
-  const commands = [`M ${round(nodes[0]!.anchor.x)} ${round(nodes[0]!.anchor.y)}`]
-  for (let index = 1; index < nodes.length; index += 1) {
-    commands.push(segment(nodes[index - 1]!, nodes[index]!))
+  const runs = chains(draft.world).map((chain) => chainToRun(draft.world, chain))
+  const parts = runs.map(runPathData)
+  if (cursor && draft.current) {
+    const node = draft.world.nodes.find((item) => item.id === draft.current)
+    if (node) {
+      parts.push(draft.pendingOut
+        ? `M ${round(node.point.x)} ${round(node.point.y)} C ${round(draft.pendingOut.x)} ${round(draft.pendingOut.y)} ${round(cursor.x)} ${round(cursor.y)} ${round(cursor.x)} ${round(cursor.y)}`
+        : `M ${round(node.point.x)} ${round(node.point.y)} L ${round(cursor.x)} ${round(cursor.y)}`)
+    }
   }
-  if (draft.closed && nodes.length > 2) {
-    commands.push(segment(nodes[nodes.length - 1]!, nodes[0]!))
-    commands.push('Z')
-  } else if (cursor) {
-    commands.push(segment(nodes[nodes.length - 1]!, { anchor: cursor }))
-  }
-  return commands.join(' ')
-}
-
-function segment(from: AbsoluteNode, to: AbsoluteNode): string {
-  if (!from.out && !to.in) return `L ${round(to.anchor.x)} ${round(to.anchor.y)}`
-  const a = from.out ?? from.anchor
-  const b = to.in ?? to.anchor
-  return `C ${round(a.x)} ${round(a.y)} ${round(b.x)} ${round(b.y)} ${round(to.anchor.x)} ${round(to.anchor.y)}`
+  return parts.join(' ')
 }
 
 function round(value: number): number {

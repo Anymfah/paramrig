@@ -1,6 +1,6 @@
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import type { VectorElement, VectorGuide, VectorPoint } from '@/vector/types'
-import { neighbours, worldNodes } from '@/vector/vectorPath'
+import { worldNetwork } from '@/vector/network'
 
 export type SnapAxis = 'x' | 'y'
 export type SnapKind = 'edge' | 'center' | 'page' | 'guide' | 'node'
@@ -37,15 +37,16 @@ export function collectSnapTargets(
       if (element.parentId && excluded.has(element.parentId)) continue
       const bounds = selectionBounds([element])
       pushBounds(targets, bounds, 'edge', 'center')
-      if (options.nodes && element.vectorNodes && element.vectorNodes.length <= 512) {
-        const nodes = worldNodes(element, element.vectorNodes)
-        nodes.forEach((node, index) => {
-          pushPoint(targets, node.anchor)
-          const next = neighbours(element, nodes.length, index).next
-          if (next !== null && !node.out && !nodes[next]!.in) {
-            pushPoint(targets, { x: (node.anchor.x + nodes[next]!.anchor.x) / 2, y: (node.anchor.y + nodes[next]!.anchor.y) / 2 })
-          }
-        })
+      if (options.nodes && element.network && element.network.nodes.length <= 512) {
+        const world = worldNetwork(element)
+        const byId = new Map(world.nodes.map((node) => [node.id, node.point]))
+        for (const node of world.nodes) pushPoint(targets, node.point)
+        for (const segment of world.segments) {
+          if (segment.ah || segment.bh) continue
+          const a = byId.get(segment.a)!
+          const b = byId.get(segment.b)!
+          pushPoint(targets, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+        }
       }
     }
     if (page) {

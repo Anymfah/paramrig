@@ -1,7 +1,8 @@
-import { cornerRadii, rectangleNodes, roundCorners } from '@/vector/corners'
+import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
+import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNetwork, type AbsNetwork, type Run } from '@/vector/network'
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
+import { computeFaces, faceContainsPoint, loopToRun, type Face } from '@/vector/planar'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
-import { absoluteNodes, defaultVectorNodes, subpathRanges, type AbsoluteNode } from '@/vector/vectorPath'
 
 export type RenderDef =
   | { type: 'linearGradient'; id: string; x1: number; y1: number; x2: number; y2: number; stops: VectorGradientStop[] }
@@ -13,11 +14,9 @@ export type RenderDef =
 
 export type RenderLayer = {
   kind: 'fill' | 'stroke'
-  /** Path data for this layer (per-side strokes use their own). */
   d: string
   paint: string
   opacity: number
-  fillRule?: 'nonzero' | 'evenodd'
   strokeWidth?: number
   cap?: 'butt' | 'round' | 'square'
   join?: 'miter' | 'round' | 'bevel'
@@ -29,121 +28,113 @@ export type RenderLayer = {
 }
 
 export type RenderModel = {
-  /** Outline in local (unrotated) coordinates, corners applied. */
+  /** Stroke outline in local coordinates (every chain), used for hit testing. */
   d: string
+  /** Filled region path data (even-odd), empty when nothing is fillable. */
+  fillD: string
   transform: string
   opacity: number
   defs: RenderDef[]
   layers: RenderLayer[]
 }
 
-/** Outline nodes in local coordinates with corner radii expanded. */
-export function outlineNodes(element: VectorElement): { nodes: AbsoluteNode[]; ranges: Array<{ nodes: AbsoluteNode[]; closed: boolean }> } {
-  if (!element.vectorNodes && element.kind === 'rectangle') {
-    const nodes = rectangleNodes(element)
-    return { nodes, ranges: [{ nodes, closed: true }] }
+/** Local-space geometry of an element: chains for strokes and faces for fills, corners applied. */
+export function localGeometry(element: VectorElement): { network: AbsNetwork; strokeRuns: Run[]; fillRuns: Run[]; faces: Face[] } {
+  if (!element.network && element.kind === 'rectangle') {
+    const run: Run = { points: rectangleRun(element), closed: true }
+    return { network: localNetwork(element, defaultNetwork(element)), strokeRuns: [run], fillRuns: [run], faces: [] }
   }
-  const source = element.vectorNodes ?? defaultVectorNodes(element)
-  const absolute = absoluteNodes(element, source)
-  const ranges = subpathRanges(element, source.length).map((range) => {
-    const run = absolute.slice(range.start, range.end)
-    const rounded = run.some((node) => node.radius) ? roundCorners(run, range.closed, element.cornerSmoothing ?? 0) : run
-    return { nodes: rounded, closed: range.closed }
+  const network = localNetwork(element, defaultNetwork(element))
+  const smoothing = element.cornerSmoothing ?? 0
+  const strokeRuns = chains(network).map((chain) => {
+    const run = chainToRun(network, chain)
+    return { points: roundCorners(run.points, run.closed, smoothing), closed: run.closed }
   })
-  return { nodes: ranges.flatMap((range) => range.nodes), ranges }
+  const faces = computeFaces(network)
+  const off = new Set(element.regionsOff ?? [])
+  const fillRuns = faces.filter((face) => !off.has(face.key)).flatMap((face) => [face.outer, ...face.holes].map((loop) => {
+    const run = loopToRun(network, loop)
+    return { points: roundCorners(run.points, true, smoothing), closed: true }
+  }))
+  return { network, strokeRuns, fillRuns, faces }
 }
 
-/** Path data for the element outline in local coordinates. */
-export function outlinePathData(element: VectorElement): string {
-  return outlineNodes(element).ranges.map((range) => runPathData(range.nodes, range.closed)).join(' ')
-}
-
-export function runPathData(nodes: AbsoluteNode[], closed: boolean): string {
-  if (!nodes.length) return ''
-  const commands = [`M ${round(nodes[0]!.anchor.x)} ${round(nodes[0]!.anchor.y)}`]
-  const segments = closed ? nodes.length : nodes.length - 1
-  for (let step = 0; step < segments; step += 1) {
-    const current = nodes[step]!
-    const next = nodes[(step + 1) % nodes.length]!
-    if (current.out || next.in) {
-      const a = current.out ?? current.anchor
-      const b = next.in ?? next.anchor
-      commands.push(`C ${round(a.x)} ${round(a.y)} ${round(b.x)} ${round(b.y)} ${round(next.anchor.x)} ${round(next.anchor.y)}`)
-    } else {
-      commands.push(`L ${round(next.anchor.x)} ${round(next.anchor.y)}`)
-    }
+/** Faces of an element in world coordinates with a hit test, for the paint bucket. */
+export function worldFaces(element: VectorElement): { network: AbsNetwork; faces: Face[]; hit: (point: { x: number; y: number }) => Face | null } {
+  const network = worldNetwork(element)
+  const faces = computeFaces(network)
+  return {
+    network,
+    faces,
+    hit: (point) => {
+      const candidates = faces.filter((face) => faceContainsPoint(network, face, point))
+      return candidates.sort((a, b) => a.area - b.area)[0] ?? null
+    },
   }
-  if (closed) commands.push('Z')
-  return commands.join(' ')
+}
+
+export function outlinePathData(element: VectorElement): string {
+  return localGeometry(element).strokeRuns.map(runPathData).join(' ')
 }
 
 /** Builds paint layers and the defs they need. `prefix` keeps ids unique per canvas or export. */
 export function renderModel(element: VectorElement, prefix: string): RenderModel {
   const defs: RenderDef[] = []
   const layers: RenderLayer[] = []
-  const d = outlinePathData(element)
+  const geometry = localGeometry(element)
+  const d = geometry.strokeRuns.map(runPathData).join(' ')
+  const fillD = geometry.fillRuns.map(runPathData).join(' ')
   const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
   const transform = `rotate(${element.rotation} ${round(center.x)} ${round(center.y)})`
   const key = `${prefix}-${element.id}`
   const bounds = { x: element.x, y: element.y, width: element.width, height: element.height }
 
-  fillsOf(element).forEach((paint, index) => {
-    if (!paint.visible || paint.opacity <= 0) return
-    const reference = paintReference(paint, `${key}-fill-${index}`, bounds, defs)
-    if (!reference) return
-    layers.push({ kind: 'fill', d, paint: reference, opacity: paint.opacity, fillRule: element.fillRule })
-  })
+  if (fillD) {
+    fillsOf(element).forEach((paint, index) => {
+      if (!paint.visible || paint.opacity <= 0) return
+      const reference = paintReference(paint, `${key}-fill-${index}`, bounds, defs)
+      if (!reference) return
+      layers.push({ kind: 'fill', d: fillD, paint: reference, opacity: paint.opacity })
+    })
+  }
 
   const strokes = strokesOf(element)
-  if (element.strokeWidth > 0 && strokes.length) {
+  if (element.strokeWidth > 0 && strokes.length && d) {
     const align = element.strokeAlign ?? 'center'
-    const width = align === 'center' ? element.strokeWidth : element.strokeWidth * 2
+    const width = align === 'center' || !fillD ? element.strokeWidth : element.strokeWidth * 2
     let clipPath: string | undefined
     let mask: string | undefined
-    if (align === 'inside') {
+    if (align === 'inside' && fillD) {
       const id = `${key}-inside`
-      defs.push({ type: 'clipPath', id, d })
+      defs.push({ type: 'clipPath', id, d: fillD })
       clipPath = `url(#${id})`
-    } else if (align === 'outside') {
+    } else if (align === 'outside' && fillD) {
       const id = `${key}-outside`
       const pad = element.strokeWidth * 2 + 2
-      defs.push({ type: 'mask', id, d, x: bounds.x - pad, y: bounds.y - pad, width: bounds.width + pad * 2, height: bounds.height + pad * 2 })
+      defs.push({ type: 'mask', id, d: fillD, x: bounds.x - pad, y: bounds.y - pad, width: bounds.width + pad * 2, height: bounds.height + pad * 2 })
       mask = `url(#${id})`
     }
     const dash = element.strokeDash && element.strokeDash[0] > 0 ? `${round(element.strokeDash[0])} ${round(Math.max(0, element.strokeDash[1]))}` : undefined
-    const strokeD = element.kind === 'rectangle' && !element.vectorNodes && element.strokeSides && !cornerRadii(element).some(Boolean)
+    const strokeD = element.kind === 'rectangle' && !element.network && element.strokeSides && !cornerRadii(element).some(Boolean)
       ? rectangleSides(element)
       : d
-    if (!strokeD) return { d, transform, opacity: element.opacity, defs, layers }
+    const hasOpenEnd = geometry.strokeRuns.some((run) => !run.closed)
     strokes.forEach((paint, index) => {
       if (!paint.visible || paint.opacity <= 0) return
       const reference = paintReference(paint, `${key}-stroke-${index}`, bounds, defs)
       if (!reference) return
       const color = paint.type === 'solid' && paint.color ? paint.color : summaryColor([paint])
-      const markerStart = element.strokeArrowStart && element.strokeArrowStart !== 'none' && element.vectorNodes
+      const markerStart = hasOpenEnd && element.strokeArrowStart && element.strokeArrowStart !== 'none'
         ? marker(defs, `${key}-arrow-start-${index}`, element.strokeArrowStart, color, false)
         : undefined
-      const markerEnd = element.strokeArrowEnd && element.strokeArrowEnd !== 'none' && element.vectorNodes
+      const markerEnd = hasOpenEnd && element.strokeArrowEnd && element.strokeArrowEnd !== 'none'
         ? marker(defs, `${key}-arrow-end-${index}`, element.strokeArrowEnd, color, true)
         : undefined
-      layers.push({
-        kind: 'stroke',
-        d: strokeD,
-        paint: reference,
-        opacity: paint.opacity,
-        strokeWidth: width,
-        cap: element.strokeCap ?? 'butt',
-        join: element.strokeJoin ?? 'miter',
-        dash,
-        clipPath,
-        mask,
-        markerStart,
-        markerEnd,
-      })
+      layers.push({ kind: 'stroke', d: strokeD, paint: reference, opacity: paint.opacity, strokeWidth: width, cap: element.strokeCap ?? 'butt', join: element.strokeJoin ?? 'miter', dash, clipPath, mask, markerStart, markerEnd })
     })
   }
 
-  return { d, transform, opacity: element.opacity, defs, layers }
+  return { d, fillD, transform, opacity: element.opacity, defs, layers }
 }
 
 function marker(defs: RenderDef[], id: string, shape: Exclude<VectorArrowhead, 'none'>, color: string, end: boolean): string {
@@ -171,7 +162,6 @@ function paintReference(paint: VectorPaint, id: string, bounds: { x: number; y: 
   return `url(#${id})`
 }
 
-/** Straight rectangle sides that carry a stroke, as open path data. */
 function rectangleSides(element: VectorElement): string {
   const sides = element.strokeSides!
   const left = element.x
@@ -213,9 +203,9 @@ export function defsToSvg(defs: RenderDef[]): string {
         return `<pattern id="${def.id}" patternUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(size)}" height="${round(height)}"><image href="${def.image}" x="0" y="0" width="${round(size)}" height="${round(height)}" preserveAspectRatio="${aspect}"/></pattern>`
       }
       case 'clipPath':
-        return `<clipPath id="${def.id}"><path d="${def.d}"/></clipPath>`
+        return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
       case 'mask':
-        return `<mask id="${def.id}" maskUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}"><rect x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}" fill="#fff"/><path d="${def.d}" fill="#000"/></mask>`
+        return `<mask id="${def.id}" maskUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}"><rect x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}" fill="#fff"/><path d="${def.d}" fill="#000" fill-rule="evenodd"/></mask>`
       case 'marker': {
         const shape = markerShape(def.shape)
         return `<marker id="${def.id}" markerUnits="strokeWidth" markerWidth="${shape.size}" markerHeight="${shape.size}" refX="${shape.refX}" refY="${shape.size / 2}" orient="${def.end ? 'auto' : 'auto-start-reverse'}"><path d="${shape.d}" fill="${shape.fill ? def.color : 'none'}" stroke="${def.color}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></marker>`
@@ -240,7 +230,7 @@ export function layersToSvg(model: RenderModel, id: string): string {
 /** Attribute bag for a layer in React prop names. */
 export function layerAttributes(layer: RenderLayer): Record<string, string | number> {
   if (layer.kind === 'fill') {
-    return { fill: layer.paint, fillOpacity: layer.opacity, ...(layer.fillRule === 'evenodd' ? { fillRule: 'evenodd' } : {}), stroke: 'none' }
+    return { fill: layer.paint, fillOpacity: layer.opacity, fillRule: 'evenodd', stroke: 'none' }
   }
   return {
     fill: 'none',

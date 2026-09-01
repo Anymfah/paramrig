@@ -1,5 +1,7 @@
 import type { VectorPoint } from '@/vector/types'
-import type { AbsoluteNode } from '@/vector/vectorPath'
+import type { RunPoint } from '@/vector/network'
+
+type AbsoluteNode = RunPoint
 
 /** Ramer–Douglas–Peucker simplification with a distance tolerance in document units. */
 export function simplifyPolyline(points: VectorPoint[], tolerance: number): VectorPoint[] {

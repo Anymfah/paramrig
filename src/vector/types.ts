@@ -1,4 +1,4 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'rectangle' | 'ellipse'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse'
 
 export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group'
 
@@ -6,19 +6,30 @@ export type VectorPoint = { x: number; y: number }
 
 export type VectorHandleMode = 'mirrored' | 'asymmetric' | 'independent'
 
-export type VectorNode = VectorPoint & {
-  in?: VectorPoint
-  out?: VectorPoint
-  /** How dragging one handle affects the other. Defaults to `mirrored` when both handles exist. */
-  handles?: VectorHandleMode
-  /** Corner radius applied to this anchor when it is a corner, in document units. */
+/** A vector network node in normalised element-box coordinates. */
+export type VectorNetworkNode = {
+  id: string
+  x: number
+  y: number
+  /** Corner radius, applied when the node joins exactly two segments without handles. */
   radius?: number
+  /** Handle mirroring between the two handles of a two-segment node. */
+  handles?: VectorHandleMode
 }
 
-/** A run of `vectorNodes` starting at `start` (inclusive) up to the next sub-path. */
-export type VectorSubpath = { start: number; closed: boolean }
+/** A cubic segment between two nodes; `ah`/`bh` are handle offsets from node a / node b. */
+export type VectorNetworkSegment = {
+  id: string
+  a: string
+  b: string
+  ah?: VectorPoint
+  bh?: VectorPoint
+}
 
-export type VectorFillRule = 'nonzero' | 'evenodd'
+export type VectorNetwork = {
+  nodes: VectorNetworkNode[]
+  segments: VectorNetworkSegment[]
+}
 
 export type VectorGradientStop = { t: number; color: string }
 
@@ -76,12 +87,10 @@ export type VectorElement = {
   opacity: number
   visible: boolean
   locked: boolean
-  vectorNodes?: VectorNode[]
-  /** Paths only. `false` leaves the last segment open; defaults to `true`. Ignored when `subpaths` is set. */
-  closed?: boolean
-  /** Sub-path boundaries inside `vectorNodes`; absent means one sub-path. */
-  subpaths?: VectorSubpath[]
-  fillRule?: VectorFillRule
+  /** Editable geometry as a graph; primitives without one use their implicit outline. */
+  network?: VectorNetwork
+  /** Face keys whose fill is switched off with the paint bucket. */
+  regionsOff?: string[]
   /** Group membership. Descendants sit immediately before their group in `elements`. */
   parentId?: string
 }

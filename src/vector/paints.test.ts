@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fillsOf, fillsPatch, hasVisiblePaint, sanitizePaints, solidPaint, strokesPatch, summaryColor } from '@/vector/paints'
-import { cornerRadii, rectangleNodes, roundCorners } from '@/vector/corners'
+import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
 
 describe('paint layers', () => {
   it('synthesises a layer from the legacy colour and summarises lists back', () => {
@@ -35,12 +35,12 @@ describe('corner radius', () => {
   it('clamps radii to half the shortest side and expands them into arcs', () => {
     expect(cornerRadii({ cornerRadius: 80, width: 100, height: 60 })).toEqual([30, 30, 30, 30])
     expect(cornerRadii({ cornerRadius: [10, 0, 5, 0], width: 100, height: 60 })).toEqual([10, 0, 5, 0])
-    const nodes = rectangleNodes({ x: 0, y: 0, width: 100, height: 60, cornerRadius: 10 })
+    const nodes = rectangleRun({ x: 0, y: 0, width: 100, height: 60, cornerRadius: 10 })
     expect(nodes).toHaveLength(8)
     expect(nodes[0]!.anchor).toEqual({ x: 0, y: 10 })
     expect(nodes[1]!.anchor).toEqual({ x: 10, y: 0 })
     expect(nodes[0]!.out!.y).toBeCloseTo(10 - 10 * 0.5522847498)
-    const plain = rectangleNodes({ x: 0, y: 0, width: 100, height: 60 })
+    const plain = rectangleRun({ x: 0, y: 0, width: 100, height: 60 })
     expect(plain).toHaveLength(4)
     expect(plain[0]).toEqual({ anchor: { x: 0, y: 0 } })
   })
@@ -51,7 +51,7 @@ describe('corner radius', () => {
     expect(nodes[0]).toEqual({ anchor: { x: 0, y: 0 } })
     expect(nodes[1]!.anchor).toEqual({ x: 90, y: 0 })
     expect(nodes[2]!.anchor).toEqual({ x: 100, y: 10 })
-    const smooth = rectangleNodes({ x: 0, y: 0, width: 100, height: 100, cornerRadius: 20, cornerSmoothing: 1 })
+    const smooth = rectangleRun({ x: 0, y: 0, width: 100, height: 100, cornerRadius: 20, cornerSmoothing: 1 })
     expect(smooth[0]!.anchor.y).toBeGreaterThan(20)
   })
 })

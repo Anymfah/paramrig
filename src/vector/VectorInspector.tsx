@@ -11,32 +11,31 @@ import { PaintList } from '@/vector/VectorPaintPanel'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch } from '@/vector/paints'
 import { cornerRadii } from '@/vector/corners'
 import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation } from '@/vector/booleans'
-import { subpathRanges as rangesOf } from '@/vector/vectorPath'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
-import { isSmoothNode, placeNodeAt, setHandleMode, toggleNodeType } from '@/vector/bezier'
-import { breakSegment, combineElements, isEndpoint, joinNodes, neighbours, separateSubpaths, setClosed, splitAtNode, subpathOfNode, subpathRanges } from '@/vector/subpaths'
 import { createVectorElement } from '@/vector/document'
+import { components, connectNodes, mergeNetworks, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
+import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { scaleElementsToBounds } from '@/vector/transform'
 import { leafElements } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorTool } from '@/vector/types'
-import { defaultVectorNodes, handleMode, nodeWorldPosition } from '@/vector/vectorPath'
+
 import type { DocumentPatch } from '@/vector/useVectorDocument'
 
 type VectorInspectorProps = {
   document: VectorDocument
   tool: VectorTool
   selectedElements: VectorElement[]
-  selectedNodeIndices: number[]
+  selectedNodeIds: string[]
   onRenameDocument: (name: string) => void
   onUpdateDocument: (patch: DocumentPatch, record?: boolean) => void
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
   onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onSelectIds: (ids: string[]) => void
-  onSelectNodes: (indices: number[]) => void
+  onSelectNodes: (ids: string[]) => void
   historyDepth: number
   onSaveVersion: (name: string) => void
   onRestoreVersion: (id: string) => void
@@ -50,7 +49,7 @@ export function VectorInspector({
   document,
   tool,
   selectedElements,
-  selectedNodeIndices,
+  selectedNodeIds,
   onRenameDocument,
   onUpdateDocument,
   onUpdate,
@@ -73,7 +72,7 @@ export function VectorInspector({
     if (!geometry) return
     const first = sources[0]!
     const result: VectorElement = {
-      ...createVectorElement('path', geometry, { name, fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, vectorNodes: geometry.vectorNodes, closed: geometry.closed, subpaths: geometry.subpaths, fillRule: 'evenodd' }),
+      ...createVectorElement('path', geometry, { name, fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, network: geometry.network }),
       opacity: first.opacity,
       ...(first.fills ? { fills: first.fills } : {}),
       ...(first.strokes ? { strokes: first.strokes } : {}),
@@ -108,7 +107,7 @@ export function VectorInspector({
     }
     const geometry = flattenElement(target)
     if (!geometry) return
-    onUpdate(target.id, { ...geometry, kind: 'path', rotation: 0, fillRule: undefined })
+    onUpdate(target.id, { ...geometry, kind: 'path', rotation: 0, regionsOff: undefined })
   }
   const outline = () => {
     const target = single
@@ -131,16 +130,14 @@ export function VectorInspector({
       strokeArrowEnd: undefined,
       strokeSides: undefined,
       cornerRadius: undefined,
-      fillRule: 'evenodd',
+      regionsOff: undefined,
     })
   }
   const combine = () => {
     if (combinable.length < 2) return
-    const nodesOf = (element: VectorElement) => element.vectorNodes ?? defaultVectorNodes(element)
-    const merged = combineElements(combinable, nodesOf)
-    if (!merged) return
+    const merged = normalizeWorld(mergeNetworks(combinable.map((element) => worldNetwork(element))))
     const first = combinable[0]!
-    const result: VectorElement = { ...createVectorElement('path', merged, { name: 'Path', fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, vectorNodes: merged.vectorNodes, closed: merged.closed, subpaths: merged.subpaths, fillRule: merged.fillRule }), opacity: first.opacity, ...(first.parentId ? { parentId: first.parentId } : {}) }
+    const result: VectorElement = { ...createVectorElement('path', merged, { name: 'Path', fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, network: merged.network }), opacity: first.opacity, ...(first.parentId ? { parentId: first.parentId } : {}) }
     const ids = new Set(combinable.map((element) => element.id))
     onEditElements((elements) => {
       const anchor = Math.max(...combinable.map((element) => elements.findIndex((item) => item.id === element.id)))
@@ -151,6 +148,7 @@ export function VectorInspector({
     })
     onSelectIds([result.id])
   }
+
   const single = selectedElements.length === 1 ? selectedElements[0]! : null
   const leaves = leafElements(document.elements, selectedElements.map((element) => element.id))
   const bounds = leaves.length ? selectionBounds(leaves) : null
@@ -300,7 +298,7 @@ export function VectorInspector({
             </section>
             <AppearancePanel elements={selectedElements} leaves={leaves} onUpdate={onUpdate} onUpdateElements={onUpdateElements} gesture={gesture} />
             {single && single.kind !== 'group' ? (
-              <PathPanel element={single} tool={tool} selectedNodeIndices={selectedNodeIndices} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
+              <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
             ) : null}
             {combinable.length > 1 ? (
               <section className="vector-panel" aria-label="Paths">
@@ -320,11 +318,11 @@ export function VectorInspector({
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
-            ) : single && single.kind !== 'group' && (single.strokeWidth > 0 || (single.vectorNodes && rangesOf(single, single.vectorNodes.length).length > 1)) ? (
+            ) : single && single.kind !== 'group' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
                   {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" onClick={outline}>Outline stroke</Button> : null}
-                  {single.vectorNodes && rangesOf(single, single.vectorNodes.length).length > 1 ? <Button variant="quiet" size="sm" onClick={flatten}>Flatten</Button> : null}
+                  {single.network ? <Button variant="quiet" size="sm" onClick={flatten}>Flatten</Button> : null}
                 </div>
               </section>
             ) : null}
@@ -360,8 +358,8 @@ function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture
   const strokes = strokesOf(first)
   const fillsMixed = !same('fill') || targets.some((element) => JSON.stringify(element.fills) !== JSON.stringify(first.fills))
   const strokesMixed = !same('stroke') || targets.some((element) => JSON.stringify(element.strokes) !== JSON.stringify(first.strokes))
-  const isRectangle = single?.kind === 'rectangle' && !single.vectorNodes
-  const isPath = !!single?.vectorNodes
+  const isRectangle = single?.kind === 'rectangle' && !single.network
+  const isPath = !!single?.network
   const radii: [number, number, number, number] = single ? cornerRadii(single) : [0, 0, 0, 0]
   const uniformRadius = typeof single?.cornerRadius !== 'object'
   const sides = single?.strokeSides ?? { top: true, right: true, bottom: true, left: true }
@@ -438,44 +436,40 @@ function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture
 
 const ARROW_OPTIONS = [{ value: 'none', label: 'None' }, { value: 'arrow', label: 'Arrow' }, { value: 'triangle', label: 'Triangle' }, { value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }, { value: 'bar', label: 'Bar' }]
 
-function PathPanel({ element, tool, selectedNodeIndices, onUpdate, onEditElements, onSelectIds, onSelectNodes, gesture }: {
+function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, onSelectIds, onSelectNodes, gesture }: {
   element: VectorElement
   tool: VectorTool
-  selectedNodeIndices: number[]
+  selectedNodeIds: string[]
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onSelectIds: (ids: string[]) => void
-  onSelectNodes: (indices: number[]) => void
+  onSelectNodes: (ids: string[]) => void
   gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
-  const nodes = element.vectorNodes ?? defaultVectorNodes(element)
-  const edited = !!element.vectorNodes
-  const ranges = subpathRanges(element, nodes.length)
-  const activeIndex = tool === 'node' && selectedNodeIndices.length === 1 ? selectedNodeIndices[0]! : null
-  const active = activeIndex === null ? null : nodes[activeIndex] ?? null
-  const activeWorld = active ? nodeWorldPosition(element, active) : null
-  const activeRange = activeIndex === null ? null : subpathOfNode(element, nodes.length, activeIndex)
-  const closed = activeRange ? activeRange.closed : ranges.every((range) => range.closed)
-  const closeTarget = activeRange ?? ranges[0]!
-  const canClose = closeTarget.end - closeTarget.start >= 3
-  const applyEdit = (edit: ReturnType<typeof setClosed>, selection?: number[]) => {
+  const world = worldNetwork(element)
+  const edited = !!element.network
+  const faces = computeFaces(world)
+  const off = new Set(element.regionsOff ?? [])
+  const filled = faces.filter((face) => !off.has(face.key)).length
+  const activeId = tool === 'node' && selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
+  const active = activeId ? world.nodes.find((node) => node.id === activeId) ?? null : null
+  const incident = active ? world.segments.filter((segment) => segment.a === active.id || segment.b === active.id) : []
+  const smooth = active ? incident.some((segment) => (segment.a === active.id && segment.ah) || (segment.b === active.id && segment.bh)) : false
+  const pair = selectedNodeIds.length === 2 ? selectedNodeIds : null
+  const canConnect = tool === 'node' && !!pair && !world.segments.some((segment) => (segment.a === pair[0] && segment.b === pair[1]) || (segment.a === pair[1] && segment.b === pair[0]))
+  const groups = components(world)
+  const applyEdit = (edit: ReturnType<typeof toggleNodeSmooth> | null, selection?: string[]) => {
     if (!edit) return
     onUpdate(element.id, { ...edit, kind: 'path' })
     if (selection) onSelectNodes(selection)
   }
-  const pair = selectedNodeIndices.length === 2 ? [...selectedNodeIndices].sort((a, b) => a - b) as [number, number] : null
-  const canJoin = tool === 'node' && !!pair && isEndpoint(element, nodes.length, pair[0]) !== null && isEndpoint(element, nodes.length, pair[1]) !== null
-  const adjacent = pair ? (neighbours(element, nodes.length, pair[0]).next === pair[1] ? pair[0] : neighbours(element, nodes.length, pair[1]).next === pair[0] ? pair[1] : null) : null
-  const canBreak = tool === 'node' && adjacent !== null
-  const canSplit = tool === 'node' && activeIndex !== null && activeRange !== null && (activeRange.closed || (activeIndex > activeRange.start && activeIndex < activeRange.end - 1))
   const separate = () => {
-    const parts = separateSubpaths(element, nodes)
-    if (parts.length < 2) return
-    const created = parts.map((part, index) => ({
-      ...createVectorElement('path', part, { name: `${element.name} ${index + 1}`, fill: element.fill, stroke: element.stroke, strokeWidth: element.strokeWidth, vectorNodes: part.vectorNodes, closed: part.closed }),
-      opacity: element.opacity,
-      ...(element.parentId ? { parentId: element.parentId } : {}),
-    }))
+    if (groups.length < 2) return
+    const created = groups.map((ids, index) => {
+      const subset: AbsNetwork = { nodes: world.nodes.filter((node) => ids.includes(node.id)), segments: world.segments.filter((segment) => ids.includes(segment.a)) }
+      const built = normalizeWorld(subset)
+      return { ...createVectorElement('path', built, { name: `${element.name} ${index + 1}`, fill: element.fill, stroke: element.stroke, strokeWidth: element.strokeWidth, network: built.network }), opacity: element.opacity, ...(element.parentId ? { parentId: element.parentId } : {}) }
+    })
     onEditElements((elements) => {
       const at = elements.findIndex((item) => item.id === element.id)
       if (at < 0) return elements
@@ -486,71 +480,61 @@ function PathPanel({ element, tool, selectedNodeIndices, onUpdate, onEditElement
   return (
     <section className="vector-panel" aria-label="Path">
       <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Path</h2>
-        <span className="vector-panel__meta">{nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}{ranges.length > 1 ? ` · ${ranges.length} sub-paths` : ''}{edited ? '' : ' · primitive'}</span>
+        <h2 className="vector-panel__title">Network</h2>
+        <span className="vector-panel__meta">{world.nodes.length} nodes · {world.segments.length} segments{edited ? '' : ' · primitive'}</span>
       </div>
-      {edited || element.kind === 'path' || nodes.length >= 3 ? (
-        <SwitchField label={activeRange && ranges.length > 1 ? 'Closed sub-path' : 'Closed'} checked={closed} disabled={!closed && !canClose} onChange={(next) => {
-          const edit = setClosed({ ...element, vectorNodes: nodes }, nodes, activeIndex, next)
-          if (edit) onUpdate(element.id, { ...edit, kind: 'path' })
-          else if (!edited) onUpdate(element.id, { kind: 'path', vectorNodes: nodes, closed: next ? undefined : false })
-        }} />
-      ) : null}
-      {!closed && !canClose ? <p className="vector-panel__hint">A path needs three nodes before it can close.</p> : null}
-      {ranges.length > 1 ? (
-        <SelectField
-          label="Fill rule"
-          value={element.fillRule === 'evenodd' ? 'evenodd' : 'nonzero'}
-          options={[{ value: 'nonzero', label: 'Non-zero' }, { value: 'evenodd', label: 'Even-odd' }]}
-          onChange={(value) => onUpdate(element.id, { fillRule: value === 'evenodd' ? 'evenodd' : undefined })}
-        />
-      ) : null}
-      {tool === 'node' && (canJoin || canBreak || canSplit) ? (
-        <div className="vector-panel__actions">
-          {canJoin ? <Button variant="quiet" size="sm" data-action="join" onClick={() => applyEdit(joinNodes(element, nodes, pair![0], pair![1]), [])}>Join · ⌘J</Button> : null}
-          {canSplit ? <Button variant="quiet" size="sm" onClick={() => applyEdit(splitAtNode(element, nodes, activeIndex!), [])}>Split at node</Button> : null}
-          {canBreak ? <Button variant="quiet" size="sm" onClick={() => applyEdit(breakSegment(element, nodes, adjacent!), [])}>Break segment</Button> : null}
-        </div>
-      ) : null}
-      {ranges.length > 1 && tool !== 'node' ? (
-        <div className="vector-panel__actions">
-          <Button variant="quiet" size="sm" onClick={separate}>Separate sub-paths</Button>
-        </div>
-      ) : null}
-      {active && activeWorld && activeIndex !== null ? (
+      <div className="vector-panel__row">
+        <span className="vector-panel__meta">{faces.length === 0 ? 'No closed region' : `${filled} of ${faces.length} ${faces.length === 1 ? 'region' : 'regions'} filled`}</span>
+        <span className="vector-panel__meta">{groups.length > 1 ? `${groups.length} parts` : ''}</span>
+      </div>
+      {faces.length > 0 ? <p className="vector-panel__hint">Use the paint bucket (B) to switch regions on or off.</p> : null}
+      {active && activeId ? (
         <>
           <div className="vector-panel__row">
-            <span className="vector-panel__meta">Node {activeIndex + 1}</span>
+            <span className="vector-panel__meta">Node · {incident.length} {incident.length === 1 ? 'segment' : 'segments'}</span>
           </div>
           <div className="vector-field-grid">
-            <NumberField label="X" value={round(activeWorld.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => onUpdate(element.id, placeNodeAt(element, nodes, activeIndex, { x, y: activeWorld.y }))} {...gesture} />
-            <NumberField label="Y" value={round(activeWorld.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => onUpdate(element.id, placeNodeAt(element, nodes, activeIndex, { x: activeWorld.x, y }))} {...gesture} />
+            <NumberField label="X" value={round(active.point.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => applyEdit(moveNodes(element, world, [activeId], { x: x - active.point.x, y: 0 }))} {...gesture} />
+            <NumberField label="Y" value={round(active.point.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => applyEdit(moveNodes(element, world, [activeId], { x: 0, y: y - active.point.y }))} {...gesture} />
           </div>
-          {!isSmoothNode(active) ? (
-            <NumberField label="Corner radius" value={active.radius ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { vectorNodes: nodes.map((node, index) => index === activeIndex ? { ...node, radius: radius > 0 ? radius : undefined } : node) })} {...gesture} />
-          ) : null}
           <SelectField
             label="Handles"
-            value={isSmoothNode(active) ? handleMode(active) : 'corner'}
+            value={smooth ? (active.handles ?? 'mirrored') : 'corner'}
             options={[{ value: 'corner', label: 'Corner' }, { value: 'mirrored', label: 'Mirror' }, { value: 'asymmetric', label: 'Angle' }, { value: 'independent', label: 'Free' }]}
             onChange={(value) => {
               if (value === 'corner') {
-                if (isSmoothNode(active)) onUpdate(element.id, toggleNodeType(element, nodes, activeIndex))
-              } else if (!isSmoothNode(active)) {
-                const smooth = toggleNodeType(element, nodes, activeIndex)
-                onUpdate(element.id, setHandleMode({ ...element, ...smooth }, smooth.vectorNodes, activeIndex, value as VectorElement['vectorNodes'] extends Array<infer Node> ? Node extends { handles?: infer Mode } ? Mode : never : never))
-              } else {
-                onUpdate(element.id, setHandleMode(element, nodes, activeIndex, value as 'mirrored' | 'asymmetric' | 'independent'))
+                if (smooth) applyEdit(toggleNodeSmooth(element, world, activeId), [activeId])
+                return
               }
-              onSelectNodes([activeIndex])
+              const mode = value as 'mirrored' | 'asymmetric' | 'independent'
+              if (!smooth) {
+                const smoothed = toggleNodeSmooth(element, world, activeId)
+                const next = { ...element, ...smoothed, kind: 'path' as const }
+                applyEdit(setHandleMode(next, worldNetwork(next), activeId, mode), [activeId])
+              } else {
+                applyEdit(setHandleMode(element, world, activeId, mode), [activeId])
+              }
             }}
           />
+          {!smooth && incident.length === 2 ? (
+            <NumberField label="Corner radius" value={active.radius ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { kind: 'path', network: { ...(element.network ?? normalizeWorld(world).network), nodes: (element.network ?? normalizeWorld(world).network).nodes.map((node) => node.id === activeId ? { ...node, radius: radius > 0 ? radius : undefined } : node) } })} {...gesture} />
+          ) : null}
         </>
       ) : tool === 'node' ? (
-        <p className="vector-panel__hint">{selectedNodeIndices.length > 1 ? `${selectedNodeIndices.length} nodes selected` : 'Select a node to edit its position. Double-click a node to toggle corner and smooth; click a segment to add a node.'}</p>
+        <p className="vector-panel__hint">{selectedNodeIds.length > 1 ? `${selectedNodeIds.length} nodes selected` : 'Select a node to edit it. Double-click a node to toggle corner and smooth; double-click a segment to add a node; ⌘-drag a segment to bend it.'}</p>
       ) : (
         <p className="vector-panel__hint">Press Enter or double-click the shape to edit nodes.</p>
       )}
+      {tool === 'node' && canConnect ? (
+        <div className="vector-panel__actions">
+          <Button variant="quiet" size="sm" data-action="join" onClick={() => applyEdit(connectNodes(element, world, pair![0]!, pair![1]!), [])}>Connect · ⌘J</Button>
+        </div>
+      ) : null}
+      {groups.length > 1 && tool !== 'node' ? (
+        <div className="vector-panel__actions">
+          <Button variant="quiet" size="sm" onClick={separate}>Separate parts</Button>
+        </div>
+      ) : null}
     </section>
   )
 }
@@ -564,7 +548,7 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
 }
 
 function kindLabel(element: VectorElement): string {
-  if (element.vectorNodes && element.kind !== 'path') return `${element.kind === 'ellipse' ? 'Ellipse' : 'Rectangle'} · edited`
+  if (element.network && element.kind !== 'path') return `${element.kind === 'ellipse' ? 'Ellipse' : 'Rectangle'} · edited`
   switch (element.kind) {
     case 'rectangle': return 'Rectangle'
     case 'ellipse': return 'Ellipse'

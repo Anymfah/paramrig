@@ -1,8 +1,9 @@
 import paper from 'paper/dist/paper-core'
-import { outlineNodes, runPathData } from '@/vector/render'
-import type { VectorElement, VectorPoint } from '@/vector/types'
-import { normalizeAbsoluteNodes, subpathFields, type AbsoluteNode, type SubpathRange } from '@/vector/vectorPath'
 import { rotatePoint } from '@/vector/directTransform'
+import { chains, chainToRun, networkFromRuns, normalizeWorld, worldNetwork, type Run, type RunPoint } from '@/vector/network'
+import { computeFaces, loopToRun } from '@/vector/planar'
+import { rectangleRun, roundCorners } from '@/vector/corners'
+import type { VectorElement, VectorPoint } from '@/vector/types'
 
 export type BooleanOperation = 'unite' | 'subtract' | 'intersect' | 'exclude'
 
@@ -13,55 +14,80 @@ function setup() {
   ready = true
 }
 
-/** World-space outline of an element (corners applied, rotation baked) as a paper item. */
+function runToPath(run: Run): paper.Path {
+  const path = new paper.Path({ insert: false })
+  for (const point of run.points) {
+    const handleIn = point.in ?? point.anchor
+    const handleOut = point.out ?? point.anchor
+    path.add(new paper.Segment(new paper.Point(point.anchor.x, point.anchor.y), new paper.Point(handleIn.x - point.anchor.x, handleIn.y - point.anchor.y), new paper.Point(handleOut.x - point.anchor.x, handleOut.y - point.anchor.y)))
+  }
+  path.closed = run.closed
+  return path
+}
+
+/** World-space runs of an element: filled regions (holes included) and stroke chains. */
+export function worldRuns(element: VectorElement): { fills: Run[][]; strokes: Run[] } {
+  const smoothing = element.cornerSmoothing ?? 0
+  if (!element.network && element.kind === 'rectangle') {
+    const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+    const rotate = (point: VectorPoint) => rotatePoint(point, center, element.rotation)
+    const points = rectangleRun(element).map((point): RunPoint => ({ ...point, anchor: rotate(point.anchor), ...(point.in ? { in: rotate(point.in) } : {}), ...(point.out ? { out: rotate(point.out) } : {}) }))
+    const run = { points, closed: true }
+    return { fills: [[run]], strokes: [run] }
+  }
+  const world = worldNetwork(element)
+  const strokes = chains(world).map((chain) => { const run = chainToRun(world, chain); return { points: roundCorners(run.points, run.closed, smoothing), closed: run.closed } })
+  const off = new Set(element.regionsOff ?? [])
+  const fills = computeFaces(world).filter((face) => !off.has(face.key)).map((face) => [face.outer, ...face.holes].map((loop) => { const run = loopToRun(world, loop); return { points: roundCorners(run.points, true, smoothing), closed: true } }))
+  return { fills, strokes }
+}
+
+/** Filled area of an element as one paper item (faces united, holes cut). */
 export function toPaperItem(element: VectorElement): paper.PathItem {
   setup()
-  const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
-  const rotate = (point: VectorPoint) => rotatePoint(point, center, element.rotation)
-  const { ranges } = outlineNodes(element)
-  const paths = ranges.map((range) => {
-    const path = new paper.Path()
-    for (const node of range.nodes) {
-      const anchor = rotate(node.anchor)
-      const handleIn = node.in ? rotate(node.in) : anchor
-      const handleOut = node.out ? rotate(node.out) : anchor
-      path.add(new paper.Segment(new paper.Point(anchor.x, anchor.y), new paper.Point(handleIn.x - anchor.x, handleIn.y - anchor.y), new paper.Point(handleOut.x - anchor.x, handleOut.y - anchor.y)))
+  const { fills } = worldRuns(element)
+  let result: paper.PathItem | null = null
+  for (const loops of fills) {
+    const [outer, ...holes] = loops
+    let face: paper.PathItem = runToPath(outer!)
+    for (const hole of holes) {
+      const cut = runToPath(hole)
+      const next = face.subtract(cut, { insert: false }) as paper.PathItem
+      face.remove(); cut.remove(); face = next
     }
-    path.closed = range.closed
-    return path
-  })
-  if (paths.length === 1) return paths[0]!
-  const compound = new paper.CompoundPath({ children: paths })
-  return compound
+    if (!result) result = face
+    else {
+      const next = result.unite(face, { insert: false }) as paper.PathItem
+      result.remove(); face.remove(); result = next
+    }
+  }
+  return result ?? new paper.Path({ insert: false })
 }
 
-/** Converts a paper item back to world-space nodes with sub-path ranges. */
-export function fromPaperItem(item: paper.PathItem): { nodes: AbsoluteNode[]; ranges: SubpathRange[] } {
+/** Converts a paper item back to a world-space network. */
+export function fromPaperItem(item: paper.PathItem) {
   const paths: paper.Path[] = item instanceof paper.CompoundPath ? (item.children as paper.Path[]) : [item as paper.Path]
-  const nodes: AbsoluteNode[] = []
-  const ranges: SubpathRange[] = []
+  const runs: Run[] = []
   for (const path of paths) {
     if (path.segments.length < 2) continue
-    const start = nodes.length
-    for (const segment of path.segments) {
+    const points: RunPoint[] = path.segments.map((segment) => {
       const anchor = { x: round(segment.point.x), y: round(segment.point.y) }
-      const node: AbsoluteNode = { anchor }
-      if (!segment.handleIn.isZero()) node.in = { x: round(segment.point.x + segment.handleIn.x), y: round(segment.point.y + segment.handleIn.y) }
-      if (!segment.handleOut.isZero()) node.out = { x: round(segment.point.x + segment.handleOut.x), y: round(segment.point.y + segment.handleOut.y) }
-      if (node.in && node.out) node.handles = 'independent'
-      nodes.push(node)
-    }
-    ranges.push({ start, end: nodes.length, closed: path.closed })
+      const point: RunPoint = { anchor }
+      if (!segment.handleIn.isZero()) point.in = { x: round(segment.point.x + segment.handleIn.x), y: round(segment.point.y + segment.handleIn.y) }
+      if (!segment.handleOut.isZero()) point.out = { x: round(segment.point.x + segment.handleOut.x), y: round(segment.point.y + segment.handleOut.y) }
+      if (point.in && point.out) point.handles = 'independent'
+      return point
+    })
+    runs.push({ points, closed: path.closed })
   }
-  return { nodes, ranges }
+  return networkFromRuns(runs)
 }
 
-export type GeometryResult = Pick<VectorElement, 'x' | 'y' | 'width' | 'height' | 'closed' | 'subpaths'> & { vectorNodes: VectorElement['vectorNodes'] }
+export type GeometryResult = Pick<VectorElement, 'x' | 'y' | 'width' | 'height'> & { network: VectorElement['network'] }
 
-function toResult(nodes: AbsoluteNode[], ranges: SubpathRange[]): GeometryResult | null {
-  if (nodes.length < 2) return null
-  const box = normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, nodes)
-  return { ...box, ...subpathFields(ranges) }
+function toResult(world: ReturnType<typeof fromPaperItem>): GeometryResult | null {
+  if (world.segments.length === 0) return null
+  return normalizeWorld(world)
 }
 
 /** Applies a boolean operation to elements in paint order (the bottom element is the base). */
@@ -78,29 +104,16 @@ export function booleanOperation(operation: BooleanOperation, elements: VectorEl
   const converted = fromPaperItem(result)
   result.remove()
   for (const item of items) item.remove()
-  return toResult(converted.nodes, converted.ranges)
+  return toResult(converted)
 }
 
-/** Unites every sub-path of the element into one outline (Flatten). */
+/** Replaces the element's network with the union of its filled regions (Flatten). */
 export function flattenElement(element: VectorElement): GeometryResult | null {
   setup()
   const item = toPaperItem(element)
-  const paths: paper.Path[] = item instanceof paper.CompoundPath ? [...(item.children as paper.Path[])] : [item as paper.Path]
-  if (paths.length < 2) {
-    const converted = fromPaperItem(item)
-    item.remove()
-    return toResult(converted.nodes, converted.ranges)
-  }
-  let result: paper.PathItem = paths[0]!.clone({ insert: false })
-  for (const path of paths.slice(1)) {
-    const next = result.unite(path, { insert: false }) as paper.PathItem
-    result.remove()
-    result = next
-  }
-  const converted = fromPaperItem(result)
-  result.remove()
+  const converted = fromPaperItem(item)
   item.remove()
-  return toResult(converted.nodes, converted.ranges)
+  return toResult(converted)
 }
 
 /**
@@ -111,7 +124,7 @@ export function outlineStroke(element: VectorElement, tolerance = 0.25): Geometr
   if (element.strokeWidth <= 0) return null
   setup()
   const item = toPaperItem(element)
-  const paths: paper.Path[] = item instanceof paper.CompoundPath ? (item.children as paper.Path[]) : [item as paper.Path]
+  const paths: paper.Path[] = worldRuns(element).strokes.map(runToPath)
   const align = element.strokeAlign ?? 'center'
   const width = align === 'center' ? element.strokeWidth : element.strokeWidth * 2
   const half = width / 2
@@ -171,7 +184,8 @@ export function outlineStroke(element: VectorElement, tolerance = 0.25): Geometr
   const converted = fromPaperItem(final)
   final.remove()
   item.remove()
-  return toResult(converted.nodes, converted.ranges)
+  for (const path of paths) path.remove()
+  return toResult(converted)
 }
 
 function miterPolygon(a: paper.Point, b: paper.Point, c: paper.Point, half: number): paper.Point[] | null {
@@ -188,12 +202,6 @@ function miterPolygon(a: paper.Point, b: paper.Point, c: paper.Point, half: numb
   if (miterLength > half * 4) return [b, p1, p2]
   const tip = b.add(bisector.multiply(miterLength))
   return [b, p1, tip, p2]
-}
-
-/** Path data helper for tests and previews. */
-export function resultPathData(result: GeometryResult): string {
-  const element = { ...result, rotation: 0 } as VectorElement
-  return outlineNodes({ ...element, kind: 'path', vectorNodes: result.vectorNodes } as VectorElement).ranges.map((range) => runPathData(range.nodes, range.closed)).join(' ')
 }
 
 function round(value: number): number {

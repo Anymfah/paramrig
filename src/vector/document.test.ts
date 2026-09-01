@@ -56,10 +56,11 @@ describe('vector documents', () => {
     expect(svg).toContain('fill="#1C1D1E"')
   })
 
-  it('serializes edited vector nodes as a path', () => {
+  it('serializes edited networks as a path', () => {
     const document = createVectorDocument()
     const element = createVectorElement('rectangle', { x: 20, y: 30, width: 120, height: 80 })
-    element.vectorNodes = [{ x: 0, y: 0 }, { x: 1, y: 0.2 }, { x: 1, y: 1 }, { x: 0, y: 1 }]
+    element.kind = 'path'
+    element.network = { nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 0.2 }, { id: 'c', x: 1, y: 1 }, { id: 'd', x: 0, y: 1 }], segments: [{ id: 's1', a: 'a', b: 'b' }, { id: 's2', a: 'b', b: 'c' }, { id: 's3', a: 'c', b: 'd' }, { id: 's4', a: 'd', b: 'a' }] }
     document.elements = [element]
 
     const svg = serializeVectorDocument(document)
@@ -100,14 +101,14 @@ describe('paths, paints, groups and guides', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
-  it('creates stroke-only paths and serializes open ones without Z', () => {
+  it('creates stroke-only paths and serializes open chains without Z', () => {
     const document = createVectorDocument()
-    const path = createVectorElement('path', { x: 0, y: 0, width: 100, height: 50 }, { vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 1 }], closed: false })
-    expect(path).toMatchObject({ kind: 'path', fill: 'none', strokeWidth: 2, closed: false })
+    const path = createVectorElement('path', { x: 0, y: 0, width: 100, height: 50 }, { network: { nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 1 }], segments: [{ id: 's', a: 'a', b: 'b' }] } })
+    expect(path).toMatchObject({ kind: 'path', fill: 'none', strokeWidth: 2 })
     document.elements = [path]
     const svg = serializeVectorDocument(document)
     expect(svg).toContain('d="M 0 0 L 100 50"')
-    expect(svg).toContain('fill="none"')
+    expect(svg).not.toContain('Z"')
   })
 
   it('accepts none paints and rejects other non-hex paints', () => {
@@ -119,13 +120,13 @@ describe('paths, paints, groups and guides', () => {
     expect(result?.elements[0]).toMatchObject({ fill: 'none', stroke: '#ABCDEF' })
   })
 
-  it('keeps open paths with two nodes and drops paths without nodes', () => {
+  it('drops paths without a usable network and keeps region toggles', () => {
     const document = createVectorDocument()
-    const open = { ...createVectorElement('path', { x: 0, y: 0, width: 10, height: 10 }, { vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 1 }], closed: false }) }
+    const good = { ...createVectorElement('path', { x: 0, y: 0, width: 10, height: 10 }, { network: { nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 1 }], segments: [{ id: 's', a: 'a', b: 'b' }] } }), regionsOff: ['k'] }
     const empty = { ...createVectorElement('path', { x: 0, y: 0, width: 10, height: 10 }), id: 'empty' }
-    const result = sanitizeVectorDocument({ ...document, elements: [open, empty] })
+    const result = sanitizeVectorDocument({ ...document, elements: [good, empty] })
     expect(result?.elements).toHaveLength(1)
-    expect(result?.elements[0]?.closed).toBe(false)
+    expect(result?.elements[0]?.regionsOff).toEqual(['k'])
   })
 
   it('serializes groups as nested g elements and persists guides', () => {

@@ -939,3 +939,8 @@
 .vector-version__text { display: flex; flex: 1; min-width: 0; flex-direction: column; }
 .vector-version__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); user-select: text; }
 .vector-version .icon-btn { width: var(--hit-target); height: var(--hit-target); }
+.vector-canvas[data-tool='bucket'] .vector-artboard,
+.vector-canvas[data-tool='bucket'] [data-vector-element],
+.vector-canvas[data-tool='bucket'] .vector-hit { cursor: cell; }
+.vector-nodes [data-selected-segment] .vector-nodes__outline { stroke-width: 2.5; }
+.vector-pen__anchor[data-current] { stroke-width: 2; }

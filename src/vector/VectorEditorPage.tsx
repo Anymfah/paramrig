@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconImport, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconImport, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -31,7 +31,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const editor = useVectorDocument(manifest.id)
   const [tool, setTool] = useState<VectorTool>('select')
   const [selectionTool, setSelectionTool] = useState<SelectionTool>('select')
-  const [selectedNodeIndices, setSelectedNodeIndices] = useState<number[]>([])
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [zoom, setZoom] = useState(() => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return 0.8
     return Math.max(0.25, Math.min(0.8, (window.innerWidth - 48) / 800))
@@ -249,6 +249,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       if (event.repeat && !['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) return
       if (key === 'v') chooseTool('select')
       else if (key === 'q') chooseTool('lasso')
+      else if (key === 'b') chooseTool('bucket')
       else if (key === 'p' && event.shiftKey) chooseTool('pencil')
       else if (key === 'p') chooseTool('pen')
       else if (key === 'r') chooseTool('rectangle')
@@ -272,7 +273,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         const dy = key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0
         const leaves = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
         current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })))
-      } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node') {
+      } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node' && tool !== 'bucket') {
         event.preventDefault()
         current.removeElements(current.selectedIds)
       }
@@ -367,14 +368,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           document={document}
           tool={tool}
           selectedElements={selectedElements}
-          selectedNodeIndices={selectedNodeIndices}
+          selectedNodeIds={selectedNodeIds}
           onRenameDocument={editor.rename}
           onUpdateDocument={editor.updateDocument}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
           onEditElements={editor.editElements}
           onSelectIds={editor.setSelectedIds}
-          onSelectNodes={setSelectedNodeIndices}
+          onSelectNodes={setSelectedNodeIds}
           historyDepth={editor.historyDepth}
           onSaveVersion={editor.saveVersion}
           onRestoreVersion={editor.restoreVersion}
@@ -406,6 +407,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
+          <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -473,10 +475,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onZoomChange={setZoom}
           selectedIds={selectedIds}
           enteredGroupId={editor.enteredGroupId}
-          selectedNodeIndices={selectedNodeIndices}
+          selectedNodeIds={selectedNodeIds}
           onSelectIds={editor.setSelectedIds}
           onEnterGroup={editor.setEnteredGroupId}
-          onSelectNodes={setSelectedNodeIndices}
+          onSelectNodes={setSelectedNodeIds}
           onToolChange={chooseTool}
           onAddElements={(elements) => {
             editor.addElements(elements)

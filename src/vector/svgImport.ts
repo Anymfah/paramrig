@@ -1,7 +1,9 @@
 import { applyAffine, IDENTITY, type Affine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
+import { networkFromRuns, normalizeWorld, type RunPoint } from '@/vector/network'
 import type { VectorElement, VectorPoint } from '@/vector/types'
-import { normalizeAbsoluteNodes, subpathFields, type AbsoluteNode, type SubpathRange } from '@/vector/vectorPath'
+
+type AbsoluteNode = RunPoint
 
 const NAMED: Record<string, string> = {
   black: '#000000', white: '#FFFFFF', red: '#FF0000', green: '#008000', blue: '#0000FF', yellow: '#FFFF00', gray: '#808080', grey: '#808080',
@@ -44,31 +46,24 @@ function walk(node: Element, transform: Affine, inherited: Style, out: VectorEle
   if (tag === 'defs' || tag === 'style' || tag === 'title' || tag === 'desc' || tag === 'metadata' || tag === 'clippath' || tag === 'mask' || tag === 'symbol') return
   const runs = shapeRuns(node, tag)
   if (!runs.length) return
-  const world: AbsoluteNode[] = []
-  const ranges: SubpathRange[] = []
-  for (const run of runs) {
-    if (run.nodes.length < 2) continue
-    const mapped = run.nodes.map((item): AbsoluteNode => ({
+  const mappedRuns = runs.filter((run) => run.nodes.length >= 2).map((run) => ({
+    closed: run.closed && run.nodes.length >= 3,
+    points: run.nodes.map((item): AbsoluteNode => ({
       anchor: applyAffine(local, item.anchor),
       ...(item.in ? { in: applyAffine(local, item.in) } : {}),
       ...(item.out ? { out: applyAffine(local, item.out) } : {}),
-    }))
-    ranges.push({ start: world.length, end: world.length + mapped.length, closed: run.closed && mapped.length >= 3 })
-    world.push(...mapped)
-  }
-  if (world.length < 2) return
-  const box = normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, world)
-  const fields = subpathFields(ranges)
+    })),
+  }))
+  const network = networkFromRuns(mappedRuns)
+  if (network.segments.length === 0) return
+  const box = normalizeWorld(network)
   const name = node.getAttribute('id') || (tag === 'path' ? 'Path' : tag.charAt(0).toUpperCase() + tag.slice(1))
   const element = createVectorElement('path', box, {
     name: name.slice(0, 120),
-    vectorNodes: box.vectorNodes,
-    closed: fields.closed,
-    subpaths: fields.subpaths,
+    network: box.network,
     fill: style.fill,
     stroke: style.stroke,
     strokeWidth: style.stroke === 'none' ? 0 : Math.max(0, style.strokeWidth * Math.sqrt(Math.abs(local.a * local.d - local.b * local.c))),
-    fillRule: (node.getAttribute('fill-rule') ?? styleProperty(node, 'fill-rule')) === 'evenodd' ? 'evenodd' : undefined,
   })
   element.opacity = Math.min(1, Math.max(0, style.opacity))
   out.push(element)

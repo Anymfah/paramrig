@@ -207,7 +207,7 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(element.name)
   const inputRef = useRef<HTMLInputElement>(null)
-  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'path' || element.vectorNodes ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
+  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'path' || element.network ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
   const startRename = () => {
     setDraft(element.name)
     if (compact) {

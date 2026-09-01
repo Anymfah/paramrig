@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { importSvg, parsePathData, parseTransform } from '@/vector/svgImport'
-import { nodeWorldPosition, vectorPathData } from '@/vector/vectorPath'
+import { chains, worldNetwork } from '@/vector/network'
+import { outlinePathData } from '@/vector/render'
 
 describe('svg import', () => {
   it('parses shapes with styles and transforms into paths', () => {
@@ -13,10 +14,11 @@ describe('svg import', () => {
     expect(elements).toHaveLength(4)
     expect(elements[0]).toMatchObject({ name: 'box', x: 20, y: 20, width: 40, height: 20, fill: '#FF0000', stroke: '#0000FF', strokeWidth: 4 })
     expect(elements[1]).toMatchObject({ x: 110, y: 10, width: 20, height: 20, fill: '#008000' })
-    expect(elements[1]!.vectorNodes!.every((node) => node.in && node.out)).toBe(true)
+    expect(elements[1]!.network!.segments.every((segment) => segment.ah && segment.bh)).toBe(true)
     expect(elements[2]).toMatchObject({ fill: 'none', stroke: '#000000' })
-    expect(elements[2]!.closed).toBeUndefined()
-    expect(elements[3]).toMatchObject({ closed: false, stroke: '#ABCDEF' })
+    expect(chains(worldNetwork(elements[2]!))[0]!.closed).toBe(true)
+    expect(elements[3]).toMatchObject({ stroke: '#ABCDEF' })
+    expect(chains(worldNetwork(elements[3]!))[0]!.closed).toBe(false)
   })
 
   it('parses path data including relative commands, curves, arcs and multiple sub-paths', () => {
@@ -42,9 +44,9 @@ describe('svg import', () => {
     expect(m.a).toBeCloseTo(0)
     expect(m.b).toBeCloseTo(2)
     const [rounded] = importSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="100" height="50" rx="10"/></svg>')
-    expect(rounded!.vectorNodes).toHaveLength(8)
-    expect(vectorPathData(rounded!)).toContain('C')
-    expect(nodeWorldPosition(rounded!, rounded!.vectorNodes![0]!)).toEqual({ x: 10, y: 0 })
+    expect(rounded!.network!.nodes).toHaveLength(8)
+    expect(outlinePathData(rounded!)).toContain('C')
+    expect(worldNetwork(rounded!).nodes[0]!.point).toEqual({ x: 10, y: 0 })
   })
 
   it('returns nothing for invalid markup', () => {

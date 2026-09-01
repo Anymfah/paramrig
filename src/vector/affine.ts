@@ -1,7 +1,7 @@
 import { elementCorners, elementCenter, type Bounds } from '@/vector/geometry'
 import { rotatePoint } from '@/vector/directTransform'
 import type { VectorElement, VectorPoint } from '@/vector/types'
-import { defaultVectorNodes, normalizeAbsoluteNodes, worldNodes, type AbsoluteNode } from '@/vector/vectorPath'
+import { normalizeWorld, worldNetwork } from '@/vector/network'
 
 /** Row-major 2D affine: x' = a x + c y + e, y' = b x + d y + f. */
 export type Affine = { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -38,17 +38,13 @@ export function rotationAffine(degrees: number, center: VectorPoint): Affine {
  * under the map, so rectangles and ellipses stay rectangles and ellipses.
  */
 export function transformElementAffine(element: VectorElement, m: Affine): Partial<VectorElement> {
-  if (element.vectorNodes || element.kind === 'path') {
-    const nodes = element.vectorNodes ?? defaultVectorNodes(element)
-    const world = worldNodes(element, nodes).map((node): AbsoluteNode => ({
-      ...node,
-      anchor: applyAffine(m, node.anchor),
-      ...(node.in ? { in: applyAffine(m, node.in) } : {}),
-      ...(node.out ? { out: applyAffine(m, node.out) } : {}),
-    }))
-    const box = normalizeAbsoluteNodes({ x: 0, y: 0, width: 0, height: 0, rotation: 0 }, world)
-    box.vectorNodes = box.vectorNodes.map((node, index) => ({ ...node, ...(nodes[index]?.handles ? { handles: nodes[index]!.handles } : {}), ...(nodes[index]?.radius ? { radius: nodes[index]!.radius } : {}) }))
-    return { ...box, rotation: 0, kind: element.kind === 'group' ? element.kind : 'path' }
+  if (element.network || element.kind === 'path') {
+    const world = worldNetwork(element)
+    const mapped = {
+      nodes: world.nodes.map((node) => ({ ...node, point: applyAffine(m, node.point) })),
+      segments: world.segments.map((segment) => ({ ...segment, ...(segment.ah ? { ah: applyAffine(m, segment.ah) } : {}), ...(segment.bh ? { bh: applyAffine(m, segment.bh) } : {}) })),
+    }
+    return { ...normalizeWorld(mapped), rotation: 0, kind: 'path' }
   }
   const center = elementCenter(element)
   const radians = element.rotation * Math.PI / 180

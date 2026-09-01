@@ -1,8 +1,8 @@
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, sanitizeParents, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorElementKind, VectorNode, VectorSubpath } from '@/vector/types'
-import { isClosedPath, normalizeSubpaths, subpathRanges } from '@/vector/vectorPath'
+import type { VectorDocument, VectorElement, VectorElementKind } from '@/vector/types'
+import { sanitizeNetwork } from '@/vector/network'
 import { sanitizePaints } from '@/vector/paints'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
@@ -89,7 +89,7 @@ export function vectorManifest(document: VectorDocument): RigManifest {
   }
 }
 
-export type CreateElementOptions = Partial<Pick<VectorElement, 'name' | 'fill' | 'stroke' | 'strokeWidth' | 'vectorNodes' | 'closed' | 'subpaths' | 'fillRule'>>
+export type CreateElementOptions = Partial<Pick<VectorElement, 'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff'>>
 
 export function createVectorElement(
   kind: VectorElementKind,
@@ -114,10 +114,8 @@ export function createVectorElement(
     visible: true,
     locked: false,
   }
-  if (options.vectorNodes) element.vectorNodes = options.vectorNodes
-  if (isPath && options.closed === false) element.closed = false
-  if (isPath && options.subpaths && options.subpaths.length > 1) element.subpaths = options.subpaths
-  if (options.fillRule === 'evenodd') element.fillRule = 'evenodd'
+  if (options.network) element.network = options.network
+  if (options.regionsOff?.length) element.regionsOff = options.regionsOff
   return element
 }
 
@@ -155,21 +153,17 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
-    const simple = !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
-      && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius && !element.vectorNodes?.some((item) => item.radius)
+    const simple = !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+      && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
       const common = [
         `fill="${escapeXml(element.fill)}"`,
-        ...(element.fillRule === 'evenodd' && element.vectorNodes ? ['fill-rule="evenodd"'] : []),
         `stroke="${escapeXml(element.stroke)}"`,
         `stroke-width="${element.strokeWidth}"`,
         `opacity="${element.opacity}"`,
         `transform="${transform}"`,
       ].join(' ')
-      if (element.vectorNodes) {
-        return [`${indent}<path id="${escapeXml(element.id)}" d="${renderModel(element, 'svg').d}" ${common}/>`]
-      }
       if (element.kind === 'ellipse') {
         return [`${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
       }
@@ -264,16 +258,11 @@ function sanitizeElement(value: unknown): VectorElement | null {
   if (!fill || !stroke) return null
   const fills = sanitizePaints(source.fills)
   const strokes = sanitizePaints(source.strokes)
-  const strokeSides = source.kind === 'rectangle' ? sanitizeStrokeSides(source.strokeSides) : undefined
-  const cornerRadius = source.kind === 'rectangle' ? sanitizeCornerRadius(source.cornerRadius) : undefined
-  const vectorNodes = source.kind === 'group' ? null : sanitizeNodes(source.vectorNodes)
-  if (source.kind === 'path' && !vectorNodes) return null
-  const subpaths = vectorNodes && source.kind === 'path' ? sanitizeSubpaths(source.subpaths, vectorNodes.length) : undefined
-  const closed = source.kind === 'path' && !subpaths && source.closed === false ? false : undefined
-  if (vectorNodes) {
-    const ranges = subpathRanges({ closed, subpaths }, vectorNodes.length)
-    if (ranges.some((range) => range.end - range.start < (range.closed ? 3 : 2))) return null
-  }
+  const strokeSides = source.kind === 'rectangle' && !source.network ? sanitizeStrokeSides(source.strokeSides) : undefined
+  const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
+  const network = source.kind === 'group' ? null : sanitizeNetwork(source.network)
+  if (source.kind === 'path' && !network) return null
+  const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
     id: source.id,
     kind: source.kind,
@@ -289,10 +278,8 @@ function sanitizeElement(value: unknown): VectorElement | null {
     opacity: Math.min(1, Math.max(0, source.opacity!)),
     visible: source.visible !== false,
     locked: source.locked === true,
-    ...(vectorNodes ? { vectorNodes } : {}),
-    ...(closed === false ? { closed } : {}),
-    ...(subpaths ? { subpaths } : {}),
-    ...(source.fillRule === 'evenodd' ? { fillRule: 'evenodd' as const } : {}),
+    ...(network ? { network } : {}),
+    ...(regionsOff.length ? { regionsOff } : {}),
     ...(fills ? { fills } : {}),
     ...(strokes ? { strokes } : {}),
     ...(source.strokeAlign === 'inside' || source.strokeAlign === 'outside' ? { strokeAlign: source.strokeAlign } : {}),
@@ -307,40 +294,6 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
   }
 }
-
-function sanitizeNodes(value: unknown): VectorNode[] | null {
-  if (!Array.isArray(value) || value.length < 2 || value.length > 256) return null
-  const point = (candidate: unknown) => {
-    if (!candidate || typeof candidate !== 'object') return null
-    const source = candidate as { x?: unknown; y?: unknown }
-    return finiteIn(source.x, -100, 100) && finiteIn(source.y, -100, 100) ? { x: source.x, y: source.y } : null
-  }
-  const nodes = value.map((candidate) => {
-    const anchor = point(candidate)
-    if (!anchor) return null
-    const source = candidate as { in?: unknown; out?: unknown; handles?: unknown; radius?: unknown }
-    const input = source.in === undefined ? undefined : point(source.in)
-    const output = source.out === undefined ? undefined : point(source.out)
-    if (source.in !== undefined && !input || source.out !== undefined && !output) return null
-    const handles = source.handles === 'mirrored' || source.handles === 'asymmetric' || source.handles === 'independent' ? source.handles : undefined
-    const radius = finiteIn(source.radius, 0, 10000) && source.radius > 0 ? source.radius : undefined
-    return { ...anchor, ...(input ? { in: input } : {}), ...(output ? { out: output } : {}), ...(handles ? { handles } : {}), ...(radius ? { radius } : {}) }
-  })
-  return nodes.every(Boolean) ? nodes as VectorNode[] : null
-}
-
-function sanitizeSubpaths(value: unknown, nodeCount: number): VectorSubpath[] | undefined {
-  if (!Array.isArray(value)) return undefined
-  const valid = value.flatMap((candidate) => {
-    if (!candidate || typeof candidate !== 'object') return []
-    const source = candidate as { start?: unknown; closed?: unknown }
-    if (typeof source.start !== 'number' || !Number.isInteger(source.start)) return []
-    return [{ start: source.start, closed: source.closed !== false }]
-  })
-  return normalizeSubpaths(valid, nodeCount)
-}
-
-export { isClosedPath }
 
 function isArrowhead(value: unknown): value is Exclude<VectorElement['strokeArrowStart'], undefined | 'none'> {
   return value === 'arrow' || value === 'triangle' || value === 'circle' || value === 'square' || value === 'bar'

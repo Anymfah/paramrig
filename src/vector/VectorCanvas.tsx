@@ -1,24 +1,25 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
-import { bendSegment, insertNode, isSmoothNode, nearestSegment, seedHandles, toggleNodeType } from '@/vector/bezier'
-import { pencilNodes } from '@/vector/pencil'
 import { createVectorElement } from '@/vector/document'
-import { resizeBounds, resizeCursor, resizeElement, type DirectResizeHandle } from '@/vector/directTransform'
+import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
-import { layerAttributes, markerShape, outlinePathData, renderModel, type RenderDef } from '@/vector/render'
-import { penAddAnchor, penCanClose, penClose, penCommit, penDragHandle, penFromElement, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
+import {
+  bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
+  transformNodes, worldNetwork, type AbsNetwork, type AbsSegment,
+} from '@/vector/network'
+import { pencilNodes } from '@/vector/pencil'
+import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
+import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef } from '@/vector/render'
 import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
-import { defaultVectorNodes, elementFromWorldNodes, moveVectorNode, neighbours, nodeIndicesInBounds, nodePosition, nodeSelectionBounds, nodeWorldPosition, scaleNodesToBounds, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
-import { combineElements, deleteNodes, joinNodes, openEndpoints as openEndpointsOf } from '@/vector/subpaths'
-import type { VectorDocument, VectorElement, VectorGuide, VectorNode, VectorTool } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorGuide, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
 type Corner = Extract<DirectResizeHandle, 'nw' | 'ne' | 'se' | 'sw'>
-type NodePart = 'anchor' | 'in' | 'out'
+type HandleRef = { segmentId: string; end: 'a' | 'b' }
 
 export type VectorPixelPreview = 'off' | '1x' | '2x'
 export type VectorOutlineMode = 'off' | 'all' | 'selected'
@@ -47,22 +48,23 @@ export type VectorCanvasController = {
 type Interaction =
   | { kind: 'create'; pointerId: number; start: Point; current: Point; targets: SnapTarget[] }
   | { kind: 'marquee'; pointerId: number; start: Point; current: Point; additive: boolean }
-  | { kind: 'node-marquee'; pointerId: number; start: Point; current: Point; additive: boolean; outside: boolean; element: VectorElement; nodes: VectorNode[] }
+  | { kind: 'node-marquee'; pointerId: number; start: Point; current: Point; additive: boolean; element: VectorElement; world: AbsNetwork }
   | { kind: 'move'; pointerId: number; start: Point; elements: VectorElement[]; bounds: Bounds; originalIds: string[]; targets: SnapTarget[]; moved: boolean; toggleOnClick: string | null }
   | { kind: 'resize'; pointerId: number; start: Point; elements: VectorElement[]; bounds: Bounds; handle: DirectResizeHandle; single: VectorElement | null; targets: SnapTarget[] }
   | { kind: 'rotate'; pointerId: number; start: Point; elements: VectorElement[]; center: Point; single: VectorElement | null }
-  | { kind: 'node'; pointerId: number; start: Point; anchorStart: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; nodeIndex: number; part: NodePart; targets: SnapTarget[] }
-  | { kind: 'pen'; pointerId: number; anchorIndex: number }
+  | { kind: 'node'; pointerId: number; start: Point; anchorStart: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; handle: HandleRef | null; targets: SnapTarget[]; moved: boolean; toggleOnClick: string | null }
+  | { kind: 'segment-move'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; segmentId: string; moved: boolean }
+  | { kind: 'pen'; pointerId: number }
   | { kind: 'pencil'; pointerId: number; points: Point[] }
-  | { kind: 'bend'; pointerId: number; element: VectorElement; nodes: VectorNode[]; segmentIndex: number; t: number }
-  | { kind: 'node-resize'; pointerId: number; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; bounds: Bounds; handle: DirectResizeHandle }
-  | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; center: Point }
+  | { kind: 'bend'; pointerId: number; element: VectorElement; world: AbsNetwork; segmentId: string; t: number }
+  | { kind: 'node-resize'; pointerId: number; element: VectorElement; world: AbsNetwork; nodeIds: string[]; bounds: Bounds; handle: DirectResizeHandle }
+  | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; center: Point }
   | { kind: 'lasso'; pointerId: number; points: Point[]; additive: boolean }
   | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
   | { kind: 'modal'; target: 'elements'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; elements: VectorElement[]; preview: VectorElement[] }
-  | { kind: 'modal'; target: 'nodes'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; preview: VectorElement }
+  | { kind: 'modal'; target: 'nodes'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; preview: VectorElement }
 
 type VectorCanvasProps = {
   document: VectorDocument
@@ -74,10 +76,10 @@ type VectorCanvasProps = {
   onZoomChange: (zoom: number) => void
   selectedIds: string[]
   enteredGroupId: string | null
-  selectedNodeIndices: number[]
+  selectedNodeIds: string[]
   onSelectIds: (ids: string[]) => void
   onEnterGroup: (id: string | null) => void
-  onSelectNodes: (indices: number[]) => void
+  onSelectNodes: (ids: string[]) => void
   onToolChange: (tool: VectorTool) => void
   onAddElements: (elements: VectorElement[]) => void
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
@@ -95,6 +97,7 @@ type VectorCanvasProps = {
 const RULER_SIZE = 24
 const SNAP_PX = 6
 const PEN_CLOSE_PX = 8
+const NODE_HIT_PX = 8
 const PIXEL_GRID_MIN_ZOOM = 4
 
 export function VectorCanvas({
@@ -107,7 +110,7 @@ export function VectorCanvas({
   onZoomChange,
   selectedIds,
   enteredGroupId,
-  selectedNodeIndices,
+  selectedNodeIds,
   onSelectIds,
   onEnterGroup,
   onSelectNodes,
@@ -133,15 +136,14 @@ export function VectorCanvas({
   const camera = useRef({ pan, zoom })
   const spaceHeld = useRef(false)
   const latestPointer = useRef<Point | null>(null)
-  const latestClient = useRef<Point | null>(null)
   const documentRef = useRef(document)
   const toolRef = useRef(tool)
   const viewRef = useRef(viewOptions)
   const selectedIdsRef = useRef(selectedIds)
-  const selectedNodeIndicesRef = useRef(selectedNodeIndices)
+  const selectedNodeIdsRef = useRef(selectedNodeIds)
+  const selectedSegmentRef = useRef<string | null>(null)
   const penDraftRef = useRef<PenDraft | null>(null)
   const selectedGuideRef = useRef<string | null>(null)
-  const enteredGroupRef = useRef(enteredGroupId)
   const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements })
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
@@ -161,6 +163,7 @@ export function VectorCanvas({
   const [hud, setHud] = useState<VectorHud | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [selectedGuideId, setSelectedGuideState] = useState<string | null>(null)
+  const [selectedSegmentId, setSelectedSegmentState] = useState<string | null>(null)
   const [draftGuide, setDraftGuide] = useState<VectorGuide | null>(null)
   const [coarse, setCoarse] = useState(false)
 
@@ -172,11 +175,15 @@ export function VectorCanvas({
     selectedGuideRef.current = id
     setSelectedGuideState(id)
   }
+  const setSelectedSegment = (id: string | null) => {
+    selectedSegmentRef.current = id
+    setSelectedSegmentState(id)
+  }
 
   const elements = document.elements
   const selectedElements = useMemo(() => elements.filter((element) => selectedIds.includes(element.id)), [elements, selectedIds])
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
-  const editing = tool === 'node' && selected && selected.kind !== 'group' && selected.visible && !selected.locked ? selected : null
+  const editing = (tool === 'node' || tool === 'bucket') && selected && selected.kind !== 'group' && selected.visible && !selected.locked ? selected : null
   const selectedLeaves = useMemo(() => leafElements(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
   const tree = useMemo(() => buildTree(elements), [elements])
 
@@ -185,8 +192,7 @@ export function VectorCanvas({
   toolRef.current = tool
   viewRef.current = viewOptions
   selectedIdsRef.current = selectedIds
-  selectedNodeIndicesRef.current = selectedNodeIndices
-  enteredGroupRef.current = enteredGroupId
+  selectedNodeIdsRef.current = selectedNodeIds
   callbacks.current = { onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements }
 
   const point = useCallback((event: Pick<PointerEvent, 'clientX' | 'clientY'>): Point => {
@@ -346,7 +352,10 @@ export function VectorCanvas({
 
   useEffect(() => {
     if (tool !== 'pen' && penDraftRef.current) commitPen()
-    if (tool !== 'node' && selectedNodeIndicesRef.current.length) callbacks.current.onSelectNodes([])
+    if (tool !== 'node' && tool !== 'bucket' && tool !== 'pen' && (selectedNodeIdsRef.current.length || selectedSegmentRef.current)) {
+      callbacks.current.onSelectNodes([])
+      setSelectedSegment(null)
+    }
   }, [tool, commitPen])
 
   useEffect(() => {
@@ -355,7 +364,10 @@ export function VectorCanvas({
   }, [document.guides, selectedGuideId])
 
   useEffect(() => {
-    if (selectedIds.length !== 1 && selectedNodeIndicesRef.current.length) callbacks.current.onSelectNodes([])
+    if (selectedIds.length !== 1) {
+      if (selectedNodeIdsRef.current.length) callbacks.current.onSelectNodes([])
+      setSelectedSegment(null)
+    }
   }, [selectedIds])
 
   useEffect(() => {
@@ -369,12 +381,13 @@ export function VectorCanvas({
     }
     const startModal = (mode: VectorTransformMode) => {
       const doc = documentRef.current
-      const editingId = toolRef.current === 'node' && selectedIdsRef.current.length === 1 ? selectedIdsRef.current[0]! : null
+      const editingId = (toolRef.current === 'node') && selectedIdsRef.current.length === 1 ? selectedIdsRef.current[0]! : null
       const editingElement = editingId ? doc.elements.find((element) => element.id === editingId) ?? null : null
-      const nodeIndices = selectedNodeIndicesRef.current
-      if (editingElement && nodeIndices.length > 0 && !editingElement.locked && !interaction.current) {
-        const nodes = structuredClone(editingElement.vectorNodes ?? defaultVectorNodes(editingElement))
-        const anchors = nodeIndices.flatMap((index) => nodes[index] ? [nodeWorldPosition(editingElement, nodes[index]!)] : [])
+      const nodeIds = selectedNodeIdsRef.current
+      if (editingElement && nodeIds.length > 0 && !editingElement.locked && !interaction.current) {
+        const world = worldNetwork(editingElement)
+        const anchors = nodeIds.flatMap((id) => { const node = world.nodes.find((item) => item.id === id); return node ? [node.point] : [] })
+        if (anchors.length === 0) return false
         const origin = {
           x: anchors.reduce((sum, value) => sum + value.x, 0) / anchors.length,
           y: anchors.reduce((sum, value) => sum + value.y, 0) / anchors.length,
@@ -384,10 +397,7 @@ export function VectorCanvas({
           start = { x: origin.x + Math.max(40, editingElement.width / 2), y: origin.y }
         }
         callbacks.current.onGestureStart()
-        interaction.current = {
-          kind: 'modal', target: 'nodes', mode, axis: null, start,
-          element: structuredClone(editingElement), nodes, nodeIndices: [...nodeIndices], preview: structuredClone(editingElement),
-        }
+        interaction.current = { kind: 'modal', target: 'nodes', mode, axis: null, start, element: structuredClone(editingElement), world, nodeIds: [...nodeIds], preview: structuredClone(editingElement) }
         setTransformStatus({ mode, axis: null })
         return true
       }
@@ -435,7 +445,7 @@ export function VectorCanvas({
             active.elements = structuredClone(active.preview)
           } else {
             active.element = structuredClone(active.preview)
-            active.nodes = structuredClone(active.preview.vectorNodes ?? defaultVectorNodes(active.preview))
+            active.world = worldNetwork(active.preview)
           }
           setTransformStatus({ mode: active.mode, axis: active.axis })
         }
@@ -450,12 +460,12 @@ export function VectorCanvas({
           return
         }
         if (penDraftRef.current) {
-          if (penDraftRef.current.nodes.length >= 2) commitPen()
-          else { setPenDraft(null); setPenCloseHint(false) }
+          commitPen()
           return
         }
-        if (toolRef.current === 'node') {
+        if (toolRef.current === 'node' || toolRef.current === 'bucket') {
           callbacks.current.onSelectNodes([])
+          setSelectedSegment(null)
           callbacks.current.onToolChange('select')
           return
         }
@@ -494,27 +504,33 @@ export function VectorCanvas({
       if (editingElement && (key === 'backspace' || key === 'delete')) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const nodeIndices = selectedNodeIndicesRef.current
-        if (nodeIndices.length === 0) return
-        const nodes = editingElement.vectorNodes ?? defaultVectorNodes(editingElement)
-        const rebuilt = deleteNodes(editingElement, nodes, nodeIndices)
-        if (!rebuilt) return
-        callbacks.current.onUpdate(editingElement.id, { ...rebuilt, kind: editingElement.kind === 'group' ? editingElement.kind : 'path' })
+        const world = worldNetwork(editingElement)
+        const nodeIds = selectedNodeIdsRef.current
+        const segmentId = selectedSegmentRef.current
+        if (nodeIds.length === 0 && !segmentId) return
+        const rebuilt = nodeIds.length ? deleteNodes(editingElement, world, nodeIds) : deleteSegments(editingElement, world, [segmentId!])
+        if (!rebuilt) {
+          callbacks.current.onEditElements((all) => all.filter((element) => element.id !== editingElement.id))
+          callbacks.current.onSelectIds([])
+          callbacks.current.onToolChange('select')
+          return
+        }
+        callbacks.current.onUpdate(editingElement.id, { ...rebuilt, kind: 'path' })
         callbacks.current.onSelectNodes([])
+        setSelectedSegment(null)
         return
       }
       if (editingElement && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) {
         event.preventDefault()
         event.stopImmediatePropagation()
-        const nodeIndices = selectedNodeIndicesRef.current
-        if (nodeIndices.length === 0) return
-        const nodes = editingElement.vectorNodes ?? defaultVectorNodes(editingElement)
+        const nodeIds = selectedNodeIdsRef.current
+        if (nodeIds.length === 0) return
         const amount = event.shiftKey ? 10 : 1
         const delta = {
           x: key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0,
           y: key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0,
         }
-        callbacks.current.onUpdate(editingElement.id, transformVectorNodes(editingElement, nodes, nodeIndices, 'move', null, { x: 0, y: 0 }, delta))
+        callbacks.current.onUpdate(editingElement.id, { ...moveNodes(editingElement, worldNetwork(editingElement), nodeIds, delta), kind: 'path' })
         return
       }
       if (!event.repeat && (key === 'g' || key === 'r' || key === 's')) {
@@ -534,7 +550,6 @@ export function VectorCanvas({
     const onPointerMove = (event: PointerEvent) => {
       const current = point(event)
       latestPointer.current = current
-      latestClient.current = { x: event.clientX, y: event.clientY }
       const active = interaction.current
       if (active?.kind !== 'modal') return
       event.preventDefault()
@@ -552,10 +567,12 @@ export function VectorCanvas({
             : `${round(selectionBounds(active.preview).width)} × ${round(selectionBounds(active.preview).height)}`
         showHud(label, event)
       } else {
-        const rawPatch = transformVectorNodes(active.element, active.nodes, active.nodeIndices, active.mode, active.axis, active.start, current)
-        const patch = viewRef.current.snapToPixelGrid ? snapGeometryPatch(rawPatch) : rawPatch
+        const anchors = active.nodeIds.flatMap((id) => { const node = active.world.nodes.find((item) => item.id === id); return node ? [node.point] : [] })
+        const origin = { x: anchors.reduce((sum, value) => sum + value.x, 0) / anchors.length, y: anchors.reduce((sum, value) => sum + value.y, 0) / anchors.length }
+        const map = nodeModalMap(active.mode, active.axis, origin, active.start, current)
+        const patch = transformNodes(active.element, active.world, active.nodeIds, map)
         active.preview = { ...active.element, ...patch }
-        callbacks.current.onUpdate(active.element.id, patch, false)
+        callbacks.current.onUpdate(active.element.id, { ...patch, kind: 'path' }, false)
         showHud(`Δ ${round(current.x - active.start.x)}, ${round(current.y - active.start.y)}`, event)
       }
     }
@@ -619,7 +636,6 @@ export function VectorCanvas({
     } else if (active.kind === 'marquee') {
       const bounds = boundsBetween(active.start, active.current, false)
       const scope = enteredGroupId
-      // A plain click on empty canvas (no drag) selects nothing, even inside an unfilled shape's box.
       const candidates = bounds.width < 2 && bounds.height < 2 ? [] : childrenOf(elements, scope).filter((element) => element.visible && !element.locked)
       const hits = candidates.filter((element) => {
         const leaves = element.kind === 'group' ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
@@ -629,22 +645,16 @@ export function VectorCanvas({
       setMarqueeBounds(null)
     } else if (active.kind === 'node-marquee') {
       const bounds = boundsBetween(active.start, active.current, false)
-      const hits = nodeIndicesInBounds(active.element, active.nodes, bounds)
-      onSelectNodes(active.additive ? [...new Set([...selectedNodeIndicesRef.current, ...hits])] : hits)
+      const hits = active.world.nodes.filter((node) => node.point.x >= bounds.x && node.point.x <= bounds.x + bounds.width && node.point.y >= bounds.y && node.point.y <= bounds.y + bounds.height).map((node) => node.id)
+      onSelectNodes(active.additive ? [...new Set([...selectedNodeIdsRef.current, ...hits])] : hits)
+      if (hits.length) setSelectedSegment(null)
       setMarqueeBounds(null)
-    } else if (active.kind === 'move') {
-      if (active.moved) onGestureEnd()
-      else {
-        onGestureCancel()
-        if (active.toggleOnClick) onSelectIds(selectedIds.filter((id) => id !== active.toggleOnClick))
-      }
     } else if (active.kind === 'lasso') {
       const polygon = active.points
       if (polygon.length >= 3) {
         if (editing) {
-          const nodes = editing.vectorNodes ?? defaultVectorNodes(editing)
-          const hits = nodes.flatMap((node, index) => pointInPolygon(nodeWorldPosition(editing, node), polygon) ? [index] : [])
-          onSelectNodes(active.additive ? [...new Set([...selectedNodeIndicesRef.current, ...hits])] : hits)
+          const hits = worldNetwork(editing).nodes.filter((node) => pointInPolygon(node.point, polygon)).map((node) => node.id)
+          onSelectNodes(active.additive ? [...new Set([...selectedNodeIdsRef.current, ...hits])] : hits)
         } else {
           const candidates = childrenOf(elements, enteredGroupId).filter((element) => element.visible && !element.locked)
           const hits = candidates.filter((element) => {
@@ -657,16 +667,31 @@ export function VectorCanvas({
         onSelectIds([])
       }
     } else if (active.kind === 'pencil') {
-      const nodes = pencilNodes(active.points, zoom)
-      if (nodes.length >= 2) {
-        const first = nodes[0]!.anchor
-        const last = nodes[nodes.length - 1]!.anchor
-        const closed = nodes.length >= 3 && Math.hypot(first.x - last.x, first.y - last.y) <= PEN_CLOSE_PX / zoom
-        const built = elementFromWorldNodes(closed ? nodes.slice(0, -1) : nodes)
-        onAddElements([createVectorElement('path', built, { vectorNodes: built.vectorNodes, closed, name: 'Pencil' })])
+      const points = pencilNodes(active.points, zoom)
+      if (points.length >= 2) {
+        const first = points[0]!.anchor
+        const last = points[points.length - 1]!.anchor
+        const closed = points.length >= 3 && Math.hypot(first.x - last.x, first.y - last.y) <= PEN_CLOSE_PX / zoom
+        const built = normalizeWorld(networkFromRuns([{ points: closed ? points.slice(0, -1) : points, closed }]))
+        onAddElements([createVectorElement('path', built, { network: built.network, name: 'Pencil' })])
       }
     } else if (active.kind === 'pen' || active.kind === 'guide-create') {
       /* draft-only */
+    } else if (active.kind === 'move') {
+      if (active.moved) onGestureEnd()
+      else {
+        onGestureCancel()
+        if (active.toggleOnClick) onSelectIds(selectedIds.filter((id) => id !== active.toggleOnClick))
+      }
+    } else if (active.kind === 'node') {
+      if (active.moved) onGestureEnd()
+      else {
+        onGestureCancel()
+        if (active.toggleOnClick) onSelectNodes(selectedNodeIds.filter((id) => id !== active.toggleOnClick))
+      }
+    } else if (active.kind === 'segment-move') {
+      if (active.moved) onGestureEnd()
+      else onGestureCancel()
     } else if (active.kind === 'guide-move') {
       const client = localClient(event.nativeEvent)
       const onRuler = (active.guide.axis === 'y' && client.y <= RULER_SIZE) || (active.guide.axis === 'x' && client.x <= RULER_SIZE)
@@ -720,24 +745,22 @@ export function VectorCanvas({
 
   const onShapePointerDown = (element: VectorElement, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0) return
-    if (tool === 'pen' || tool === 'rectangle' || tool === 'ellipse') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
     if (tool === 'node') {
       if (editing && editing.id === element.id) {
         const at = point(event.nativeEvent)
-        if (!event.shiftKey) onSelectNodes([])
-        interaction.current = {
-          kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at,
-          additive: event.shiftKey, outside: false, element: structuredClone(editing), nodes: structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing)),
-        }
+        if (!event.shiftKey) { onSelectNodes([]); setSelectedSegment(null) }
+        interaction.current = { kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at, additive: event.shiftKey, element: structuredClone(editing), world: worldNetwork(editing) }
         setMarqueeBounds({ x: at.x, y: at.y, width: 0, height: 0 })
         svgRef.current?.setPointerCapture(event.pointerId)
         return
       }
       onSelectIds([resolvedElement.id])
       onSelectNodes([])
+      setSelectedSegment(null)
       if (resolvedElement.kind === 'group') onToolChange('select')
       return
     }
@@ -761,14 +784,29 @@ export function VectorCanvas({
 
   /**
    * Double-clicks arrive on the SVG because pointer capture retargets the compatibility mouse
-   * events, so the shape under the pointer is looked up from the document instead.
+   * events, so the target under the pointer is looked up from the document instead.
    */
   const onCanvasDoubleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const stack = window.document.elementsFromPoint(event.clientX, event.clientY)
     const nodeHit = stack.map((node) => (node as Element).closest('[data-vector-node]')?.getAttribute('data-vector-node') ?? null).find((value): value is string => value !== null)
     if (nodeHit !== undefined && editing) {
-      onNodeDoubleClick(Number(nodeHit), event)
+      if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
+      onUpdate(editing.id, { ...toggleNodeSmooth(editing, worldNetwork(editing), nodeHit), kind: 'path' })
+      onSelectNodes([nodeHit])
+      return
+    }
+    const segmentHit = stack.map((node) => (node as Element).closest('[data-vector-segment]')?.getAttribute('data-vector-segment') ?? null).find((value): value is string => value !== null)
+    if (segmentHit !== undefined && editing) {
+      if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
+      const hit = nearestSegment(editing, point(event.nativeEvent))
+      if (hit && hit.segment.id === segmentHit) {
+        const inserted = insertNodeOnSegment(editing, worldNetwork(editing), segmentHit, hit.t)
+        const { nodeId, ...patch } = inserted
+        onUpdate(editing.id, { ...patch, kind: 'path' })
+        onSelectNodes([nodeId])
+        setSelectedSegment(null)
+      }
       return
     }
     const hit = stack
@@ -776,7 +814,7 @@ export function VectorCanvas({
       .find((id): id is string => !!id)
     const element = hit ? elements.find((item) => item.id === hit) ?? null : null
     if (!element) {
-      if (tool === 'node') onToolChange('select')
+      if (tool === 'node' || tool === 'bucket') onToolChange('select')
       return
     }
     onShapeDoubleClick(element, event)
@@ -800,14 +838,36 @@ export function VectorCanvas({
     onToolChange('node')
   }
 
+  /** Node of the selected element near a world point (pen tool). */
+  const nodeNear = (element: VectorElement | null, at: Point): string | null => {
+    if (!element) return null
+    const threshold = NODE_HIT_PX / zoom
+    const hit = worldNetwork(element).nodes.find((node) => Math.hypot(node.point.x - at.x, node.point.y - at.y) <= threshold)
+    return hit ? hit.id : null
+  }
+
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
-    const at = tool === 'pen' && event.shiftKey && penDraftRef.current ? constrainAngle(penDraftRef.current.nodes[penDraftRef.current.nodes.length - 1]!.anchor, rawAt) : rawAt
+    const penAnchor = penDraftRef.current?.current ? penDraftRef.current.world.nodes.find((node) => node.id === penDraftRef.current!.current)?.point : null
+    const at = tool === 'pen' && event.shiftKey && penAnchor ? constrainAngle(penAnchor, rawAt) : rawAt
+    if (tool === 'bucket') {
+      const target = editing ?? bucketTarget(elements, at)
+      if (!target) return
+      const { hit } = worldFaces(target)
+      const face = hit(at)
+      if (!face) return
+      const off = new Set(target.regionsOff ?? [])
+      if (off.has(face.key)) off.delete(face.key)
+      else off.add(face.key)
+      onUpdate(target.id, { regionsOff: off.size ? [...off] : undefined, kind: target.kind === 'group' ? target.kind : 'path', ...(target.network ? {} : { network: worldNetworkAsLocal(target) }) })
+      if (!editing) onSelectIds([target.id])
+      return
+    }
     if (tool === 'lasso') {
       interaction.current = { kind: 'lasso', pointerId: event.pointerId, points: [rawAt], additive: event.shiftKey }
       setLassoPoints([rawAt])
@@ -825,61 +885,53 @@ export function VectorCanvas({
       const draft = penDraftRef.current
       const threshold = PEN_CLOSE_PX / zoom
       if (!draft) {
-        const endpoint = findOpenEndpoint(elements, at, threshold)
-        const next = endpoint ? penFromElement(endpoint.element, endpoint.end, endpoint.subpath) : null
-        const started = next ?? penStart(snapFreePoint(at, snapTargetsFor([])).point)
-        setPenDraft(started)
-        onSelectIds(endpoint ? [endpoint.element.id] : [])
-        interaction.current = { kind: 'pen', pointerId: event.pointerId, anchorIndex: started.nodes.length - 1 }
-        if (endpoint) interaction.current = null
-        else event.currentTarget.setPointerCapture(event.pointerId)
-        return
-      }
-      if (penCanClose(draft, at, threshold)) {
-        setPenDraft(penClose(draft))
-        penDraftRef.current = penClose(draft)
-        commitPen()
-        return
-      }
-      const target = findOpenEndpoint(elements, at, threshold)
-      if (target && !(draft.continue && target.element.id === draft.continue.id && target.subpath === draft.continue.subpath)) {
-        // Joining onto another free end: commit the draft, merge both objects, connect the ends.
-        const result = penCommit(draft)
-        if (result) {
-          const source = 'element' in result ? result.element : { ...draft.continue!.element, ...result.patch }
-          const joinIndex = 'element' in result ? source.vectorNodes!.length - 1 : lastNodeOfSubpath(source, draft.continue!.subpath)
-          const same = target.element.id === source.id
-          const nodesOf = (element: VectorElement) => element.vectorNodes ?? defaultVectorNodes(element)
-          const combined = same ? null : combineElements([source, target.element], nodesOf)
-          const base: VectorElement = combined ? { ...source, ...combined, kind: 'path', rotation: 0 } : source
-          const offset = same ? 0 : (source.vectorNodes?.length ?? 0)
-          const joined = joinNodes(base, base.vectorNodes!, joinIndex, offset + target.index)
-          const final: VectorElement = joined ? { ...base, ...joined } : base
-          setPenDraft(null)
-          setPenCloseHint(false)
-          onEditElements((current) => {
-            const without = current.filter((element) => element.id !== final.id && element.id !== target.element.id)
-            const anchor = current.findIndex((element) => element.id === target.element.id || element.id === final.id)
-            const at = Math.max(0, Math.min(without.length, anchor < 0 ? without.length : anchor))
-            return [...without.slice(0, at), final, ...without.slice(at)]
-          })
-          onSelectIds([final.id])
+        const base = selected && selected.kind !== 'group' && !selected.locked ? selected : null
+        const nodeId = nodeNear(base, at)
+        if (base && nodeId) {
+          setPenDraft(penFromNode(base, nodeId))
+          return
         }
+        const near = base ? nearestSegment(base, at) : null
+        if (base && near && near.distance <= threshold) {
+          setPenDraft(penFromSegment(base, near.segment.id, near.t))
+          return
+        }
+        const snappedStart = snapFreePoint(at, snapTargetsFor(base ? [base.id] : [])).point
+        if (base && (base.kind === 'path' || base.network)) {
+          // A selected path keeps growing as one network, even from a disconnected node.
+          setPenDraft(penFromPoint(base, snappedStart))
+          interaction.current = { kind: 'pen', pointerId: event.pointerId }
+          event.currentTarget.setPointerCapture(event.pointerId)
+          return
+        }
+        setPenDraft(penStart(snappedStart))
+        onSelectIds([])
+        interaction.current = { kind: 'pen', pointerId: event.pointerId }
+        event.currentTarget.setPointerCapture(event.pointerId)
         return
       }
-      const snapped = snapFreePoint(at, snapTargetsFor(draft.continue ? [draft.continue.id] : [])).point
-      const next = penAddAnchor(draft, snapped)
-      setPenDraft(next)
-      interaction.current = { kind: 'pen', pointerId: event.pointerId, anchorIndex: next.nodes.length - 1 }
+      const existing = penNodeAt(draft, at, threshold)
+      if (existing) {
+        const next = penConnect(draft, existing)
+        setPenDraft(next)
+        setPenCloseHint(false)
+        if (!next.current) commitPen()
+        return
+      }
+      const near = nearestSegment({ ...normalizeWorld(draft.world), rotation: 0, kind: 'path' }, at)
+      if (near && near.distance <= threshold) {
+        setPenDraft(penConnectSegment(draft, near.segment.id, near.t))
+        return
+      }
+      const snapped = snapFreePoint(at, snapTargetsFor(draft.element ? [draft.element.id] : [])).point
+      setPenDraft(penAddAnchor(draft, snapped))
+      interaction.current = { kind: 'pen', pointerId: event.pointerId }
       event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
     if (tool === 'node' && editing) {
-      if (!event.shiftKey) onSelectNodes([])
-      interaction.current = {
-        kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at,
-        additive: event.shiftKey, outside: true, element: structuredClone(editing), nodes: structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing)),
-      }
+      if (!event.shiftKey) { onSelectNodes([]); setSelectedSegment(null) }
+      interaction.current = { kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at, additive: event.shiftKey, element: structuredClone(editing), world: worldNetwork(editing) }
       setMarqueeBounds({ x: at.x, y: at.y, width: 0, height: 0 })
       event.currentTarget.setPointerCapture(event.pointerId)
       return
@@ -908,9 +960,9 @@ export function VectorCanvas({
     const at = point(event.nativeEvent)
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
       const draft = penDraftRef.current
-      const last = draft?.nodes[draft.nodes.length - 1]?.anchor
+      const last = draft?.current ? draft.world.nodes.find((node) => node.id === draft.current)?.point ?? null : null
       const constrained = event.shiftKey && last ? constrainAngle(last, at) : at
-      const snapped = snapFreePoint(constrained, snapTargetsFor(draft?.continue ? [draft.continue.id] : [])).point
+      const snapped = snapFreePoint(constrained, snapTargetsFor(draft?.element ? [draft.element.id] : [])).point
       setPenCursor(snapped)
       setPenCloseHint(!!draft && penCanClose(draft, at, PEN_CLOSE_PX / zoom))
       if (last) {
@@ -922,11 +974,10 @@ export function VectorCanvas({
     if (!active || active.kind === 'modal' || active.pointerId !== event.pointerId) return
     if (active.kind === 'pen') {
       const draft = penDraftRef.current
-      if (!draft) return
-      const anchor = draft.nodes[active.anchorIndex]!.anchor
+      if (!draft || !draft.current) return
+      const anchor = draft.world.nodes.find((node) => node.id === draft.current)!.point
       const handleAt = event.shiftKey ? constrainAngle(anchor, at) : at
-      const next = penDragHandle(draft, active.anchorIndex, handleAt, event.altKey)
-      setPenDraft(next)
+      setPenDraft(penDragHandle(draft, handleAt, event.altKey))
       showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
       return
     }
@@ -951,27 +1002,23 @@ export function VectorCanvas({
       return
     }
     if (active.kind === 'bend') {
-      onUpdate(active.element.id, bendSegment(active.element, active.nodes, active.segmentIndex, active.t, at), false)
+      onUpdate(active.element.id, { ...bendSegment(active.element, active.world, active.segmentId, active.t, at), kind: 'path' }, false)
       return
     }
     if (active.kind === 'node-resize') {
-      const pointer = snapFreePoint(at, []).point
-      const next = resizeBounds(active.bounds, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
-      onUpdate(active.element.id, scaleNodesToBounds(active.element, active.nodes, active.nodeIndices, active.bounds, next), false)
+      const next = resizeBounds(active.bounds, active.handle, at, { lockRatio: event.shiftKey, fromCenter: event.altKey })
+      const map = boxMap(active.bounds, next)
+      onUpdate(active.element.id, { ...transformNodes(active.element, active.world, active.nodeIds, (p) => ({ x: map.a * p.x + map.c * p.y + map.e, y: map.b * p.x + map.d * p.y + map.f })), kind: 'path' }, false)
       showHud(`${round(next.width)} × ${round(next.height)}`, event.nativeEvent)
       return
     }
     if (active.kind === 'node-rotate') {
-      let current = at
       const startAngle = Math.atan2(active.start.y - active.center.y, active.start.x - active.center.x)
       let delta = Math.atan2(at.y - active.center.y, at.x - active.center.x) - startAngle
-      if (event.shiftKey) {
-        delta = snapAngle(delta * 180 / Math.PI) * Math.PI / 180
-        const radius = Math.hypot(at.x - active.center.x, at.y - active.center.y)
-        current = { x: active.center.x + Math.cos(startAngle + delta) * radius, y: active.center.y + Math.sin(startAngle + delta) * radius }
-      }
-      onUpdate(active.element.id, transformVectorNodes(active.element, active.nodes, active.nodeIndices, 'rotate', null, active.start, current, active.center), false)
-      showHud(`${round(normalizeDegrees(delta * 180 / Math.PI))}°`, event.nativeEvent)
+      if (event.shiftKey) delta = snapAngle(delta * 180 / Math.PI) * Math.PI / 180
+      const degrees = delta * 180 / Math.PI
+      onUpdate(active.element.id, { ...transformNodes(active.element, active.world, active.nodeIds, (p) => rotatePoint(p, active.center, degrees)), kind: 'path' }, false)
+      showHud(`${round(normalizeDegrees(degrees))}°`, event.nativeEvent)
       return
     }
     if (active.kind === 'create') {
@@ -1028,17 +1075,30 @@ export function VectorCanvas({
       return
     }
     if (active.kind === 'node') {
-      if (active.part === 'anchor') {
-        const candidate = { x: active.anchorStart.x + at.x - active.start.x, y: active.anchorStart.y + at.y - active.start.y }
-        const snapped = snapFreePoint(candidate, active.targets)
-        const current = { x: active.start.x + snapped.point.x - active.anchorStart.x, y: active.start.y + snapped.point.y - active.anchorStart.y }
-        onUpdate(active.element.id, transformVectorNodes(active.element, active.nodes, active.nodeIndices, 'move', null, active.start, current), false)
-        setSnapMatches(snapped.matches)
-        showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)}`, event.nativeEvent)
-      } else {
-        onUpdate(active.element.id, moveVectorNode(active.element, active.nodes, active.nodeIndex, active.part, at, !event.altKey), false)
+      const dx = at.x - active.start.x
+      const dy = at.y - active.start.y
+      if (!active.moved && Math.hypot(dx, dy) * zoom < 3) return
+      active.moved = true
+      if (active.handle) {
+        onUpdate(active.element.id, { ...moveHandle(active.element, active.world, active.handle.segmentId, active.handle.end, at, event.altKey), kind: 'path' }, false)
         showHud(`${round(at.x)}, ${round(at.y)}`, event.nativeEvent)
+        return
       }
+      const candidate = { x: active.anchorStart.x + dx, y: active.anchorStart.y + dy }
+      const snapped = snapFreePoint(candidate, active.targets)
+      const delta = { x: snapped.point.x - active.anchorStart.x, y: snapped.point.y - active.anchorStart.y }
+      onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
+      setSnapMatches(snapped.matches)
+      showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'segment-move') {
+      const dx = at.x - active.start.x
+      const dy = at.y - active.start.y
+      if (!active.moved && Math.hypot(dx, dy) * zoom < 3) return
+      active.moved = true
+      onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, { x: dx, y: dy }), kind: 'path' }, false)
+      showHud(`Δ ${round(dx)}, ${round(dy)}`, event.nativeEvent)
       return
     }
     if (active.kind === 'guide-move') {
@@ -1118,84 +1178,82 @@ export function VectorCanvas({
     try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* already released */ }
   }
 
-  const onNodePointerDown = (nodeIndex: number, part: NodePart, event: ReactPointerEvent<SVGElement>) => {
+  const onNodePointerDown = (nodeId: string, handle: HandleRef | null, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0 || !editing) return
     event.stopPropagation()
     if (tool === 'pen') return
-    let nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
-    if (part === 'anchor' && (event.metaKey || event.ctrlKey)) {
-      // ⌘ on a smooth node makes it a corner; ⌘-drag on a corner pulls out mirrored handles.
-      const node = nodes[nodeIndex]!
-      if (isSmoothNode(node)) {
-        onUpdate(editing.id, toggleNodeType(editing, nodes, nodeIndex))
-        onSelectNodes([nodeIndex])
+    const world = worldNetwork(editing)
+    if (!handle && (event.metaKey || event.ctrlKey)) {
+      // ⌘ on a smooth node makes it a corner; ⌘-drag on a corner pulls out handles.
+      const incident = world.segments.filter((segment) => segment.a === nodeId || segment.b === nodeId)
+      const smooth = incident.some((segment) => (segment.a === nodeId && segment.ah) || (segment.b === nodeId && segment.bh))
+      if (smooth) {
+        onUpdate(editing.id, { ...toggleNodeSmooth(editing, world, nodeId), kind: 'path' })
+        onSelectNodes([nodeId])
         return
       }
-      nodes = seedHandles(nodes, nodeIndex)
-      onSelectNodes([nodeIndex])
+      const first = incident[0]
+      if (!first) return
+      const anchor = world.nodes.find((node) => node.id === nodeId)!.point
+      const seeded: AbsNetwork = {
+        nodes: world.nodes.map((node) => node.id === nodeId ? { ...node, handles: 'mirrored' as const } : node),
+        segments: world.segments.map((segment) => segment.id === first.id ? (segment.a === nodeId ? { ...segment, ah: anchor } : { ...segment, bh: anchor }) : segment),
+      }
+      onSelectNodes([nodeId])
       onGestureStart()
-      onUpdate(editing.id, { vectorNodes: nodes }, false)
       interaction.current = {
-        kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: nodeWorldPosition(editing, nodes[nodeIndex]!),
-        element: structuredClone({ ...editing, vectorNodes: nodes }), nodes, nodeIndices: [nodeIndex], nodeIndex, part: 'out', targets: [],
+        kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: anchor,
+        element: structuredClone(editing), world: seeded, nodeIds: [nodeId], handle: { segmentId: first.id, end: first.a === nodeId ? 'a' : 'b' }, targets: [], moved: true, toggleOnClick: null,
       }
       setDirectCursor('crosshair')
       svgRef.current?.setPointerCapture(event.pointerId)
       return
     }
-    if (part === 'anchor' && event.shiftKey) {
-      onSelectNodes(selectedNodeIndices.includes(nodeIndex)
-        ? selectedNodeIndices.filter((index) => index !== nodeIndex)
-        : [...selectedNodeIndices, nodeIndex])
-      return
+    let nodeIds = selectedNodeIds
+    let toggleOnClick: string | null = null
+    if (!handle) {
+      if (event.shiftKey) {
+        if (selectedNodeIds.includes(nodeId)) toggleOnClick = nodeId
+        else nodeIds = [...selectedNodeIds, nodeId]
+      } else if (!selectedNodeIds.includes(nodeId)) {
+        nodeIds = [nodeId]
+      }
+      onSelectNodes(nodeIds)
+      setSelectedSegment(null)
+    } else {
+      nodeIds = [nodeId]
     }
-    const nodeIndices = part === 'anchor' && selectedNodeIndices.includes(nodeIndex)
-      ? selectedNodeIndices
-      : [nodeIndex]
-    onSelectNodes(nodeIndices)
     onGestureStart()
     interaction.current = {
-      kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: nodeWorldPosition(editing, nodes[nodeIndex]!),
-      element: structuredClone(editing), nodes, nodeIndices, nodeIndex, part, targets: snapTargetsFor([editing.id]),
+      kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: world.nodes.find((node) => node.id === nodeId)!.point,
+      element: structuredClone(editing), world, nodeIds, handle, targets: snapTargetsFor([editing.id]), moved: false, toggleOnClick,
     }
-    setDirectCursor(part === 'anchor' ? 'move' : 'crosshair')
+    setDirectCursor(handle ? 'crosshair' : 'move')
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
-  const onNodeDoubleClick = (nodeIndex: number, event: ReactMouseEvent<SVGElement>) => {
-    if (!editing) return
-    event.preventDefault()
-    event.stopPropagation()
-    if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
-    const nodes = editing.vectorNodes ?? defaultVectorNodes(editing)
-    onUpdate(editing.id, toggleNodeType(editing, nodes, nodeIndex))
-    onSelectNodes([nodeIndex])
-  }
-
-  const onSegmentPointerDown = (event: ReactPointerEvent<SVGElement>) => {
+  const onSegmentPointerDown = (segmentId: string, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0 || !editing) return
     event.stopPropagation()
     const at = point(event.nativeEvent)
-    const nodes = editing.vectorNodes ?? defaultVectorNodes(editing)
-    const hit = nearestSegment(editing, nodes, at)
-    if (!hit) return
-    onGestureStart()
+    const world = worldNetwork(editing)
     if (event.metaKey || event.ctrlKey) {
+      const hit = nearestSegment(editing, at)
+      if (!hit) return
+      onGestureStart()
       onSelectNodes([])
-      interaction.current = { kind: 'bend', pointerId: event.pointerId, element: structuredClone(editing), nodes: structuredClone(nodes), segmentIndex: hit.index, t: hit.t }
+      setSelectedSegment(segmentId)
+      interaction.current = { kind: 'bend', pointerId: event.pointerId, element: structuredClone(editing), world, segmentId, t: hit.t }
       setDirectCursor('move')
       svgRef.current?.setPointerCapture(event.pointerId)
       return
     }
-    const inserted = insertNode(editing, nodes, hit.index, hit.t)
-    const { insertedIndex, ...patch } = inserted
-    onUpdate(editing.id, patch, false)
-    const next = { ...editing, ...patch }
-    onSelectNodes([insertedIndex])
-    interaction.current = {
-      kind: 'node', pointerId: event.pointerId, start: at, anchorStart: hit.point,
-      element: structuredClone(next), nodes: structuredClone(patch.vectorNodes), nodeIndices: [insertedIndex], nodeIndex: insertedIndex, part: 'anchor', targets: snapTargetsFor([editing.id]),
-    }
+    const segment = world.segments.find((item) => item.id === segmentId)
+    if (!segment) return
+    onSelectNodes([])
+    setSelectedSegment(segmentId)
+    onGestureStart()
+    interaction.current = { kind: 'segment-move', pointerId: event.pointerId, start: at, element: structuredClone(editing), world, nodeIds: [segment.a, segment.b], segmentId, moved: false }
     setDirectCursor('move')
     svgRef.current?.setPointerCapture(event.pointerId)
   }
@@ -1203,37 +1261,35 @@ export function VectorCanvas({
   const startNodeResize = (handle: DirectResizeHandle, event: ReactPointerEvent<SVGElement>) => {
     if (!editing || event.button !== 0) return
     event.stopPropagation()
-    const nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
-    const bounds = nodeSelectionBounds(editing, nodes, selectedNodeIndices)
+    const world = worldNetwork(editing)
+    const bounds = nodeBoundsOf(world, selectedNodeIds)
     if (!bounds) return
     onGestureStart()
-    interaction.current = { kind: 'node-resize', pointerId: event.pointerId, element: structuredClone(editing), nodes, nodeIndices: [...selectedNodeIndices], bounds, handle }
+    interaction.current = { kind: 'node-resize', pointerId: event.pointerId, element: structuredClone(editing), world, nodeIds: [...selectedNodeIds], bounds, handle }
     setDirectCursor(resizeCursor(handle, 0))
     svgRef.current?.setPointerCapture(event.pointerId)
   }
   const startNodeRotate = (event: ReactPointerEvent<SVGElement>) => {
     if (!editing || event.button !== 0) return
     event.stopPropagation()
-    const nodes = structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing))
-    const bounds = nodeSelectionBounds(editing, nodes, selectedNodeIndices)
+    const world = worldNetwork(editing)
+    const bounds = nodeBoundsOf(world, selectedNodeIds)
     if (!bounds) return
     onGestureStart()
-    interaction.current = { kind: 'node-rotate', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(editing), nodes, nodeIndices: [...selectedNodeIndices], center: elementCenter(bounds) }
+    interaction.current = { kind: 'node-rotate', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(editing), world, nodeIds: [...selectedNodeIds], center: elementCenter(bounds) }
     setTransformStatus({ mode: 'rotate', axis: null })
     setDirectCursor('var(--cursor-rotate)')
     svgRef.current?.setPointerCapture(event.pointerId)
   }
-  const nodeBox = editing && selectedNodeIndices.length > 1 ? nodeSelectionBounds(editing, editing.vectorNodes ?? defaultVectorNodes(editing), selectedNodeIndices) : null
+  const editingWorld = editing ? worldNetwork(editing) : null
+  const nodeBox = editing && editingWorld && selectedNodeIds.length > 1 ? nodeBoundsOf(editingWorld, selectedNodeIds) : null
 
   const showHandles = (tool === 'select') && selectedLeaves.length > 0 && !editing
   const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' ? selected : null
   const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
-  const openEndpoints = tool === 'pen' ? elements.flatMap((element) => {
-    if (!isHittable(element) || !element.vectorNodes) return []
-    return openEndpointsOf(element).map((end) => ({ id: `${element.id}-${end.index}`, point: end.point }))
-  }) : []
+  const penTarget = tool === 'pen' && !penDraft && selected && selected.kind !== 'group' && !selected.locked ? selected : null
 
   return (
     <div
@@ -1334,11 +1390,14 @@ export function VectorCanvas({
           ) : null}
           {transformStatus?.axis && selectedLeaves.length ? <AxisGuide bounds={selectionBounds(selectedLeaves)} axis={transformStatus.axis} /> : null}
           {(tool === 'transform') && selectedLeaves.length > 0 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} />) : null}
-          {editing ? (
+          {editing && editingWorld ? (
             <VectorNodes
               element={editing}
+              world={editingWorld}
               zoom={zoom}
-              selectedIndices={selectedNodeIndices}
+              selectedIds={selectedNodeIds}
+              selectedSegmentId={selectedSegmentId}
+              interactive={tool === 'node'}
               onNodePointerDown={onNodePointerDown}
               onSegmentPointerDown={onSegmentPointerDown}
             />
@@ -1387,9 +1446,9 @@ export function VectorCanvas({
             />
           ) : null}
           {tool === 'select' && selectedElements.length > 1 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} thin />) : null}
-          {openEndpoints.map((endpoint) => (
-            <circle key={endpoint.id} className="vector-pen__endpoint" cx={endpoint.point.x} cy={endpoint.point.y} r={4 / zoom} />
-          ))}
+          {penTarget ? worldNetwork(penTarget).nodes.map((node) => (
+            <circle key={node.id} className="vector-pen__endpoint" cx={node.point.x} cy={node.point.y} r={4 / zoom} />
+          )) : null}
           {penDraft ? <PenPreview draft={penDraft} cursor={penCursor} zoom={zoom} closeHint={penCloseHint} /> : null}
           {snapMatches.map((match, index) => (
             match.axis === 'x'
@@ -1435,22 +1494,48 @@ export function VectorCanvas({
   )
 }
 
-function findOpenEndpoint(elements: VectorElement[], at: Point, threshold: number): { element: VectorElement; end: 'start' | 'end'; subpath: number; index: number } | null {
+/** Topmost hittable element whose filled region contains the point (bucket tool). */
+function bucketTarget(elements: VectorElement[], at: Point): VectorElement | null {
   for (let index = elements.length - 1; index >= 0; index -= 1) {
     const element = elements[index]!
-    if (!isHittable(element) || !element.vectorNodes) continue
-    for (const end of openEndpointsOf(element)) {
-      if (Math.hypot(end.point.x - at.x, end.point.y - at.y) <= threshold) return { element, end: end.end, subpath: end.subpath, index: end.index }
-    }
+    if (!isHittable(element)) continue
+    if (worldFaces(element).hit(at)) return element
   }
   return null
 }
 
-function lastNodeOfSubpath(element: VectorElement, subpath: number): number {
-  const nodes = element.vectorNodes ?? []
-  const declared = element.subpaths && element.subpaths.length ? element.subpaths : [{ start: 0, closed: element.closed !== false }]
-  const next = declared[subpath + 1]
-  return (next ? next.start : nodes.length) - 1
+/** Stores a primitive's implicit network so region toggles have stable keys. */
+function worldNetworkAsLocal(element: VectorElement): VectorElement['network'] {
+  return normalizeWorld(worldNetwork(element)).network
+}
+
+function nodeBoundsOf(world: AbsNetwork, ids: string[]): Bounds | null {
+  const points = world.nodes.filter((node) => ids.includes(node.id)).map((node) => node.point)
+  if (points.length === 0) return null
+  const left = Math.min(...points.map((point) => point.x))
+  const top = Math.min(...points.map((point) => point.y))
+  const right = Math.max(...points.map((point) => point.x))
+  const bottom = Math.max(...points.map((point) => point.y))
+  return { x: left, y: top, width: right - left, height: bottom - top }
+}
+
+function nodeModalMap(mode: VectorTransformMode, axis: VectorTransformAxis, origin: Point, start: Point, current: Point): (point: Point) => Point {
+  if (mode === 'move') {
+    const dx = axis === 'y' ? 0 : current.x - start.x
+    const dy = axis === 'x' ? 0 : current.y - start.y
+    return (point) => ({ x: point.x + dx, y: point.y + dy })
+  }
+  if (mode === 'rotate') {
+    const angle = Math.atan2(current.y - origin.y, current.x - origin.x) - Math.atan2(start.y - origin.y, start.x - origin.x)
+    return (point) => rotatePoint(point, origin, angle * 180 / Math.PI)
+  }
+  const startVector = { x: start.x - origin.x, y: start.y - origin.y }
+  const currentVector = { x: current.x - origin.x, y: current.y - origin.y }
+  const uniform = Math.max(0.01, Math.hypot(currentVector.x, currentVector.y) / Math.max(1, Math.hypot(startVector.x, startVector.y)))
+  const ratio = (value: number, base: number) => Math.abs(base) > 0.01 ? Math.max(0.01, value / base) : uniform
+  const factorX = axis === 'y' ? 1 : axis === 'x' ? ratio(currentVector.x, startVector.x) : uniform
+  const factorY = axis === 'x' ? 1 : axis === 'y' ? ratio(currentVector.y, startVector.y) : uniform
+  return (point) => ({ x: origin.x + (point.x - origin.x) * factorX, y: origin.y + (point.y - origin.y) * factorY })
 }
 
 function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, inheritedLocked, onPointerDown, onHover }: {
@@ -1516,7 +1601,7 @@ function VectorShape({ element, zoom, coarse, pixelPreview, selected, editing, o
 }) {
   const rendered = previewGeometry(element, pixelPreview)
   const hittable = isHittable(element)
-  const model = renderModel(rendered, 'canvas')
+  const model = useMemo(() => renderModel(rendered, 'canvas'), [rendered])
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
   const fillEvents = fillPointerEvents({ ...element, fill: model.layers.some((layer) => layer.kind === 'fill') ? '#000000' : 'none' })
   return (
@@ -1568,9 +1653,9 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
             return <pattern key={def.id} id={def.id} patternUnits="userSpaceOnUse" x={def.x} y={def.y} width={size} height={height}><image href={def.image} x={0} y={0} width={size} height={height} preserveAspectRatio={def.mode === 'fit' ? 'xMidYMid meet' : def.mode === 'fill' ? 'xMidYMid slice' : 'none'} /></pattern>
           }
           case 'clipPath':
-            return <clipPath key={def.id} id={def.id}><path d={def.d} /></clipPath>
+            return <clipPath key={def.id} id={def.id}><path d={def.d} clipRule="evenodd" /></clipPath>
           case 'mask':
-            return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" /></mask>
+            return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" fillRule="evenodd" /></mask>
           case 'marker': {
             const shape = markerShape(def.shape)
             return <marker key={def.id} id={def.id} markerUnits="strokeWidth" markerWidth={shape.size} markerHeight={shape.size} refX={shape.refX} refY={shape.size / 2} orient={def.end ? 'auto' : 'auto-start-reverse'}><path d={shape.d} fill={shape.fill ? def.color : 'none'} stroke={def.color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" /></marker>
@@ -1602,23 +1687,11 @@ function CanvasRulers({ document, viewport, pan, zoom, selection, interactive, o
   const yTicks = rulerTicks(-origin.y / zoom, (viewport.height - origin.y) / zoom, step)
   return (
     <div className="vector-rulers" aria-hidden="true" data-interactive={interactive || undefined}>
-      <div
-        className="vector-ruler vector-ruler--x"
-        onPointerDown={(event) => onPointerDown('y', event)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-      >
+      <div className="vector-ruler vector-ruler--x" onPointerDown={(event) => onPointerDown('y', event)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
         {selection ? <span className="vector-ruler__span" style={{ left: origin.x + selection.x * zoom, width: Math.max(1, selection.width * zoom) }} /> : null}
         {xTicks.map((value) => <span key={value} className="vector-ruler__tick" style={{ left: origin.x + value * zoom }}><span>{formatRulerValue(value)}</span></span>)}
       </div>
-      <div
-        className="vector-ruler vector-ruler--y"
-        onPointerDown={(event) => onPointerDown('x', event)}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-      >
+      <div className="vector-ruler vector-ruler--y" onPointerDown={(event) => onPointerDown('x', event)} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel}>
         {selection ? <span className="vector-ruler__span" style={{ top: origin.y + selection.y * zoom, height: Math.max(1, selection.height * zoom) }} /> : null}
         {yTicks.map((value) => <span key={value} className="vector-ruler__tick" style={{ top: origin.y + value * zoom }}><span>{formatRulerValue(value)}</span></span>)}
       </div>
@@ -1655,80 +1728,87 @@ function GuideLines({ guides, draft, selectedId, interactive, onPointerDown }: {
   )
 }
 
-function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onSegmentPointerDown }: {
+/** Node-edit overlay: every segment is selectable, every node draggable, handles on selected nodes. */
+function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, onNodePointerDown, onSegmentPointerDown }: {
   element: VectorElement
+  world: AbsNetwork
   zoom: number
-  selectedIndices: number[]
-  onNodePointerDown: (nodeIndex: number, part: NodePart, event: ReactPointerEvent<SVGCircleElement>) => void
-  onSegmentPointerDown: (event: ReactPointerEvent<SVGPathElement>) => void
+  selectedIds: string[]
+  selectedSegmentId: string | null
+  interactive: boolean
+  onNodePointerDown: (nodeId: string, handle: HandleRef | null, event: ReactPointerEvent<SVGElement>) => void
+  onSegmentPointerDown: (segmentId: string, event: ReactPointerEvent<SVGElement>) => void
 }) {
-  const nodes = element.vectorNodes ?? defaultVectorNodes(element)
-  const cx = element.x + element.width / 2
-  const cy = element.y + element.height / 2
   const hitRadius = 5 / zoom
   const pointRadius = 3.5 / zoom
   const controlRadius = 3 / zoom
-  const shown = new Set<number>()
-  for (const index of selectedIndices) {
-    shown.add(index)
-    const around = neighbours(element, nodes.length, index)
-    if (around.next !== null) shown.add(around.next)
-    if (around.previous !== null) shown.add(around.previous)
+  const nodeMap = new Map(world.nodes.map((node) => [node.id, node]))
+  const selectedSet = new Set(selectedIds)
+  const shownHandles: Array<{ segment: AbsSegment; end: 'a' | 'b'; point: Point; anchor: Point }> = []
+  for (const segment of world.segments) {
+    for (const end of ['a', 'b'] as const) {
+      const handle = end === 'a' ? segment.ah : segment.bh
+      if (!handle) continue
+      const nodeId = end === 'a' ? segment.a : segment.b
+      const otherId = end === 'a' ? segment.b : segment.a
+      // Handles show on selected nodes and on the far end of segments touching them.
+      if (!selectedSet.has(nodeId) && !selectedSet.has(otherId) && selectedSegmentId !== segment.id) continue
+      shownHandles.push({ segment, end, point: handle, anchor: nodeMap.get(nodeId)!.point })
+    }
   }
   return (
-    <g className="vector-nodes" transform={`rotate(${element.rotation} ${cx} ${cy})`}>
-      <path className="vector-nodes__outline" d={vectorPathData(element, nodes)} />
-      <path className="vector-nodes__segment-hit" data-vector-segment="true" d={vectorPathData(element, nodes)} onPointerDown={onSegmentPointerDown} />
-      {[...shown].map((index) => {
-        const node = nodes[index]
-        if (!node) return null
-        const anchor = nodePosition(element, node)
-        const selectedNode = selectedIndices.includes(index)
-        return (['in', 'out'] as const).map((part) => {
-          if (!node[part]) return null
-          if (!selectedNode) {
-            // Neighbouring nodes only show the handle that faces a selected node.
-            const around = neighbours(element, nodes.length, index)
-            const facing = part === 'out' ? around.next : around.previous
-            if (facing === null || !selectedIndices.includes(facing)) return null
-          }
-          const handle = nodePosition(element, node, part)
-          return <g key={`${index}-${part}`}>
-            <line className="vector-nodes__control-line" x1={anchor.x} y1={anchor.y} x2={handle.x} y2={handle.y} />
-            <circle className="vector-nodes__control-hit" data-vector-control={part} cx={handle.x} cy={handle.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(index, part, event)} />
-            <circle className="vector-nodes__control" cx={handle.x} cy={handle.y} r={controlRadius} />
+    <g className="vector-nodes" aria-label={`${element.name} nodes`}>
+      {world.segments.map((segment) => {
+        const cubic = segmentCubic(world, segment)
+        const straight = !segment.ah && !segment.bh
+        const d = straight ? `M ${cubic[0].x} ${cubic[0].y} L ${cubic[3].x} ${cubic[3].y}` : `M ${cubic[0].x} ${cubic[0].y} C ${cubic[1].x} ${cubic[1].y} ${cubic[2].x} ${cubic[2].y} ${cubic[3].x} ${cubic[3].y}`
+        return (
+          <g key={segment.id} data-selected-segment={selectedSegmentId === segment.id || undefined}>
+            <path className="vector-nodes__outline" d={d} />
+            {interactive ? <path className="vector-nodes__segment-hit" data-vector-segment={segment.id} d={d} onPointerDown={(event) => onSegmentPointerDown(segment.id, event)} /> : null}
           </g>
-        })
+        )
       })}
-      {nodes.map((node, index) => {
-        const position = nodePosition(element, node)
-        const smooth = !!node.in || !!node.out
-        return <g key={index}>
-          <circle className="vector-nodes__hit" data-vector-node={index} cx={position.x} cy={position.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(index, 'anchor', event)} />
-          {smooth
-            ? <circle className="vector-nodes__point" data-selected={selectedIndices.includes(index) || undefined} cx={position.x} cy={position.y} r={pointRadius} />
-            : <rect className="vector-nodes__point" data-selected={selectedIndices.includes(index) || undefined} x={position.x - pointRadius} y={position.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
+      {shownHandles.map((item) => (
+        <g key={`${item.segment.id}-${item.end}`}>
+          <line className="vector-nodes__control-line" x1={item.anchor.x} y1={item.anchor.y} x2={item.point.x} y2={item.point.y} />
+          {interactive ? <circle className="vector-nodes__control-hit" data-vector-control={`${item.segment.id}:${item.end}`} cx={item.point.x} cy={item.point.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(item.end === 'a' ? item.segment.a : item.segment.b, { segmentId: item.segment.id, end: item.end }, event)} /> : null}
+          <circle className="vector-nodes__control" cx={item.point.x} cy={item.point.y} r={controlRadius} />
         </g>
+      ))}
+      {world.nodes.map((node) => {
+        const incident = world.segments.filter((segment) => segment.a === node.id || segment.b === node.id)
+        const smooth = incident.some((segment) => (segment.a === node.id && segment.ah) || (segment.b === node.id && segment.bh))
+        return (
+          <g key={node.id}>
+            {interactive ? <circle className="vector-nodes__hit" data-vector-node={node.id} cx={node.point.x} cy={node.point.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(node.id, null, event)} /> : null}
+            {smooth
+              ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} cx={node.point.x} cy={node.point.y} r={pointRadius} />
+              : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} x={node.point.x - pointRadius} y={node.point.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
+          </g>
+        )
       })}
     </g>
   )
 }
 
 function PenPreview({ draft, cursor, zoom, closeHint }: { draft: PenDraft; cursor: Point | null; zoom: number; closeHint: boolean }) {
-  const first = draft.nodes[0]!
-  const last = draft.nodes[draft.nodes.length - 1]!
   const size = 3.5 / zoom
+  const current = draft.current ? draft.world.nodes.find((node) => node.id === draft.current) : null
+  const start = draft.start ? draft.world.nodes.find((node) => node.id === draft.start) : null
+  const lastSegment = draft.lastSegment ? draft.world.segments.find((segment) => segment.id === draft.lastSegment) : null
+  const inHandle = lastSegment && current ? (lastSegment.b === current.id ? lastSegment.bh : lastSegment.ah) : undefined
   return (
     <g className="vector-pen">
-      <path className="vector-pen__path" d={penPreviewData(draft, draft.closed ? null : cursor)} />
-      {last.in ? <line className="vector-nodes__control-line" x1={last.anchor.x} y1={last.anchor.y} x2={last.in.x} y2={last.in.y} /> : null}
-      {last.out ? <line className="vector-nodes__control-line" x1={last.anchor.x} y1={last.anchor.y} x2={last.out.x} y2={last.out.y} /> : null}
-      {last.in ? <circle className="vector-nodes__control" cx={last.in.x} cy={last.in.y} r={3 / zoom} /> : null}
-      {last.out ? <circle className="vector-nodes__control" cx={last.out.x} cy={last.out.y} r={3 / zoom} /> : null}
-      {draft.nodes.map((node, index) => (
-        <rect key={index} className="vector-pen__anchor" data-first={index === 0 || undefined} x={node.anchor.x - size} y={node.anchor.y - size} width={size * 2} height={size * 2} rx={0.75 / zoom} />
+      <path className="vector-pen__path" d={penPreviewData(draft, cursor)} />
+      {current && inHandle ? <line className="vector-nodes__control-line" x1={current.point.x} y1={current.point.y} x2={inHandle.x} y2={inHandle.y} /> : null}
+      {current && draft.pendingOut ? <line className="vector-nodes__control-line" x1={current.point.x} y1={current.point.y} x2={draft.pendingOut.x} y2={draft.pendingOut.y} /> : null}
+      {current && inHandle ? <circle className="vector-nodes__control" cx={inHandle.x} cy={inHandle.y} r={3 / zoom} /> : null}
+      {current && draft.pendingOut ? <circle className="vector-nodes__control" cx={draft.pendingOut.x} cy={draft.pendingOut.y} r={3 / zoom} /> : null}
+      {draft.world.nodes.map((node) => (
+        <rect key={node.id} className="vector-pen__anchor" data-first={node.id === draft.start || undefined} data-current={node.id === draft.current || undefined} x={node.point.x - size} y={node.point.y - size} width={size * 2} height={size * 2} rx={0.75 / zoom} />
       ))}
-      {closeHint ? <circle className="vector-pen__close" cx={first.anchor.x} cy={first.anchor.y} r={PEN_CLOSE_PX / zoom} /> : null}
+      {closeHint && start ? <circle className="vector-pen__close" cx={start.point.x} cy={start.point.y} r={PEN_CLOSE_PX / zoom} /> : null}
     </g>
   )
 }
@@ -1846,16 +1926,6 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
   )
 }
 
-/** Three-quarter arc around a corner that leaves the quadrant pointing into the box uncovered. */
-function rotateZonePath(cx: number, cy: number, r: number, corner: Corner): string {
-  const skip: Record<Corner, number> = { nw: 0, ne: 90, se: 180, sw: 270 }
-  const start = ((skip[corner] + 90) * Math.PI) / 180
-  const end = ((skip[corner] + 360) * Math.PI) / 180
-  const from = { x: cx + Math.cos(start) * r, y: cy + Math.sin(start) * r }
-  const to = { x: cx + Math.cos(end) * r, y: cy + Math.sin(end) * r }
-  return `M ${from.x} ${from.y} A ${r} ${r} 0 1 1 ${to.x} ${to.y}`
-}
-
 function Pivot({ point, custom, zoom, onPointerDown, onDoubleClick }: { point: Point; custom: boolean; zoom: number; onPointerDown: (event: ReactPointerEvent<SVGElement>) => void; onDoubleClick: () => void }) {
   const arm = 6 / zoom
   return (
@@ -1962,6 +2032,16 @@ function Minimap({ document, elements, viewport, pan, zoom, onNavigate }: {
       <rect className="vector-minimap__view" x={view.x} y={view.y} width={view.width} height={view.height} />
     </svg>
   )
+}
+
+/** Three-quarter arc around a corner that leaves the quadrant pointing into the box uncovered. */
+function rotateZonePath(cx: number, cy: number, r: number, corner: Corner): string {
+  const skip: Record<Corner, number> = { nw: 0, ne: 90, se: 180, sw: 270 }
+  const start = ((skip[corner] + 90) * Math.PI) / 180
+  const end = ((skip[corner] + 360) * Math.PI) / 180
+  const from = { x: cx + Math.cos(start) * r, y: cy + Math.sin(start) * r }
+  const to = { x: cx + Math.cos(end) * r, y: cy + Math.sin(end) * r }
+  return `M ${from.x} ${from.y} A ${r} ${r} 0 1 1 ${to.x} ${to.y}`
 }
 
 function formatRulerValue(value: number): string {

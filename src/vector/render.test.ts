@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createVectorDocument, createVectorElement, serializeVectorDocument } from '@/vector/document'
 import { defsToSvg, layersToSvg, outlinePathData, renderModel } from '@/vector/render'
+import { networkFromRuns, normalizeWorld } from '@/vector/network'
 import type { VectorElement } from '@/vector/types'
 
 const rect = (): VectorElement => createVectorElement('rectangle', { x: 10, y: 20, width: 100, height: 50 })
@@ -43,7 +44,7 @@ describe('render model', () => {
   it('strokes only the requested rectangle sides and adds arrowheads on paths', () => {
     const sides = renderModel({ ...rect(), stroke: '#FFFFFF', strokeWidth: 2, strokeSides: { top: true, right: false, bottom: false, left: false } }, 't')
     expect(sides.layers[1]!.d).toBe('M 10 20 L 110 20')
-    const path = createVectorElement('path', { x: 0, y: 0, width: 100, height: 10 }, { vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 1 }], closed: false })
+    const path = createVectorElement('path', { x: 0, y: 0, width: 100, height: 10 }, { network: { nodes: [{ id: 'a', x: 0, y: 0 }, { id: 'b', x: 1, y: 1 }], segments: [{ id: 's', a: 'a', b: 'b' }] } })
     const arrows = renderModel({ ...path, strokeArrowStart: 'circle', strokeArrowEnd: 'triangle' }, 't')
     expect(arrows.layers[0]!.markerEnd).toBe(`url(#t-${path.id}-arrow-end-0)`)
     expect(arrows.defs.map((def) => def.type)).toEqual(['marker', 'marker'])
@@ -59,5 +60,19 @@ describe('render model', () => {
     expect(svg).toContain(`<g id="${rounded.id}"><path id="${rounded.id}" d="M 10 30 C`)
     expect(svg).toContain('<rect id="plain"')
     expect(layersToSvg(renderModel(rounded, 'x'), rounded.id)).toContain('fill-opacity="1"')
+  })
+
+  it('fills only regions that are switched on and strokes every chain', () => {
+    const built = normalizeWorld(networkFromRuns([
+      { points: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }, { anchor: { x: 100, y: 100 } }, { anchor: { x: 0, y: 100 } }], closed: true },
+      { points: [{ anchor: { x: -20, y: 50 } }, { anchor: { x: 120, y: 50 } }], closed: false },
+    ]))
+    const element = { ...createVectorElement('path', built, { network: built.network, fill: '#FF0000' }) }
+    const model = renderModel(element, 't')
+    const fill = model.layers.find((layer) => layer.kind === 'fill')!
+    expect((fill.d.match(/Z/g) ?? []).length).toBe(2)
+    expect(model.layers.filter((layer) => layer.kind === 'stroke')).toHaveLength(1)
+    const key = renderModel(element, 't') && (fill.d ? 'ok' : '')
+    expect(key).toBe('ok')
   })
 })

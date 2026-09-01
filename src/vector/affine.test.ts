@@ -1,20 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { boxMap, elementInLasso, flipAffine, pointInPolygon, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
+import { networkFromRuns, normalizeWorld, worldNetwork } from '@/vector/network'
 import type { VectorElement } from '@/vector/types'
-import { nodeWorldPosition } from '@/vector/vectorPath'
+
+function triangle(rotation = 0): VectorElement {
+  const built = normalizeWorld(networkFromRuns([{ points: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }, { anchor: { x: 100, y: 100 } }], closed: true }]))
+  return { ...createVectorElement('path', built, { network: built.network }), rotation }
+}
 
 describe('affine transforms', () => {
   it('bakes non-uniform scale into rotated paths exactly', () => {
-    const path: VectorElement = { ...createVectorElement('path', { x: 0, y: 0, width: 100, height: 100 }, { vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 1 }] }), rotation: 45 }
-    const before = path.vectorNodes!.map((node) => nodeWorldPosition(path, node))
+    const path = triangle(45)
+    const before = worldNetwork(path).nodes.map((node) => node.point)
     const patch = transformElementAffine(path, boxMap({ x: -50, y: -50, width: 200, height: 200 }, { x: -50, y: -50, width: 400, height: 200 }))
     const after = { ...path, ...patch }
     expect(after.rotation).toBe(0)
-    after.vectorNodes!.forEach((node, index) => {
-      const point = nodeWorldPosition(after, node)
-      expect(point.x).toBeCloseTo(-50 + (before[index]!.x + 50) * 2, 1)
-      expect(point.y).toBeCloseTo(before[index]!.y, 1)
+    worldNetwork(after).nodes.forEach((node, index) => {
+      expect(node.point.x).toBeCloseTo(-50 + (before[index]!.x + 50) * 2, 1)
+      expect(node.point.y).toBeCloseTo(before[index]!.y, 1)
     })
   })
 
@@ -35,16 +39,16 @@ describe('affine transforms', () => {
     const rotated = transformElementAffine(rect, rotationAffine(90, { x: 50, y: 25 }))
     expect(rotated.rotation).toBe(90)
     expect(rotated.x! + rotated.width! / 2).toBeCloseTo(50)
-    const path = createVectorElement('path', { x: 0, y: 0, width: 100, height: 100 }, { vectorNodes: [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }] })
+    const path = triangle()
     const mirrored = { ...path, ...transformElementAffine(path, flipAffine('x', { x: 50, y: 50 })) }
-    expect(nodeWorldPosition(mirrored, mirrored.vectorNodes![0]!)).toEqual({ x: 100, y: 0 })
+    expect(worldNetwork(mirrored).nodes[0]!.point).toEqual({ x: 100, y: 0 })
   })
 
   it('tests lasso membership by corners and centre', () => {
-    const triangle = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 0, y: 200 }]
-    expect(pointInPolygon({ x: 50, y: 50 }, triangle)).toBe(true)
-    expect(pointInPolygon({ x: 150, y: 150 }, triangle)).toBe(false)
-    expect(elementInLasso(createVectorElement('rectangle', { x: 20, y: 20, width: 40, height: 40 }), triangle)).toBe(true)
-    expect(elementInLasso(createVectorElement('rectangle', { x: 300, y: 300, width: 40, height: 40 }), triangle)).toBe(false)
+    const shape = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 0, y: 200 }]
+    expect(pointInPolygon({ x: 50, y: 50 }, shape)).toBe(true)
+    expect(pointInPolygon({ x: 150, y: 150 }, shape)).toBe(false)
+    expect(elementInLasso(createVectorElement('rectangle', { x: 20, y: 20, width: 40, height: 40 }), shape)).toBe(true)
+    expect(elementInLasso(createVectorElement('rectangle', { x: 300, y: 300, width: 40, height: 40 }), shape)).toBe(false)
   })
 })
