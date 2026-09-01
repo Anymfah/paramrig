@@ -138,3 +138,42 @@ describe('text models', () => {
     expect(model.text?.strokeWidth).toBe(2)
   })
 })
+
+describe('image models', () => {
+  const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+  const picture = (patch: Partial<VectorElement> = {}): VectorElement => ({
+    id: 'pic', kind: 'image', name: 'Pic', x: 100, y: 100, width: 200, height: 100, rotation: 0,
+    fill: 'none', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false,
+    image: PIXEL, imageWidth: 400, imageHeight: 200, ...patch,
+  })
+
+  it('places an uncropped picture exactly on its box', () => {
+    const model = renderModel(picture(), 'canvas')
+
+    expect(model.layers).toEqual([])
+    expect(model.image).toMatchObject({ href: PIXEL, x: 100, y: 100, width: 200, height: 100, rendering: 'auto', clipPath: null })
+    expect(model.defs).toEqual([])
+  })
+
+  it('scales and clips a cropped picture so the crop fills the box', () => {
+    const model = renderModel(picture({ crop: { x: 0.25, y: 0.5, width: 0.5, height: 0.5 } }), 'canvas')
+
+    expect(model.image).toMatchObject({ x: 0, y: 0, width: 400, height: 200 })
+    expect(model.image?.clipPath).toBe('url(#canvas-pic-crop)')
+    expect(model.defs[0]).toMatchObject({ type: 'clipPath', id: 'canvas-pic-crop' })
+  })
+
+  it('passes the pixelated rendering through', () => {
+    expect(renderModel(picture({ imageRendering: 'pixelated' }), 'canvas').image?.rendering).toBe('pixelated')
+  })
+
+  it('exports an <image> rather than a rectangle', () => {
+    const svg = serializeVectorDocument({ ...createVectorDocument(), elements: [picture({ crop: { x: 0, y: 0, width: 0.5, height: 1 } })] })
+
+    expect(svg).toContain('<image ')
+    expect(svg).toContain('preserveAspectRatio="none"')
+    expect(svg).toContain('clip-path="url(#svg-pic-crop)"')
+    expect(svg).toContain(`href="${PIXEL}"`)
+    expect(svg).not.toContain('<rect')
+  })
+})

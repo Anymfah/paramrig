@@ -21,6 +21,7 @@ import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_FACES,
 import { outlineText } from '@/vector/textOutline'
 import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
+import { isFullCrop, resetCropBox } from '@/vector/crop'
 import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
@@ -61,6 +62,8 @@ type VectorInspectorProps = {
   onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
   onRenameStyle?: (styleId: string, name: string) => void
   onDeleteStyle?: (styleId: string) => void
+  /** Opens crop editing on an image, the way a double-click does. */
+  onCropImage?: (id: string) => void
 }
 
 export function VectorInspector({
@@ -90,6 +93,7 @@ export function VectorInspector({
   onUpdateStyle,
   onRenameStyle,
   onDeleteStyle,
+  onCropImage,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -367,13 +371,16 @@ export function VectorInspector({
               onUpdateStyle={onUpdateStyle}
               gesture={gesture}
             />
+            {single && single.kind === 'image' ? (
+              <ImagePanel element={single} onUpdate={onUpdate} onCrop={onCropImage} />
+            ) : null}
             {single && single.kind === 'frame' ? (
               <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
             ) : null}
             {single && single.kind === 'text' ? (
               <TextPanel element={single} onUpdate={onUpdate} onOutline={outlineTextElement} gesture={gesture} />
             ) : null}
-            {single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' ? (
+            {single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' ? (
               <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
             ) : null}
             {combinable.length > 1 ? (
@@ -394,7 +401,7 @@ export function VectorInspector({
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
-            ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && (single.strokeWidth > 0 || single.network) ? (
+            ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
                   {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" data-action="outline-stroke" onClick={outline}>Outline stroke</Button> : null}
@@ -732,6 +739,46 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
   )
 }
 
+function ImagePanel({ element, onUpdate, onCrop }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onCrop?: (id: string) => void
+}) {
+  const cropped = !isFullCrop(element.crop)
+  const natural = element.imageWidth && element.imageHeight ? `${element.imageWidth} × ${element.imageHeight}` : 'Unknown size'
+  const box = { x: element.x, y: element.y, width: element.width, height: element.height }
+  return (
+    <section className="vector-panel" aria-label="Image">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Image</h2>
+        <span className="vector-panel__meta">{natural}{cropped ? ' · cropped' : ''}</span>
+      </div>
+      <SelectField
+        label="Rendering"
+        value={element.imageRendering ?? 'smooth'}
+        options={[{ value: 'smooth', label: 'Smooth' }, { value: 'pixelated', label: 'Pixelated' }]}
+        onChange={(value) => onUpdate(element.id, { imageRendering: value === 'pixelated' ? 'pixelated' : undefined })}
+      />
+      <div className="vector-panel__actions">
+        <Button variant="quiet" size="sm" data-action="crop-image" onClick={() => onCrop?.(element.id)}>Crop</Button>
+        {cropped ? (
+          <Button
+            variant="quiet"
+            size="sm"
+            data-action="reset-crop"
+            onClick={() => onUpdate(element.id, { ...roundBox(resetCropBox(box, element.crop!)), crop: undefined })}
+          >Show whole image</Button>
+        ) : null}
+      </div>
+      <p className="vector-panel__hint">Double-click the picture to crop it. Resizing keeps its shape unless Shift is held.</p>
+    </section>
+  )
+}
+
+function roundBox(box: { x: number; y: number; width: number; height: number }) {
+  return { x: round(box.x), y: round(box.y), width: Math.max(1, round(box.width)), height: Math.max(1, round(box.height)) }
+}
+
 function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
   element: VectorElement
   elements: VectorElement[]
@@ -926,6 +973,7 @@ function kindLabel(element: VectorElement): string {
     case 'group': return 'Group'
     case 'text': return 'Text'
     case 'frame': return 'Frame'
+    case 'image': return 'Image'
   }
 }
 

@@ -287,6 +287,12 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }
     const onPaste = (event: ClipboardEvent) => {
       if (editable(event.target)) return
+      const pictures = [...(event.clipboardData?.files ?? [])].filter((file) => file.type.startsWith('image/'))
+      if (pictures.length > 0) {
+        event.preventDefault()
+        void controller.current?.addImages(pictures)
+        return
+      }
       const payload = readClipboardPayload(event.clipboardData)
       if (!payload) {
         // Nothing readable on the system clipboard: fall back to what a menu copy stored.
@@ -789,6 +795,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onUpdateStyle={updateStyle}
           onRenameStyle={renameStyle}
           onDeleteStyle={deleteStyle}
+          onCropImage={(id) => controller.current?.cropImage(id)}
         />
       }
     >

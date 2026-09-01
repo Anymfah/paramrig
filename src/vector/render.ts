@@ -3,6 +3,7 @@ import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
 import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNetwork, type AbsNetwork, type Run } from '@/vector/network'
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
 import { computeFaces, faceContainsPoint, loopToRun, type Face } from '@/vector/planar'
+import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
 
@@ -44,6 +45,17 @@ export type TextRender = {
   strokeWidth: number
 }
 
+/** A placed picture: where it lands in world space, and the box that clips it. */
+export type ImageRender = {
+  href: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rendering: 'auto' | 'pixelated'
+  clipPath: string | null
+}
+
 export type RenderModel = {
   /** Stroke outline in local coordinates (every chain), used for hit testing. */
   d: string
@@ -55,6 +67,8 @@ export type RenderModel = {
   layers: RenderLayer[]
   /** Set for text elements; their paint rides on the `<text>` rather than on paths. */
   text?: TextRender
+  /** Set for image elements. */
+  image?: ImageRender
 }
 
 /** Local-space geometry of an element: chains for strokes and faces for fills, corners applied. */
@@ -116,6 +130,7 @@ export function renderModel(element: VectorElement, prefix: string): RenderModel
 
 function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
   if (element.kind === 'text') return buildTextModel(element, prefix)
+  if (element.kind === 'image') return buildImageModel(element, prefix)
   const defs: RenderDef[] = []
   const layers: RenderLayer[] = []
   const geometry = localGeometry(element)
@@ -172,6 +187,35 @@ function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
   }
 
   return { d, fillD, transform, opacity: element.opacity, defs, layers }
+}
+
+/** The picture scaled so its cropped part fills the box, clipped to the box. */
+function buildImageModel(element: VectorElement, prefix: string): RenderModel {
+  const defs: RenderDef[] = []
+  const key = `${prefix}-${element.id}`
+  const box = { x: element.x, y: element.y, width: element.width, height: element.height }
+  const outline = `M ${round(box.x)} ${round(box.y)} L ${round(box.x + box.width)} ${round(box.y)} L ${round(box.x + box.width)} ${round(box.y + box.height)} L ${round(box.x)} ${round(box.y + box.height)} Z`
+  const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+  const display = displayRect(box, element.crop ?? FULL_CROP)
+  const cropped = !isFullCrop(element.crop)
+  if (cropped) defs.push({ type: 'clipPath', id: `${key}-crop`, d: outline })
+  return {
+    d: outline,
+    fillD: outline,
+    transform: `rotate(${element.rotation} ${round(center.x)} ${round(center.y)})`,
+    opacity: element.opacity,
+    defs,
+    layers: [],
+    image: {
+      href: element.image ?? '',
+      x: round(display.x),
+      y: round(display.y),
+      width: round(display.width),
+      height: round(display.height),
+      rendering: element.imageRendering === 'pixelated' ? 'pixelated' : 'auto',
+      clipPath: cropped ? `url(#${key}-crop)` : null,
+    },
+  }
 }
 
 /** Box outline plus the laid-out lines; the box carries hit testing, the `<text>` the paint. */
@@ -294,12 +338,30 @@ function stopsToSvg(stops: VectorGradientStop[]): string {
 
 /** SVG markup for one element's layers (no group wrapper). */
 export function layersToSvg(model: RenderModel, id: string): string {
+  if (model.image) return imageToSvg(model, id)
   if (model.text) return textToSvg(model, id)
   return model.layers.map((layer, index) => {
     const attributes = layerAttributes(layer)
     const svgAttributes = Object.entries(attributes).map(([name, value]) => `${camelToKebab(name)}="${String(value)}"`).join(' ')
     return `<path${index === 0 ? ` id="${id}"` : ''} d="${layer.d}" ${svgAttributes} transform="${model.transform}"/>`
   }).join('')
+}
+
+function imageToSvg(model: RenderModel, id: string): string {
+  const image = model.image!
+  const attributes = [
+    `id="${escapeAttribute(id)}"`,
+    `href="${escapeAttribute(image.href)}"`,
+    `x="${image.x}"`,
+    `y="${image.y}"`,
+    `width="${image.width}"`,
+    `height="${image.height}"`,
+    'preserveAspectRatio="none"',
+    image.rendering === 'pixelated' ? 'image-rendering="pixelated"' : '',
+    image.clipPath ? `clip-path="${escapeAttribute(image.clipPath)}"` : '',
+    `transform="${model.transform}"`,
+  ].filter(Boolean).join(' ')
+  return `<image ${attributes}/>`
 }
 
 function textToSvg(model: RenderModel, id: string): string {

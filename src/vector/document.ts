@@ -5,6 +5,7 @@ import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPres
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
+import { sanitizeCrop } from '@/vector/crop'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
@@ -114,7 +115,8 @@ export function vectorManifest(document: VectorDocument): RigManifest {
 
 export type CreateElementOptions = Partial<Pick<VectorElement,
   'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff' | 'clipContent'
-  | 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'textAlign' | 'textSizing'>>
+  | 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'textAlign' | 'textSizing'
+  | 'image' | 'imageWidth' | 'imageHeight' | 'imageRendering'>>
 
 export function createVectorElement(
   kind: VectorElementKind,
@@ -125,6 +127,7 @@ export function createVectorElement(
   const isGroup = kind === 'group'
   const isText = kind === 'text'
   const isFrame = kind === 'frame'
+  const isImage = kind === 'image'
   const element: VectorElement = {
     id: crypto.randomUUID(),
     kind,
@@ -134,8 +137,8 @@ export function createVectorElement(
     width: Math.max(1, round(bounds.width)),
     height: Math.max(1, round(bounds.height)),
     rotation: 0,
-    fill: options.fill ?? (isText ? DEFAULT_TEXT_FILL : isFrame ? DEFAULT_FRAME_FILL : isPath || isGroup ? 'none' : DEFAULT_SHAPE_FILL),
-    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup || isText || isFrame ? 'none' : DEFAULT_SHAPE_FILL),
+    fill: options.fill ?? (isText ? DEFAULT_TEXT_FILL : isFrame ? DEFAULT_FRAME_FILL : isPath || isGroup || isImage ? 'none' : DEFAULT_SHAPE_FILL),
+    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup || isText || isFrame || isImage ? 'none' : DEFAULT_SHAPE_FILL),
     strokeWidth: options.strokeWidth ?? (isPath ? 2 : 0),
     opacity: 1,
     visible: true,
@@ -144,6 +147,12 @@ export function createVectorElement(
   if (options.network) element.network = options.network
   if (options.regionsOff?.length) element.regionsOff = options.regionsOff
   if (isFrame) element.clipContent = options.clipContent ?? true
+  if (isImage && options.image) {
+    element.image = options.image
+    if (options.imageWidth) element.imageWidth = options.imageWidth
+    if (options.imageHeight) element.imageHeight = options.imageHeight
+    if (options.imageRendering) element.imageRendering = options.imageRendering
+  }
   if (isText) {
     element.text = options.text ?? DEFAULT_TEXT.text
     element.fontFamily = options.fontFamily ?? DEFAULT_TEXT.fontFamily
@@ -165,6 +174,7 @@ function defaultName(kind: VectorElementKind): string {
     case 'group': return 'Group'
     case 'text': return 'Text'
     case 'frame': return 'Frame'
+    case 'image': return 'Image'
   }
 }
 
@@ -241,7 +251,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
-    const simple = element.kind !== 'text' && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+    const simple = element.kind !== 'text' && element.kind !== 'image' && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
@@ -359,8 +369,9 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame') return null
+  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame' && source.kind !== 'image') return null
   if (source.kind === 'text' && typeof source.text !== 'string') return null
+  if (source.kind === 'image' && (typeof source.image !== 'string' || !source.image.startsWith('data:image/'))) return null
   if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string') return null
   if (![source.x, source.y, source.width, source.height, source.rotation, source.strokeWidth, source.opacity].every(Number.isFinite)) return null
   const fill = sanitizePaint(source.fill)
@@ -370,7 +381,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const strokes = sanitizePaints(source.strokes)
   const strokeSides = source.kind === 'rectangle' && !source.network ? sanitizeStrokeSides(source.strokeSides) : undefined
   const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
-  const network = source.kind === 'group' || source.kind === 'text' || source.kind === 'frame' ? null : sanitizeNetwork(source.network)
+  const network = source.kind === 'group' || source.kind === 'text' || source.kind === 'frame' || source.kind === 'image' ? null : sanitizeNetwork(source.network)
   if (source.kind === 'path' && !network) return null
   const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
@@ -406,6 +417,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(typeof source.strokeStyleId === 'string' && source.strokeStyleId ? { strokeStyleId: source.strokeStyleId } : {}),
     ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
     ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
+    ...(source.kind === 'image' ? sanitizeImageProperties(source) : {}),
   }
 }
 
@@ -422,6 +434,18 @@ function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorE
     letterSpacing: number(source.letterSpacing, -200, 200, DEFAULT_TEXT.letterSpacing),
     textAlign: source.textAlign === 'center' || source.textAlign === 'right' ? source.textAlign : DEFAULT_TEXT.textAlign,
     textSizing: source.textSizing === 'fixed' ? 'fixed' : DEFAULT_TEXT.textSizing,
+  }
+}
+
+function sanitizeImageProperties(source: Partial<VectorElement>): Partial<VectorElement> {
+  const size = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.min(20000, Math.round(value)) : undefined
+  const crop = sanitizeCrop(source.crop)
+  return {
+    image: source.image,
+    ...(source.imageRendering === 'pixelated' ? { imageRendering: 'pixelated' as const } : {}),
+    ...(crop ? { crop } : {}),
+    ...(size(source.imageWidth) ? { imageWidth: size(source.imageWidth) } : {}),
+    ...(size(source.imageHeight) ? { imageHeight: size(source.imageHeight) } : {}),
   }
 }
 

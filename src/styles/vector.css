@@ -1434,3 +1434,29 @@
 /* Node precision: aligning a set of nodes, and the polar fields of the active node's handles. */
 .vector-nodes-align { display: grid; gap: var(--space-1); margin-block: var(--space-2); }
 .vector-handle-fields { display: grid; gap: var(--space-1); margin-block-start: var(--space-2); }
+
+/* Pictures: the drop target, and the crop frame. */
+.vector-canvas[data-dropping] { box-shadow: inset 0 0 0 2px var(--accent); }
+.vector-crop__shade { fill: var(--carbon); opacity: 0.55; pointer-events: none; }
+.vector-crop__frame {
+  fill: none;
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-crop__grid {
+  fill: none;
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  opacity: 0.4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-crop__handle {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.vector-crop__hit { fill: transparent; cursor: move; }

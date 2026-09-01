@@ -61,6 +61,12 @@ export async function readImageFile(file: File, maxBytes: number = MAX_IMAGE_BYT
   return compressImageDataUrl(dataUrl, maxBytes)
 }
 
+/** Natural pixel size of an encoded picture, or null when it cannot be decoded here. */
+export async function imageNaturalSize(dataUrl: string): Promise<{ width: number; height: number } | null> {
+  const decoded = await decode(dataUrl)
+  return decoded ? { width: decoded.width, height: decoded.height } : null
+}
+
 type Decoded = { source: CanvasImageSource; width: number; height: number }
 
 async function decode(dataUrl: string): Promise<Decoded | null> {

@@ -1,6 +1,10 @@
 export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image'
+
+export type VectorImageRendering = 'smooth' | 'pixelated'
+/** The part of a picture an image element shows, in normalised image coordinates. */
+export type VectorCrop = { x: number; y: number; width: number; height: number }
 
 export type VectorPoint = { x: number; y: number }
 
@@ -120,6 +124,13 @@ export type VectorElement = {
   textSizing?: VectorTextSizing
   /** Frames only: whether children are cut off at the frame's edge. */
   clipContent?: boolean
+  /** Image elements: the picture as a data URL, plus how it is shown. */
+  image?: string
+  imageRendering?: VectorImageRendering
+  crop?: VectorCrop
+  /** Natural pixel size of the picture, so its shape is known without decoding it. */
+  imageWidth?: number
+  imageHeight?: number
   /** Named style this element's fill follows; its paints are kept in step with the style. */
   fillStyleId?: string
   strokeStyleId?: string

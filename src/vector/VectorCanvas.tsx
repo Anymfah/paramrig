@@ -5,6 +5,8 @@ import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResi
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
+import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
+import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
@@ -48,6 +50,10 @@ export type VectorCanvasController = {
   zoomTo: (zoom: number) => void
   /** Opens in-place editing on a text element, as a double-click does. */
   editText: (id: string) => void
+  /** Adds picture files as image elements, centred on the middle of the page. */
+  addImages: (files: File[], at?: Point) => Promise<void>
+  /** Opens crop editing on an image element, as a double-click does. */
+  cropImage: (id: string) => void
 }
 
 type Interaction =
@@ -65,6 +71,7 @@ type Interaction =
   | { kind: 'node-resize'; pointerId: number; element: VectorElement; world: AbsNetwork; nodeIds: string[]; bounds: Bounds; handle: DirectResizeHandle }
   | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; center: Point }
   | { kind: 'lasso'; pointerId: number; points: Point[]; additive: boolean }
+  | { kind: 'crop'; pointerId: number; start: Point; element: VectorElement; box: Bounds; crop: Crop; handle: DirectResizeHandle | null }
   | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
@@ -157,6 +164,7 @@ export function VectorCanvas({
   const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements, onSample })
   const samplingRef = useRef(sampling)
   samplingRef.current = sampling
+  const croppingRef = useRef(false)
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   const [panning, setPanning] = useState(false)
@@ -179,8 +187,11 @@ export function VectorCanvas({
   const [draftGuide, setDraftGuide] = useState<VectorGuide | null>(null)
   const [coarse, setCoarse] = useState(false)
   const [textEditId, setTextEditId] = useState<string | null>(null)
+  const [dropping, setDropping] = useState(false)
+  const [cropId, setCropId] = useState<string | null>(null)
   const textDraft = useRef('')
   const editText = useRef<(element: VectorElement) => void>(() => undefined)
+  const addImages = useRef<(files: File[], at: Point) => Promise<void>>(async () => undefined)
 
   const setPenDraft = (draft: PenDraft | null) => {
     penDraftRef.current = draft
@@ -200,6 +211,7 @@ export function VectorCanvas({
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
   const editing = (tool === 'node' || tool === 'bucket') && selected && !isContainer(selected) && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
   const textEditing = textEditId ? elements.find((element) => element.id === textEditId && element.kind === 'text') ?? null : null
+  const cropping = cropId ? elements.find((element) => element.id === cropId && element.kind === 'image' && !element.locked) ?? null : null
   const selectedLeaves = useMemo(() => leafElements(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
   const tree = useMemo(() => buildTree(elements), [elements])
 
@@ -278,6 +290,14 @@ export function VectorCanvas({
       editText: (id) => {
         const element = documentRef.current.elements.find((item) => item.id === id)
         if (element?.kind === 'text' && !element.locked) editText.current(element)
+      },
+      cropImage: (id) => {
+        const element = documentRef.current.elements.find((item) => item.id === id)
+        if (element?.kind === 'image' && !element.locked) setCropId(id)
+      },
+      addImages: (files, at) => {
+        const doc = documentRef.current
+        return addImages.current(files, at ?? { x: doc.width / 2, y: doc.height / 2 })
       },
     }
     return () => { controller.current = null }
@@ -479,6 +499,10 @@ export function VectorCanvas({
           callbacks.current.onSample?.(null)
           return
         }
+        if (croppingRef.current) {
+          setCropId(null)
+          return
+        }
         if (active) {
           cancelInteraction()
           return
@@ -649,6 +673,43 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  const startCrop = (event: ReactPointerEvent<SVGElement>, handle: DirectResizeHandle | null) => {
+    if (event.button !== 0 || !cropping) return
+    event.stopPropagation()
+    onGestureStart()
+    interaction.current = {
+      kind: 'crop',
+      pointerId: event.pointerId,
+      start: point(event.nativeEvent),
+      element: structuredClone(cropping),
+      box: { x: cropping.x, y: cropping.y, width: cropping.width, height: cropping.height },
+      crop: cropping.crop ?? FULL_CROP,
+      handle,
+    }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  /** Turns dropped or pasted picture files into image elements, centred on a point. */
+  const addImageFiles = useCallback(async (files: File[], at: Point) => {
+    const pictures = files.filter((file) => file.type.startsWith('image/'))
+    if (pictures.length === 0) return
+    const created: VectorElement[] = []
+    for (const [index, file] of pictures.entries()) {
+      const data = await readImageFile(file)
+      if (!data) continue
+      const natural = await imageNaturalSize(data) ?? { width: 320, height: 320 }
+      const offset = index * 16
+      const bounds = droppedImageBounds(natural, { x: at.x + offset, y: at.y + offset })
+      created.push(createVectorElement('image', bounds, {
+        name: file.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 60) || 'Image',
+        image: data,
+        imageWidth: natural.width,
+        imageHeight: natural.height,
+      }))
+    }
+    if (created.length) callbacks.current.onAddElements(created)
+  }, [])
+
   /** Opens the in-place editor; the whole edit becomes one undo entry. */
   const openTextEditor = (element: VectorElement) => {
     if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
@@ -658,6 +719,8 @@ export function VectorCanvas({
   }
 
   editText.current = openTextEditor
+  addImages.current = addImageFiles
+  croppingRef.current = !!cropping
 
   /** A click drops an auto-sized text, a drag gives it a fixed box; both open the editor. */
   const addText = (box: Bounds | null, at: Point) => {
@@ -922,6 +985,10 @@ export function VectorCanvas({
       openTextEditor(resolvedElement)
       return
     }
+    if (resolvedElement.kind === 'image') {
+      setCropId(resolvedElement.id)
+      return
+    }
     onToolChange('node')
   }
 
@@ -1036,6 +1103,10 @@ export function VectorCanvas({
       interaction.current = { kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at, additive: event.shiftKey, element: structuredClone(editing), world: worldNetwork(editing) }
       setMarqueeBounds({ x: at.x, y: at.y, width: 0, height: 0 })
       event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
+    if (cropping) {
+      setCropId(null)
       return
     }
     if (tool === 'select' || tool === 'transform' || tool === 'node') {
@@ -1162,7 +1233,9 @@ export function VectorCanvas({
       const pointer = { x: affectsX ? snapped.point.x : at.x, y: affectsY ? snapped.point.y : at.y }
       const matches = snapped.matches.filter((match) => (match.axis === 'x' && affectsX) || (match.axis === 'y' && affectsY))
       if (active.single) {
-        const patch = resizeElement(active.single, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
+        // A picture keeps its shape unless Shift says otherwise; everything else is the reverse.
+        const lockRatio = active.single.kind === 'image' ? !event.shiftKey : event.shiftKey
+        const patch = resizeElement(active.single, active.handle, pointer, { lockRatio, fromCenter: event.altKey })
         onUpdate(active.single.id, viewOptions.snapToPixelGrid ? snapGeometryPatch(patch) : patch, false)
         showHud(`${round(patch.width)} × ${round(patch.height)}`, event.nativeEvent)
       } else {
@@ -1199,6 +1272,21 @@ export function VectorCanvas({
       onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
       setSnapMatches(snapped.matches)
       showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)} · Δ ${round(delta.x)}, ${round(delta.y)}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'crop') {
+      if (active.handle) {
+        const next = resizeCrop(active.box, active.crop, active.handle, at)
+        onUpdate(active.element.id, {
+          x: round(next.box.x), y: round(next.box.y), width: round(next.box.width), height: round(next.box.height),
+          crop: isFullCrop(next.crop) ? undefined : next.crop,
+        }, false)
+        showHud(`${round(next.box.width)} × ${round(next.box.height)}`, event.nativeEvent)
+        return
+      }
+      const crop = panCrop(active.box, active.crop, { x: at.x - active.start.x, y: at.y - active.start.y })
+      onUpdate(active.element.id, { crop: isFullCrop(crop) ? undefined : crop }, false)
+      showHud(`${round(crop.x * 100)}%, ${round(crop.y * 100)}%`, event.nativeEvent)
       return
     }
     if (active.kind === 'segment-move') {
@@ -1431,7 +1519,8 @@ export function VectorCanvas({
   const editingWorld = editing ? worldNetwork(editing) : null
   const nodeBox = editing && editingWorld && selectedNodeIds.length > 1 ? nodeBoundsOf(editingWorld, selectedNodeIds) : null
 
-  const showHandles = (tool === 'select') && selectedLeaves.length > 0 && !editing
+  // Cropping owns the overlay: the ordinary resize handles would sit on top of the crop ones.
+  const showHandles = (tool === 'select') && selectedLeaves.length > 0 && !editing && !cropping
   const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' ? selected : null
   const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
@@ -1497,6 +1586,21 @@ export function VectorCanvas({
       onPointerCancel={() => { panDrag.current = null; setPanning(false) }}
       onLostPointerCapture={() => { panDrag.current = null; setPanning(false) }}
       onPointerLeave={() => { setHoveredId(null); if (tool === 'pen') setPenCursor(null) }}
+      onDragOver={(event) => {
+        if (![...event.dataTransfer.items].some((item) => item.kind === 'file')) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={(event) => { if (event.currentTarget === event.target) setDropping(false) }}
+      onDrop={(event) => {
+        const files = [...event.dataTransfer.files]
+        if (files.length === 0) return
+        event.preventDefault()
+        setDropping(false)
+        void addImageFiles(files, point(event.nativeEvent))
+      }}
+      data-dropping={dropping || undefined}
     >
       <svg
         ref={svgRef}
@@ -1547,6 +1651,7 @@ export function VectorCanvas({
               onHover={setHoveredId}
             />
           </g>
+          {cropping ? <CropFrame element={cropping} zoom={zoom} coarse={coarse} onStart={startCrop} /> : null}
           {enteredGroup ? <GroupFrame element={enteredGroup} /> : null}
           {hoverOutline && !selectedIds.includes(hoverOutline.id) ? <HoverOutline element={hoverOutline} leaves={leafElements(elements, [hoverOutline.id])} /> : null}
           {viewOptions.guides ? (
@@ -1844,7 +1949,7 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   const pointerDown = (event: ReactPointerEvent<SVGElement>) => onPointerDown(element, event)
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
   // A text box is grabbed anywhere inside it; a shape only where it actually paints.
-  const painted = model.text ? hitTarget : hitTarget && model.layers.some((layer) => layer.kind === 'fill')
+  const painted = model.text || model.image ? hitTarget : hitTarget && model.layers.some((layer) => layer.kind === 'fill')
   const fillEvents = fillPointerEvents({ locked, visible: element.visible, fill: painted ? '#000000' : 'none' })
   return (
     <>
@@ -1862,11 +1967,29 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
         {model.layers.map((layer, index) => (
           <path key={index} d={layer.d} transform={model.transform} {...layerAttributes(layer)} pointerEvents={layer.kind === 'fill' ? fillEvents : 'none'} />
         ))}
+        {model.image ? (
+          <>
+            {model.defs.length ? null : null}
+            <image
+              href={model.image.href}
+              x={model.image.x}
+              y={model.image.y}
+              width={model.image.width}
+              height={model.image.height}
+              preserveAspectRatio="none"
+              clipPath={model.image.clipPath ?? undefined}
+              style={model.image.rendering === 'pixelated' ? { imageRendering: 'pixelated' } : undefined}
+              transform={model.transform}
+              pointerEvents="none"
+            />
+            <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents={fillEvents === 'none' ? 'none' : 'all'} />
+          </>
+        ) : null}
         {model.text ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents={fillEvents === 'none' ? 'none' : 'all'} /> : null}
         {model.text && !hideText ? <TextLayer text={model.text} transform={model.transform} /> : null}
-        {model.layers.length === 0 && !model.text ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents="none" /> : null}
+        {model.layers.length === 0 && !model.text && !model.image ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents="none" /> : null}
       </g>
-      {hittable && !model.text ? (
+      {hittable && !model.text && !model.image ? (
         <path
           className="vector-hit"
           data-vector-element={element.id}
@@ -2131,6 +2254,69 @@ function OutlineOnly({ element, thin }: { element: VectorElement; thin?: boolean
   return (
     <g className="vector-selection" data-thin={thin || undefined} transform={`rotate(${element.rotation} ${center.x} ${center.y})`}>
       <rect x={element.x} y={element.y} width={element.width} height={element.height} />
+    </g>
+  )
+}
+
+/**
+ * Crop editing: the whole picture ghosted behind, the visible window with a thirds grid, and
+ * eight handles that move the window while the picture stays where it is.
+ */
+function CropFrame({ element, zoom, coarse, onStart }: {
+  element: VectorElement
+  zoom: number
+  coarse: boolean
+  onStart: (event: ReactPointerEvent<SVGElement>, handle: DirectResizeHandle | null) => void
+}) {
+  const box = { x: element.x, y: element.y, width: element.width, height: element.height }
+  const display = displayRect(box, element.crop ?? FULL_CROP)
+  const center = elementCenter(element)
+  const transform = `rotate(${element.rotation} ${center.x} ${center.y})`
+  const size = (coarse ? 11 : 8) / zoom
+  const handles: Array<{ handle: DirectResizeHandle; x: number; y: number }> = [
+    { handle: 'nw', x: box.x, y: box.y },
+    { handle: 'n', x: box.x + box.width / 2, y: box.y },
+    { handle: 'ne', x: box.x + box.width, y: box.y },
+    { handle: 'e', x: box.x + box.width, y: box.y + box.height / 2 },
+    { handle: 'se', x: box.x + box.width, y: box.y + box.height },
+    { handle: 's', x: box.x + box.width / 2, y: box.y + box.height },
+    { handle: 'sw', x: box.x, y: box.y + box.height },
+    { handle: 'w', x: box.x, y: box.y + box.height / 2 },
+  ]
+  return (
+    <g className="vector-crop" data-vector-crop={element.id} transform={transform}>
+      <image
+        href={element.image}
+        x={display.x}
+        y={display.y}
+        width={display.width}
+        height={display.height}
+        preserveAspectRatio="none"
+        opacity={0.35}
+        pointerEvents="none"
+        style={element.imageRendering === 'pixelated' ? { imageRendering: 'pixelated' } : undefined}
+      />
+      <rect className="vector-crop__hit" x={box.x} y={box.y} width={box.width} height={box.height} onPointerDown={(event) => onStart(event, null)} />
+      <rect className="vector-crop__frame" x={box.x} y={box.y} width={box.width} height={box.height} />
+      {[1, 2].map((step) => (
+        <g key={step}>
+          <line className="vector-crop__grid" x1={box.x + (box.width * step) / 3} y1={box.y} x2={box.x + (box.width * step) / 3} y2={box.y + box.height} />
+          <line className="vector-crop__grid" x1={box.x} y1={box.y + (box.height * step) / 3} x2={box.x + box.width} y2={box.y + (box.height * step) / 3} />
+        </g>
+      ))}
+      {handles.map((item) => (
+        <rect
+          key={item.handle}
+          className="vector-crop__handle"
+          data-vector-crop-handle={item.handle}
+          x={item.x - size / 2}
+          y={item.y - size / 2}
+          width={size}
+          height={size}
+          style={{ cursor: resizeCursor(item.handle, element.rotation) }}
+          onPointerDown={(event) => onStart(event, item.handle)}
+        />
+      ))}
     </g>
   )
 }
