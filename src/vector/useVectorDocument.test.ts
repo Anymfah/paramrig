@@ -49,7 +49,7 @@ describe('useVectorDocument transactions', () => {
     let copies: string[] = []
     act(() => {
       hook.result.current.beginGesture()
-      copies = hook.result.current.duplicateElements([id], 0)
+      copies = hook.result.current.duplicateElements([id], 0).ids
     })
     act(() => {
       hook.result.current.updateElement(copies[0]!, { x: 50 }, false)

@@ -1,46 +1,87 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Lockup } from '@/ui/BrandMark'
-import { ContextMenuRoot, ContextTarget } from '@/ui/ContextMenu'
+import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/ContextMenu'
 import { ThemeToggle } from '@/ui/ThemeToggle'
 import { Tooltip } from '@/ui/Tooltip'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
-import { IconBringForward, IconCopy, IconEllipse, IconEye, IconEyeOff, IconPanelLeft, IconPanelLeftClose, IconPencil, IconRectangle, IconSendBackward, IconTrash } from '@/ui/icons'
+import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconGroup, IconLock, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
+import { childrenOf, flattenForLayers, siblingIndex, type LayerRow } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
 
 type VectorLayersProps = {
   document: VectorDocument
   selectedIds: string[]
+  enteredGroupId: string | null
   compact: boolean
   inert: boolean
   onNavigate: () => void
-  onSelect: (id: string | null) => void
+  onSelect: (id: string, mode: 'replace' | 'toggle' | 'range') => void
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onRemove: (id: string) => void
+  onUpdateElements: (updates: Array<{ id: string; patch: Partial<VectorElement> }>, record?: boolean) => void
+  onRemove: (ids: string[]) => void
   onReorder: (id: string, direction: -1 | 1) => void
-  onMove: (id: string, targetIndex: number) => void
+  onMoveInTree: (id: string, target: { parentId: string | null; index: number }) => void
   onRename: (id: string, name: string) => void
   onDuplicate: (id: string) => void
+  onGroup: (ids: string[]) => void
+  onUngroup: (ids: string[]) => void
 }
 
-type DropTarget = { id: string; edge: 'before' | 'after' }
+type DropTarget = { id: string; edge: 'before' | 'after' | 'inside' }
 
-export function VectorLayers({ document, selectedIds, compact, inert, onNavigate, onSelect, onUpdate, onRemove, onReorder, onMove, onRename, onDuplicate }: VectorLayersProps) {
+export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup }: VectorLayersProps) {
   const { prefs } = useWorkspace()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // Selecting inside a group reveals it.
+    if (!enteredGroupId || !collapsed.has(enteredGroupId)) return
+    setCollapsed((current) => {
+      const next = new Set(current)
+      next.delete(enteredGroupId)
+      return next
+    })
+  }, [enteredGroupId, collapsed])
+
+  const rows = flattenForLayers(document.elements, collapsed)
+
+  const toggleCollapsed = (id: string) => setCollapsed((current) => {
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
 
   const drop = (target: DropTarget) => {
     if (!draggingId || draggingId === target.id) return
-    const display = [...document.elements].reverse().map((element) => element.id)
-    const from = display.indexOf(draggingId)
-    const hovered = display.indexOf(target.id)
-    if (from < 0 || hovered < 0) return
-    const [id] = display.splice(from, 1)
-    let insertion = hovered + (target.edge === 'after' ? 1 : 0)
-    if (from < insertion) insertion -= 1
-    display.splice(Math.max(0, Math.min(display.length, insertion)), 0, id!)
-    onMove(draggingId, document.elements.length - 1 - display.indexOf(draggingId))
+    const dragged = document.elements.find((element) => element.id === draggingId)
+    const hovered = document.elements.find((element) => element.id === target.id)
+    if (!dragged || !hovered) return
+    if (target.edge === 'inside') {
+      if (hovered.kind !== 'group') return
+      onMoveInTree(draggingId, { parentId: hovered.id, index: childrenOf(document.elements, hovered.id).length })
+      return
+    }
+    const parentId = hovered.parentId ?? null
+    const siblings = childrenOf(document.elements, parentId).filter((element) => element.id !== draggingId)
+    const position = siblings.findIndex((element) => element.id === hovered.id)
+    if (position < 0) return
+    // Rows list the top of the stack first: "before" a row means above it in paint order.
+    onMoveInTree(draggingId, { parentId, index: target.edge === 'before' ? position + 1 : position })
+  }
+
+  const focusRow = (offset: number, event: ReactKeyboardEvent<HTMLElement>) => {
+    const buttons = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('.vector-layer__select') ?? [])]
+    const index = buttons.indexOf(event.currentTarget as HTMLButtonElement)
+    const next = buttons[index + offset]
+    if (next) {
+      event.preventDefault()
+      next.focus()
+    }
   }
 
   return (
@@ -61,13 +102,30 @@ export function VectorLayers({ document, selectedIds, compact, inert, onNavigate
       </div>
       <div className="nav-rail__body scroll-area">
         <ContextMenuRoot>
-          <div className="vector-layers__list">
-            {[...document.elements].reverse().map((element, reversedIndex) => {
-              const index = document.elements.length - 1 - reversedIndex
+          <div className="vector-layers__list" ref={listRef} role="list" aria-label="Layer stack">
+            {rows.length === 0 ? <p className="vector-layers__empty">No layers yet. Draw with the pen, rectangle or ellipse tools.</p> : null}
+            {rows.map((row) => {
+              const element = row.element
+              const inSelection = selectedIds.includes(element.id)
+              const groupCandidates = inSelection ? selectedIds : [element.id]
+              const siblingCount = childrenOf(document.elements, element.parentId ?? null).length
+              const index = siblingIndex(document.elements, element.id)
+              const items: ContextMenuItem[] = [
+                { label: 'Rename', icon: <IconPencil />, onSelect: () => requestAnimationFrame(() => rowRename.current[element.id]?.()) },
+                { label: 'Duplicate', icon: <IconCopy />, separatorBefore: false, onSelect: () => onDuplicate(element.id) },
+                { label: 'Group', icon: <IconGroup />, onSelect: () => onGroup(groupCandidates) },
+                ...(element.kind === 'group' ? [{ label: 'Ungroup', icon: <IconUngroup />, separatorBefore: false, onSelect: () => onUngroup([element.id]) }] : []),
+                { label: element.locked ? 'Unlock' : 'Lock', icon: element.locked ? <IconUnlock /> : <IconLock />, onSelect: () => onUpdate(element.id, { locked: !element.locked }) },
+                { label: element.visible ? 'Hide' : 'Show', icon: element.visible ? <IconEyeOff /> : <IconEye />, separatorBefore: false, onSelect: () => onUpdate(element.id, { visible: !element.visible }) },
+                { label: 'Move forward', icon: <IconBringForward />, disabled: index === siblingCount - 1, onSelect: () => onReorder(element.id, 1) },
+                { label: 'Move backward', icon: <IconSendBackward />, disabled: index === 0, separatorBefore: false, onSelect: () => onReorder(element.id, -1) },
+                { label: 'Delete', icon: <IconTrash />, onSelect: () => onRemove(inSelection ? selectedIds : [element.id]) },
+              ]
               return (
                 <div
                   key={element.id}
                   className="vector-layer-drag"
+                  role="listitem"
                   draggable
                   data-dragging={draggingId === element.id || undefined}
                   data-drop-edge={dropTarget?.id === element.id ? dropTarget.edge : undefined}
@@ -75,14 +133,20 @@ export function VectorLayers({ document, selectedIds, compact, inert, onNavigate
                     event.dataTransfer.effectAllowed = 'move'
                     event.dataTransfer.setData('text/plain', element.id)
                     setDraggingId(element.id)
-                    onSelect(element.id)
+                    if (!inSelection) onSelect(element.id, 'replace')
                   }}
                   onDragOver={(event) => {
                     if (!draggingId || draggingId === element.id) return
                     event.preventDefault()
                     event.dataTransfer.dropEffect = 'move'
                     const rect = event.currentTarget.getBoundingClientRect()
-                    setDropTarget({ id: element.id, edge: event.clientY < rect.top + rect.height / 2 ? 'before' : 'after' })
+                    const ratio = (event.clientY - rect.top) / rect.height
+                    const edge: DropTarget['edge'] = element.kind === 'group' && ratio > 0.3 && ratio < 0.7 ? 'inside' : ratio < 0.5 ? 'before' : 'after'
+                    setDropTarget((current) => current?.id === element.id && current.edge === edge ? current : { id: element.id, edge })
+                  }}
+                  onDragLeave={(event) => {
+                    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                    setDropTarget((current) => current?.id === element.id ? null : current)
                   }}
                   onDrop={(event) => {
                     event.preventDefault()
@@ -92,7 +156,22 @@ export function VectorLayers({ document, selectedIds, compact, inert, onNavigate
                   }}
                   onDragEnd={() => { setDraggingId(null); setDropTarget(null) }}
                 >
-                  <LayerRow element={element} selected={selectedIds.includes(element.id)} compact={compact} index={index} count={document.elements.length} onSelect={onSelect} onUpdate={onUpdate} onRemove={onRemove} onReorder={onReorder} onRename={onRename} onDuplicate={onDuplicate} />
+                  <LayerRowView
+                    row={row}
+                    selected={inSelection}
+                    entered={element.id === enteredGroupId}
+                    compact={compact}
+                    items={items}
+                    onSelect={onSelect}
+                    onUpdate={onUpdate}
+                    onUpdateElements={onUpdateElements}
+                    onRename={onRename}
+                    onToggleCollapsed={toggleCollapsed}
+                    onFocusRow={focusRow}
+                    onRemove={onRemove}
+                    selectedIds={selectedIds}
+                    registerRename={(fn) => { rowRename.current[element.id] = fn }}
+                  />
                 </div>
               )
             })}
@@ -106,23 +185,29 @@ export function VectorLayers({ document, selectedIds, compact, inert, onNavigate
   )
 }
 
-function LayerRow({ element, selected, compact, index, count, onSelect, onUpdate, onRemove, onReorder, onRename, onDuplicate }: {
-  element: VectorElement
+const rowRename = { current: {} as Record<string, () => void> }
+
+function LayerRowView({ row, selected, entered, compact, items, selectedIds, onSelect, onUpdate, onUpdateElements, onRename, onToggleCollapsed, onFocusRow, onRemove, registerRename }: {
+  row: LayerRow
   selected: boolean
+  entered: boolean
   compact: boolean
-  index: number
-  count: number
-  onSelect: (id: string | null) => void
+  items: ContextMenuItem[]
+  selectedIds: string[]
+  onSelect: (id: string, mode: 'replace' | 'toggle' | 'range') => void
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onRemove: (id: string) => void
-  onReorder: (id: string, direction: -1 | 1) => void
+  onUpdateElements: (updates: Array<{ id: string; patch: Partial<VectorElement> }>, record?: boolean) => void
   onRename: (id: string, name: string) => void
-  onDuplicate: (id: string) => void
+  onToggleCollapsed: (id: string) => void
+  onFocusRow: (offset: number, event: ReactKeyboardEvent<HTMLElement>) => void
+  onRemove: (ids: string[]) => void
+  registerRename: (fn: () => void) => void
 }) {
+  const element = row.element
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(element.name)
   const inputRef = useRef<HTMLInputElement>(null)
-  const ShapeIcon = element.kind === 'ellipse' ? IconEllipse : IconRectangle
+  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'path' || element.vectorNodes ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
   const startRename = () => {
     setDraft(element.name)
     if (compact) {
@@ -132,6 +217,7 @@ function LayerRow({ element, selected, compact, index, count, onSelect, onUpdate
       setEditing(true)
     }
   }
+  registerRename(startRename)
   const commitRename = () => { onRename(element.id, draft); setEditing(false) }
 
   useEffect(() => {
@@ -140,22 +226,54 @@ function LayerRow({ element, selected, compact, index, count, onSelect, onUpdate
     inputRef.current?.select()
   }, [editing])
 
+  const select = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.shiftKey) onSelect(element.id, 'range')
+    else if (event.metaKey || event.ctrlKey) onSelect(element.id, 'toggle')
+    else onSelect(element.id, 'replace')
+  }
+
+  const toggleLocked = () => {
+    const targets = selected ? selectedIds : [element.id]
+    const locked = !element.locked
+    if (targets.length === 1) onUpdate(element.id, { locked })
+    else onUpdateElements(targets.map((id) => ({ id, patch: { locked } })))
+  }
+  const toggleVisible = () => {
+    const targets = selected ? selectedIds : [element.id]
+    const visible = !element.visible
+    if (targets.length === 1) onUpdate(element.id, { visible })
+    else onUpdateElements(targets.map((id) => ({ id, patch: { visible } })))
+  }
+
   return (
     <ContextTarget
       className="vector-layer-context"
       label={`${element.name} actions`}
       touchActions={false}
-      onOpen={() => onSelect(element.id)}
-      items={[
-        { label: 'Rename', icon: <IconPencil />, onSelect: () => requestAnimationFrame(startRename) },
-        { label: 'Duplicate', icon: <IconCopy />, separatorBefore: false, onSelect: () => onDuplicate(element.id) },
-        { label: element.visible ? 'Hide' : 'Show', icon: element.visible ? <IconEye /> : <IconEyeOff />, onSelect: () => onUpdate(element.id, { visible: !element.visible }) },
-        { label: 'Move forward', icon: <IconBringForward />, disabled: index === count - 1, separatorBefore: false, onSelect: () => onReorder(element.id, 1) },
-        { label: 'Move backward', icon: <IconSendBackward />, disabled: index === 0, separatorBefore: false, onSelect: () => onReorder(element.id, -1) },
-        { label: 'Delete', icon: <IconTrash />, onSelect: () => onRemove(element.id) },
-      ]}
+      onOpen={() => { if (!selected) onSelect(element.id, 'replace') }}
+      items={items}
     >
-      <div className="vector-layer" data-selected={selected || undefined} data-hidden={!element.visible || undefined}>
+      <div
+        className="vector-layer"
+        data-selected={selected || undefined}
+        data-entered={entered || undefined}
+        data-hidden={!element.visible || undefined}
+        data-locked={element.locked || undefined}
+        data-depth={row.depth}
+        data-group={element.kind === 'group' || undefined}
+        style={{ '--depth': row.depth } as CSSProperties}
+      >
+        {row.hasChildren || element.kind === 'group' ? (
+          <button
+            type="button"
+            className="vector-layer__disclosure"
+            aria-label={row.collapsed ? `Expand ${element.name}` : `Collapse ${element.name}`}
+            aria-expanded={!row.collapsed}
+            onClick={() => onToggleCollapsed(element.id)}
+          >
+            <IconChevron />
+          </button>
+        ) : <span className="vector-layer__disclosure vector-layer__disclosure--spacer" aria-hidden="true" />}
         {editing ? (
           <div className="vector-layer__edit">
             <ShapeIcon />
@@ -166,12 +284,40 @@ function LayerRow({ element, selected, compact, index, count, onSelect, onUpdate
           </div>
         ) : (
           <Tooltip content={element.name} side="right" disabled={!compact}>
-            <button type="button" className="vector-layer__select" aria-pressed={selected} onClick={() => onSelect(element.id)} onDoubleClick={startRename}>
+            <button
+              type="button"
+              className="vector-layer__select"
+              aria-pressed={selected}
+              onClick={select}
+              onDoubleClick={startRename}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown') onFocusRow(1, event)
+                else if (event.key === 'ArrowUp') onFocusRow(-1, event)
+                else if (event.key === 'ArrowLeft' && element.kind === 'group' && !row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
+                else if (event.key === 'ArrowRight' && element.kind === 'group' && row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
+                else if (event.key === 'F2') { event.preventDefault(); startRename() }
+                else if ((event.key === 'Backspace' || event.key === 'Delete')) { event.preventDefault(); onRemove(selected ? selectedIds : [element.id]) }
+              }}
+            >
               <ShapeIcon />
               <span>{element.name}</span>
             </button>
           </Tooltip>
         )}
+        {!compact ? (
+          <div className="vector-layer__actions">
+            <Tooltip content={element.locked ? 'Unlock' : 'Lock'}>
+              <button type="button" className="vector-layer__action" aria-label={element.locked ? `Unlock ${element.name}` : `Lock ${element.name}`} aria-pressed={element.locked} data-active={element.locked || undefined} onClick={toggleLocked}>
+                {element.locked ? <IconLock /> : <IconUnlock />}
+              </button>
+            </Tooltip>
+            <Tooltip content={element.visible ? 'Hide' : 'Show'}>
+              <button type="button" className="vector-layer__action" aria-label={element.visible ? `Hide ${element.name}` : `Show ${element.name}`} aria-pressed={!element.visible} data-active={!element.visible || undefined} onClick={toggleVisible}>
+                {element.visible ? <IconEye /> : <IconEyeOff />}
+              </button>
+            </Tooltip>
+          </div>
+        ) : null}
       </div>
     </ContextTarget>
   )

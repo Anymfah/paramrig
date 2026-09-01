@@ -1,26 +1,32 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconGrid, IconMinus, IconPlus, IconRectangle, IconRedo, IconSelect, IconTransformSelect, IconTrash, IconUndo } from '@/ui/icons'
+import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconGrid, IconGroup, IconLock, IconMinus, IconNode, IconPen, IconPlus, IconRectangle, IconRedo, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
+import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
 import { createVectorElement, serializeVectorDocument } from '@/vector/document'
+import { selectionBounds } from '@/vector/geometry'
+import { childrenOf, leafElements } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
-import type { VectorTool } from '@/vector/types'
+import type { VectorElement, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 type SelectionTool = Extract<VectorTool, 'select' | 'transform'>
+
+const ALIGN_KEYS: Record<string, AlignMode> = { KeyA: 'left', KeyH: 'centerX', KeyD: 'right', KeyW: 'top', KeyV: 'centerY', KeyS: 'bottom' }
 
 export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const navigate = useNavigate()
   const editor = useVectorDocument(manifest.id)
   const [tool, setTool] = useState<VectorTool>('select')
   const [selectionTool, setSelectionTool] = useState<SelectionTool>('select')
+  const [selectedNodeIndices, setSelectedNodeIndices] = useState<number[]>([])
   const [zoom, setZoom] = useState(() => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return 0.8
     return Math.max(0.25, Math.min(0.8, (window.innerWidth - 48) / 800))
@@ -30,55 +36,144 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     pixelPreview: 'off',
     pixelGrid: false,
     snapToPixelGrid: false,
+    snapToObjects: true,
+    snapToGuides: true,
     layoutGuides: false,
     rulers: false,
+    guides: true,
     outlines: 'off',
   })
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
+  const lastLayerClick = useRef<string | null>(null)
+  const editorRef = useRef(editor)
+  editorRef.current = editor
+
+  const document = editor.document
+  const selectedIds = editor.selectedIds
+  const selectedElements = editor.selectedElements
+  const canUngroup = selectedElements.some((element) => element.kind === 'group')
+  const allLocked = selectedElements.length > 0 && selectedElements.every((element) => element.locked)
+
+  const chooseTool = useCallback((next: VectorTool) => {
+    setTool(next)
+    if (next === 'select' || next === 'transform') setSelectionTool(next)
+  }, [])
+
+  const group = useCallback(() => {
+    const current = editorRef.current
+    if (current.selectedIds.length === 0) return
+    const id = current.groupSelection(current.selectedIds)
+    if (id) {
+      current.setSelectedIds([id])
+      current.setEnteredGroupId(null)
+    }
+  }, [])
+
+  const ungroup = useCallback(() => {
+    const current = editorRef.current
+    const groups = current.selectedElements.filter((element) => element.kind === 'group')
+    if (groups.length === 0) return
+    const children = groups.flatMap((element) => childrenOf(current.document?.elements ?? [], element.id).map((child) => child.id))
+    current.ungroup(groups.map((element) => element.id))
+    current.setSelectedIds(children)
+  }, [])
+
+  const alignSelection = useCallback((mode: AlignMode) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedElements.length === 0) return
+    const leaves = leafElements(doc.elements, current.selectedIds)
+    const target = current.selectedElements.length > 1 && leaves.length ? selectionBounds(leaves) : { x: 0, y: 0, width: doc.width, height: doc.height }
+    current.updateElements(expandMoves(doc.elements, alignElements(current.selectedElements, mode, target)))
+  }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
-      if (target instanceof HTMLElement && (target.matches('input, textarea') || target.isContentEditable)) return
+      if (target instanceof HTMLElement && (target.matches('input, textarea, select') || target.isContentEditable)) return
+      const current = editorRef.current
       const meta = event.metaKey || event.ctrlKey
-      if (meta && event.key.toLowerCase() === 'z') {
+      const key = event.key.toLowerCase()
+      if (meta && key === 'z') {
         event.preventDefault()
-        if (event.shiftKey) editor.redo()
-        else editor.undo()
+        if (event.shiftKey) current.redo()
+        else current.undo()
         return
       }
-      if (meta && event.key.toLowerCase() === 'd' && editor.selectedId) {
+      if (meta && key === 'd') {
         event.preventDefault()
-        editor.duplicateElement(editor.selectedId)
+        current.duplicateSelection()
         return
       }
-      if (meta || event.altKey) return
-      if (event.key === 'v' || event.key === 'V') {
-        setSelectionTool('select')
-        setTool('select')
+      if (meta && key === 'a') {
+        event.preventDefault()
+        const doc = current.document
+        if (!doc) return
+        current.setSelectedIds(childrenOf(doc.elements, current.enteredGroupId).filter((element) => element.visible && !element.locked).map((element) => element.id))
+        return
       }
-      if (event.key === 'o' || event.key === 'O') setTool('ellipse')
-      if (event.key === 'Escape') editor.setSelectedId(null)
-      if ((tool === 'select' || tool === 'transform') && editor.selectedElements.length > 0 && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+      if (meta && key === 'g') {
+        event.preventDefault()
+        if (event.shiftKey) ungroup()
+        else group()
+        return
+      }
+      if (meta && event.shiftKey && key === 'l') {
+        event.preventDefault()
+        if (current.selectedElements.length === 0) return
+        const locked = !current.selectedElements.every((element) => element.locked)
+        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { locked } })))
+        return
+      }
+      if (meta && event.shiftKey && key === 'h') {
+        event.preventDefault()
+        if (current.selectedElements.length === 0) return
+        const visible = !current.selectedElements.every((element) => element.visible)
+        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { visible } })))
+        return
+      }
+      if (meta) return
+      if (event.altKey) {
+        const mode = ALIGN_KEYS[event.code]
+        if (mode && current.selectedElements.length > 0) {
+          event.preventDefault()
+          alignSelection(mode)
+        }
+        return
+      }
+      if (event.repeat && !['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) return
+      if (key === 'v') chooseTool('select')
+      else if (key === 'p') chooseTool('pen')
+      else if (key === 'r') chooseTool('rectangle')
+      else if (key === 'o') chooseTool('ellipse')
+      else if (key === 'enter') {
+        const selected = current.selected
+        if (current.selectedIds.length === 1 && selected) {
+          event.preventDefault()
+          if (selected.kind === 'group') {
+            current.setEnteredGroupId(selected.id)
+            const first = childrenOf(current.document?.elements ?? [], selected.id).at(-1)
+            if (first) current.setSelectedIds([first.id])
+          } else if (!selected.locked) {
+            chooseTool('node')
+          }
+        }
+      } else if ((tool === 'select' || tool === 'transform') && current.selectedElements.length > 0 && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) {
         event.preventDefault()
         const amount = event.shiftKey ? 10 : 1
-        const dx = event.key === 'ArrowLeft' ? -amount : event.key === 'ArrowRight' ? amount : 0
-        const dy = event.key === 'ArrowUp' ? -amount : event.key === 'ArrowDown' ? amount : 0
-        editor.updateElements(editor.selectedElements.map((element) => ({
-          id: element.id,
-          patch: { x: element.x + dx, y: element.y + dy },
-        })))
-      }
-      if ((event.key === 'Backspace' || event.key === 'Delete') && editor.selectedIds.length > 0) {
+        const dx = key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0
+        const dy = key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0
+        const leaves = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
+        current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })))
+      } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node') {
         event.preventDefault()
-        editor.removeElements(editor.selectedIds)
+        current.removeElements(current.selectedIds)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [editor, tool])
+  }, [tool, chooseTool, group, ungroup, alignSelection])
 
-  const document = editor.document
   if (!document) {
     return (
       <main className="vector-missing" id="main">
@@ -97,6 +192,36 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     URL.revokeObjectURL(href)
   }
 
+  const selectFromLayers = (id: string, mode: 'replace' | 'toggle' | 'range') => {
+    if (mode === 'replace') {
+      editor.setSelectedIds([id])
+      lastLayerClick.current = id
+      return
+    }
+    if (mode === 'toggle') {
+      editor.setSelectedIds(selectedIds.includes(id) ? selectedIds.filter((value) => value !== id) : [...selectedIds, id])
+      lastLayerClick.current = id
+      return
+    }
+    const anchor = lastLayerClick.current ?? selectedIds.at(-1) ?? id
+    const order = document.elements.map((element) => element.id)
+    const from = order.indexOf(anchor)
+    const to = order.indexOf(id)
+    if (from < 0 || to < 0) {
+      editor.setSelectedIds([id])
+      return
+    }
+    const [start, end] = from < to ? [from, to] : [to, from]
+    const anchorElement = document.elements[from]!
+    const range = order.slice(start, end + 1).filter((value) => (document.elements.find((element) => element.id === value)?.parentId ?? null) === (anchorElement.parentId ?? null))
+    editor.setSelectedIds([...new Set([...selectedIds, ...range])])
+  }
+
+  const toggleLock = () => {
+    if (selectedElements.length === 0) return
+    editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked: !allLocked } })))
+  }
+
   return (
     <WorkspaceShell
       rigs={listRigs()}
@@ -108,26 +233,34 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       renderNavigation={({ compact, inert, onNavigate }) => (
         <VectorLayers
           document={document}
-          selectedIds={editor.selectedIds}
+          selectedIds={selectedIds}
+          enteredGroupId={editor.enteredGroupId}
           compact={compact}
           inert={inert}
           onNavigate={onNavigate}
-          onSelect={editor.setSelectedId}
+          onSelect={selectFromLayers}
           onUpdate={editor.updateElement}
-          onRemove={editor.removeElement}
+          onUpdateElements={editor.updateElements}
+          onRemove={editor.removeElements}
           onReorder={editor.reorderElement}
-          onMove={(id, index) => editor.moveElementInTree(id, { parentId: null, index })}
+          onMoveInTree={editor.moveElementInTree}
           onRename={editor.renameElement}
           onDuplicate={editor.duplicateElement}
+          onGroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(group) }}
+          onUngroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(ungroup) }}
         />
       )}
       inspector={
         <VectorInspector
           document={document}
-          selected={editor.selected}
+          tool={tool}
+          selectedElements={selectedElements}
+          selectedNodeIndices={selectedNodeIndices}
           onRenameDocument={editor.rename}
           onUpdateDocument={editor.updateDocument}
           onUpdate={editor.updateElement}
+          onUpdateElements={editor.updateElements}
+          onSelectNodes={setSelectedNodeIndices}
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
@@ -148,18 +281,17 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <SelectionToolMenu
             value={selectionTool}
             active={tool === selectionTool}
-            onChange={(next) => {
-              setSelectionTool(next)
-              setTool(next)
-            }}
-            onActivate={() => setTool(selectionTool)}
+            onChange={(next) => chooseTool(next)}
+            onActivate={() => chooseTool(selectionTool)}
           />
-          <ToolButton label="Rectangle" active={tool === 'rectangle'} onClick={(keyboard) => {
-            setTool('rectangle')
+          <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
+          <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
+          <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
+            chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
           }}><IconRectangle /></ToolButton>
           <ToolButton label="Ellipse · O" active={tool === 'ellipse'} onClick={(keyboard) => {
-            setTool('ellipse')
+            chooseTool('ellipse')
             if (keyboard) editor.addElement(createVectorElement('ellipse', centeredBounds(document, 140, 140)))
           }}><IconEllipse /></ToolButton>
         </div>
@@ -174,10 +306,23 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             </Tooltip>
           </div>
           <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} />
-          {editor.selectedId ? (
-            <Tooltip content="Delete">
-              <IconButton label="Delete selected object" onClick={() => editor.removeElements(editor.selectedIds)}><IconTrash /></IconButton>
-            </Tooltip>
+          {selectedIds.length > 0 ? (
+            <div className="workspace-toolbar__group vector-toolbar__selection">
+              {canUngroup ? (
+                <Tooltip content="Ungroup · ⇧⌘G">
+                  <IconButton label="Ungroup" onClick={ungroup}><IconUngroup /></IconButton>
+                </Tooltip>
+              ) : null}
+              <Tooltip content="Group · ⌘G">
+                <IconButton label="Group" onClick={group}><IconGroup /></IconButton>
+              </Tooltip>
+              <Tooltip content={allLocked ? 'Unlock · ⇧⌘L' : 'Lock · ⇧⌘L'}>
+                <IconButton label={allLocked ? 'Unlock selection' : 'Lock selection'} aria-pressed={allLocked} onClick={toggleLock}>{allLocked ? <IconLock /> : <IconUnlock />}</IconButton>
+              </Tooltip>
+              <Tooltip content="Delete">
+                <IconButton label="Delete selection" onClick={() => editor.removeElements(selectedIds)}><IconTrash /></IconButton>
+              </Tooltip>
+            </div>
           ) : null}
           <Tooltip content="Export SVG">
             <IconButton label="Export SVG" onClick={download}><IconDownload /></IconButton>
@@ -193,21 +338,29 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           viewOptions={viewOptions}
           onPanChange={setPan}
           onZoomChange={setZoom}
-          selectedId={editor.selectedId}
-          selectedIds={editor.selectedIds}
-          onSelect={editor.setSelectedId}
+          selectedIds={selectedIds}
+          enteredGroupId={editor.enteredGroupId}
+          selectedNodeIndices={selectedNodeIndices}
           onSelectIds={editor.setSelectedIds}
-          onEnterNodeEdit={() => {
-            setSelectionTool('select')
-            setTool('select')
-          }}
-          onAdd={(element) => {
-            editor.addElement(element)
-            setSelectionTool('select')
-            setTool('select')
+          onEnterGroup={editor.setEnteredGroupId}
+          onSelectNodes={setSelectedNodeIndices}
+          onToolChange={chooseTool}
+          onAddElements={(elements) => {
+            editor.addElements(elements)
+            if (tool === 'rectangle' || tool === 'ellipse') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
+          onDuplicateElements={editor.duplicateElements}
+          onSetGuides={editor.setGuides}
+          onEscape={() => {
+            if (editor.enteredGroupId) {
+              editor.setSelectedIds([editor.enteredGroupId])
+              editor.setEnteredGroupId(null)
+            } else {
+              editor.setSelectedIds([])
+            }
+          }}
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
@@ -215,6 +368,23 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       </div>
     </WorkspaceShell>
   )
+}
+
+/** Turns group moves into leaf moves so grouped objects follow. */
+function expandMoves(elements: VectorElement[], patches: ElementPatch[]): ElementPatch[] {
+  const updates: ElementPatch[] = []
+  for (const { id, patch } of patches) {
+    const element = elements.find((item) => item.id === id)
+    if (!element) continue
+    if (element.kind !== 'group') {
+      updates.push({ id, patch })
+      continue
+    }
+    const dx = typeof patch.x === 'number' ? patch.x - element.x : 0
+    const dy = typeof patch.y === 'number' ? patch.y - element.y : 0
+    for (const leaf of leafElements(elements, [id])) updates.push({ id: leaf.id, patch: { x: Math.round((leaf.x + dx) * 100) / 100, y: Math.round((leaf.y + dy) * 100) / 100 } })
+  }
+  return updates
 }
 
 function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChange: (value: VectorViewOptions) => void }) {
@@ -234,11 +404,15 @@ function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChan
             { value: '1x', label: '1×' },
             { value: '2x', label: '2×' },
           ]} />
-          <ViewToggle label="Pixel grid" checked={value.pixelGrid} onChange={(checked) => update('pixelGrid', checked)} />
-          <ViewToggle label="Snap to pixel grid" checked={value.snapToPixelGrid} onChange={(checked) => update('snapToPixelGrid', checked)} />
+          <ViewToggle label="Pixel grid" hint="from 400%" checked={value.pixelGrid} onChange={(checked) => update('pixelGrid', checked)} />
           <DropdownMenu.Separator className="menu__sep" />
-          <ViewToggle label="Layout guides" checked={value.layoutGuides} onChange={(checked) => update('layoutGuides', checked)} />
+          <ViewToggle label="Snap to pixel grid" checked={value.snapToPixelGrid} onChange={(checked) => update('snapToPixelGrid', checked)} />
+          <ViewToggle label="Snap to objects" checked={value.snapToObjects} onChange={(checked) => update('snapToObjects', checked)} />
+          <ViewToggle label="Snap to guides" checked={value.snapToGuides} onChange={(checked) => update('snapToGuides', checked)} />
+          <DropdownMenu.Separator className="menu__sep" />
           <ViewToggle label="Rulers" checked={value.rulers} onChange={(checked) => update('rulers', checked)} />
+          <ViewToggle label="Guides" checked={value.guides} onChange={(checked) => update('guides', checked)} />
+          <ViewToggle label="Layout grid" checked={value.layoutGuides} onChange={(checked) => update('layoutGuides', checked)} />
           <ViewSubmenu label="Outlines" value={value.outlines} onChange={(next) => update('outlines', next)} options={[
             { value: 'off', label: 'Off' },
             { value: 'all', label: 'All objects' },
@@ -250,7 +424,7 @@ function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChan
   )
 }
 
-function ViewToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function ViewToggle({ label, hint, checked, onChange }: { label: string; hint?: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
     <DropdownMenu.CheckboxItem
       className="menu__item vector-view-menu__item"
@@ -260,6 +434,7 @@ function ViewToggle({ label, checked, onChange }: { label: string; checked: bool
     >
       <span className="vector-view-menu__check"><DropdownMenu.ItemIndicator><IconCheck /></DropdownMenu.ItemIndicator></span>
       <span className="vector-view-menu__label">{label}</span>
+      {hint ? <kbd>{hint}</kbd> : null}
     </DropdownMenu.CheckboxItem>
   )
 }
@@ -340,10 +515,10 @@ function SelectionToolItem({ value, label, shortcut, children }: { value: Select
   )
 }
 
-function ToolButton({ label, active, onClick, children }: { label: string; active: boolean; onClick: (keyboard: boolean) => void; children: ReactNode }) {
+function ToolButton({ label, active, disabled, onClick, children }: { label: string; active: boolean; disabled?: boolean; onClick: (keyboard: boolean) => void; children: ReactNode }) {
   return (
     <Tooltip content={label}>
-      <IconButton label={label.split(' · ')[0]!} aria-pressed={active} className="vector-tool" onClick={(event: ReactMouseEvent<HTMLButtonElement>) => onClick(event.detail === 0)}>{children}</IconButton>
+      <IconButton label={label.split(' · ')[0]!} aria-pressed={active} disabled={disabled} className="vector-tool" onClick={(event: ReactMouseEvent<HTMLButtonElement>) => onClick(event.detail === 0)}>{children}</IconButton>
     </Tooltip>
   )
 }

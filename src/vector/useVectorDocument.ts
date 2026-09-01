@@ -146,13 +146,19 @@ export function useVectorDocument(documentId: string) {
    * Copies elements (with their descendants) right above the originals and returns the new ids
    * of the requested elements. Inside a gesture the copy joins the gesture's single undo entry.
    */
-  const duplicateElements = useCallback((ids: string[], offset = 12): string[] => {
+  const duplicateElements = useCallback((ids: string[], offset = 12): { ids: string[]; idMap: Record<string, string> } => {
     const idMap = new Map<string, string>()
+    const base = latest.current
     const requested = ids.map((id) => {
       const copy = crypto.randomUUID()
       idMap.set(id, copy)
       return copy
     })
+    if (base) {
+      for (const source of base.elements.filter((element) => ids.includes(element.id))) {
+        for (const id of descendantIds(base.elements, source.id)) if (!idMap.has(id)) idMap.set(id, crypto.randomUUID())
+      }
+    }
     replace((current) => {
       const sources = current.elements.filter((element) => ids.includes(element.id))
       if (sources.length === 0) return current
@@ -182,16 +188,16 @@ export function useVectorDocument(documentId: string) {
       elements.splice(topIndex + 1, 0, ...block)
       return { ...current, elements }
     })
-    return requested
+    return { ids: requested, idMap: Object.fromEntries(idMap) }
   }, [replace])
 
   const duplicateElement = useCallback((id: string) => {
-    const [copy] = duplicateElements([id])
+    const [copy] = duplicateElements([id]).ids
     if (copy) setSelectedIds([copy])
   }, [duplicateElements, setSelectedIds])
 
   const duplicateSelection = useCallback(() => {
-    const copies = duplicateElements(selectedIds)
+    const copies = duplicateElements(selectedIds).ids
     if (copies.length) setSelectedIds(copies)
   }, [duplicateElements, selectedIds, setSelectedIds])
 
@@ -283,12 +289,13 @@ export function useVectorDocument(documentId: string) {
 
   useEffect(() => {
     if (!document) return
-    if (selectedIds.length !== validSelectedIds.length) setSelectedIdsState(validSelectedIds)
-    if (enteredGroupId && !enteredGroup) setEnteredGroupId(null)
-    if (enteredGroup && validSelectedIds.some((id) => !ancestorIds(document.elements, id).includes(enteredGroup) && id !== enteredGroup)) {
-      setEnteredGroupId(null)
-    }
-  })
+    const ids = selectedIds.filter((id) => document.elements.some((element) => element.id === id))
+    if (ids.length !== selectedIds.length) setSelectedIdsState(ids)
+    if (!enteredGroupId) return
+    const exists = document.elements.some((element) => element.id === enteredGroupId && element.kind === 'group')
+    const outside = ids.some((id) => id !== enteredGroupId && !ancestorIds(document.elements, id).includes(enteredGroupId))
+    if (!exists || outside) setEnteredGroupId(null)
+  }, [document, selectedIds, enteredGroupId])
 
   return {
     document,

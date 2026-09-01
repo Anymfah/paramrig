@@ -46,13 +46,14 @@ export function transformElements(
   elements: VectorElement[],
   start: VectorPoint,
   current: VectorPoint,
+  origin?: VectorPoint,
 ): Array<{ id: string; patch: Partial<VectorElement> }> {
-  if (elements.length === 1) {
+  if (elements.length === 1 && !origin) {
     const element = elements[0]!
     return [{ id: element.id, patch: transformElement(mode, axis, element, start, current) }]
   }
   const bounds = groupBounds(elements)
-  const center = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
+  const center = origin ?? { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 }
   if (mode === 'move') {
     const dx = axis === 'y' ? 0 : current.x - start.x
     const dy = axis === 'x' ? 0 : current.y - start.y
