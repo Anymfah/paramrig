@@ -19,7 +19,8 @@ import { createVectorElement } from '@/vector/document'
 import { FRAME_CUSTOM, FRAME_PRESETS, framePresetBounds, matchFramePreset } from '@/vector/frames'
 import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_FACES, TEXT_WEIGHTS } from '@/vector/text'
 import { outlineText } from '@/vector/textOutline'
-import { components, connectNodes, mergeNetworks, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
+import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
+import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
 import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
@@ -582,6 +583,30 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
     })
     onSelectIds(created.map((item) => item.id))
   }
+  const applyWorld = (next: AbsNetwork) => onUpdate(element.id, { ...commitWorld(element, next), kind: 'path' })
+  const picked = world.nodes.filter((node) => selectedNodeIds.includes(node.id))
+  const alignNodes = (mode: AlignMode) => {
+    if (picked.length < 2) return
+    const moved = alignPoints(picked.map((node) => node.point), mode)
+    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))))
+  }
+  const distributeNodes = (axis: DistributeAxis) => {
+    if (picked.length < 3) return
+    const moved = distributePoints(picked.map((node) => node.point), axis)
+    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))))
+  }
+  const handles = active
+    ? incident.flatMap((segment) => {
+      const end = segment.a === active.id ? 'a' : 'b'
+      const point = end === 'a' ? segment.ah : segment.bh
+      return point ? [{ segmentId: segment.id, end: end as 'a' | 'b', point }] : []
+    })
+    : []
+  const setHandle = (handle: { segmentId: string; end: 'a' | 'b' }, length: number, angle: number) => {
+    if (!active) return
+    onUpdate(element.id, { ...moveHandle(element, world, handle.segmentId, handle.end, handleFromPolar(active.point, Math.max(0, length), angle)), kind: 'path' })
+  }
+
   return (
     <section className="vector-panel" aria-label="Path">
       <div className="vector-panel__row">
@@ -593,6 +618,27 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
         <span className="vector-panel__meta">{groups.length > 1 ? `${groups.length} parts` : ''}</span>
       </div>
       {faces.length > 0 ? <p className="vector-panel__hint">Use the paint bucket (B) to switch regions on or off.</p> : null}
+      {tool === 'node' && picked.length > 1 ? (
+        <div className="vector-nodes-align" aria-label="Align nodes">
+          <div className="vector-panel__row">
+            <span className="vector-panel__subtitle">Align {picked.length} nodes</span>
+          </div>
+          <div className="vector-align">
+            <AlignButton label="Align left" onClick={() => alignNodes('left')}><IconAlignLeft /></AlignButton>
+            <AlignButton label="Align centres horizontally" onClick={() => alignNodes('centerX')}><IconAlignCenterH /></AlignButton>
+            <AlignButton label="Align right" onClick={() => alignNodes('right')}><IconAlignRight /></AlignButton>
+            <AlignButton label="Align top" onClick={() => alignNodes('top')}><IconAlignTop /></AlignButton>
+            <AlignButton label="Align centres vertically" onClick={() => alignNodes('centerY')}><IconAlignCenterV /></AlignButton>
+            <AlignButton label="Align bottom" onClick={() => alignNodes('bottom')}><IconAlignBottom /></AlignButton>
+          </div>
+          {picked.length > 2 ? (
+            <div className="vector-align">
+              <AlignButton label="Distribute horizontally" onClick={() => distributeNodes('x')}><IconDistributeH /></AlignButton>
+              <AlignButton label="Distribute vertically" onClick={() => distributeNodes('y')}><IconDistributeV /></AlignButton>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {active && activeId ? (
         <>
           <div className="vector-panel__row">
@@ -621,12 +667,46 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
               }
             }}
           />
+          {handles.map((handle, index) => {
+            const polar = handlePolar(active.point, handle.point)
+            return (
+              <div key={`${handle.segmentId}-${handle.end}`} className="vector-handle-fields">
+                <span className="vector-panel__subtitle">Handle {index + 1}</span>
+                <div className="vector-field-grid">
+                  <NumberField
+                    label="Length"
+                    value={round(polar.length)}
+                    min={0}
+                    max={MAX_DOCUMENT_SIZE}
+                    step={1}
+                    unit="px"
+                    variant="field"
+                    onChange={(length) => setHandle(handle, length, polar.angle)}
+                    {...gesture}
+                  />
+                  <NumberField
+                    label="Angle"
+                    value={round(polar.angle)}
+                    min={-360}
+                    max={360}
+                    step={1}
+                    unit="°"
+                    variant="field"
+                    onChange={(angle) => setHandle(handle, polar.length, angle)}
+                    {...gesture}
+                  />
+                </div>
+              </div>
+            )
+          })}
           {!smooth && incident.length === 2 ? (
             <NumberField label="Corner radius" value={active.radius ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { kind: 'path', network: { ...(element.network ?? normalizeWorld(world).network), nodes: (element.network ?? normalizeWorld(world).network).nodes.map((node) => node.id === activeId ? { ...node, radius: radius > 0 ? radius : undefined } : node) } })} {...gesture} />
           ) : null}
         </>
       ) : tool === 'node' ? (
-        <p className="vector-panel__hint">{selectedNodeIds.length > 1 ? `${selectedNodeIds.length} nodes selected` : 'Select a node to edit it. Double-click a node to toggle corner and smooth; double-click a segment to add a node; ⌘-drag a segment to bend it.'}</p>
+        <p className="vector-panel__hint">{selectedNodeIds.length > 1
+          ? 'Shift a handle to hold it to 15°. ⌥-click a region to select the nodes around it.'
+          : 'Select a node to edit it. Double-click a node to toggle corner and smooth; double-click a segment to add a node; ⌘-drag a segment to bend it; ⌥-click a region to select its nodes.'}</p>
       ) : (
         <p className="vector-panel__hint">Press Enter or double-click the shape to edit nodes.</p>
       )}
@@ -743,12 +823,20 @@ function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }:
 }) {
   if (!onLinkStyle && !onCreateStyle) return null
   const options = styles.filter((style) => style.kind === kind)
+  // With nothing to pick from, the list would be an empty control: offer only the way in.
+  if (options.length === 0 && !linked) {
+    return (
+      <div className="vector-style-link__actions">
+        <Button variant="quiet" size="sm" data-action={`create-${kind}-style`} onClick={() => onCreateStyle?.(kind, source)}>Create style</Button>
+      </div>
+    )
+  }
   return (
     <div className="vector-style-link">
       <SelectField
         label="Style"
         value={linked?.id ?? ''}
-        options={[{ value: '', label: options.length ? 'No style' : 'No style yet' }, ...options.map((style) => ({ value: style.id, label: style.name }))]}
+        options={[{ value: '', label: 'No style' }, ...options.map((style) => ({ value: style.id, label: style.name }))]}
         onChange={(value) => onLinkStyle?.(kind, value || null)}
       />
       <div className="vector-style-link__actions">

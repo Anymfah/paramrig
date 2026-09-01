@@ -1430,3 +1430,7 @@
 @media (pointer: coarse) {
   .swatch-row__chip { width: 28px; height: 28px; }
 }
+
+/* Node precision: aligning a set of nodes, and the polar fields of the active node's handles. */
+.vector-nodes-align { display: grid; gap: var(--space-1); margin-block: var(--space-2); }
+.vector-handle-fields { display: grid; gap: var(--space-1); margin-block-start: var(--space-2); }

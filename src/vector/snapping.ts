@@ -62,6 +62,13 @@ export function collectSnapTargets(
   return targets
 }
 
+/** Snap lines through a set of points, for the nodes of the shape currently being edited. */
+export function nodeSnapTargets(points: VectorPoint[]): SnapTarget[] {
+  const targets: SnapTarget[] = []
+  for (const point of points) pushPoint(targets, point)
+  return targets
+}
+
 function pushPoint(targets: SnapTarget[], point: VectorPoint) {
   targets.push({ axis: 'x', value: point.x, kind: 'node', span: [point.y, point.y] }, { axis: 'y', value: point.y, kind: 'node', span: [point.x, point.x] })
 }

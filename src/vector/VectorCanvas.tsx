@@ -6,6 +6,7 @@ import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks,
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
+import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
   bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
@@ -14,7 +15,7 @@ import {
 import { pencilNodes } from '@/vector/pencil'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
-import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
+import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorGuide, VectorTool } from '@/vector/types'
@@ -1021,6 +1022,15 @@ export function VectorCanvas({
       event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
+    if (tool === 'node' && editing && event.altKey) {
+      const face = worldFaces(editing).hit(at)
+      if (face) {
+        const ids = faceNodeIds(face)
+        onSelectNodes(event.shiftKey ? [...new Set([...selectedNodeIdsRef.current, ...ids])] : ids)
+        setSelectedSegment(null)
+        return
+      }
+    }
     if (tool === 'node' && editing) {
       if (!event.shiftKey) { onSelectNodes([]); setSelectedSegment(null) }
       interaction.current = { kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at, additive: event.shiftKey, element: structuredClone(editing), world: worldNetwork(editing) }
@@ -1172,8 +1182,15 @@ export function VectorCanvas({
       if (!active.moved && Math.hypot(dx, dy) * zoom < 3) return
       active.moved = true
       if (active.handle) {
-        onUpdate(active.element.id, { ...moveHandle(active.element, active.world, active.handle.segmentId, active.handle.end, at, event.altKey), kind: 'path' }, false)
-        showHud(`${round(at.x)}, ${round(at.y)}`, event.nativeEvent)
+        const segment = active.world.segments.find((item) => item.id === active.handle!.segmentId)
+        const anchorId = segment ? (active.handle.end === 'a' ? segment.a : segment.b) : null
+        const anchor = anchorId ? active.world.nodes.find((node) => node.id === anchorId)?.point ?? null : null
+        // Shift holds the handle to a fifteen-degree step; otherwise it snaps to the other nodes.
+        const target = anchor && event.shiftKey ? constrainToAngle(anchor, at) : snapFreePoint(at, active.targets).point
+        setSnapMatches(anchor && event.shiftKey ? [] : snapFreePoint(at, active.targets).matches)
+        onUpdate(active.element.id, { ...moveHandle(active.element, active.world, active.handle.segmentId, active.handle.end, target, event.altKey), kind: 'path' }, false)
+        const polar = anchor ? handlePolar(anchor, target) : null
+        showHud(polar ? `${round(polar.length)} · ${round(polar.angle)}°` : `${round(target.x)}, ${round(target.y)}`, event.nativeEvent)
         return
       }
       const candidate = { x: active.anchorStart.x + dx, y: active.anchorStart.y + dy }
@@ -1181,7 +1198,7 @@ export function VectorCanvas({
       const delta = { x: snapped.point.x - active.anchorStart.x, y: snapped.point.y - active.anchorStart.y }
       onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
       setSnapMatches(snapped.matches)
-      showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)}`, event.nativeEvent)
+      showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)} · Δ ${round(delta.x)}, ${round(delta.y)}`, event.nativeEvent)
       return
     }
     if (active.kind === 'segment-move') {
@@ -1350,7 +1367,13 @@ export function VectorCanvas({
     onGestureStart()
     interaction.current = {
       kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: world.nodes.find((node) => node.id === nodeId)!.point,
-      element: structuredClone(editing), world, nodeIds, handle, targets: snapTargetsFor([editing.id]), moved: false, toggleOnClick,
+      element: structuredClone(editing), world, nodeIds, handle,
+      // The shape's own nodes are snap targets too, minus the ones being dragged.
+      targets: [
+        ...snapTargetsFor([editing.id]),
+        ...(viewOptions.snapToNodes ? nodeSnapTargets(world.nodes.filter((node) => !nodeIds.includes(node.id)).map((node) => node.point)) : []),
+      ],
+      moved: false, toggleOnClick,
     }
     setDirectCursor(handle ? 'crosshair' : 'move')
     svgRef.current?.setPointerCapture(event.pointerId)
