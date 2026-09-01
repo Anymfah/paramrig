@@ -351,15 +351,15 @@ export function VectorInspector({
                 </div>
                 <div className="vector-panel__actions">
                   <Button variant="quiet" size="sm" data-action="combine" onClick={combine}>Combine · ⌘E</Button>
-                  <Button variant="quiet" size="sm" onClick={flatten}>Flatten</Button>
+                  <Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button>
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
             ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
-                  {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" onClick={outline}>Outline stroke</Button> : null}
-                  {single.network ? <Button variant="quiet" size="sm" onClick={flatten}>Flatten</Button> : null}
+                  {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" data-action="outline-stroke" onClick={outline}>Outline stroke</Button> : null}
+                  {single.network ? <Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button> : null}
                 </div>
               </section>
             ) : null}

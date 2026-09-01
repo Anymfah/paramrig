@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { reorderIndex } from '@/vector/commands'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
 import { selectionBounds } from '@/vector/geometry'
 import {
@@ -6,7 +7,6 @@ import {
   descendantIds,
   groupElements,
   moveInTree,
-  siblingIndex,
   syncGroupBounds,
   ungroupElements,
 } from '@/vector/tree'
@@ -226,13 +226,31 @@ export function useVectorDocument(documentId: string) {
     replace((current) => {
       const element = current.elements.find((item) => item.id === id)
       if (!element) return current
-      const index = siblingIndex(current.elements, id)
-      const target = index + direction
-      const siblings = current.elements.filter((item) => (item.parentId ?? null) === (element.parentId ?? null))
-      if (target < 0 || target >= siblings.length) return current
-      const insertion = direction > 0 ? target + 1 : target
-      const moved = moveInTree(current.elements, id, { parentId: element.parentId ?? null, index: insertion })
+      const index = reorderIndex(current.elements, id, direction > 0 ? 'forward' : 'backward')
+      if (index === null) return current
+      const moved = moveInTree(current.elements, id, { parentId: element.parentId ?? null, index })
       return moved === current.elements ? current : { ...current, elements: moved }
+    })
+  }, [replace])
+
+  /**
+   * Ordering for a whole selection. Objects move one at a time, in the order that keeps their
+   * relative stacking: to the front bottom-most first, to the back top-most first.
+   */
+  const orderElements = useCallback((ids: string[], mode: 'forward' | 'backward' | 'front' | 'back') => {
+    if (ids.length === 0) return
+    replace((current) => {
+      const position = (id: string) => current.elements.findIndex((element) => element.id === id)
+      const ascending = [...ids].sort((a, b) => position(a) - position(b))
+      const sequence = mode === 'front' || mode === 'backward' ? ascending : [...ascending].reverse()
+      let elements = current.elements
+      for (const id of sequence) {
+        const index = reorderIndex(elements, id, mode)
+        if (index === null) continue
+        const element = elements.find((item) => item.id === id)!
+        elements = moveInTree(elements, id, { parentId: element.parentId ?? null, index })
+      }
+      return elements === current.elements ? current : { ...current, elements }
     })
   }, [replace])
 
@@ -366,6 +384,7 @@ export function useVectorDocument(documentId: string) {
     rename,
     resizeDocument,
     reorderElement,
+    orderElements,
     moveElementInTree,
     groupSelection,
     ungroup,

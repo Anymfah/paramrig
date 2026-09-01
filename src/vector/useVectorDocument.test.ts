@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createVectorDocument, createVectorElement } from '@/vector/document'
+import { createVectorDocument, createVectorElement, saveVectorDocument } from '@/vector/document'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 describe('useVectorDocument transactions', () => {
@@ -89,5 +89,70 @@ describe('useVectorDocument transactions', () => {
     act(() => hook.result.current.setSelectedIds([first!, second!]))
     act(() => hook.result.current.removeElements([second!]))
     expect(hook.result.current.selectedIds).toEqual([first])
+  })
+})
+
+describe('ordering a selection', () => {
+  const seed = (count: number) => {
+    localStorage.clear()
+    const document = createVectorDocument()
+    document.elements = Array.from({ length: count }, (_, index) => ({
+      ...createVectorElement('rectangle', { x: index * 10, y: 0, width: 10, height: 10 }),
+      id: String.fromCharCode(97 + index),
+      name: String.fromCharCode(97 + index),
+    }))
+    saveVectorDocument(document)
+    return document.id
+  }
+
+  const order = (result: { current: { document: { elements: Array<{ id: string }> } | null } }) =>
+    (result.current.document?.elements ?? []).map((element) => element.id)
+
+  it('moves a selection one step without shuffling it', () => {
+    const id = seed(4)
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.orderElements(['a', 'b'], 'forward'))
+
+    expect(order(result)).toEqual(['c', 'a', 'b', 'd'])
+  })
+
+  it('brings a selection to the front, keeping its own order', () => {
+    const id = seed(4)
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.orderElements(['a', 'c'], 'front'))
+
+    expect(order(result)).toEqual(['b', 'd', 'a', 'c'])
+  })
+
+  it('sends a selection to the back, keeping its own order', () => {
+    const id = seed(4)
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.orderElements(['b', 'd'], 'back'))
+
+    expect(order(result)).toEqual(['b', 'd', 'a', 'c'])
+  })
+
+  it('leaves the stack alone when it is already at the end', () => {
+    const id = seed(3)
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.orderElements(['c'], 'forward'))
+    act(() => result.current.orderElements(['a'], 'back'))
+
+    expect(order(result)).toEqual(['a', 'b', 'c'])
+    expect(result.current.canUndo).toBe(false)
+  })
+
+  it('records one undo step for the whole move', () => {
+    const id = seed(4)
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.orderElements(['a', 'b'], 'front'))
+    act(() => result.current.undo())
+
+    expect(order(result)).toEqual(['a', 'b', 'c', 'd'])
   })
 })

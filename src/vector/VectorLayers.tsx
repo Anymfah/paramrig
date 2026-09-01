@@ -6,6 +6,7 @@ import { ThemeToggle } from '@/ui/ThemeToggle'
 import { Tooltip } from '@/ui/Tooltip'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
 import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
+import { SHORTCUTS } from '@/vector/commands'
 import { childrenOf, flattenForLayers, isContainer, siblingIndex, type LayerRow } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
 
@@ -26,11 +27,13 @@ type VectorLayersProps = {
   onDuplicate: (id: string) => void
   onGroup: (ids: string[]) => void
   onUngroup: (ids: string[]) => void
+  /** Opens the batch rename dialog; absent when a single layer is all that can be renamed. */
+  onRenameMany?: (ids: string[]) => void
 }
 
 type DropTarget = { id: string; edge: 'before' | 'after' | 'inside' }
 
-export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup }: VectorLayersProps) {
+export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup, onRenameMany }: VectorLayersProps) {
   const { prefs } = useWorkspace()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
@@ -112,14 +115,17 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
               const index = siblingIndex(document.elements, element.id)
               const items: ContextMenuItem[] = [
                 { label: 'Rename', icon: <IconPencil />, onSelect: () => requestAnimationFrame(() => rowRename.current[element.id]?.()) },
+                ...(onRenameMany && inSelection && selectedIds.length > 1
+                  ? [{ label: `Rename ${selectedIds.length} layers…`, icon: <IconPencil />, separatorBefore: false, onSelect: () => onRenameMany(selectedIds) }]
+                  : []),
                 { label: 'Duplicate', icon: <IconCopy />, separatorBefore: false, onSelect: () => onDuplicate(element.id) },
-                { label: 'Group', icon: <IconGroup />, onSelect: () => onGroup(groupCandidates) },
-                ...(element.kind === 'group' ? [{ label: 'Ungroup', icon: <IconUngroup />, separatorBefore: false, onSelect: () => onUngroup([element.id]) }] : []),
-                { label: element.locked ? 'Unlock' : 'Lock', icon: element.locked ? <IconUnlock /> : <IconLock />, onSelect: () => onUpdate(element.id, { locked: !element.locked }) },
-                { label: element.visible ? 'Hide' : 'Show', icon: element.visible ? <IconEyeOff /> : <IconEye />, separatorBefore: false, onSelect: () => onUpdate(element.id, { visible: !element.visible }) },
-                { label: 'Move forward', icon: <IconBringForward />, disabled: index === siblingCount - 1, onSelect: () => onReorder(element.id, 1) },
-                { label: 'Move backward', icon: <IconSendBackward />, disabled: index === 0, separatorBefore: false, onSelect: () => onReorder(element.id, -1) },
-                { label: 'Delete', icon: <IconTrash />, onSelect: () => onRemove(inSelection ? selectedIds : [element.id]) },
+                { label: `Group · ${SHORTCUTS.group}`, icon: <IconGroup />, onSelect: () => onGroup(groupCandidates) },
+                ...(element.kind === 'group' ? [{ label: `Ungroup · ${SHORTCUTS.ungroup}`, icon: <IconUngroup />, separatorBefore: false, onSelect: () => onUngroup([element.id]) }] : []),
+                { label: `${element.locked ? 'Unlock' : 'Lock'} · ${SHORTCUTS.lock}`, icon: element.locked ? <IconUnlock /> : <IconLock />, onSelect: () => onUpdate(element.id, { locked: !element.locked }) },
+                { label: `${element.visible ? 'Hide' : 'Show'} · ${SHORTCUTS.hide}`, icon: element.visible ? <IconEyeOff /> : <IconEye />, separatorBefore: false, onSelect: () => onUpdate(element.id, { visible: !element.visible }) },
+                { label: `Bring forward · ${SHORTCUTS.bringForward}`, icon: <IconBringForward />, disabled: index === siblingCount - 1, onSelect: () => onReorder(element.id, 1) },
+                { label: `Send backward · ${SHORTCUTS.sendBackward}`, icon: <IconSendBackward />, disabled: index === 0, separatorBefore: false, onSelect: () => onReorder(element.id, -1) },
+                { label: `Delete · ${SHORTCUTS.delete}`, icon: <IconTrash />, onSelect: () => onRemove(inSelection ? selectedIds : [element.id]) },
               ]
               return (
                 <div

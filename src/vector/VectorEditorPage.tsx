@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -16,11 +16,26 @@ import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align
 import { createVectorDocument, createVectorElement, MAX_EXPORT_PRESETS } from '@/vector/document'
 import { DEFAULT_EXPORT, embedFonts, exportBounds, exportFileName, exportMarkup, rasterize, type ExportSettings } from '@/vector/export'
 import { VectorExportMenu } from '@/vector/VectorExportMenu'
+import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/ContextMenu'
+import {
+  appearanceOf,
+  appearancePatch,
+  matchingIds,
+  nextSiblingId,
+  opacityFromDigit,
+  SHORTCUTS,
+  withShortcut,
+  type Appearance,
+  type OpacityBuffer,
+  type VectorCommand,
+} from '@/vector/commands'
+import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
+import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
 import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
-import { ancestorIds, childrenOf, isContainer, leafElements } from '@/vector/tree'
+import { ancestorIds, childrenOf, descendantIds, isContainer, leafElements } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
@@ -61,6 +76,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const appearanceClipboard = useRef<Appearance | null>(null)
+  const elementClipboard = useRef<VectorElement[]>([])
+  const opacityBuffer = useRef<OpacityBuffer | null>(null)
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
@@ -155,6 +175,81 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     navigate(`/r/${createVectorDocument().id}`)
   }, [navigate])
 
+  /** Elements a copy covers: the selection plus everything under it. */
+  const selectionBlock = useCallback((): VectorElement[] => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedIds.length === 0) return []
+    const ids = new Set(current.selectedIds.flatMap((id) => [id, ...descendantIds(doc.elements, id)]))
+    return doc.elements.filter((element) => ids.has(element.id))
+  }, [])
+
+  const copySelection = useCallback((cut: boolean) => {
+    const block = selectionBlock()
+    if (block.length === 0) return
+    elementClipboard.current = structuredClone(block)
+    if (cut) editorRef.current.removeElements(editorRef.current.selectedIds)
+  }, [selectionBlock])
+
+  const pasteStored = useCallback(() => {
+    const ids = pasteElements(elementClipboard.current, 12)
+    if (ids.length) editorRef.current.setSelectedIds(ids)
+  }, [pasteElements])
+
+  const copyAppearance = useCallback(() => {
+    const source = editorRef.current.selectedElements.find((element) => element.kind !== 'group')
+    if (source) appearanceClipboard.current = appearanceOf(source)
+  }, [])
+
+  const pasteAppearance = useCallback(() => {
+    const appearance = appearanceClipboard.current
+    const current = editorRef.current
+    if (!appearance || current.selectedIds.length === 0) return
+    const targets = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
+    if (targets.length === 0) return
+    current.updateElements(targets.map((element) => ({ id: element.id, patch: appearancePatch(appearance) })))
+  }, [])
+
+  /** Keeps each target's box and replaces everything else with the copied objects. */
+  const pasteToReplace = useCallback(() => {
+    const current = editorRef.current
+    if (elementClipboard.current.length === 0 || current.selectedIds.length === 0) return
+    const replaced = current.selectedIds
+    const ids = pasteElements(elementClipboard.current, 0)
+    current.removeElements(replaced)
+    if (ids.length) current.setSelectedIds(ids)
+  }, [pasteElements])
+
+  const order = useCallback((mode: 'forward' | 'backward' | 'front' | 'back') => {
+    const current = editorRef.current
+    if (current.selectedIds.length === 0) return
+    current.orderElements(current.selectedIds, mode)
+  }, [])
+
+  const walkSiblings = useCallback((direction: 1 | -1) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc) return
+    const next = nextSiblingId(doc.elements, current.selectedIds.at(-1) ?? null, current.enteredGroupId, direction)
+    if (next) current.setSelectedIds([next])
+  }, [])
+
+  const setOpacity = useCallback((digit: string) => {
+    const current = editorRef.current
+    if (current.selectedIds.length === 0) return
+    const { opacity, buffer } = opacityFromDigit(opacityBuffer.current, digit, Date.now())
+    opacityBuffer.current = buffer
+    current.updateElements(current.selectedElements.filter((element) => !element.locked).map((element) => ({ id: element.id, patch: { opacity } })))
+  }, [])
+
+  const selectSame = useCallback((key: 'fill' | 'stroke' | 'strokeWidth') => {
+    const current = editorRef.current
+    const doc = current.document
+    const reference = current.selectedElements.find((element) => element.kind !== 'group')
+    if (!doc || !reference) return
+    current.setSelectedIds(matchingIds(doc.elements, reference, key))
+  }, [])
+
   const alignSelection = useCallback((mode: AlignMode) => {
     const current = editorRef.current
     const doc = current.document
@@ -175,12 +270,19 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       const elements = doc.elements.filter((element) => ids.has(element.id) || (element.parentId && ids.has(element.parentId)))
       event.preventDefault()
       writeClipboardPayload(event.clipboardData, elements, doc)
+      elementClipboard.current = structuredClone(elements)
       if (cut) current.removeElements(current.selectedIds)
     }
     const onPaste = (event: ClipboardEvent) => {
       if (editable(event.target)) return
       const payload = readClipboardPayload(event.clipboardData)
-      if (!payload) return
+      if (!payload) {
+        // Nothing readable on the system clipboard: fall back to what a menu copy stored.
+        if (elementClipboard.current.length === 0) return
+        event.preventDefault()
+        pasteStored()
+        return
+      }
       event.preventDefault()
       pasteElements(payload.elements, payload.source === 'internal' ? 12 : 0)
     }
@@ -210,6 +312,32 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       if (meta && key === 'o') {
         event.preventDefault()
         requestOpen()
+        return
+      }
+      if (meta && (key === ']' || key === '[' || event.code === 'BracketRight' || event.code === 'BracketLeft')) {
+        event.preventDefault()
+        const forward = key === ']' || event.code === 'BracketRight'
+        order(event.altKey ? (forward ? 'front' : 'back') : (forward ? 'forward' : 'backward'))
+        return
+      }
+      if (meta && event.altKey && key === 'c') {
+        event.preventDefault()
+        copyAppearance()
+        return
+      }
+      if (meta && event.altKey && key === 'v') {
+        event.preventDefault()
+        pasteAppearance()
+        return
+      }
+      if (meta && event.shiftKey && key === 'r') {
+        event.preventDefault()
+        pasteToReplace()
+        return
+      }
+      if (meta && key === '/') {
+        event.preventDefault()
+        setPaletteOpen((open) => !open)
         return
       }
       if (meta && key === 'd') {
@@ -255,6 +383,28 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         return
       }
       if (meta) return
+      if (key === 'tab') {
+        // Only the canvas walks objects with Tab; everywhere else it still moves focus.
+        const active = window.document.activeElement
+        const onCanvas = !active || active === window.document.body || (active instanceof HTMLElement && !!active.closest('#main'))
+        if (!onCanvas) return
+        event.preventDefault()
+        walkSiblings(event.shiftKey ? -1 : 1)
+        return
+      }
+      if (event.shiftKey && key === 'enter') {
+        event.preventDefault()
+        const doc = current.document
+        const parent = doc && current.enteredGroupId ? doc.elements.find((element) => element.id === current.enteredGroupId) ?? null : null
+        current.setEnteredGroupId(parent?.parentId ?? null)
+        if (parent) current.setSelectedIds([parent.id])
+        return
+      }
+      if (!event.shiftKey && /^[0-9]$/.test(event.key) && current.selectedIds.length > 0) {
+        event.preventDefault()
+        setOpacity(event.key)
+        return
+      }
       if (event.altKey) {
         const mode = ALIGN_KEYS[event.code]
         if (mode && current.selectedElements.length > 0) {
@@ -325,7 +475,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, requestOpen])
+  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity])
 
   if (!document) {
     return (
@@ -375,6 +525,92 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     editor.updateDocument({ exportPresets: presets.length ? presets : undefined })
   }
 
+  const toggleLock = () => {
+    if (selectedElements.length === 0) return
+    editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked: !allLocked } })))
+  }
+
+  const single = selectedElements.length === 1 ? selectedElements[0]! : null
+  const hasSelection = selectedIds.length > 0
+  const paintReference = selectedElements.find((element) => element.kind !== 'group') ?? null
+
+  const commands: VectorCommand[] = [
+    { id: 'undo', label: 'Undo', section: 'Edit', shortcut: SHORTCUTS.undo, disabled: !editor.canUndo, run: editor.undo },
+    { id: 'redo', label: 'Redo', section: 'Edit', shortcut: SHORTCUTS.redo, disabled: !editor.canRedo, run: editor.redo },
+    { id: 'copy', label: 'Copy', section: 'Edit', shortcut: SHORTCUTS.copy, disabled: !hasSelection, run: () => copySelection(false) },
+    { id: 'cut', label: 'Cut', section: 'Edit', shortcut: SHORTCUTS.cut, disabled: !hasSelection, run: () => copySelection(true) },
+    { id: 'paste', label: 'Paste', section: 'Edit', shortcut: SHORTCUTS.paste, disabled: elementClipboard.current.length === 0, run: pasteStored },
+    { id: 'paste-replace', label: 'Paste to replace', section: 'Edit', shortcut: SHORTCUTS.pasteToReplace, disabled: !hasSelection || elementClipboard.current.length === 0, run: pasteToReplace },
+    { id: 'copy-properties', label: 'Copy properties', section: 'Edit', shortcut: SHORTCUTS.copyProperties, disabled: !paintReference, run: copyAppearance },
+    { id: 'paste-properties', label: 'Paste properties', section: 'Edit', shortcut: SHORTCUTS.pasteProperties, disabled: !hasSelection || !appearanceClipboard.current, run: pasteAppearance },
+    { id: 'duplicate', label: 'Duplicate', section: 'Edit', shortcut: SHORTCUTS.duplicate, disabled: !hasSelection, run: editor.duplicateSelection },
+    { id: 'delete', label: 'Delete', section: 'Edit', shortcut: SHORTCUTS.delete, disabled: !hasSelection, run: () => editor.removeElements(selectedIds) },
+    { id: 'select-all', label: 'Select all', section: 'Selection', shortcut: SHORTCUTS.selectAll, run: () => editor.setSelectedIds(childrenOf(document.elements, editor.enteredGroupId).filter((element) => element.visible && !element.locked).map((element) => element.id)) },
+    { id: 'next-sibling', label: 'Select next object', section: 'Selection', shortcut: SHORTCUTS.nextSibling, run: () => walkSiblings(1) },
+    { id: 'previous-sibling', label: 'Select previous object', section: 'Selection', shortcut: SHORTCUTS.previousSibling, run: () => walkSiblings(-1) },
+    { id: 'same-fill', label: 'Select all with same fill', section: 'Selection', disabled: !paintReference, run: () => selectSame('fill') },
+    { id: 'same-stroke', label: 'Select all with same stroke', section: 'Selection', disabled: !paintReference, run: () => selectSame('stroke') },
+    { id: 'same-stroke-width', label: 'Select all with same stroke width', section: 'Selection', disabled: !paintReference, run: () => selectSame('strokeWidth') },
+    { id: 'bring-forward', label: 'Bring forward', section: 'Arrange', shortcut: SHORTCUTS.bringForward, disabled: !hasSelection, run: () => order('forward') },
+    { id: 'send-backward', label: 'Send backward', section: 'Arrange', shortcut: SHORTCUTS.sendBackward, disabled: !hasSelection, run: () => order('backward') },
+    { id: 'bring-to-front', label: 'Bring to front', section: 'Arrange', shortcut: SHORTCUTS.bringToFront, disabled: !hasSelection, run: () => order('front') },
+    { id: 'send-to-back', label: 'Send to back', section: 'Arrange', shortcut: SHORTCUTS.sendToBack, disabled: !hasSelection, run: () => order('back') },
+    { id: 'group', label: 'Group', section: 'Arrange', shortcut: SHORTCUTS.group, disabled: !hasSelection, run: group },
+    { id: 'ungroup', label: 'Ungroup', section: 'Arrange', shortcut: SHORTCUTS.ungroup, disabled: !canUngroup, run: ungroup },
+    { id: 'flip-h', label: 'Flip horizontal', section: 'Arrange', shortcut: SHORTCUTS.flipHorizontal, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('x', center)) },
+    { id: 'flip-v', label: 'Flip vertical', section: 'Arrange', shortcut: SHORTCUTS.flipVertical, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('y', center)) },
+    { id: 'rotate-90', label: 'Rotate 90°', section: 'Arrange', shortcut: SHORTCUTS.rotate90, disabled: !hasSelection, run: () => transformSelection((center) => rotationAffine(90, center)) },
+    { id: 'lock', label: allLocked ? 'Unlock' : 'Lock', section: 'Object', shortcut: SHORTCUTS.lock, disabled: !hasSelection, run: toggleLock },
+    { id: 'hide', label: selectedElements.every((element) => element.visible) ? 'Hide' : 'Show', section: 'Object', shortcut: SHORTCUTS.hide, disabled: !hasSelection, run: () => editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible: !selectedElements.every((item) => item.visible) } }))) },
+    { id: 'opacity', label: 'Set opacity', section: 'Object', shortcut: SHORTCUTS.opacity, disabled: !hasSelection, run: () => setOpacity('0') },
+    { id: 'edit-nodes', label: 'Edit nodes', section: 'Object', shortcut: SHORTCUTS.enter, disabled: !single || single.kind === 'group' || single.kind === 'text' || single.locked, run: () => chooseTool('node') },
+    { id: 'edit-text', label: 'Edit text', section: 'Object', shortcut: SHORTCUTS.enter, disabled: single?.kind !== 'text', run: () => { if (single) controller.current?.editText(single.id) } },
+    { id: 'combine', label: 'Combine paths', section: 'Object', shortcut: SHORTCUTS.combine, disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="combine"]')?.click() },
+    { id: 'flatten', label: 'Flatten', section: 'Object', disabled: !hasSelection, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="flatten"]')?.click() },
+    { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'rename', label: 'Rename layers…', section: 'Object', disabled: !hasSelection, run: () => setRenameOpen(true) },
+    { id: 'open', label: 'Open…', section: 'File', shortcut: SHORTCUTS.open, run: requestOpen },
+    { id: 'save-as', label: 'Save as…', section: 'File', shortcut: SHORTCUTS.saveAs, run: () => void file.saveAs() },
+    { id: 'import-svg', label: 'Import SVG…', section: 'File', run: () => importInput.current?.click() },
+    { id: 'export', label: 'Export…', section: 'File', run: () => void runExport(exportSettings) },
+    { id: 'zoom-reset', label: 'Zoom to 100%', section: 'View', shortcut: SHORTCUTS.zoomReset, run: () => controller.current?.zoomTo(1) },
+    { id: 'zoom-fit', label: 'Fit page', section: 'View', shortcut: SHORTCUTS.zoomFit, run: () => controller.current?.fit(null) },
+    { id: 'zoom-selection', label: 'Fit selection', section: 'View', shortcut: SHORTCUTS.zoomSelection, disabled: !hasSelection, run: () => controller.current?.fit(selectionBounds(leafElements(document.elements, selectedIds)), 96) },
+  ]
+
+  const byId = new Map(commands.map((command) => [command.id, command]))
+  const menuItem = (id: string, icon?: ReactNode, separatorBefore?: boolean): ContextMenuItem[] => {
+    const command = byId.get(id)
+    if (!command) return []
+    return [{ label: command.shortcut ? `${command.label} · ${command.shortcut}` : command.label, icon, disabled: command.disabled, ...(separatorBefore === undefined ? {} : { separatorBefore }), onSelect: command.run }]
+  }
+
+  const canvasMenuItems: ContextMenuItem[] = [
+    ...menuItem('copy', <IconCopy />),
+    ...menuItem('paste', <IconPaste />, false),
+    ...menuItem('duplicate', undefined, false),
+    ...menuItem('delete', <IconTrash />, false),
+    ...menuItem('group', <IconGroup />),
+    ...menuItem('ungroup', <IconUngroup />, false),
+    ...menuItem('bring-forward', <IconBringForward />),
+    ...menuItem('send-backward', <IconSendBackward />, false),
+    ...menuItem('bring-to-front', undefined, false),
+    ...menuItem('send-to-back', undefined, false),
+    ...menuItem('flip-h', <IconFlipH />),
+    ...menuItem('flip-v', <IconFlipV />, false),
+    ...menuItem('rotate-90', <IconRotate90 />, false),
+    ...menuItem('combine'),
+    ...menuItem('flatten', undefined, false),
+    ...menuItem('outline-stroke', undefined, false),
+    ...menuItem(single?.kind === 'text' ? 'edit-text' : 'edit-nodes', <IconNode />, false),
+    ...menuItem('same-fill'),
+    ...menuItem('same-stroke', undefined, false),
+    ...menuItem('same-stroke-width', undefined, false),
+    ...menuItem('rename', <IconPencil />),
+    ...menuItem('lock', allLocked ? <IconUnlock /> : <IconLock />),
+    ...menuItem('hide', <IconEyeOff />, false),
+  ]
+
   const selectFromLayers = (id: string, mode: 'replace' | 'toggle' | 'range') => {
     if (mode === 'replace') {
       editor.setSelectedIds([id])
@@ -398,11 +634,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     const anchorElement = document.elements[from]!
     const range = order.slice(start, end + 1).filter((value) => (document.elements.find((element) => element.id === value)?.parentId ?? null) === (anchorElement.parentId ?? null))
     editor.setSelectedIds([...new Set([...selectedIds, ...range])])
-  }
-
-  const toggleLock = () => {
-    if (selectedElements.length === 0) return
-    editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked: !allLocked } })))
   }
 
   return (
@@ -431,6 +662,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onDuplicate={editor.duplicateElement}
           onGroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(group) }}
           onUngroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(ungroup) }}
+          onRenameMany={(ids) => { editor.setSelectedIds(ids); setRenameOpen(true) }}
         />
       )}
       inspector={
@@ -467,10 +699,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             onOpenProject={requestOpen}
             onImportSvg={() => importInput.current?.click()}
           />
-          <Tooltip content="Undo · ⌘Z">
+          <Tooltip content={withShortcut('Undo', 'undo')}>
             <IconButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconUndo /></IconButton>
           </Tooltip>
-          <Tooltip content="Redo · ⇧⌘Z">
+          <Tooltip content={withShortcut('Redo', 'redo')}>
             <IconButton label="Redo" disabled={!editor.canRedo} onClick={editor.redo}><IconRedo /></IconButton>
           </Tooltip>
         </div>
@@ -507,6 +739,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
               <IconButton label="Zoom in" disabled={zoom >= 8} onClick={() => setZoom((value) => steppedZoom(value, 1))}><IconPlus /></IconButton>
             </Tooltip>
           </div>
+          <Tooltip content={withShortcut('Commands', 'palette')}>
+            <IconButton label="Commands" onClick={() => setPaletteOpen(true)}><IconCommand /></IconButton>
+          </Tooltip>
           <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} />
           <VectorExportMenu
             settings={exportSettings}
@@ -521,26 +756,26 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           {selectedIds.length > 0 ? (
             <div className="workspace-toolbar__group vector-toolbar__selection">
               {canUngroup ? (
-                <Tooltip content="Ungroup · ⇧⌘G">
+                <Tooltip content={withShortcut('Ungroup', 'ungroup')}>
                   <IconButton label="Ungroup" onClick={ungroup}><IconUngroup /></IconButton>
                 </Tooltip>
               ) : null}
-              <Tooltip content="Group · ⌘G">
+              <Tooltip content={withShortcut('Group', 'group')}>
                 <IconButton label="Group" onClick={group}><IconGroup /></IconButton>
               </Tooltip>
-              <Tooltip content="Flip horizontal · ⇧H">
+              <Tooltip content={withShortcut('Flip horizontal', 'flipHorizontal')}>
                 <IconButton label="Flip horizontal" onClick={() => transformSelection((center) => flipAffine('x', center))}><IconFlipH /></IconButton>
               </Tooltip>
-              <Tooltip content="Flip vertical · ⇧V">
+              <Tooltip content={withShortcut('Flip vertical', 'flipVertical')}>
                 <IconButton label="Flip vertical" onClick={() => transformSelection((center) => flipAffine('y', center))}><IconFlipV /></IconButton>
               </Tooltip>
-              <Tooltip content="Rotate 90° · ⌥R">
+              <Tooltip content={withShortcut('Rotate 90°', 'rotate90')}>
                 <IconButton label="Rotate 90 degrees" onClick={() => transformSelection((center) => rotationAffine(90, center))}><IconRotate90 /></IconButton>
               </Tooltip>
-              <Tooltip content={allLocked ? 'Unlock · ⇧⌘L' : 'Lock · ⇧⌘L'}>
+              <Tooltip content={withShortcut(allLocked ? 'Unlock' : 'Lock', 'lock')}>
                 <IconButton label={allLocked ? 'Unlock selection' : 'Lock selection'} aria-pressed={allLocked} onClick={toggleLock}>{allLocked ? <IconLock /> : <IconUnlock />}</IconButton>
               </Tooltip>
-              <Tooltip content="Delete">
+              <Tooltip content={withShortcut('Delete', 'delete')}>
                 <IconButton label="Delete selection" onClick={() => editor.removeElements(selectedIds)}><IconTrash /></IconButton>
               </Tooltip>
             </div>
@@ -549,7 +784,17 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <input ref={projectInput} type="file" accept=".json,application/json" className="visually-hidden" tabIndex={-1} onChange={(event) => { const picked = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (picked) void openProject(picked) }} />
         </div>
       </div>
-      <div className="preview-stage vector-stage" id="main" tabIndex={-1}>
+      <div
+        className="preview-stage vector-stage"
+        id="main"
+        tabIndex={-1}
+        onContextMenuCapture={(event) => {
+          // A right click ends a modal transform; it should not also open the menu.
+          if (window.document.querySelector('.vector-canvas[data-transform]')) event.stopPropagation()
+        }}
+      >
+        <ContextMenuRoot>
+        <ContextTarget className="vector-stage__menu" items={canvasMenuItems} label="Canvas actions" touchActions={false}>
         <VectorCanvas
           document={document}
           tool={tool}
@@ -587,7 +832,16 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
         />
+        </ContextTarget>
+        </ContextMenuRoot>
       </div>
+      <VectorCommandPalette commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <VectorRenameDialog
+        elements={selectedElements}
+        open={renameOpen && selectedElements.length > 0}
+        onClose={() => setRenameOpen(false)}
+        onRename={(names) => editor.updateElements(selectedElements.map((element, index) => ({ id: element.id, patch: { name: names[index]! } })))}
+      />
     </WorkspaceShell>
   )
 }

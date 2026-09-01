@@ -7,6 +7,7 @@ import {
   Trash2,
   Type,
   Frame,
+  Command,
   Repeat2,
   SkipBack,
   MoreHorizontal,
@@ -97,6 +98,7 @@ export const IconPanelLeftClose = glyph(PanelLeftClose)
 export const IconSnapshot = glyph(Camera)
 export const IconText = glyph(Type)
 export const IconFrame = glyph(Frame)
+export const IconCommand = glyph(Command)
 
 export const IconPaste = glyph(ClipboardPaste)
 export const IconTrash = glyph(Trash2)
