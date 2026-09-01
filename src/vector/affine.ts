@@ -61,10 +61,8 @@ export function transformElementAffine(element: VectorElement, m: Affine): Parti
   const height = Math.max(1, Math.hypot(bottom.x - mappedCenter.x, bottom.y - mappedCenter.y) * 2)
   const determinant = m.a * m.d - m.b * m.c
   let rotation = Math.atan2(right.y - mappedCenter.y, right.x - mappedCenter.x) * 180 / Math.PI
-  if (determinant < 0) {
-    // A mirror flips the winding; keep the primitive's rotation readable by mirroring it.
-    rotation = Math.atan2(-(right.y - mappedCenter.y), right.x - mappedCenter.x) * 180 / Math.PI * -1
-  }
+  // Boxes are symmetric under a half turn, so a mirror reads as the opposite rotation.
+  if (determinant < 0) rotation += 180
   const patch: Partial<VectorElement> = {
     x: round(mappedCenter.x - width / 2),
     y: round(mappedCenter.y - height / 2),

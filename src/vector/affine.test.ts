@@ -29,7 +29,9 @@ describe('affine transforms', () => {
   it('flips around a centre and rotates by 90 degrees', () => {
     const rect = createVectorElement('rectangle', { x: 0, y: 0, width: 100, height: 50 })
     const flipped = transformElementAffine(rect, flipAffine('x', { x: 100, y: 25 }))
-    expect(flipped).toMatchObject({ x: 100, y: 0, width: 100, height: 50 })
+    expect(flipped).toMatchObject({ x: 100, y: 0, width: 100, height: 50, rotation: 0 })
+    const tilted = transformElementAffine({ ...rect, rotation: 30 }, flipAffine('x', { x: 50, y: 25 }))
+    expect(tilted.rotation).toBeCloseTo(-30)
     const rotated = transformElementAffine(rect, rotationAffine(90, { x: 50, y: 25 }))
     expect(rotated.rotation).toBe(90)
     expect(rotated.x! + rotated.width! / 2).toBeCloseTo(50)
