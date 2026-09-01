@@ -1,8 +1,9 @@
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import type { VectorElement, VectorGuide, VectorPoint } from '@/vector/types'
+import { neighbours, worldNodes } from '@/vector/vectorPath'
 
 export type SnapAxis = 'x' | 'y'
-export type SnapKind = 'edge' | 'center' | 'page' | 'guide'
+export type SnapKind = 'edge' | 'center' | 'page' | 'guide' | 'node'
 
 export type SnapTarget = {
   axis: SnapAxis
@@ -26,7 +27,7 @@ export function collectSnapTargets(
   excludeIds: string[],
   page: { width: number; height: number } | null,
   guides: VectorGuide[],
-  options: Pick<SnapOptions, 'objects' | 'guides'>,
+  options: Pick<SnapOptions, 'objects' | 'guides'> & { nodes?: boolean },
 ): SnapTarget[] {
   const targets: SnapTarget[] = []
   if (options.objects) {
@@ -36,6 +37,16 @@ export function collectSnapTargets(
       if (element.parentId && excluded.has(element.parentId)) continue
       const bounds = selectionBounds([element])
       pushBounds(targets, bounds, 'edge', 'center')
+      if (options.nodes && element.vectorNodes && element.vectorNodes.length <= 512) {
+        const nodes = worldNodes(element, element.vectorNodes)
+        nodes.forEach((node, index) => {
+          pushPoint(targets, node.anchor)
+          const next = neighbours(element, nodes.length, index).next
+          if (next !== null && !node.out && !nodes[next]!.in) {
+            pushPoint(targets, { x: (node.anchor.x + nodes[next]!.anchor.x) / 2, y: (node.anchor.y + nodes[next]!.anchor.y) / 2 })
+          }
+        })
+      }
     }
     if (page) {
       const bounds = { x: 0, y: 0, width: page.width, height: page.height }
@@ -48,6 +59,10 @@ export function collectSnapTargets(
     }
   }
   return targets
+}
+
+function pushPoint(targets: SnapTarget[], point: VectorPoint) {
+  targets.push({ axis: 'x', value: point.x, kind: 'node', span: [point.y, point.y] }, { axis: 'y', value: point.y, kind: 'node', span: [point.x, point.x] })
 }
 
 function pushBounds(targets: SnapTarget[], bounds: Bounds, edgeKind: SnapKind, centerKind: SnapKind) {

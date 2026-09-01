@@ -5,7 +5,12 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconGrid, IconGroup, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconImport, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
+import { elementCenter } from '@/vector/geometry'
+import { importSvg } from '@/vector/svgImport'
+import { readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
+import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
 import { createVectorElement, serializeVectorDocument } from '@/vector/document'
@@ -38,11 +43,15 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     snapToPixelGrid: false,
     snapToObjects: true,
     snapToGuides: true,
+    snapToNodes: true,
     layoutGuides: false,
     rulers: false,
     guides: true,
+    minimap: false,
     outlines: 'off',
   })
+  const controller = useRef<VectorCanvasController | null>(null)
+  const importInput = useRef<HTMLInputElement>(null)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
@@ -78,6 +87,49 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     current.setSelectedIds(children)
   }, [])
 
+  const transformSelection = useCallback((build: (center: { x: number; y: number }) => ReturnType<typeof flipAffine>) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedIds.length === 0) return
+    const leaves = leafElements(doc.elements, current.selectedIds).filter((element) => !element.locked)
+    if (leaves.length === 0) return
+    const center = elementCenter(selectionBounds(leaves))
+    const map = build(center)
+    current.updateElements(leaves.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) })))
+  }, [])
+
+  const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string): string[] => {
+    const current = editorRef.current
+    if (!current.document || elements.length === 0) return []
+    const idMap = new Map(elements.map((element) => [element.id, crypto.randomUUID()]))
+    const copies = elements.map((element): VectorElement => {
+      const { parentId, ...rest } = element
+      const mapped = parentId && idMap.has(parentId) ? idMap.get(parentId)! : parent ?? current.enteredGroupId ?? undefined
+      const moved = element.kind !== 'group' ? { x: element.x + offset, y: element.y + offset } : {}
+      return { ...rest, ...moved, id: idMap.get(element.id)!, ...(mapped ? { parentId: mapped } : {}) }
+    })
+    current.addElements(copies)
+    return copies.map((element) => element.id)
+  }, [])
+
+  const importFile = useCallback(async (file: File | undefined) => {
+    if (!file) return
+    const text = await file.text()
+    const elements = importSvg(text, { currentColor: '#D4E7E1' })
+    if (elements.length === 0) return
+    const current = editorRef.current
+    if (elements.length === 1) {
+      pasteElements(elements)
+      return
+    }
+    const group = createVectorElement('group', { x: 0, y: 0, width: 1, height: 1 }, { name: file.name.replace(/\.svg$/i, '') || 'Import' })
+    if (current.enteredGroupId) group.parentId = current.enteredGroupId
+    const idMap = new Map(elements.map((element) => [element.id, crypto.randomUUID()]))
+    const copies = elements.map((element): VectorElement => ({ ...element, id: idMap.get(element.id)!, parentId: group.id }))
+    current.editElements((all) => [...all, ...copies, group])
+    current.setSelectedIds([group.id])
+  }, [pasteElements])
+
   const alignSelection = useCallback((mode: AlignMode) => {
     const current = editorRef.current
     const doc = current.document
@@ -88,6 +140,30 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   }, [])
 
   useEffect(() => {
+    const editable = (target: EventTarget | null) => target instanceof HTMLElement && (target.matches('input, textarea, select') || target.isContentEditable)
+    const onCopy = (event: ClipboardEvent, cut: boolean) => {
+      if (editable(event.target)) return
+      const current = editorRef.current
+      const doc = current.document
+      if (!doc || current.selectedIds.length === 0) return
+      const ids = new Set(current.selectedIds.flatMap((id) => [id, ...leafElements(doc.elements, [id]).map((leaf) => leaf.id), ...doc.elements.filter((element) => element.parentId === id).map((element) => element.id)]))
+      const elements = doc.elements.filter((element) => ids.has(element.id) || (element.parentId && ids.has(element.parentId)))
+      event.preventDefault()
+      writeClipboardPayload(event.clipboardData, elements, doc)
+      if (cut) current.removeElements(current.selectedIds)
+    }
+    const onPaste = (event: ClipboardEvent) => {
+      if (editable(event.target)) return
+      const payload = readClipboardPayload(event.clipboardData)
+      if (!payload) return
+      event.preventDefault()
+      pasteElements(payload.elements, payload.source === 'internal' ? 12 : 0)
+    }
+    const copyHandler = (event: ClipboardEvent) => onCopy(event, false)
+    const cutHandler = (event: ClipboardEvent) => onCopy(event, true)
+    window.document.addEventListener('copy', copyHandler)
+    window.document.addEventListener('cut', cutHandler)
+    window.document.addEventListener('paste', onPaste)
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
       if (target instanceof HTMLElement && (target.matches('input, textarea, select') || target.isContentEditable)) return
@@ -148,11 +224,31 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         if (mode && current.selectedElements.length > 0) {
           event.preventDefault()
           alignSelection(mode)
+        } else if (event.code === 'KeyR' && current.selectedElements.length > 0) {
+          event.preventDefault()
+          transformSelection((center) => rotationAffine(event.shiftKey ? -90 : 90, center))
+        }
+        return
+      }
+      if (event.shiftKey && (key === 'h' || key === 'v') && current.selectedElements.length > 0) {
+        event.preventDefault()
+        transformSelection((center) => flipAffine(key === 'h' ? 'x' : 'y', center))
+        return
+      }
+      if (event.shiftKey && (key === '0' || key === '1' || key === '2' || event.code === 'Digit0' || event.code === 'Digit1' || event.code === 'Digit2')) {
+        event.preventDefault()
+        const doc = current.document
+        if (event.code === 'Digit0') controller.current?.zoomTo(1)
+        else if (event.code === 'Digit1') controller.current?.fit(null)
+        else if (event.code === 'Digit2' && doc) {
+          const leaves = leafElements(doc.elements, current.selectedIds)
+          controller.current?.fit(leaves.length ? selectionBounds(leaves) : null, 96)
         }
         return
       }
       if (event.repeat && !['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) return
       if (key === 'v') chooseTool('select')
+      else if (key === 'q') chooseTool('lasso')
       else if (key === 'p' && event.shiftKey) chooseTool('pencil')
       else if (key === 'p') chooseTool('pen')
       else if (key === 'r') chooseTool('rectangle')
@@ -182,8 +278,13 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       }
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [tool, chooseTool, group, ungroup, alignSelection])
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.document.removeEventListener('copy', copyHandler)
+      window.document.removeEventListener('cut', cutHandler)
+      window.document.removeEventListener('paste', onPaste)
+    }
+  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements])
 
   if (!document) {
     return (
@@ -274,6 +375,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onEditElements={editor.editElements}
           onSelectIds={editor.setSelectedIds}
           onSelectNodes={setSelectedNodeIndices}
+          historyDepth={editor.historyDepth}
+          onSaveVersion={editor.saveVersion}
+          onRestoreVersion={editor.restoreVersion}
+          onDeleteVersion={editor.deleteVersion}
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
@@ -300,6 +405,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
+          <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -330,6 +436,15 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
               <Tooltip content="Group · ⌘G">
                 <IconButton label="Group" onClick={group}><IconGroup /></IconButton>
               </Tooltip>
+              <Tooltip content="Flip horizontal · ⇧H">
+                <IconButton label="Flip horizontal" onClick={() => transformSelection((center) => flipAffine('x', center))}><IconFlipH /></IconButton>
+              </Tooltip>
+              <Tooltip content="Flip vertical · ⇧V">
+                <IconButton label="Flip vertical" onClick={() => transformSelection((center) => flipAffine('y', center))}><IconFlipV /></IconButton>
+              </Tooltip>
+              <Tooltip content="Rotate 90° · ⌥R">
+                <IconButton label="Rotate 90 degrees" onClick={() => transformSelection((center) => rotationAffine(90, center))}><IconRotate90 /></IconButton>
+              </Tooltip>
               <Tooltip content={allLocked ? 'Unlock · ⇧⌘L' : 'Lock · ⇧⌘L'}>
                 <IconButton label={allLocked ? 'Unlock selection' : 'Lock selection'} aria-pressed={allLocked} onClick={toggleLock}>{allLocked ? <IconLock /> : <IconUnlock />}</IconButton>
               </Tooltip>
@@ -338,6 +453,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
               </Tooltip>
             </div>
           ) : null}
+          <Tooltip content="Import SVG">
+            <IconButton label="Import SVG" onClick={() => importInput.current?.click()}><IconImport /></IconButton>
+          </Tooltip>
+          <input ref={importInput} type="file" accept=".svg,image/svg+xml" className="visually-hidden" tabIndex={-1} onChange={(event) => { void importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
           <Tooltip content="Export SVG">
             <IconButton label="Export SVG" onClick={download}><IconDownload /></IconButton>
           </Tooltip>
@@ -368,6 +487,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onDuplicateElements={editor.duplicateElements}
           onSetGuides={editor.setGuides}
           onEditElements={editor.editElements}
+          controller={controller}
           onEscape={() => {
             if (editor.enteredGroupId) {
               editor.setSelectedIds([editor.enteredGroupId])
@@ -424,10 +544,12 @@ function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChan
           <ViewToggle label="Snap to pixel grid" checked={value.snapToPixelGrid} onChange={(checked) => update('snapToPixelGrid', checked)} />
           <ViewToggle label="Snap to objects" checked={value.snapToObjects} onChange={(checked) => update('snapToObjects', checked)} />
           <ViewToggle label="Snap to guides" checked={value.snapToGuides} onChange={(checked) => update('snapToGuides', checked)} />
+          <ViewToggle label="Snap to nodes" checked={value.snapToNodes} onChange={(checked) => update('snapToNodes', checked)} />
           <DropdownMenu.Separator className="menu__sep" />
           <ViewToggle label="Rulers" checked={value.rulers} onChange={(checked) => update('rulers', checked)} />
           <ViewToggle label="Guides" checked={value.guides} onChange={(checked) => update('guides', checked)} />
           <ViewToggle label="Layout grid" checked={value.layoutGuides} onChange={(checked) => update('layoutGuides', checked)} />
+          <ViewToggle label="Minimap" checked={value.minimap} onChange={(checked) => update('minimap', checked)} />
           <ViewSubmenu label="Outlines" value={value.outlines} onChange={(next) => update('outlines', next)} options={[
             { value: 'off', label: 'Off' },
             { value: 'all', label: 'All objects' },

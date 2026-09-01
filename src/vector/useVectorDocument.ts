@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createVectorElement, getVectorDocument, saveVectorDocument } from '@/vector/document'
+import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
 import { selectionBounds } from '@/vector/geometry'
 import {
   ancestorIds,
@@ -261,6 +261,30 @@ export function useVectorDocument(documentId: string) {
     })
   }, [replace])
 
+  const saveVersion = useCallback((name: string) => {
+    const trimmed = name.trim().slice(0, 80) || `Version ${(latest.current?.versions?.length ?? 0) + 1}`
+    replace((current) => ({
+      ...current,
+      versions: [...(current.versions ?? []), { id: crypto.randomUUID(), name: trimmed, createdAt: new Date().toISOString(), elements: structuredClone(current.elements), guides: structuredClone(current.guides) }].slice(-MAX_VERSIONS),
+    }))
+  }, [replace])
+
+  const restoreVersion = useCallback((id: string) => {
+    replace((current) => {
+      const version = current.versions?.find((item) => item.id === id)
+      if (!version) return current
+      return { ...current, elements: structuredClone(version.elements), guides: structuredClone(version.guides) }
+    })
+    setSelectedIdsState([])
+  }, [replace])
+
+  const deleteVersion = useCallback((id: string) => {
+    replace((current) => {
+      const versions = (current.versions ?? []).filter((item) => item.id !== id)
+      return { ...current, versions: versions.length ? versions : undefined }
+    })
+  }, [replace])
+
   const undo = useCallback(() => {
     if (gestureStart.current) return
     setHistory((value) => {
@@ -342,6 +366,10 @@ export function useVectorDocument(documentId: string) {
     moveElementInTree,
     groupSelection,
     ungroup,
+    saveVersion,
+    restoreVersion,
+    deleteVersion,
+    historyDepth: history.past.length,
   }
 }
 

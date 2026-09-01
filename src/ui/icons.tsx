@@ -294,3 +294,54 @@ export function IconPencilTool(props: LucideProps) {
     </svg>
   )
 }
+
+export function IconLasso(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M7 22a5 5 0 0 1-2-4" />
+      <path d="M7 16.93c.96.43 1.96.74 2.99.91" />
+      <path d="M3.34 14A6.8 6.8 0 0 1 2 10c0-4.42 4.48-8 10-8s10 3.58 10 8a7.19 7.19 0 0 1-.33 2" />
+      <path d="M5 18a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
+      <path d="M14.33 22h-.09a.35.35 0 0 1-.24-.32v-10a.34.34 0 0 1 .33-.34c.08 0 .15.03.21.08l7.34 6a.33.33 0 0 1-.21.59h-4.49l-2.57 3.85a.35.35 0 0 1-.28.14z" />
+    </svg>
+  )
+}
+
+export function IconFlipH(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M12 3v18" strokeDasharray="2 2" />
+      <path d="M9 7 4 12l5 5V7Z" />
+      <path d="m15 7 5 5-5 5V7Z" fill="currentColor" fillOpacity="0.35" />
+    </svg>
+  )
+}
+
+export function IconFlipV(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M3 12h18" strokeDasharray="2 2" />
+      <path d="M7 9l5-5 5 5H7Z" />
+      <path d="m7 15 5 5 5-5H7Z" fill="currentColor" fillOpacity="0.35" />
+    </svg>
+  )
+}
+
+export function IconRotate90(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M20 12a8 8 0 1 1-2.34-5.66" />
+      <path d="M20 4v4.5h-4.5" />
+    </svg>
+  )
+}
+
+export function IconImport(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+      <path d="M12 4v11" />
+      <path d="m7 10 5-5 5 5" />
+    </svg>
+  )
+}

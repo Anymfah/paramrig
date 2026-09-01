@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
+import { IconTrash } from '@/ui/icons'
 import { Button, IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
 import { IconAlignBottom, IconAlignCenterH, IconAlignCenterV, IconAlignLeft, IconAlignRight, IconAlignTop, IconDistributeH, IconDistributeV } from '@/ui/icons'
@@ -36,6 +37,10 @@ type VectorInspectorProps = {
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onSelectIds: (ids: string[]) => void
   onSelectNodes: (indices: number[]) => void
+  historyDepth: number
+  onSaveVersion: (name: string) => void
+  onRestoreVersion: (id: string) => void
+  onDeleteVersion: (id: string) => void
   onGestureStart: () => void
   onGestureEnd: () => void
   onGestureCancel: () => void
@@ -53,11 +58,16 @@ export function VectorInspector({
   onEditElements,
   onSelectIds,
   onSelectNodes,
+  historyDepth,
+  onSaveVersion,
+  onRestoreVersion,
+  onDeleteVersion,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
+  const [versionName, setVersionName] = useState('')
   const combinable = selectedElements.filter((element) => element.kind !== 'group')
   const replaceWithPath = (sources: VectorElement[], geometry: ReturnType<typeof booleanOperation>, name: string) => {
     if (!geometry) return
@@ -217,6 +227,32 @@ export function VectorInspector({
               {document.guides.length > 0 ? (
                 <Button variant="quiet" size="sm" onClick={() => onUpdateDocument({ guides: [] })}>Clear guides</Button>
               ) : null}
+            </section>
+            <section className="vector-panel" aria-label="History">
+              <div className="vector-panel__row">
+                <h2 className="vector-panel__title">History</h2>
+                <span className="vector-panel__meta">{historyDepth === 0 ? 'Nothing to undo' : `${historyDepth} ${historyDepth === 1 ? 'step' : 'steps'} to undo`}</span>
+              </div>
+              <form className="vector-version-form" onSubmit={(event) => { event.preventDefault(); onSaveVersion(versionName); setVersionName('') }}>
+                <input className="vector-version-form__input" aria-label="Version name" placeholder="Version name" value={versionName} maxLength={80} onChange={(event) => setVersionName(event.currentTarget.value)} />
+                <Button variant="quiet" size="sm" type="submit">Save version</Button>
+              </form>
+              {(document.versions ?? []).length ? (
+                <ul className="vector-versions" aria-label="Saved versions">
+                  {[...(document.versions ?? [])].reverse().map((version) => (
+                    <li key={version.id} className="vector-version">
+                      <div className="vector-version__text">
+                        <span className="vector-version__name">{version.name}</span>
+                        <span className="vector-panel__meta">{new Date(version.createdAt).toLocaleString()} · {version.elements.filter((element) => element.kind !== 'group').length} objects</span>
+                      </div>
+                      <Button variant="quiet" size="sm" onClick={() => onRestoreVersion(version.id)}>Restore</Button>
+                      <Tooltip content="Delete version">
+                        <IconButton label={`Delete version ${version.name}`} onClick={() => onDeleteVersion(version.id)}><IconTrash /></IconButton>
+                      </Tooltip>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="vector-panel__hint">Saved versions keep a copy of every object and guide. Restoring is one undo step.</p>}
             </section>
           </>
         ) : (

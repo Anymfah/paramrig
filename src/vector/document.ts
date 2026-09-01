@@ -221,9 +221,29 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     height: source.height,
     elements: sanitizeParents(elements),
     guides: sanitizeGuides(source.guides),
+    ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : new Date(0).toISOString(),
   }
+}
+
+export const MAX_VERSIONS = 20
+
+function sanitizeVersions(value: unknown[]): VectorDocument['versions'] {
+  const versions = value.slice(-MAX_VERSIONS).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return []
+    const source = candidate as Partial<NonNullable<VectorDocument['versions']>[number]>
+    if (typeof source.id !== 'string' || typeof source.name !== 'string' || !Array.isArray(source.elements)) return []
+    const seen = new Set<string>()
+    const elements = source.elements.flatMap((element) => {
+      const valid = sanitizeElement(element)
+      if (!valid || seen.has(valid.id)) return []
+      seen.add(valid.id)
+      return [valid]
+    })
+    return [{ id: source.id, name: source.name.slice(0, 80), createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(), elements: sanitizeParents(elements), guides: sanitizeGuides(source.guides) }]
+  })
+  return versions.length ? versions : undefined
 }
 
 /** Hex colour normalised to upper case, or `'none'`; anything else is rejected. */

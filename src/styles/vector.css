@@ -854,3 +854,88 @@
   white-space: nowrap;
 }
 .vector-paint .segment { width: 100%; }
+.vector-canvas[data-tool='lasso'] .vector-artboard,
+.vector-canvas[data-tool='lasso'] [data-vector-element],
+.vector-canvas[data-tool='lasso'] .vector-hit { cursor: crosshair; }
+.vector-lasso {
+  fill: var(--vector-selection-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-pivot__hit {
+  fill: var(--surface-canvas);
+  fill-opacity: 0.001;
+  stroke: transparent;
+  stroke-width: 26;
+  vector-effect: non-scaling-stroke;
+  cursor: move;
+}
+.vector-pivot__ring {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-pivot__arm {
+  stroke: var(--vector-selection);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-pivot[data-custom] .vector-pivot__ring { fill: var(--vector-selection); }
+.vector-measure line {
+  stroke: var(--vector-snap);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-measure rect { fill: var(--vector-snap); pointer-events: none; }
+.vector-measure text {
+  fill: var(--surface);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+.vector-minimap {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 4;
+  width: 160px;
+  height: 110px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--vector-hud-bg);
+  box-shadow: var(--elevation-overlay);
+  cursor: crosshair;
+  touch-action: none;
+}
+.vector-minimap__page { fill: var(--page-background, var(--surface-preview)); stroke: var(--border-strong); vector-effect: non-scaling-stroke; }
+.vector-minimap__shape { fill: color-mix(in srgb, var(--text-muted) 55%, transparent); }
+.vector-minimap__view { fill: var(--vector-selection-fill); stroke: var(--vector-selection); stroke-width: 1; vector-effect: non-scaling-stroke; }
+@media (pointer: coarse) { .vector-pivot__hit { stroke-width: 38; } }
+@media (forced-colors: active) { .vector-lasso, .vector-pivot__ring, .vector-pivot__arm, .vector-measure line, .vector-minimap__view { stroke: Highlight; } }
+.vector-version-form { display: flex; gap: var(--space-2); }
+.vector-version-form__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  user-select: text;
+}
+.vector-version-form__input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.vector-versions { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.vector-version { display: flex; align-items: center; gap: var(--space-2); min-height: 40px; }
+.vector-version__text { display: flex; flex: 1; min-width: 0; flex-direction: column; }
+.vector-version__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); user-select: text; }
+.vector-version .icon-btn { width: var(--hit-target); height: var(--hit-target); }

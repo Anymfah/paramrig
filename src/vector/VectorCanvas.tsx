@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { bendSegment, insertNode, isSmoothNode, nearestSegment, seedHandles, toggleNodeType } from '@/vector/bezier'
 import { pencilNodes } from '@/vector/pencil'
 import { createVectorElement } from '@/vector/document'
@@ -9,7 +10,7 @@ import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
 import { layerAttributes, markerShape, outlinePathData, renderModel, type RenderDef } from '@/vector/render'
 import { penAddAnchor, penCanClose, penClose, penCommit, penDragHandle, penFromElement, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
-import { scaleElementsToBounds, transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
+import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
 import { defaultVectorNodes, elementFromWorldNodes, moveVectorNode, neighbours, nodeIndicesInBounds, nodePosition, nodeSelectionBounds, nodeWorldPosition, scaleNodesToBounds, transformVectorNodes, vectorPathData } from '@/vector/vectorPath'
 import { combineElements, deleteNodes, joinNodes, openEndpoints as openEndpointsOf } from '@/vector/subpaths'
@@ -27,13 +28,21 @@ export type VectorViewOptions = {
   snapToPixelGrid: boolean
   snapToObjects: boolean
   snapToGuides: boolean
+  snapToNodes: boolean
   layoutGuides: boolean
   rulers: boolean
   guides: boolean
+  minimap: boolean
   outlines: VectorOutlineMode
 }
 
 export type VectorHud = { label: string; x: number; y: number }
+
+/** Imperative view commands the page can call (zoom to fit, zoom to selection). */
+export type VectorCanvasController = {
+  fit: (bounds: Bounds | null, padding?: number) => void
+  zoomTo: (zoom: number) => void
+}
 
 type Interaction =
   | { kind: 'create'; pointerId: number; start: Point; current: Point; targets: SnapTarget[] }
@@ -48,6 +57,8 @@ type Interaction =
   | { kind: 'bend'; pointerId: number; element: VectorElement; nodes: VectorNode[]; segmentIndex: number; t: number }
   | { kind: 'node-resize'; pointerId: number; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; bounds: Bounds; handle: DirectResizeHandle }
   | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; center: Point }
+  | { kind: 'lasso'; pointerId: number; points: Point[]; additive: boolean }
+  | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
   | { kind: 'modal'; target: 'elements'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; elements: VectorElement[]; preview: VectorElement[] }
@@ -74,6 +85,7 @@ type VectorCanvasProps = {
   onDuplicateElements: (ids: string[], offset: number) => { ids: string[]; idMap: Record<string, string> }
   onSetGuides: (guides: VectorGuide[], record?: boolean) => void
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
+  controller?: MutableRefObject<VectorCanvasController | null>
   onEscape: () => void
   onGestureStart: () => void
   onGestureEnd: () => void
@@ -106,6 +118,7 @@ export function VectorCanvas({
   onDuplicateElements,
   onSetGuides,
   onEditElements,
+  controller,
   onEscape,
   onGestureStart,
   onGestureEnd,
@@ -141,6 +154,9 @@ export function VectorCanvas({
   const [penCursor, setPenCursor] = useState<Point | null>(null)
   const [penCloseHint, setPenCloseHint] = useState(false)
   const [pencilPoints, setPencilPoints] = useState<Point[] | null>(null)
+  const [lassoPoints, setLassoPoints] = useState<Point[] | null>(null)
+  const [pivot, setPivot] = useState<Point | null>(null)
+  const [altDown, setAltDown] = useState(false)
   const [snapMatches, setSnapMatches] = useState<SnapMatch[]>([])
   const [hud, setHud] = useState<VectorHud | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -204,12 +220,42 @@ export function VectorCanvas({
     return collectSnapTargets(doc.elements, excluded, { width: doc.width, height: doc.height }, doc.guides, {
       objects: view.snapToObjects,
       guides: view.snapToGuides && view.guides,
+      nodes: view.snapToNodes,
     })
   }, [])
 
   const snapFreePoint = useCallback((at: Point, targets: SnapTarget[]) => {
     return snapPoint(at, targets, snapThreshold(), { pixel: viewRef.current.snapToPixelGrid })
   }, [])
+
+  useEffect(() => {
+    setPivot(null)
+  }, [selectedIds])
+
+  useEffect(() => {
+    if (!controller) return
+    controller.current = {
+      fit: (bounds, padding = 48) => {
+        const size = viewportRef.current
+        if (!size) return
+        const doc = documentRef.current
+        const target = bounds ?? { x: 0, y: 0, width: doc.width, height: doc.height }
+        const width = Math.max(1, target.width)
+        const height = Math.max(1, target.height)
+        const nextZoom = clamp(Math.min((size.clientWidth - padding * 2) / width, (size.clientHeight - padding * 2) / height), 0.1, 8)
+        const center = { x: target.x + width / 2, y: target.y + height / 2 }
+        onZoomChange(nextZoom)
+        onPanChange({ x: -(center.x - doc.width / 2) * nextZoom, y: -(center.y - doc.height / 2) * nextZoom })
+      },
+      zoomTo: (nextZoom) => {
+        const current = camera.current
+        const ratio = clamp(nextZoom, 0.1, 8) / current.zoom
+        onZoomChange(clamp(nextZoom, 0.1, 8))
+        onPanChange({ x: current.pan.x * ratio, y: current.pan.y * ratio })
+      },
+    }
+    return () => { controller.current = null }
+  }, [controller, onPanChange, onZoomChange])
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
@@ -286,12 +332,13 @@ export function VectorCanvas({
     setHud(null)
     setDraftGuide(null)
     setPencilPoints(null)
+    setLassoPoints(null)
   }, [])
 
   const cancelInteraction = useCallback(() => {
     const active = interaction.current
     if (!active) return
-    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create' || active.kind === 'pencil'
+    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create' || active.kind === 'pencil' || active.kind === 'lasso' || active.kind === 'pivot'
     if (!passive) callbacks.current.onGestureCancel()
     if (active.kind === 'move' && active.originalIds.length) callbacks.current.onSelectIds(active.originalIds)
     clearInteraction()
@@ -361,6 +408,7 @@ export function VectorCanvas({
         spaceHeld.current = true
         setSpaceDown(true)
       }
+      if (event.key === 'Alt') setAltDown(true)
       if (editable || event.metaKey || event.ctrlKey) return
       const active = interaction.current
       const key = event.key.toLowerCase()
@@ -478,6 +526,7 @@ export function VectorCanvas({
       }
     }
     const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Alt') setAltDown(false)
       if (event.code !== 'Space') return
       spaceHeld.current = false
       setSpaceDown(false)
@@ -519,6 +568,7 @@ export function VectorCanvas({
     const onBlur = () => {
       spaceHeld.current = false
       setSpaceDown(false)
+      setAltDown(false)
       finishModal('cancel')
       if (penDraftRef.current) commitPen()
     }
@@ -588,6 +638,24 @@ export function VectorCanvas({
         onGestureCancel()
         if (active.toggleOnClick) onSelectIds(selectedIds.filter((id) => id !== active.toggleOnClick))
       }
+    } else if (active.kind === 'lasso') {
+      const polygon = active.points
+      if (polygon.length >= 3) {
+        if (editing) {
+          const nodes = editing.vectorNodes ?? defaultVectorNodes(editing)
+          const hits = nodes.flatMap((node, index) => pointInPolygon(nodeWorldPosition(editing, node), polygon) ? [index] : [])
+          onSelectNodes(active.additive ? [...new Set([...selectedNodeIndicesRef.current, ...hits])] : hits)
+        } else {
+          const candidates = childrenOf(elements, enteredGroupId).filter((element) => element.visible && !element.locked)
+          const hits = candidates.filter((element) => {
+            const leaves = element.kind === 'group' ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
+            return leaves.some((leaf) => elementInLasso(leaf, polygon))
+          }).map((element) => element.id)
+          onSelectIds(active.additive ? [...new Set([...selectedIds, ...hits])] : hits)
+        }
+      } else if (!active.additive && !editing) {
+        onSelectIds([])
+      }
     } else if (active.kind === 'pencil') {
       const nodes = pencilNodes(active.points, zoom)
       if (nodes.length >= 2) {
@@ -643,7 +711,7 @@ export function VectorCanvas({
     const bounds = selectionBounds(leaves)
     interaction.current = {
       kind: 'rotate', pointerId: event.pointerId, start: point(event.nativeEvent),
-      elements: structuredClone(leaves), center: single ? elementCenter(single) : elementCenter(bounds), single: single ? structuredClone(single) : null,
+      elements: structuredClone(leaves), center: pivot ?? (single ? elementCenter(single) : elementCenter(bounds)), single: single ? structuredClone(single) : null,
     }
     setTransformStatus({ mode: 'rotate', axis: null })
     setDirectCursor('var(--cursor-rotate)')
@@ -735,11 +803,17 @@ export function VectorCanvas({
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
     const at = tool === 'pen' && event.shiftKey && penDraftRef.current ? constrainAngle(penDraftRef.current.nodes[penDraftRef.current.nodes.length - 1]!.anchor, rawAt) : rawAt
+    if (tool === 'lasso') {
+      interaction.current = { kind: 'lasso', pointerId: event.pointerId, points: [rawAt], additive: event.shiftKey }
+      setLassoPoints([rawAt])
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
     if (tool === 'pencil') {
       onSelectIds([])
       interaction.current = { kind: 'pencil', pointerId: event.pointerId, points: [rawAt] }
@@ -856,6 +930,19 @@ export function VectorCanvas({
       showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
       return
     }
+    if (active.kind === 'lasso') {
+      const last = active.points[active.points.length - 1]!
+      if (Math.hypot(at.x - last.x, at.y - last.y) * zoom < 2) return
+      active.points.push(at)
+      setLassoPoints([...active.points])
+      return
+    }
+    if (active.kind === 'pivot') {
+      const snapped = snapFreePoint(at, snapTargetsFor([])).point
+      setPivot(snapped)
+      showHud(`Pivot ${round(snapped.x)}, ${round(snapped.y)}`, event.nativeEvent)
+      return
+    }
     if (active.kind === 'pencil') {
       const last = active.points[active.points.length - 1]!
       if (Math.hypot(at.x - last.x, at.y - last.y) * zoom < 1.5) return
@@ -931,7 +1018,8 @@ export function VectorCanvas({
         showHud(`${round(patch.width)} × ${round(patch.height)}`, event.nativeEvent)
       } else {
         const next = resizeBounds(active.bounds, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
-        const updates = scaleElementsToBounds(active.elements, active.bounds, next)
+        const map = boxMap(active.bounds, next)
+        const updates = active.elements.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) }))
           .map((update) => ({ ...update, patch: viewOptions.snapToPixelGrid ? snapGeometryPatch(update.patch) : update.patch }))
         onUpdateElements(updates, false)
         showHud(`${round(next.width)} × ${round(next.height)}`, event.nativeEvent)
@@ -961,7 +1049,7 @@ export function VectorCanvas({
       return
     }
     if (active.kind === 'rotate') {
-      if (active.single) {
+      if (active.single && !pivot) {
         const patch = transformElement('rotate', null, active.single, active.start, at)
         if (event.shiftKey && typeof patch.rotation === 'number') patch.rotation = snapAngle(patch.rotation)
         onUpdate(active.single.id, patch, false)
@@ -1262,6 +1350,25 @@ export function VectorCanvas({
             </g>
           ) : null}
           {pencilPoints && pencilPoints.length > 1 ? <polyline className="vector-pencil__path" points={pencilPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
+          {lassoPoints && lassoPoints.length > 1 ? <polygon className="vector-lasso" points={lassoPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
+          {showHandles && (singleDirect || multiBounds) ? (
+            <Pivot
+              point={pivot ?? elementCenter(singleDirect ?? multiBounds!)}
+              custom={!!pivot}
+              zoom={zoom}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return
+                event.stopPropagation()
+                interaction.current = { kind: 'pivot', pointerId: event.pointerId }
+                setDirectCursor('move')
+                svgRef.current?.setPointerCapture(event.pointerId)
+              }}
+              onDoubleClick={() => setPivot(null)}
+            />
+          ) : null}
+          {altDown && selectedLeaves.length > 0 && (tool === 'select' || tool === 'transform') && !interaction.current ? (
+            <Measurements from={selectionBounds(selectedLeaves)} to={hoverOutline && !selectedIds.includes(hoverOutline.id) ? selectionBounds(leafElements(elements, [hoverOutline.id])) : { x: 0, y: 0, width: document.width, height: document.height }} zoom={zoom} />
+          ) : null}
           {singleDirect ? (
             <Selection
               element={singleDirect}
@@ -1314,6 +1421,16 @@ export function VectorCanvas({
         />
       ) : null}
       {hud ? <div className="vector-hud" role="status" aria-live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</div> : null}
+      {viewOptions.minimap ? (
+        <Minimap
+          document={document}
+          elements={elements}
+          viewport={viewportSize}
+          pan={pan}
+          zoom={zoom}
+          onNavigate={(world) => onPanChange({ x: -(world.x - document.width / 2) * zoom, y: -(world.y - document.height / 2) * zoom })}
+        />
+      ) : null}
     </div>
   )
 }
@@ -1737,6 +1854,114 @@ function rotateZonePath(cx: number, cy: number, r: number, corner: Corner): stri
   const from = { x: cx + Math.cos(start) * r, y: cy + Math.sin(start) * r }
   const to = { x: cx + Math.cos(end) * r, y: cy + Math.sin(end) * r }
   return `M ${from.x} ${from.y} A ${r} ${r} 0 1 1 ${to.x} ${to.y}`
+}
+
+function Pivot({ point, custom, zoom, onPointerDown, onDoubleClick }: { point: Point; custom: boolean; zoom: number; onPointerDown: (event: ReactPointerEvent<SVGElement>) => void; onDoubleClick: () => void }) {
+  const arm = 6 / zoom
+  return (
+    <g className="vector-pivot" data-custom={custom || undefined}>
+      <circle className="vector-pivot__hit" data-vector-handle="pivot" cx={point.x} cy={point.y} r={5 / zoom} onPointerDown={onPointerDown} onDoubleClick={onDoubleClick} />
+      <circle className="vector-pivot__ring" cx={point.x} cy={point.y} r={4 / zoom} />
+      <line className="vector-pivot__arm" x1={point.x - arm} x2={point.x + arm} y1={point.y} y2={point.y} />
+      <line className="vector-pivot__arm" x1={point.x} x2={point.x} y1={point.y - arm} y2={point.y + arm} />
+    </g>
+  )
+}
+
+/** Distance lines between two boxes along each axis, drawn where the boxes do not overlap. */
+function Measurements({ from, to, zoom }: { from: Bounds; to: Bounds; zoom: number }) {
+  const lines: Array<{ x1: number; y1: number; x2: number; y2: number; label: string }> = []
+  const fromRight = from.x + from.width
+  const fromBottom = from.y + from.height
+  const toRight = to.x + to.width
+  const toBottom = to.y + to.height
+  const overlapY = Math.max(from.y, to.y) <= Math.min(fromBottom, toBottom)
+  const overlapX = Math.max(from.x, to.x) <= Math.min(fromRight, toRight)
+  const midY = overlapY ? (Math.max(from.y, to.y) + Math.min(fromBottom, toBottom)) / 2 : from.y + from.height / 2
+  const midX = overlapX ? (Math.max(from.x, to.x) + Math.min(fromRight, toRight)) / 2 : from.x + from.width / 2
+  const contains = to.x <= from.x && toRight >= fromRight && to.y <= from.y && toBottom >= fromBottom
+  if (contains) {
+    lines.push({ x1: from.x, x2: to.x, y1: midY, y2: midY, label: `${round(from.x - to.x)}` })
+    lines.push({ x1: fromRight, x2: toRight, y1: midY, y2: midY, label: `${round(toRight - fromRight)}` })
+    lines.push({ x1: midX, x2: midX, y1: from.y, y2: to.y, label: `${round(from.y - to.y)}` })
+    lines.push({ x1: midX, x2: midX, y1: fromBottom, y2: toBottom, label: `${round(toBottom - fromBottom)}` })
+  } else {
+    if (fromRight < to.x) lines.push({ x1: fromRight, x2: to.x, y1: midY, y2: midY, label: `${round(to.x - fromRight)}` })
+    else if (toRight < from.x) lines.push({ x1: from.x, x2: toRight, y1: midY, y2: midY, label: `${round(from.x - toRight)}` })
+    if (fromBottom < to.y) lines.push({ x1: midX, x2: midX, y1: fromBottom, y2: to.y, label: `${round(to.y - fromBottom)}` })
+    else if (toBottom < from.y) lines.push({ x1: midX, x2: midX, y1: from.y, y2: toBottom, label: `${round(from.y - toBottom)}` })
+  }
+  const fontSize = 11 / zoom
+  return (
+    <g className="vector-measure">
+      {lines.filter((line) => line.label !== '0').map((line, index) => {
+        const horizontal = line.y1 === line.y2
+        const lx = (line.x1 + line.x2) / 2
+        const ly = (line.y1 + line.y2) / 2
+        const width = (line.label.length * 7 + 8) / zoom
+        const height = 16 / zoom
+        return (
+          <g key={index}>
+            <line x1={line.x1} y1={line.y1} x2={line.x2} y2={line.y2} />
+            <rect x={horizontal ? lx - width / 2 : lx + 4 / zoom} y={horizontal ? ly + 4 / zoom : ly - height / 2} width={width} height={height} rx={2 / zoom} />
+            <text x={horizontal ? lx : lx + 4 / zoom + width / 2} y={(horizontal ? ly + 4 / zoom : ly - height / 2) + height / 2} fontSize={fontSize} textAnchor="middle" dominantBaseline="central">{line.label}</text>
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+function Minimap({ document, elements, viewport, pan, zoom, onNavigate }: {
+  document: VectorDocument
+  elements: VectorElement[]
+  viewport: { width: number; height: number }
+  pan: Point
+  zoom: number
+  onNavigate: (world: Point) => void
+}) {
+  const leaves = elements.filter((element) => element.kind !== 'group' && element.visible)
+  const content = leaves.length ? selectionBounds(leaves) : { x: 0, y: 0, width: document.width, height: document.height }
+  const view = {
+    x: document.width / 2 - (viewport.width / 2 + pan.x) / zoom,
+    y: document.height / 2 - (viewport.height / 2 + pan.y) / zoom,
+    width: viewport.width / zoom,
+    height: viewport.height / zoom,
+  }
+  const left = Math.min(0, content.x, view.x)
+  const top = Math.min(0, content.y, view.y)
+  const right = Math.max(document.width, content.x + content.width, view.x + view.width)
+  const bottom = Math.max(document.height, content.y + content.height, view.y + view.height)
+  const pad = Math.max(right - left, bottom - top) * 0.05
+  const box = { x: left - pad, y: top - pad, width: right - left + pad * 2, height: bottom - top + pad * 2 }
+  const dragging = useRef<number | null>(null)
+  const navigate = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const scale = Math.max(box.width / rect.width, box.height / rect.height)
+    const offsetX = (rect.width * scale - box.width) / 2
+    const offsetY = (rect.height * scale - box.height) / 2
+    onNavigate({ x: box.x - offsetX + (event.clientX - rect.left) * scale, y: box.y - offsetY + (event.clientY - rect.top) * scale })
+  }
+  return (
+    <svg
+      className="vector-minimap"
+      viewBox={`${box.x} ${box.y} ${box.width} ${box.height}`}
+      preserveAspectRatio="xMidYMid meet"
+      role="img"
+      aria-label="Canvas overview"
+      onPointerDown={(event) => { if (event.button !== 0) return; dragging.current = event.pointerId; event.currentTarget.setPointerCapture(event.pointerId); navigate(event) }}
+      onPointerMove={(event) => { if (dragging.current === event.pointerId) navigate(event) }}
+      onPointerUp={(event) => { dragging.current = null; try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* released */ } }}
+      onPointerCancel={() => { dragging.current = null }}
+    >
+      <rect className="vector-minimap__page" x={0} y={0} width={document.width} height={document.height} />
+      {leaves.map((element) => {
+        const bounds = selectionBounds([element])
+        return <rect key={element.id} className="vector-minimap__shape" x={bounds.x} y={bounds.y} width={Math.max(1, bounds.width)} height={Math.max(1, bounds.height)} />
+      })}
+      <rect className="vector-minimap__view" x={view.x} y={view.y} width={view.width} height={view.height} />
+    </svg>
+  )
 }
 
 function formatRulerValue(value: number): string {

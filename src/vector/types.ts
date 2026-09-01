@@ -1,4 +1,4 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'rectangle' | 'ellipse'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'rectangle' | 'ellipse'
 
 export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group'
 
@@ -92,6 +92,14 @@ export type VectorGuide = {
   position: number
 }
 
+export type VectorVersion = {
+  id: string
+  name: string
+  createdAt: string
+  elements: VectorElement[]
+  guides: VectorGuide[]
+}
+
 export type VectorDocument = {
   version: 1
   id: string
@@ -101,6 +109,8 @@ export type VectorDocument = {
   height: number
   elements: VectorElement[]
   guides: VectorGuide[]
+  /** Named snapshots, oldest first. */
+  versions?: VectorVersion[]
   createdAt: string
   updatedAt: string
 }
