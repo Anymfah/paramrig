@@ -84,22 +84,24 @@ export function ColorField({
     onChange(hsvToHex(hsv.h, Math.min(1, Math.max(0, s)), Math.min(1, Math.max(0, v))))
   }
 
+  const hexId = `${id}-hex`
+
   return (
-    <div className="control control--color">
-      <span className="control__label" id={id}>
-        {label}
-      </span>
+    <div className="control control--color control--field">
       <Popover.Root>
         <div className="color-field">
-          <Popover.Trigger className="color-swatch" aria-labelledby={id} aria-label={`${label} color ${value}`}>
+          <Popover.Trigger className="color-swatch" aria-label={`${label} color ${value}`}>
             <span className="color-swatch__chip" style={{ background: value }} />
           </Popover.Trigger>
+          <label className="color-field__label" htmlFor={hexId}>
+            {label}
+          </label>
           <input
+            id={hexId}
             className="color-field__hex"
             value={draft}
             spellCheck={false}
             autoComplete="off"
-            aria-label={`${label} hex`}
             onChange={(event) => setDraft(event.target.value)}
             onBlur={() => commitHex(draft)}
             onKeyDown={(event) => {
@@ -159,7 +161,6 @@ export function ColorField({
               onPointerCancel={onGestureCancel}
               onChange={(event) => onChange(hsvToHex(Number(event.target.value), hsv.s, hsv.v))}
             />
-            <p className="field__hint">Hex entry stays available if the plane is hard to use.</p>
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>

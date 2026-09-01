@@ -676,6 +676,11 @@
 .resize-handle:focus-visible::before { background: var(--border-strong); }
 .resize-handle:hover { background: transparent; }
 .resize-handle:focus-visible { background: transparent; outline: none; }
+html[data-resizing='column'],
+html[data-resizing='column'] * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
 .resize-handle--row {
   top: auto;
   bottom: calc(var(--timeline-height) - 4px);

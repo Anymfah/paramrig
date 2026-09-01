@@ -160,12 +160,13 @@ function NavHint({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function rigIcon(id: string) {
-  return collectionIcon[id as keyof typeof collectionIcon] ?? IconGrid
+function rigIcon(rig: RigManifest) {
+  if (rig.renderer === 'vector') return IconDoc
+  return collectionIcon[rig.id as keyof typeof collectionIcon] ?? IconGrid
 }
 
 function CompactRigLink({ rig, activeId }: { rig: RigManifest; activeId?: string }) {
-  const Icon = rigIcon(rig.id)
+  const Icon = rigIcon(rig)
   return (
     <li className="nav-tree__item">
       <NavHint label={rig.name}>
@@ -219,7 +220,7 @@ function CompactFolderMenu({
             aria-label={folder.label}
           >
             {rigs.map((rig) => {
-              const Icon = rigIcon(rig.id)
+              const Icon = rigIcon(rig)
               return (
                 <DropdownMenu.Item key={rig.id} asChild>
                   <NavLink
@@ -254,7 +255,7 @@ function NavTreeNode({
   onToggle: (path: string) => void
 }) {
   if (node.kind === 'rig') {
-    const Icon = rigIcon(node.rig.id)
+    const Icon = rigIcon(node.rig)
     return (
       <li className="nav-tree__item" style={{ '--nav-depth': depth } as CSSProperties}>
         <NavLink

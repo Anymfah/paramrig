@@ -343,19 +343,33 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
 .color-field {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
+  width: 100%;
   background: var(--surface-inset);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   min-height: 32px;
   padding-inline: var(--space-2);
   cursor: text;
+  -webkit-user-select: none;
+  user-select: none;
   transition: border-color var(--duration-fast) var(--ease-out);
 }
 .color-field:hover,
 .color-field:focus-within,
 .select-trigger:hover,
 .select-trigger:focus-visible { border-color: var(--border-strong); }
+.color-field__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-label);
+  cursor: text;
+}
 .color-field__hex, .search-field input, .number-field__input {
   appearance: none;
   background: transparent;
@@ -365,7 +379,14 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   padding: var(--space-1) 0;
   font-variant-numeric: tabular-nums;
 }
-.color-field__hex { width: 5.5rem; min-height: var(--hit-target); }
+.color-field__hex {
+  flex: none;
+  width: 8ch;
+  min-height: var(--hit-target);
+  text-align: right;
+  user-select: text;
+  cursor: text;
+}
 
 .slider-wrap {
   --thumb-size: var(--hit-target);
@@ -1217,7 +1238,7 @@ a.menu__item:visited { color: var(--text-primary); }
 .control__label { overflow-wrap: anywhere; white-space: normal; }
 .color-field { min-width: 0; max-width: 100%; }
 .color-field .icon-btn { flex: none; cursor: pointer; }
-.color-field__hex { min-width: 0; flex: 1; }
+.color-field__hex { min-width: 0; }
 .gradient-actions { display: flex; gap: var(--space-2); }
 .gradient-stop-editor { grid-column: 1 / -1; display: grid; gap: var(--space-2); min-width: 0; }
 .gradient-stop-editor .control { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-1); }

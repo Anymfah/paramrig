@@ -1,6 +1,6 @@
 const KEY = 'paramrig.theme'
 const LIGHT_THEME_COLOR = '#F4F3EB'
-const DARK_THEME_COLOR = '#191D1A'
+const DARK_THEME_COLOR = '#0F1212'
 
 export type Theme = 'light' | 'dark'
 

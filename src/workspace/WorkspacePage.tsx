@@ -1,7 +1,7 @@
 import { useNavColumn } from '@/shell/useLayout'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getRig, listExampleRigs } from '@/rigs/registry'
+import { getRig, listRigs } from '@/rigs/registry'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
@@ -13,6 +13,7 @@ import { ExportAction } from '@/workspace/ExportAction'
 import { Inspector } from '@/workspace/Inspector'
 import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
+import { VectorEditorPage } from '@/vector/VectorEditorPage'
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
@@ -57,6 +58,8 @@ export function WorkspacePage() {
     return <UnknownRig />
   }
 
+  if (manifest.renderer === 'vector') return <VectorEditorPage manifest={manifest} />
+
   if (!session || !snapshot) return null
 
   const values = snapshot.values
@@ -64,7 +67,7 @@ export function WorkspacePage() {
 
   return (
     <WorkspaceShell
-      rigs={listExampleRigs()}
+      rigs={listRigs()}
       activeId={manifest.id}
       showTimeline={Boolean(manifest.animation) || snapshot.tracks.length > 0}
       mobilePanel={mobilePanel}
@@ -171,7 +174,7 @@ function UnknownRig() {
       data-inspector="collapsed"
       style={style}
     >
-      <RigNavigation rigs={listExampleRigs()} compact={compact} />
+      <RigNavigation rigs={listRigs()} compact={compact} />
       <main id="main" className="library-main scroll-area">
         <h1>This rig is not in the example registry</h1>
         <p className="lede">The URL does not match a bundled example. Nothing was loaded from disk.</p>

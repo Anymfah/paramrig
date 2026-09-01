@@ -9,6 +9,12 @@ import {
   SkipBack,
   MoreHorizontal,
   EyeOff,
+  Eye,
+  Circle,
+  MousePointer2,
+  Square,
+  BringToFront,
+  SendToBack,
   Check,
   ChevronDown,
   ChevronUp,
@@ -29,6 +35,7 @@ import {
   PanelLeftClose,
   PanelRight,
   Pause,
+  Pencil,
   Play,
   Plus,
   Pipette,
@@ -63,6 +70,7 @@ export const IconUndo = glyph(Undo2)
 export const IconRedo = glyph(Redo2)
 export const IconPlay = glyph(Play)
 export const IconPause = glyph(Pause)
+export const IconPencil = glyph(Pencil)
 export const IconCheck = glyph(Check)
 export const IconClose = glyph(X)
 export const IconChevron = glyph(ChevronDown)
@@ -92,3 +100,17 @@ export const IconLoop = glyph(Repeat2)
 export const IconStart = glyph(SkipBack)
 export const IconMore = glyph(MoreHorizontal)
 export const IconEyeOff = glyph(EyeOff)
+export const IconEye = glyph(Eye)
+export const IconEllipse = glyph(Circle)
+export const IconSelect = glyph(MousePointer2)
+export function IconTransformSelect(props: LucideProps) {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 3.5 16.5 11l-5.1 1.2L8.5 17Z" />
+      <path d="M15 17.5h6M18 14.5v6" />
+    </svg>
+  )
+}
+export const IconRectangle = glyph(Square)
+export const IconBringForward = glyph(BringToFront)
+export const IconSendBackward = glyph(SendToBack)

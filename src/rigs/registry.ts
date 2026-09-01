@@ -4,12 +4,13 @@ import { surfaceStudiesManifest } from '@/rigs/examples/surface-studies'
 import { tidalPlanetManifest } from '@/rigs/examples/tidal-planet'
 import { typeSpecimenManifest } from '@/rigs/examples/type-specimen'
 import type { RigManifest } from '@/rigs/types'
+import { getVectorDocument, listVectorDocuments, vectorManifest } from '@/vector/document'
 
 export type LibraryFixture = 'ok' | 'empty' | 'error' | 'loading' | 'long'
 
 export type LibraryLoad = {
   rigs: RigManifest[]
-  source: 'examples'
+  source: 'examples' | 'mixed'
   note: string
 }
 
@@ -36,9 +37,14 @@ export function listExampleRigs(): RigManifest[] {
   return EXAMPLES
 }
 
+export function listRigs(): RigManifest[] {
+  return [...listVectorDocuments().map(vectorManifest), ...EXAMPLES]
+}
+
 export function getRig(id: string): RigManifest | undefined {
   if (id === 'long-name-study') return longNameStudy()
-  return EXAMPLES.find((rig) => rig.id === id)
+  const vector = getVectorDocument(id)
+  return vector ? vectorManifest(vector) : EXAMPLES.find((rig) => rig.id === id)
 }
 
 export function parseFixture(search: string): LibraryFixture {
@@ -69,9 +75,9 @@ export async function loadLibrary(fixture: LibraryFixture = 'ok'): Promise<Libra
     }
   }
   return {
-    rigs: EXAMPLES,
-    source: 'examples',
-    note: 'Bundled example rigs. This is not a project scan or a network connection.',
+    rigs: listRigs(),
+    source: listVectorDocuments().length ? 'mixed' : 'examples',
+    note: 'Local vector documents and bundled example rigs.',
   }
 }
 

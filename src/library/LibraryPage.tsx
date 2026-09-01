@@ -1,17 +1,20 @@
 import { useNavColumn } from '@/shell/useLayout'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
 import { loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
-import { IconSearch } from '@/ui/icons'
+import { IconPlus, IconSearch } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
+import { Tooltip } from '@/ui/Tooltip'
 import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
 import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
+import { createVectorDocument, getVectorDocument } from '@/vector/document'
+import { vectorPathData } from '@/vector/vectorPath'
 
 export function LibraryPage() {
   const [params, setParams] = useSearchParams()
@@ -20,6 +23,7 @@ export function LibraryPage() {
   const [rigs, setRigs] = useState<RigManifest[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main'>('main')
+  const navigate = useNavigate()
 
   useEffect(() => {
     let cancelled = false
@@ -55,8 +59,22 @@ export function LibraryPage() {
     >
       <RigNavigation rigs={fixture === 'loading' ? listExampleRigs() : (rigs ?? [])} activeId={undefined} compact={compact} onNavigate={() => setMobilePanel('main')} />
       <main id="main" className="library-main scroll-area">
-        <h1>Your rigs</h1>
-        <p className="lede">Tools built around what you want to create.</p>
+        <div className="library-titlebar">
+          <h1>Your rigs</h1>
+          <Tooltip content="New vector document">
+            <button
+              type="button"
+              className="icon-btn icon-btn--solid library-create"
+              aria-label="New vector document"
+              onClick={() => {
+                const document = createVectorDocument()
+                navigate(`/r/${document.id}`)
+              }}
+            >
+              <IconPlus />
+            </button>
+          </Tooltip>
+        </div>
         {import.meta.env.MODE === 'demo' && (
           <p className="status-msg" role="note">
             Public demo. Drafts and snapshots stay in this browser, with no cloud backup.{' '}
@@ -111,7 +129,7 @@ export function LibraryPage() {
             {visible.map((rig) => (
               <Link key={rig.id} to={`/r/${rig.id}`} className="rig-card">
                 <div className="rig-card__preview">
-                  <RigThumb id={rig.id} />
+                  <RigThumb rig={rig} />
                 </div>
                 <div>
                   <h2>{rig.name}</h2>
@@ -141,7 +159,22 @@ function SkeletonCard() {
   )
 }
 
-function RigThumb({ id }: { id: string }) {
+function RigThumb({ rig }: { rig: RigManifest }) {
+  const id = rig.id
+  if (rig.renderer === 'vector') {
+    const document = getVectorDocument(id)
+    return document ? (
+      <svg className="vector-thumb" viewBox={`0 0 ${document.width} ${document.height}`} aria-hidden="true">
+        {document.elements.filter((element) => element.visible).map((element) => {
+          const transform = `rotate(${element.rotation} ${element.x + element.width / 2} ${element.y + element.height / 2})`
+          if (element.vectorNodes) return <path key={element.id} d={vectorPathData(element)} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
+          return element.kind === 'ellipse'
+            ? <ellipse key={element.id} cx={element.x + element.width / 2} cy={element.y + element.height / 2} rx={element.width / 2} ry={element.height / 2} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
+            : <rect key={element.id} x={element.x} y={element.y} width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} opacity={element.opacity} transform={transform} />
+        })}
+      </svg>
+    ) : null
+  }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
   if (id === 'tidal-planet') return <PlanetMark />
   if (id === 'surface-studies') return <SurfaceMark />

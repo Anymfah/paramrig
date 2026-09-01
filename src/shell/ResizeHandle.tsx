@@ -46,30 +46,63 @@ export function ResizeCol({
   ariaLabel: string
   style?: CSSProperties
 }) {
+  const drag = useRef<{ x: number; origin: number; pointerId: number; min: number; max: number; invert: boolean } | null>(null)
+  const change = useRef(onChange)
+  useEffect(() => { change.current = onChange }, [onChange])
+  useEffect(() => {
+    const clearCursor = () => { delete document.documentElement.dataset.resizing }
+    const move = (event: PointerEvent) => {
+      const current = drag.current
+      if (!current || event.pointerId !== current.pointerId) return
+      const delta = current.invert ? current.x - event.clientX : event.clientX - current.x
+      change.current(Math.round(Math.min(current.max, Math.max(current.min, current.origin + delta))))
+    }
+    const up = (event: PointerEvent) => {
+      if (event.pointerId !== drag.current?.pointerId) return
+      drag.current = null
+      clearCursor()
+    }
+    const cancel = () => {
+      const current = drag.current
+      drag.current = null
+      clearCursor()
+      if (current) change.current(current.origin)
+    }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') cancel() }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('blur', cancel)
+    window.addEventListener('keydown', escape)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('blur', cancel)
+      window.removeEventListener('keydown', escape)
+      cancel()
+    }
+  }, [])
   return (
     <button
       type="button"
+      role="separator"
+      aria-orientation="vertical"
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       className="resize-handle"
       data-edge={invert ? 'end' : 'start'}
       aria-label={`${ariaLabel}. Double-click or Home to collapse.`}
       aria-description="Drag horizontally or use the Left and Right arrow keys to resize. Hold Shift for a larger keyboard step. Home or double-click collapses the panel."
       style={style}
       onPointerDown={(event) => {
+        if (event.button !== 0) return
+        event.preventDefault()
+        event.currentTarget.focus()
         event.currentTarget.setPointerCapture(event.pointerId)
-        const start = event.clientX
-        const origin = value
-        const move = (ev: PointerEvent) => {
-          const delta = invert ? start - ev.clientX : ev.clientX - start
-          onChange(Math.round(Math.min(max, Math.max(min, origin + delta))))
-        }
-        const up = () => {
-          window.removeEventListener('pointermove', move)
-          window.removeEventListener('pointerup', up)
-          window.removeEventListener('pointercancel', up)
-        }
-        window.addEventListener('pointermove', move)
-        window.addEventListener('pointerup', up)
-        window.addEventListener('pointercancel', up)
+        drag.current = { x: event.clientX, origin: value, pointerId: event.pointerId, min, max, invert: Boolean(invert) }
+        document.documentElement.dataset.resizing = 'column'
       }}
       onDoubleClick={onCollapse}
       onKeyDown={(event) => {

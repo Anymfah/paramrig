@@ -16,6 +16,9 @@ type WorkspaceShellProps = {
   children: ReactNode
   mobilePanel?: 'nav' | 'main' | 'inspector'
   onMobilePanel?: (panel: 'nav' | 'main' | 'inspector') => void
+  mainLabel?: string
+  navLabel?: string
+  renderNavigation?: (options: { compact: boolean; inert: boolean; onNavigate: () => void }) => ReactNode
 }
 
 export function WorkspaceShell({
@@ -27,6 +30,9 @@ export function WorkspaceShell({
   children,
   mobilePanel = 'main',
   onMobilePanel,
+  mainLabel = 'Preview',
+  navLabel = 'Library',
+  renderNavigation,
 }: WorkspaceShellProps) {
   const { prefs } = useWorkspace()
   const view = useViewport()
@@ -57,16 +63,22 @@ export function WorkspaceShell({
         '--timeline-height': `${timelineH}px`,
       } as CSSProperties}
     >
-      <RigNavigation rigs={rigs} activeId={activeId} compact={compact} inert={view.width < 1024 && mobilePanel !== 'nav'} onNavigate={() => onMobilePanel?.('main')} />
+      {renderNavigation ? renderNavigation({
+        compact,
+        inert: view.width < 1024 && mobilePanel !== 'nav',
+        onNavigate: () => onMobilePanel?.('main'),
+      }) : (
+        <RigNavigation rigs={rigs} activeId={activeId} compact={compact} inert={view.width < 1024 && mobilePanel !== 'nav'} onNavigate={() => onMobilePanel?.('main')} />
+      )}
       <div className="workspace-main" inert={view.width < 1024 && mobilePanel !== 'main'}>{children}</div>
       <div className="inspector-slot" inert={view.width < 1024 && mobilePanel !== 'inspector'}>{inspector}</div>
       <div className="timeline-slot" inert={view.width < 1024 && mobilePanel !== 'main'}>{showTimeline ? timeline : null}</div>
       <div className="mobile-dock">
         <button type="button" aria-pressed={mobilePanel === 'nav'} onClick={() => onMobilePanel?.('nav')}>
-          Library
+          {navLabel}
         </button>
         <button type="button" aria-pressed={mobilePanel === 'main'} onClick={() => onMobilePanel?.('main')}>
-          Preview
+          {mainLabel}
         </button>
         <button type="button" aria-pressed={mobilePanel === 'inspector'} onClick={() => onMobilePanel?.('inspector')}>
           Inspector
