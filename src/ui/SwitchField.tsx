@@ -4,9 +4,10 @@ type SwitchFieldProps = {
   label: string
   checked: boolean
   onChange: (checked: boolean) => void
+  disabled?: boolean
 }
 
-export function SwitchField({ label, checked, onChange }: SwitchFieldProps) {
+export function SwitchField({ label, checked, onChange, disabled = false }: SwitchFieldProps) {
   const id = useId()
   return (
     <button
@@ -14,8 +15,9 @@ export function SwitchField({ label, checked, onChange }: SwitchFieldProps) {
       className="control control--switch"
       role="switch"
       aria-checked={checked}
+      aria-disabled={disabled || undefined}
       id={id}
-      onClick={() => onChange(!checked)}
+      onClick={() => { if (!disabled) onChange(!checked) }}
     >
       <span className="control__label">{label}</span>
       <span className="switch" aria-hidden="true">

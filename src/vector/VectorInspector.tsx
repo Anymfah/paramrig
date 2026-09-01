@@ -202,8 +202,8 @@ function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture
   return (
     <section className="vector-panel" aria-label="Appearance">
       <h2 className="vector-panel__title">Appearance</h2>
-      <ColorField label="Fill" value={first.fill} mixed={!same('fill')} allowNone onChange={(fill) => apply({ fill })} {...gesture} />
-      <ColorField label="Stroke" value={first.stroke} mixed={!same('stroke')} allowNone onChange={(stroke) => apply({ stroke })} {...gesture} />
+      <ColorField label="Fill" value={first.fill} mixed={!same('fill')} allowNone restoreValue={first.stroke !== 'none' ? first.stroke : undefined} onChange={(fill) => apply({ fill })} {...gesture} />
+      <ColorField label="Stroke" value={first.stroke} mixed={!same('stroke')} allowNone restoreValue={first.fill !== 'none' ? first.fill : undefined} onChange={(stroke) => apply({ stroke })} {...gesture} />
       <NumberField label="Stroke" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
       {groupOpacity ? (
         <NumberField label="Opacity" value={Math.round(groupOpacity.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(opacity) => onUpdate(groupOpacity.id, { opacity: opacity / 100 })} {...gesture} />
@@ -237,11 +237,12 @@ function PathPanel({ element, tool, selectedNodeIndices, onUpdate, onSelectNodes
         <span className="vector-panel__meta">{nodes.length} {nodes.length === 1 ? 'node' : 'nodes'}{edited ? '' : ' · primitive'}</span>
       </div>
       {canOpen || nodes.length >= 3 ? (
-        <SwitchField label="Closed" checked={closed} onChange={(next) => {
-          if (next) onUpdate(element.id, { closed: true, vectorNodes: nodes, ...(element.kind !== 'path' ? {} : {}) })
+        <SwitchField label="Closed" checked={closed} disabled={!closed && nodes.length < 3} onChange={(next) => {
+          if (next) onUpdate(element.id, { closed: true, vectorNodes: nodes })
           else onUpdate(element.id, { kind: 'path', closed: false, vectorNodes: nodes })
         }} />
       ) : null}
+      {!closed && nodes.length < 3 ? <p className="vector-panel__hint">A path needs three nodes before it can close.</p> : null}
       {active && activeWorld && activeIndex !== null ? (
         <>
           <div className="vector-panel__row">

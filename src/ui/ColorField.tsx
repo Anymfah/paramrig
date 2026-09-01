@@ -13,6 +13,8 @@ type ColorFieldProps = {
   allowNone?: boolean
   /** Shown instead of the value when several selected items disagree. */
   mixed?: boolean
+  /** Colour restored by the None toggle when this field has never held a hex value. */
+  restoreValue?: string
   onGestureStart?: () => void
   onGestureEnd?: () => void
   onGestureCancel?: () => void
@@ -26,15 +28,17 @@ export function ColorField({
   onChange,
   allowNone = false,
   mixed = false,
+  restoreValue,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
 }: ColorFieldProps) {
   const id = useId()
   const none = value === 'none'
-  const lastHex = useRef(none ? '#808080' : value)
+  const lastHex = useRef<string | null>(none ? null : value)
   if (!none && hexToRgb(value)) lastHex.current = value
-  const rgb = hexToRgb(none ? lastHex.current : value) ?? { r: 28, g: 32, b: 28 }
+  const restore = lastHex.current ?? (restoreValue && hexToRgb(restoreValue) ? restoreValue : '#808080')
+  const rgb = hexToRgb(none ? restore : value) ?? { r: 28, g: 32, b: 28 }
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
   const [draft, setDraft] = useState(displayValue(value, mixed))
   const [canPick, setCanPick] = useState(false)
@@ -127,7 +131,7 @@ export function ColorField({
           />
           {allowNone ? (
             <Tooltip content={none ? 'Restore color' : 'No color'}>
-              <IconButton label={none ? `Restore ${label} color` : `Remove ${label} color`} aria-pressed={none} onClick={() => onChange(none ? lastHex.current : 'none')}>
+              <IconButton label={none ? `Restore ${label} color` : `Remove ${label} color`} aria-pressed={none} onClick={() => onChange(none ? restore : 'none')}>
                 <IconNone />
               </IconButton>
             </Tooltip>

@@ -1146,6 +1146,7 @@ a.menu__item:visited { color: var(--text-primary); }
   .menu[data-state='open'],
   .menu[data-state='closed'] { animation: none; }
   .btn:active, .icon-btn:active, .color-swatch:active, .select-item:active, .select-trigger:active, .rig-card:active, .curve-preset:active, .segment__opt:active, .control--switch:active .switch { transform: none; }
+  .control--switch[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
   .slider::-webkit-slider-thumb,
   .slider::-moz-range-thumb,
   .slider::-webkit-slider-runnable-track { transition: none; }

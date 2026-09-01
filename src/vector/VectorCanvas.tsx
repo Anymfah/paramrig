@@ -36,7 +36,7 @@ type Interaction =
   | { kind: 'create'; pointerId: number; start: Point; current: Point; targets: SnapTarget[] }
   | { kind: 'marquee'; pointerId: number; start: Point; current: Point; additive: boolean }
   | { kind: 'node-marquee'; pointerId: number; start: Point; current: Point; additive: boolean; outside: boolean; element: VectorElement; nodes: VectorNode[] }
-  | { kind: 'move'; pointerId: number; start: Point; elements: VectorElement[]; bounds: Bounds; originalIds: string[]; targets: SnapTarget[]; moved: boolean }
+  | { kind: 'move'; pointerId: number; start: Point; elements: VectorElement[]; bounds: Bounds; originalIds: string[]; targets: SnapTarget[]; moved: boolean; toggleOnClick: string | null }
   | { kind: 'resize'; pointerId: number; start: Point; elements: VectorElement[]; bounds: Bounds; handle: DirectResizeHandle; single: VectorElement | null; targets: SnapTarget[] }
   | { kind: 'rotate'; pointerId: number; start: Point; elements: VectorElement[]; center: Point; single: VectorElement | null }
   | { kind: 'node'; pointerId: number; start: Point; anchorStart: Point; element: VectorElement; nodes: VectorNode[]; nodeIndices: number[]; nodeIndex: number; part: NodePart; targets: SnapTarget[] }
@@ -112,9 +112,6 @@ export function VectorCanvas({
   const spaceHeld = useRef(false)
   const latestPointer = useRef<Point | null>(null)
   const latestClient = useRef<Point | null>(null)
-  const clickCandidate = useRef<{ id: string; pointerId: number; x: number; y: number } | null>(null)
-  const lastShapeClick = useRef<{ id: string; x: number; y: number; time: number } | null>(null)
-  const lastCanvasClick = useRef<{ x: number; y: number; time: number } | null>(null)
   const documentRef = useRef(document)
   const toolRef = useRef(tool)
   const viewRef = useRef(viewOptions)
@@ -532,7 +529,7 @@ export function VectorCanvas({
     }
   }, [point, cancelInteraction, commitPen, showHud])
 
-  const beginMove = (event: ReactPointerEvent<Element>, ids: string[]) => {
+  const beginMove = (event: ReactPointerEvent<Element>, ids: string[], toggleOnClick: string | null = null) => {
     const doc = documentRef.current
     const leaves = leafElements(doc.elements, ids).filter((element) => element.visible && !element.locked)
     let moving = structuredClone(leaves)
@@ -546,21 +543,13 @@ export function VectorCanvas({
     }
     interaction.current = {
       kind: 'move', pointerId: event.pointerId, start: point(event.nativeEvent),
-      elements: moving, bounds: selectionBounds(leaves), originalIds: ids, targets: snapTargetsFor(ids), moved: false,
+      elements: moving, bounds: selectionBounds(leaves), originalIds: ids, targets: snapTargetsFor(ids), moved: false, toggleOnClick,
     }
     setDirectCursor('move')
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
   const finish = (event: ReactPointerEvent<SVGSVGElement>) => {
-    const candidate = clickCandidate.current
-    if (candidate?.pointerId === event.pointerId) {
-      const distance = Math.hypot(event.clientX - candidate.x, event.clientY - candidate.y)
-      if (distance <= 5) {
-        lastShapeClick.current = { id: candidate.id, x: event.clientX, y: event.clientY, time: performance.now() }
-      }
-      clickCandidate.current = null
-    }
     const active = interaction.current
     if (!active || active.kind === 'modal' || active.pointerId !== event.pointerId) return
     if (active.kind === 'create') {
@@ -571,7 +560,8 @@ export function VectorCanvas({
     } else if (active.kind === 'marquee') {
       const bounds = boundsBetween(active.start, active.current, false)
       const scope = enteredGroupId
-      const candidates = childrenOf(elements, scope).filter((element) => element.visible && !element.locked)
+      // A plain click on empty canvas (no drag) selects nothing, even inside an unfilled shape's box.
+      const candidates = bounds.width < 2 && bounds.height < 2 ? [] : childrenOf(elements, scope).filter((element) => element.visible && !element.locked)
       const hits = candidates.filter((element) => {
         const leaves = element.kind === 'group' ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
         return leaves.some((leaf) => intersects(bounds, selectionBounds([leaf])))
@@ -582,24 +572,13 @@ export function VectorCanvas({
       const bounds = boundsBetween(active.start, active.current, false)
       const hits = nodeIndicesInBounds(active.element, active.nodes, bounds)
       onSelectNodes(active.additive ? [...new Set([...selectedNodeIndicesRef.current, ...hits])] : hits)
-      if (active.outside && bounds.width <= 3 && bounds.height <= 3) {
-        const previous = lastCanvasClick.current
-        const repeated = previous
-          && performance.now() - previous.time <= 450
-          && Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= 8
-        if (repeated) {
-          onToolChange('select')
-          lastCanvasClick.current = null
-        } else {
-          lastCanvasClick.current = { x: event.clientX, y: event.clientY, time: performance.now() }
-        }
-      } else {
-        lastCanvasClick.current = null
-      }
       setMarqueeBounds(null)
     } else if (active.kind === 'move') {
       if (active.moved) onGestureEnd()
-      else onGestureCancel()
+      else {
+        onGestureCancel()
+        if (active.toggleOnClick) onSelectIds(selectedIds.filter((id) => id !== active.toggleOnClick))
+      }
     } else if (active.kind === 'pen' || active.kind === 'guide-create') {
       /* draft-only */
     } else if (active.kind === 'guide-move') {
@@ -620,7 +599,6 @@ export function VectorCanvas({
   }
 
   const abort = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (clickCandidate.current?.pointerId === event.pointerId) clickCandidate.current = null
     const active = interaction.current
     if (!active || active.kind === 'modal') return
     cancelInteraction()
@@ -660,29 +638,6 @@ export function VectorCanvas({
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
-    const previous = lastShapeClick.current
-    const repeated = previous?.id === element.id
-      && performance.now() - previous.time <= 450
-      && Math.hypot(event.clientX - previous.x, event.clientY - previous.y) <= 8
-    if (repeated && (tool === 'select' || tool === 'transform' || tool === 'node')) {
-      event.preventDefault()
-      clickCandidate.current = null
-      lastShapeClick.current = null
-      interaction.current = null
-      setDirectCursor(null)
-      if (resolvedElement.kind === 'group') {
-        onEnterGroup(resolvedElement.id)
-        const inner = resolveSelection(elements, element.id, resolvedElement.id)
-        onSelectIds([inner])
-        return
-      }
-      if (!resolvedElement.locked) {
-        onSelectIds([resolvedElement.id])
-        onSelectNodes([])
-        onToolChange('node')
-      }
-      return
-    }
     if (tool === 'node') {
       if (editing && editing.id === element.id) {
         const at = point(event.nativeEvent)
@@ -691,7 +646,6 @@ export function VectorCanvas({
           kind: 'node-marquee', pointerId: event.pointerId, start: at, current: at,
           additive: event.shiftKey, outside: false, element: structuredClone(editing), nodes: structuredClone(editing.vectorNodes ?? defaultVectorNodes(editing)),
         }
-        lastCanvasClick.current = null
         setMarqueeBounds({ x: at.x, y: at.y, width: 0, height: 0 })
         svgRef.current?.setPointerCapture(event.pointerId)
         return
@@ -701,27 +655,71 @@ export function VectorCanvas({
       if (resolvedElement.kind === 'group') onToolChange('select')
       return
     }
-    clickCandidate.current = { id: element.id, pointerId: event.pointerId, x: event.clientX, y: event.clientY }
-    if (event.shiftKey) {
-      onSelectIds(selectedIds.includes(resolved)
-        ? selectedIds.filter((id) => id !== resolved)
-        : [...selectedIds, resolved])
-      return
-    }
     let ids = selectedIds
-    if (!selectedIds.includes(resolved)) {
+    let toggleOnClick: string | null = null
+    if (event.shiftKey) {
+      // Shift-drag moves the whole selection; a Shift-click (no movement) toggles on pointer up.
+      if (selectedIds.includes(resolved)) toggleOnClick = resolved
+      else {
+        ids = [...selectedIds, resolved]
+        onSelectIds(ids)
+      }
+    } else if (!selectedIds.includes(resolved)) {
       ids = [resolved]
       onSelectIds(ids)
     }
     if (tool !== 'select' || resolvedElement.locked) return
     onGestureStart()
-    beginMove(event, ids)
+    beginMove(event, ids, toggleOnClick)
+  }
+
+  /**
+   * Double-clicks arrive on the SVG because pointer capture retargets the compatibility mouse
+   * events, so the shape under the pointer is looked up from the document instead.
+   */
+  const onCanvasDoubleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return
+    const stack = window.document.elementsFromPoint(event.clientX, event.clientY)
+    const nodeHit = stack.map((node) => (node as Element).closest('[data-vector-node]')?.getAttribute('data-vector-node') ?? null).find((value): value is string => value !== null)
+    if (nodeHit !== undefined && editing) {
+      onNodeDoubleClick(Number(nodeHit), event)
+      return
+    }
+    const hit = stack
+      .map((node) => (node as Element).closest('[data-vector-element]')?.getAttribute('data-vector-element') ?? null)
+      .find((id): id is string => !!id)
+    const element = hit ? elements.find((item) => item.id === hit) ?? null : null
+    if (!element) {
+      if (tool === 'node') onToolChange('select')
+      return
+    }
+    onShapeDoubleClick(element, event)
+  }
+
+  const onShapeDoubleClick = (element: VectorElement, event: ReactMouseEvent<SVGElement>) => {
+    if (tool !== 'select' && tool !== 'transform') return
+    event.preventDefault()
+    event.stopPropagation()
+    const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
+    const resolvedElement = elements.find((item) => item.id === resolved) ?? element
+    if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
+    if (resolvedElement.kind === 'group') {
+      onEnterGroup(resolvedElement.id)
+      onSelectIds([resolveSelection(elements, element.id, resolvedElement.id)])
+      return
+    }
+    if (resolvedElement.locked) return
+    onSelectIds([resolvedElement.id])
+    onSelectNodes([])
+    onToolChange('node')
   }
 
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    if (targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
+    const drawing = tool === 'pen' || tool === 'rectangle' || tool === 'ellipse'
+    // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
+    if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const at = point(event.nativeEvent)
     if (tool === 'pen') {
       const draft = penDraftRef.current
@@ -731,7 +729,7 @@ export function VectorCanvas({
         const next = endpoint ? penFromElement(endpoint.element, endpoint.end) : null
         const started = next ?? penStart(snapFreePoint(at, snapTargetsFor([])).point)
         setPenDraft(started)
-        if (endpoint) onSelectIds([endpoint.element.id])
+        onSelectIds(endpoint ? [endpoint.element.id] : [])
         interaction.current = { kind: 'pen', pointerId: event.pointerId, anchorIndex: started.nodes.length - 1 }
         if (endpoint) interaction.current = null
         else event.currentTarget.setPointerCapture(event.pointerId)
@@ -780,11 +778,6 @@ export function VectorCanvas({
   }
 
   const onCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
-    const candidate = clickCandidate.current
-    if (candidate?.pointerId === event.pointerId && Math.hypot(event.clientX - candidate.x, event.clientY - candidate.y) > 5) {
-      clickCandidate.current = null
-      lastShapeClick.current = null
-    }
     const active = interaction.current
     const at = point(event.nativeEvent)
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
@@ -972,6 +965,7 @@ export function VectorCanvas({
     if (!editing) return
     event.preventDefault()
     event.stopPropagation()
+    if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
     const nodes = editing.vectorNodes ?? defaultVectorNodes(editing)
     onUpdate(editing.id, toggleNodeType(editing, nodes, nodeIndex))
     onSelectNodes([nodeIndex])
@@ -1055,10 +1049,10 @@ export function VectorCanvas({
         aria-label={`${document.name} vector canvas`}
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
+        onDoubleClick={onCanvasDoubleClick}
         onPointerUp={finish}
         onPointerCancel={abort}
         onLostPointerCapture={() => {
-          clickCandidate.current = null
           const active = interaction.current
           if (!active || active.kind === 'modal' || active.kind === 'guide-create') return
           cancelInteraction()
@@ -1114,7 +1108,6 @@ export function VectorCanvas({
               zoom={zoom}
               selectedIndices={selectedNodeIndices}
               onNodePointerDown={onNodePointerDown}
-              onNodeDoubleClick={onNodeDoubleClick}
               onSegmentPointerDown={onSegmentPointerDown}
             />
           ) : null}
@@ -1370,12 +1363,11 @@ function GuideLines({ guides, draft, selectedId, interactive, onPointerDown }: {
   )
 }
 
-function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onNodeDoubleClick, onSegmentPointerDown }: {
+function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onSegmentPointerDown }: {
   element: VectorElement
   zoom: number
   selectedIndices: number[]
   onNodePointerDown: (nodeIndex: number, part: NodePart, event: ReactPointerEvent<SVGCircleElement>) => void
-  onNodeDoubleClick: (nodeIndex: number, event: ReactMouseEvent<SVGCircleElement>) => void
   onSegmentPointerDown: (event: ReactPointerEvent<SVGPathElement>) => void
 }) {
   const nodes = element.vectorNodes ?? defaultVectorNodes(element)
@@ -1419,7 +1411,7 @@ function VectorNodes({ element, zoom, selectedIndices, onNodePointerDown, onNode
         const position = nodePosition(element, node)
         const smooth = !!node.in || !!node.out
         return <g key={index}>
-          <circle className="vector-nodes__hit" data-vector-node={index} cx={position.x} cy={position.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(index, 'anchor', event)} onDoubleClick={(event) => onNodeDoubleClick(index, event)} />
+          <circle className="vector-nodes__hit" data-vector-node={index} cx={position.x} cy={position.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(index, 'anchor', event)} />
           {smooth
             ? <circle className="vector-nodes__point" data-selected={selectedIndices.includes(index) || undefined} cx={position.x} cy={position.y} r={pointRadius} />
             : <rect className="vector-nodes__point" data-selected={selectedIndices.includes(index) || undefined} x={position.x - pointRadius} y={position.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
