@@ -116,7 +116,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onUpdate={editor.updateElement}
           onRemove={editor.removeElement}
           onReorder={editor.reorderElement}
-          onMove={editor.moveElement}
+          onMove={(id, index) => editor.moveElementInTree(id, { parentId: null, index })}
           onRename={editor.renameElement}
           onDuplicate={editor.duplicateElement}
         />

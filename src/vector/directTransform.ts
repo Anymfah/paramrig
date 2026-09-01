@@ -91,3 +91,13 @@ export function rotatePoint(value: DirectPoint, center: DirectPoint, degrees: nu
 function round(value: number): number {
   return Math.round(value * 100) / 100
 }
+
+/** Resizes a plain box (used for multi-selection and group frames). */
+export function resizeBounds(
+  bounds: { x: number; y: number; width: number; height: number },
+  handle: DirectResizeHandle,
+  pointer: DirectPoint,
+  options: { lockRatio?: boolean; fromCenter?: boolean } = {},
+): { x: number; y: number; width: number; height: number } {
+  return resizeElement({ ...bounds, rotation: 0 } as VectorElement, handle, pointer, options)
+}

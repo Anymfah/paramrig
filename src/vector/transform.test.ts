@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { transformElement, transformElements } from '@/vector/transform'
+import { scaleElementsToBounds, transformElement, transformElements } from '@/vector/transform'
 import type { VectorElement } from '@/vector/types'
 
 const element: VectorElement = {
@@ -33,5 +33,29 @@ describe('vector modal transforms', () => {
     const rotated = transformElements('rotate', null, [element, second], { x: 550, y: 130 }, { x: 350, y: 330 })
     expect(rotated[0]?.patch).toMatchObject({ x: 250, y: -70, rotation: 90 })
     expect(rotated[1]?.patch).toMatchObject({ x: 250, y: 230, rotation: 90 })
+  })
+})
+
+describe('scaleElementsToBounds', () => {
+  const base: VectorElement = {
+    id: 'a', kind: 'rectangle', name: 'A', x: 0, y: 0, width: 100, height: 50,
+    rotation: 0, fill: '#000000', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false,
+  }
+
+  it('keeps the opposite anchor fixed and scales children proportionally', () => {
+    const b = { ...base, id: 'b', x: 100, y: 50, width: 100, height: 50 }
+    const from = { x: 0, y: 0, width: 200, height: 100 }
+    const to = { x: 0, y: 0, width: 400, height: 100 }
+    const patches = scaleElementsToBounds([base, b], from, to)
+    expect(patches[0]?.patch).toEqual({ x: 0, y: 0, width: 200, height: 50 })
+    expect(patches[1]?.patch).toEqual({ x: 200, y: 50, width: 200, height: 50 })
+  })
+
+  it('keeps rotation for rotated children under uniform scale', () => {
+    const rotated = { ...base, rotation: 30 }
+    const [patch] = scaleElementsToBounds([rotated], { x: 0, y: 0, width: 100, height: 50 }, { x: 0, y: 0, width: 200, height: 100 })
+    expect(patch?.patch.width).toBeCloseTo(200)
+    expect(patch?.patch.height).toBeCloseTo(100)
+    expect(patch?.patch.rotation ?? 30).toBeCloseTo(30)
   })
 })

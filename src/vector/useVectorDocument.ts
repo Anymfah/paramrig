@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { getVectorDocument, saveVectorDocument } from '@/vector/document'
-import type { VectorDocument, VectorElement } from '@/vector/types'
+import { createVectorElement, getVectorDocument, saveVectorDocument } from '@/vector/document'
+import { selectionBounds } from '@/vector/geometry'
+import {
+  ancestorIds,
+  descendantIds,
+  groupElements,
+  moveInTree,
+  siblingIndex,
+  syncGroupBounds,
+  ungroupElements,
+} from '@/vector/tree'
+import type { VectorDocument, VectorElement, VectorGuide } from '@/vector/types'
 
 type VectorHistory = {
   past: VectorDocument[]
   future: VectorDocument[]
 }
+
+export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides'>>
 
 function clone(document: VectorDocument): VectorDocument {
   return structuredClone(document)
@@ -14,13 +26,17 @@ function clone(document: VectorDocument): VectorDocument {
 export function useVectorDocument(documentId: string) {
   const initial = useMemo(() => getVectorDocument(documentId), [documentId])
   const [document, setDocument] = useState<VectorDocument | null>(initial)
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [selectedIds, setSelectedIdsState] = useState<string[]>([])
+  const [enteredGroupId, setEnteredGroupId] = useState<string | null>(null)
   const [history, setHistory] = useState<VectorHistory>({ past: [], future: [] })
   const gestureStart = useRef<VectorDocument | null>(null)
+  const latest = useRef<VectorDocument | null>(initial)
+  latest.current = document
 
   useEffect(() => {
     setDocument(getVectorDocument(documentId))
-    setSelectedIds([])
+    setSelectedIdsState([])
+    setEnteredGroupId(null)
     setHistory({ past: [], future: [] })
     gestureStart.current = null
   }, [documentId])
@@ -34,8 +50,10 @@ export function useVectorDocument(documentId: string) {
     setDocument((current) => {
       if (!current) return current
       const updated = update(current)
-      if (sameDocument(updated, current)) return current
-      const next = { ...updated, updatedAt: new Date().toISOString() }
+      if (updated === current) return current
+      const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(updated.elements) }
+      if (sameDocument(synced, current)) return current
+      const next = { ...synced, updatedAt: new Date().toISOString() }
       if (record && !gestureStart.current) {
         setHistory((value) => ({ past: [...value.past.slice(-99), clone(current)], future: [] }))
       }
@@ -44,10 +62,8 @@ export function useVectorDocument(documentId: string) {
   }, [])
 
   const beginGesture = useCallback(() => {
-    setDocument((current) => {
-      if (current && !gestureStart.current) gestureStart.current = clone(current)
-      return current
-    })
+    if (gestureStart.current || !latest.current) return
+    gestureStart.current = clone(latest.current)
   }, [])
 
   const endGesture = useCallback(() => {
@@ -68,6 +84,12 @@ export function useVectorDocument(documentId: string) {
     if (start) setDocument(start)
   }, [])
 
+  const setSelectedIds = useCallback((ids: string[]) => {
+    setSelectedIdsState((current) => sameIds(current, ids) ? current : ids)
+  }, [])
+
+  const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [setSelectedIds])
+
   const updateElement = useCallback((id: string, patch: Partial<VectorElement>, record = true) => {
     replace((current) => ({
       ...current,
@@ -76,6 +98,7 @@ export function useVectorDocument(documentId: string) {
   }, [replace])
 
   const updateElements = useCallback((updates: Array<{ id: string; patch: Partial<VectorElement> }>, record = true) => {
+    if (updates.length === 0) return
     const byId = new Map(updates.map((update) => [update.id, update.patch]))
     replace((current) => ({
       ...current,
@@ -86,27 +109,32 @@ export function useVectorDocument(documentId: string) {
     }), record)
   }, [replace])
 
-  const updateDocument = useCallback((patch: Partial<Pick<VectorDocument, 'background'>>, record = true) => {
+  const updateDocument = useCallback((patch: DocumentPatch, record = true) => {
     replace((current) => ({ ...current, ...patch }), record)
   }, [replace])
 
-  const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [])
-
-  const addElement = useCallback((element: VectorElement) => {
-    replace((current) => ({ ...current, elements: [...current.elements, element] }))
-    setSelectedIds([element.id])
+  const setGuides = useCallback((guides: VectorGuide[], record = true) => {
+    replace((current) => ({ ...current, guides }), record)
   }, [replace])
 
-  const removeElement = useCallback((id: string) => {
-    replace((current) => ({ ...current, elements: current.elements.filter((element) => element.id !== id) }))
-    setSelectedIds((selected) => selected.filter((selectedId) => selectedId !== id))
-  }, [replace])
+  const addElements = useCallback((elements: VectorElement[], select = true) => {
+    if (elements.length === 0) return
+    replace((current) => ({ ...current, elements: [...current.elements, ...elements] }))
+    if (select) setSelectedIds(elements.map((element) => element.id))
+  }, [replace, setSelectedIds])
+
+  const addElement = useCallback((element: VectorElement) => addElements([element]), [addElements])
 
   const removeElements = useCallback((ids: string[]) => {
-    const removed = new Set(ids)
-    replace((current) => ({ ...current, elements: current.elements.filter((element) => !removed.has(element.id)) }))
-    setSelectedIds((selected) => selected.filter((id) => !removed.has(id)))
+    if (ids.length === 0) return
+    replace((current) => {
+      const removed = new Set(ids.flatMap((id) => [id, ...descendantIds(current.elements, id)]))
+      return { ...current, elements: current.elements.filter((element) => !removed.has(element.id)) }
+    })
+    setSelectedIdsState((selected) => selected.filter((id) => !ids.includes(id)))
   }, [replace])
+
+  const removeElement = useCallback((id: string) => removeElements([id]), [removeElements])
 
   const renameElement = useCallback((id: string, name: string) => {
     const trimmed = name.trim()
@@ -114,30 +142,58 @@ export function useVectorDocument(documentId: string) {
     updateElement(id, { name: trimmed.slice(0, 120) })
   }, [updateElement])
 
-  const duplicateElement = useCallback((id: string) => {
-    const duplicateId = crypto.randomUUID()
+  /**
+   * Copies elements (with their descendants) right above the originals and returns the new ids
+   * of the requested elements. Inside a gesture the copy joins the gesture's single undo entry.
+   */
+  const duplicateElements = useCallback((ids: string[], offset = 12): string[] => {
+    const idMap = new Map<string, string>()
+    const requested = ids.map((id) => {
+      const copy = crypto.randomUUID()
+      idMap.set(id, copy)
+      return copy
+    })
     replace((current) => {
-      const index = current.elements.findIndex((element) => element.id === id)
-      if (index < 0) return current
-      const source = current.elements[index]!
-      const baseName = source.name.replace(/ copy(?: \d+)?$/i, '')
+      const sources = current.elements.filter((element) => ids.includes(element.id))
+      if (sources.length === 0) return current
       const names = new Set(current.elements.map((element) => element.name))
-      let copyName = `${baseName} copy`
-      let suffix = 2
-      while (names.has(copyName)) copyName = `${baseName} copy ${suffix++}`
-      const duplicate: VectorElement = {
-        ...structuredClone(source),
-        id: duplicateId,
-        name: copyName.slice(0, 120),
-        x: source.x + 12,
-        y: source.y + 12,
-      }
+      const blockIds = new Set(sources.flatMap((element) => [element.id, ...descendantIds(current.elements, element.id)]))
+      for (const id of blockIds) if (!idMap.has(id)) idMap.set(id, crypto.randomUUID())
+      const block = current.elements.filter((element) => blockIds.has(element.id)).map((element) => {
+        const requestedCopy = ids.includes(element.id)
+        const duplicate: VectorElement = {
+          ...structuredClone(element),
+          id: idMap.get(element.id)!,
+          ...(element.parentId && idMap.has(element.parentId) ? { parentId: idMap.get(element.parentId)! } : {}),
+          ...(element.kind !== 'group' ? { x: element.x + offset, y: element.y + offset } : {}),
+        }
+        if (requestedCopy) {
+          const baseName = element.name.replace(/ copy(?: \d+)?$/i, '')
+          let copyName = `${baseName} copy`
+          let suffix = 2
+          while (names.has(copyName)) copyName = `${baseName} copy ${suffix++}`
+          names.add(copyName)
+          duplicate.name = copyName.slice(0, 120)
+        }
+        return duplicate
+      })
+      const topIndex = Math.max(...[...blockIds].map((id) => current.elements.findIndex((element) => element.id === id)))
       const elements = [...current.elements]
-      elements.splice(index + 1, 0, duplicate)
+      elements.splice(topIndex + 1, 0, ...block)
       return { ...current, elements }
     })
-    setSelectedIds([duplicateId])
+    return requested
   }, [replace])
+
+  const duplicateElement = useCallback((id: string) => {
+    const [copy] = duplicateElements([id])
+    if (copy) setSelectedIds([copy])
+  }, [duplicateElements, setSelectedIds])
+
+  const duplicateSelection = useCallback(() => {
+    const copies = duplicateElements(selectedIds)
+    if (copies.length) setSelectedIds(copies)
+  }, [duplicateElements, selectedIds, setSelectedIds])
 
   const rename = useCallback((name: string) => {
     const trimmed = name.trim()
@@ -151,26 +207,43 @@ export function useVectorDocument(documentId: string) {
 
   const reorderElement = useCallback((id: string, direction: -1 | 1) => {
     replace((current) => {
-      const index = current.elements.findIndex((element) => element.id === id)
+      const element = current.elements.find((item) => item.id === id)
+      if (!element) return current
+      const index = siblingIndex(current.elements, id)
       const target = index + direction
-      if (index < 0 || target < 0 || target >= current.elements.length) return current
-      const elements = [...current.elements]
-      const [element] = elements.splice(index, 1)
-      elements.splice(target, 0, element!)
-      return { ...current, elements }
+      const siblings = current.elements.filter((item) => (item.parentId ?? null) === (element.parentId ?? null))
+      if (target < 0 || target >= siblings.length) return current
+      const insertion = direction > 0 ? target + 1 : target
+      const moved = moveInTree(current.elements, id, { parentId: element.parentId ?? null, index: insertion })
+      return moved === current.elements ? current : { ...current, elements: moved }
     })
   }, [replace])
 
-  const moveElement = useCallback((id: string, targetIndex: number) => {
+  const moveElementInTree = useCallback((id: string, target: { parentId: string | null; index: number }) => {
     replace((current) => {
-      const index = current.elements.findIndex((element) => element.id === id)
-      if (index < 0) return current
-      const target = Math.min(current.elements.length - 1, Math.max(0, targetIndex))
-      if (target === index) return current
-      const elements = [...current.elements]
-      const [element] = elements.splice(index, 1)
-      elements.splice(target, 0, element!)
-      return { ...current, elements }
+      const moved = moveInTree(current.elements, id, target)
+      return moved === current.elements ? current : { ...current, elements: moved }
+    })
+  }, [replace])
+
+  const groupSelection = useCallback((ids: string[]): string | null => {
+    if (ids.length === 0) return null
+    const group = createVectorElement('group', { x: 0, y: 0, width: 1, height: 1 })
+    let created = false
+    replace((current) => {
+      const members = current.elements.filter((element) => ids.includes(element.id))
+      if (members.length === 0) return current
+      created = true
+      return { ...current, elements: groupElements(current.elements, members.map((element) => element.id), group) }
+    })
+    return created ? group.id : group.id
+  }, [replace])
+
+  const ungroup = useCallback((ids: string[]) => {
+    replace((current) => {
+      let elements = current.elements
+      for (const id of ids) elements = ungroupElements(elements, id)
+      return elements === current.elements ? current : { ...current, elements }
     })
   }, [replace])
 
@@ -200,16 +273,32 @@ export function useVectorDocument(documentId: string) {
     })
   }, [document])
 
-  const selectedId = selectedIds.at(-1) ?? null
-  const selected = document?.elements.find((element) => element.id === selectedId) ?? null
-  const selectedElements = document?.elements.filter((element) => selectedIds.includes(element.id)) ?? []
+  const elements = document?.elements ?? []
+  const validSelectedIds = selectedIds.filter((id) => elements.some((element) => element.id === id))
+  const selectedId = validSelectedIds.at(-1) ?? null
+  const selected = elements.find((element) => element.id === selectedId) ?? null
+  const selectedElements = elements.filter((element) => validSelectedIds.includes(element.id))
+  const selectedBounds = selectedElements.length ? selectionBounds(selectedElements) : null
+  const enteredGroup = enteredGroupId && elements.find((element) => element.id === enteredGroupId && element.kind === 'group') ? enteredGroupId : null
+
+  useEffect(() => {
+    if (!document) return
+    if (selectedIds.length !== validSelectedIds.length) setSelectedIdsState(validSelectedIds)
+    if (enteredGroupId && !enteredGroup) setEnteredGroupId(null)
+    if (enteredGroup && validSelectedIds.some((id) => !ancestorIds(document.elements, id).includes(enteredGroup) && id !== enteredGroup)) {
+      setEnteredGroupId(null)
+    }
+  })
 
   return {
     document,
     selected,
     selectedId,
-    selectedIds,
+    selectedIds: validSelectedIds,
     selectedElements,
+    selectedBounds,
+    enteredGroupId: enteredGroup,
+    setEnteredGroupId,
     setSelectedId,
     setSelectedIds,
     canUndo: history.past.length > 0,
@@ -222,16 +311,26 @@ export function useVectorDocument(documentId: string) {
     updateElement,
     updateElements,
     updateDocument,
+    setGuides,
     addElement,
+    addElements,
     removeElement,
     removeElements,
     renameElement,
     duplicateElement,
+    duplicateElements,
+    duplicateSelection,
     rename,
     resizeDocument,
     reorderElement,
-    moveElement,
+    moveElementInTree,
+    groupSelection,
+    ungroup,
   }
+}
+
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 function sameDocument(a: VectorDocument, b: VectorDocument): boolean {

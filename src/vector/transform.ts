@@ -128,3 +128,39 @@ function scaleFactor(axis: VectorTransformAxis, element: VectorElement, start: V
 function round(value: number): number {
   return Math.round(value * 100) / 100
 }
+
+/**
+ * Maps elements from one bounding box to another. Each element's axes are scaled by their
+ * projection through the affine map, so rotated children keep their rotation and never shear.
+ */
+export function scaleElementsToBounds(
+  elements: VectorElement[],
+  from: { x: number; y: number; width: number; height: number },
+  to: { x: number; y: number; width: number; height: number },
+): Array<{ id: string; patch: Partial<VectorElement> }> {
+  const sx = from.width > 0 ? to.width / from.width : 1
+  const sy = from.height > 0 ? to.height / from.height : 1
+  const map = (point: VectorPoint): VectorPoint => ({ x: to.x + (point.x - from.x) * sx, y: to.y + (point.y - from.y) * sy })
+  return elements.map((element) => {
+    const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+    const radians = element.rotation * Math.PI / 180
+    const axisX = { x: Math.cos(radians), y: Math.sin(radians) }
+    const axisY = { x: -Math.sin(radians), y: Math.cos(radians) }
+    const mappedCenter = map(center)
+    const right = map({ x: center.x + axisX.x * element.width / 2, y: center.y + axisX.y * element.width / 2 })
+    const bottom = map({ x: center.x + axisY.x * element.height / 2, y: center.y + axisY.y * element.height / 2 })
+    const width = Math.max(1, Math.hypot(right.x - mappedCenter.x, right.y - mappedCenter.y) * 2)
+    const height = Math.max(1, Math.hypot(bottom.x - mappedCenter.x, bottom.y - mappedCenter.y) * 2)
+    const rotation = element.rotation === 0 && sx > 0 && sy > 0 ? 0 : round(Math.atan2(right.y - mappedCenter.y, right.x - mappedCenter.x) * 180 / Math.PI)
+    return {
+      id: element.id,
+      patch: {
+        x: round(mappedCenter.x - width / 2),
+        y: round(mappedCenter.y - height / 2),
+        width: round(width),
+        height: round(height),
+        ...(rotation !== element.rotation ? { rotation } : {}),
+      },
+    }
+  })
+}
