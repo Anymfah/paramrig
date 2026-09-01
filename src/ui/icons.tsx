@@ -8,6 +8,7 @@ import {
   Type,
   Frame,
   Command,
+  Crosshair,
   Repeat2,
   SkipBack,
   MoreHorizontal,
@@ -99,6 +100,7 @@ export const IconSnapshot = glyph(Camera)
 export const IconText = glyph(Type)
 export const IconFrame = glyph(Frame)
 export const IconCommand = glyph(Command)
+export const IconScreenPick = glyph(Crosshair)
 
 export const IconPaste = glyph(ClipboardPaste)
 export const IconTrash = glyph(Trash2)

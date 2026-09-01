@@ -2,7 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { hexToRgb, hsvToHex, rgbToHsv } from '@/ui/color'
 import { IconButton } from '@/ui/Button'
-import { IconNone, IconPipette } from '@/ui/icons'
+import { IconNone, IconPipette, IconPlus, IconScreenPick } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 
 type ColorFieldProps = {
@@ -15,6 +15,15 @@ type ColorFieldProps = {
   mixed?: boolean
   /** Colour restored by the None toggle when this field has never held a hex value. */
   restoreValue?: string
+  /** Colour rows shown in the picker: the last ones used, and the ones pinned to the document. */
+  recent?: string[]
+  swatches?: string[]
+  onAddSwatch?: (hex: string) => void
+  onRemoveSwatch?: (hex: string) => void
+  /** Samples a colour from the drawing itself, alongside the system eyedropper. */
+  onPickFromCanvas?: () => void
+  /** Called with a colour the user settled on, so callers can keep a "recent" row. */
+  onColorUsed?: (hex: string) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
   onGestureCancel?: () => void
@@ -29,6 +38,12 @@ export function ColorField({
   allowNone = false,
   mixed = false,
   restoreValue,
+  recent,
+  swatches,
+  onAddSwatch,
+  onRemoveSwatch,
+  onPickFromCanvas,
+  onColorUsed,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -41,6 +56,7 @@ export function ColorField({
   const rgb = hexToRgb(none ? restore : value) ?? { r: 28, g: 32, b: 28 }
   const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b)
   const [draft, setDraft] = useState(displayValue(value, mixed))
+  const [open, setOpen] = useState(false)
   const [canPick, setCanPick] = useState(false)
   useEffect(() => {
     setDraft(displayValue(value, mixed))
@@ -73,6 +89,7 @@ export function ColorField({
     const hex = next.toUpperCase()
     if (hex !== value) onChange(hex)
     setDraft(hex)
+    onColorUsed?.(hex)
   }
 
   const pickFromScreen = async () => {
@@ -84,6 +101,7 @@ export function ColorField({
       const hex = result.sRGBHex.toUpperCase()
       onChange(hex)
       setDraft(hex)
+      onColorUsed?.(hex)
       onGestureEnd?.()
     } catch {
       onGestureCancel?.()
@@ -108,7 +126,7 @@ export function ColorField({
 
   return (
     <div className="control control--color control--field">
-      <Popover.Root>
+      <Popover.Root open={open} onOpenChange={setOpen}>
         <div className="color-field">
           <Popover.Trigger className="color-swatch" aria-label={`${label} color ${mixed ? 'mixed' : none ? 'none' : value}`} data-none={none || undefined} data-mixed={mixed || undefined}>
             <span className="color-swatch__chip" style={{ background: none || mixed ? undefined : value }} />
@@ -136,10 +154,19 @@ export function ColorField({
               </IconButton>
             </Tooltip>
           ) : null}
+          {onPickFromCanvas ? (
+            <Tooltip content="Pick from the drawing">
+              <IconButton label={`Pick ${label} from the drawing`} onClick={() => { setOpen(false); onPickFromCanvas() }}>
+                <IconPipette />
+              </IconButton>
+            </Tooltip>
+          ) : null}
           {canPick ? (
-            <IconButton label={`Pick ${label} from screen`} onClick={() => void pickFromScreen()}>
-              <IconPipette />
-            </IconButton>
+            <Tooltip content="Pick from the screen">
+              <IconButton label={`Pick ${label} from screen`} onClick={() => void pickFromScreen()}>
+                <IconScreenPick />
+              </IconButton>
+            </Tooltip>
           ) : null}
         </div>
         <Popover.Portal>
@@ -163,7 +190,7 @@ export function ColorField({
                 if (!event.currentTarget.hasPointerCapture(event.pointerId)) return
                 pickSV(event, hsv.h, onChange)
               }}
-              onPointerUp={onGestureEnd}
+              onPointerUp={() => { onGestureEnd?.(); if (!none) onColorUsed?.(value) }}
               onPointerCancel={onGestureCancel}
               onKeyDown={nudgeSV}
               onKeyUp={(event) => {
@@ -184,13 +211,65 @@ export function ColorField({
               aria-label={`${label} hue`}
               style={{ '--p': String(hueFill), '--hue-ramp': hueGradient } as CSSProperties}
               onPointerDown={onGestureStart}
-              onPointerUp={onGestureEnd}
+              onPointerUp={() => { onGestureEnd?.(); if (!none) onColorUsed?.(value) }}
               onPointerCancel={onGestureCancel}
               onChange={(event) => onChange(hsvToHex(Number(event.target.value), hsv.s, hsv.v))}
             />
+            {swatches || onAddSwatch ? (
+              <SwatchRow
+                title="Document"
+                colors={swatches ?? []}
+                empty="No colour pinned yet."
+                onPick={(hex) => { onChange(hex); setDraft(hex); onColorUsed?.(hex) }}
+                onAdd={onAddSwatch && !none ? () => onAddSwatch(value.toUpperCase()) : undefined}
+                onRemove={onRemoveSwatch}
+              />
+            ) : null}
+            {recent && recent.length > 0 ? (
+              <SwatchRow title="Recent" colors={recent} onPick={(hex) => { onChange(hex); setDraft(hex); onColorUsed?.(hex) }} />
+            ) : null}
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
+    </div>
+  )
+}
+
+function SwatchRow({ title, colors, empty, onPick, onAdd, onRemove }: {
+  title: string
+  colors: string[]
+  empty?: string
+  onPick: (hex: string) => void
+  onAdd?: () => void
+  onRemove?: (hex: string) => void
+}) {
+  return (
+    <div className="swatch-row">
+      <div className="swatch-row__head">
+        <span className="swatch-row__title">{title}</span>
+        {onAdd ? (
+          <Tooltip content="Pin the current colour">
+            <IconButton label={`Pin the current colour to ${title.toLowerCase()}`} onClick={onAdd}><IconPlus /></IconButton>
+          </Tooltip>
+        ) : null}
+      </div>
+      {colors.length === 0 ? <p className="swatch-row__empty">{empty}</p> : (
+        <ul className="swatch-row__list">
+          {colors.map((hex) => (
+            <li key={hex}>
+              <button
+                type="button"
+                className="swatch-row__chip"
+                style={{ background: hex }}
+                aria-label={hex}
+                title={undefined}
+                onClick={() => onPick(hex)}
+                onContextMenu={onRemove ? (event) => { event.preventDefault(); onRemove(hex) } : undefined}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Button, IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
 import { GradientField } from '@/ui/GradientField'
@@ -14,16 +14,30 @@ import type { VectorPaint } from '@/vector/types'
 
 type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 
+/** Document-wide colour aids offered inside every picker. */
+export type PaintPalette = {
+  recent?: string[]
+  swatches?: string[]
+  onAddSwatch?: (hex: string) => void
+  onRemoveSwatch?: (hex: string) => void
+  /** Starts a pick on the canvas; the colour comes back through the callback. */
+  onPickFromCanvas?: (apply: (hex: string) => void) => void
+  onColorUsed?: (hex: string) => void
+}
+
 type PaintListProps = {
   label: 'Fill' | 'Stroke'
   paints: VectorPaint[]
   mixed?: boolean
   onChange: (paints: VectorPaint[], record?: boolean) => void
   gesture: Gesture
+  palette?: PaintPalette
+  /** Extra controls shown next to the layer title, used for style links. */
+  header?: ReactNode
 }
 
 /** Stacked paint layers for a fill or stroke, bottom first in the model, top first on screen. */
-export function PaintList({ label, paints, mixed = false, onChange, gesture }: PaintListProps) {
+export function PaintList({ label, paints, mixed = false, onChange, gesture, palette, header }: PaintListProps) {
   const update = (index: number, patch: Partial<VectorPaint>, record?: boolean) => {
     onChange(paints.map((paint, position) => position === index ? { ...paint, ...patch } : paint), record)
   }
@@ -43,6 +57,7 @@ export function PaintList({ label, paints, mixed = false, onChange, gesture }: P
           <IconButton label={`Add ${label.toLowerCase()} layer`} disabled={paints.length >= MAX_PAINTS} onClick={add}><IconPlus /></IconButton>
         </Tooltip>
       </div>
+      {header}
       {mixed ? <p className="vector-panel__hint">Mixed {label.toLowerCase()}s. Editing replaces them on every selected object.</p> : null}
       {paints.length === 0 ? <p className="vector-panel__hint">No {label.toLowerCase()}.</p> : null}
       {ordered.map(({ paint, index }) => (
@@ -54,19 +69,21 @@ export function PaintList({ label, paints, mixed = false, onChange, gesture }: P
           onChange={(patch, record) => update(index, patch, record)}
           onRemove={() => remove(index)}
           gesture={gesture}
+          palette={palette}
         />
       ))}
     </div>
   )
 }
 
-function PaintRow({ label, paint, removable, onChange, onRemove, gesture }: {
+function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palette }: {
   label: string
   paint: VectorPaint
   removable: boolean
   onChange: (patch: Partial<VectorPaint>, record?: boolean) => void
   onRemove: () => void
   gesture: Gesture
+  palette?: PaintPalette
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState<string | null>(null)
@@ -117,7 +134,18 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture }: {
         onChange={(value) => changeType(value as VectorPaint['type'])}
       />
       {paint.type === 'solid' ? (
-        <ColorField label={label} value={paint.color ?? '#000000'} onChange={(color) => onChange({ color })} {...gesture} />
+        <ColorField
+          label={label}
+          value={paint.color ?? '#000000'}
+          onChange={(color) => onChange({ color })}
+          recent={palette?.recent}
+          swatches={palette?.swatches}
+          onAddSwatch={palette?.onAddSwatch}
+          onRemoveSwatch={palette?.onRemoveSwatch}
+          onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((color) => onChange({ color })) : undefined}
+          onColorUsed={palette?.onColorUsed}
+          {...gesture}
+        />
       ) : null}
       {paint.type === 'linear' || paint.type === 'radial' ? (
         <>

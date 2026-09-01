@@ -51,6 +51,22 @@ export type VectorTextAlign = 'left' | 'center' | 'right'
 /** `auto` grows the box with the content; `fixed` wraps the content into the box width. */
 export type VectorTextSizing = 'auto' | 'fixed'
 
+export type VectorStyleKind = 'fill' | 'stroke'
+
+/** A named paint, stored in the document and applied to elements by reference. */
+export type VectorStyle = {
+  id: string
+  name: string
+  kind: VectorStyleKind
+  paints: VectorPaint[]
+  /** Stroke styles also carry the contour properties. */
+  strokeWidth?: number
+  strokeAlign?: VectorStrokeAlign
+  strokeCap?: VectorStrokeCap
+  strokeJoin?: VectorStrokeJoin
+  strokeDash?: [number, number]
+}
+
 export type VectorStrokeAlign = 'center' | 'inside' | 'outside'
 export type VectorStrokeCap = 'butt' | 'round' | 'square'
 export type VectorStrokeJoin = 'miter' | 'round' | 'bevel'
@@ -104,6 +120,9 @@ export type VectorElement = {
   textSizing?: VectorTextSizing
   /** Frames only: whether children are cut off at the frame's edge. */
   clipContent?: boolean
+  /** Named style this element's fill follows; its paints are kept in step with the style. */
+  fillStyleId?: string
+  strokeStyleId?: string
   /** Editable geometry as a graph; primitives without one use their implicit outline. */
   network?: VectorNetwork
   /** Face keys whose fill is switched off with the paint bucket. */
@@ -149,6 +168,11 @@ export type VectorDocument = {
   versions?: VectorVersion[]
   /** Export settings the user saved with this document. */
   exportPresets?: VectorExportPreset[]
+  /** Named fill and stroke styles. */
+  styles?: VectorStyle[]
+  /** Colours pinned to this document, and the last ones used. */
+  swatches?: string[]
+  recentColors?: string[]
   createdAt: string
   updatedAt: string
 }

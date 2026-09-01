@@ -17,7 +17,7 @@ type VectorHistory = {
   future: VectorDocument[]
 }
 
-export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets'>>
+export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets' | 'styles' | 'swatches' | 'recentColors'>>
 
 function clone(document: VectorDocument): VectorDocument {
   return structuredClone(document)
@@ -118,6 +118,11 @@ export function useVectorDocument(documentId: string) {
       const elements = edit(current.elements)
       return elements === current.elements ? current : { ...current, elements }
     }, record)
+  }, [replace])
+
+  /** Arbitrary document-level edit recorded as one undo entry, for changes that span both. */
+  const editDocument = useCallback((edit: (current: VectorDocument) => VectorDocument, record = true) => {
+    replace(edit, record)
   }, [replace])
 
   const updateDocument = useCallback((patch: DocumentPatch, record = true) => {
@@ -372,6 +377,7 @@ export function useVectorDocument(documentId: string) {
     updateElements,
     editElements,
     updateDocument,
+    editDocument,
     setGuides,
     addElement,
     addElements,

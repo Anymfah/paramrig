@@ -93,6 +93,9 @@ type VectorCanvasProps = {
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   controller?: MutableRefObject<VectorCanvasController | null>
   onEscape: () => void
+  /** While set, a click reads a colour off the drawing instead of selecting; null cancels. */
+  sampling?: boolean
+  onSample?: (point: Point | null) => void
   onGestureStart: () => void
   onGestureEnd: () => void
   onGestureCancel: () => void
@@ -127,6 +130,8 @@ export function VectorCanvas({
   onEditElements,
   controller,
   onEscape,
+  sampling = false,
+  onSample,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -148,7 +153,9 @@ export function VectorCanvas({
   const selectedSegmentRef = useRef<string | null>(null)
   const penDraftRef = useRef<PenDraft | null>(null)
   const selectedGuideRef = useRef<string | null>(null)
-  const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements })
+  const callbacks = useRef({ onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements, onSample })
+  const samplingRef = useRef(sampling)
+  samplingRef.current = sampling
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   const [panning, setPanning] = useState(false)
@@ -201,7 +208,7 @@ export function VectorCanvas({
   viewRef.current = viewOptions
   selectedIdsRef.current = selectedIds
   selectedNodeIdsRef.current = selectedNodeIds
-  callbacks.current = { onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements }
+  callbacks.current = { onUpdate, onUpdateElements, onGestureStart, onGestureEnd, onGestureCancel, onSelectIds, onSelectNodes, onToolChange, onAddElements, onSetGuides, onEscape, onEnterGroup, onEditElements, onSample }
 
   const point = useCallback((event: Pick<PointerEvent, 'clientX' | 'clientY'>): Point => {
     const svg = svgRef.current
@@ -467,6 +474,10 @@ export function VectorCanvas({
       if (key === 'escape') {
         event.preventDefault()
         event.stopImmediatePropagation()
+        if (samplingRef.current) {
+          callbacks.current.onSample?.(null)
+          return
+        }
         if (active) {
           cancelInteraction()
           return
@@ -814,6 +825,8 @@ export function VectorCanvas({
 
   const onShapePointerDown = (element: VectorElement, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0) return
+    // While sampling, a shape is just something to read a colour off: let the click reach the canvas.
+    if (sampling) return
     if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
@@ -921,6 +934,12 @@ export function VectorCanvas({
 
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
+    // Sampling comes first: a click reads the drawing wherever it lands, shapes included.
+    if (sampling) {
+      event.stopPropagation()
+      onSample?.(point(event.nativeEvent))
+      return
+    }
     const targetElement = event.target as Element
     const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
@@ -1423,6 +1442,7 @@ export function VectorCanvas({
       data-tool={tool}
       data-space={spaceDown || undefined}
       data-panning={panning || undefined}
+      data-sampling={sampling || undefined}
       data-transform={transformStatus?.mode}
       data-axis={transformStatus?.axis ?? undefined}
       data-direct={directCursor ? true : undefined}

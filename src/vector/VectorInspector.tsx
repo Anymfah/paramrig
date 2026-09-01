@@ -8,8 +8,9 @@ import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import { SliderField } from '@/ui/SliderField'
-import { PaintList } from '@/vector/VectorPaintPanel'
-import { fillsOf, fillsPatch, strokesOf, strokesPatch } from '@/vector/paints'
+import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
+import { linkedStyle, styleUsage } from '@/vector/styles'
+import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
 import { cornerRadii } from '@/vector/corners'
 import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation } from '@/vector/booleans'
 import { Tooltip } from '@/ui/Tooltip'
@@ -24,7 +25,7 @@ import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { scaleElementsToBounds } from '@/vector/transform'
 import { leafElements } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorTool } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
 
 import type { DocumentPatch } from '@/vector/useVectorDocument'
 
@@ -50,6 +51,15 @@ type VectorInspectorProps = {
   /** Autosave state shown in the header, and the message when a write failed. */
   saveBadge?: ReactNode
   saveMessage?: string | null
+  palette?: PaintPalette
+  /** Creates a named style from what the selection currently paints. */
+  onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
+  /** Repaints the selection from a style, or cuts the link when the id is null. */
+  onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
+  /** Writes a paint edit back to the style the selection follows. */
+  onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
+  onRenameStyle?: (styleId: string, name: string) => void
+  onDeleteStyle?: (styleId: string) => void
 }
 
 export function VectorInspector({
@@ -73,6 +83,12 @@ export function VectorInspector({
   onGestureCancel,
   saveBadge,
   saveMessage,
+  palette,
+  onCreateStyle,
+  onLinkStyle,
+  onUpdateStyle,
+  onRenameStyle,
+  onDeleteStyle,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -245,7 +261,17 @@ export function VectorInspector({
                 <NumberField label="W" value={document.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdateDocument({ width: Math.round(width) })} {...gesture} />
                 <NumberField label="H" value={document.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdateDocument({ height: Math.round(height) })} {...gesture} />
               </div>
-              <ColorField label="Background" value={document.background} onChange={(background) => onUpdateDocument({ background })} {...gesture} />
+              <ColorField
+                label="Background"
+                value={document.background}
+                recent={palette?.recent}
+                swatches={palette?.swatches}
+                onAddSwatch={palette?.onAddSwatch}
+                onRemoveSwatch={palette?.onRemoveSwatch}
+                onColorUsed={palette?.onColorUsed}
+                onChange={(background) => onUpdateDocument({ background })}
+                {...gesture}
+              />
             </section>
             <section className="vector-panel" aria-label="Guides">
               <div className="vector-panel__row">
@@ -257,6 +283,7 @@ export function VectorInspector({
                 <Button variant="quiet" size="sm" onClick={() => onUpdateDocument({ guides: [] })}>Clear guides</Button>
               ) : null}
             </section>
+            <StylesPanel styles={document.styles ?? []} elements={document.elements} onRename={onRenameStyle} onDelete={onDeleteStyle} />
             <section className="vector-panel" aria-label="History">
               <div className="vector-panel__row">
                 <h2 className="vector-panel__title">History</h2>
@@ -327,7 +354,18 @@ export function VectorInspector({
                 </div>
               ) : null}
             </section>
-            <AppearancePanel elements={selectedElements} leaves={leaves} onUpdate={onUpdate} onUpdateElements={onUpdateElements} gesture={gesture} />
+            <AppearancePanel
+              elements={selectedElements}
+              leaves={leaves}
+              styles={document.styles ?? []}
+              palette={palette}
+              onUpdate={onUpdate}
+              onUpdateElements={onUpdateElements}
+              onCreateStyle={onCreateStyle}
+              onLinkStyle={onLinkStyle}
+              onUpdateStyle={onUpdateStyle}
+              gesture={gesture}
+            />
             {single && single.kind === 'frame' ? (
               <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
             ) : null}
@@ -374,11 +412,16 @@ export function VectorInspector({
   )
 }
 
-function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture }: {
+function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, gesture }: {
   elements: VectorElement[]
   leaves: VectorElement[]
+  styles: VectorStyle[]
+  palette?: PaintPalette
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
   onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
+  onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
+  onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
+  onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
   gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
   const single = elements.length === 1 && elements[0]!.kind !== 'group' ? elements[0]! : null
@@ -393,6 +436,8 @@ function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture
   const groupOpacity = !single && elements.length === 1 && elements[0]!.kind === 'group' ? elements[0]! : null
   const fills = fillsOf(first)
   const strokes = strokesOf(first)
+  const fillStyle = linkedStyle(styles, first, 'fill')
+  const strokeStyle = linkedStyle(styles, first, 'stroke')
   const fillsMixed = !same('fill') || targets.some((element) => JSON.stringify(element.fills) !== JSON.stringify(first.fills))
   const strokesMixed = !same('stroke') || targets.some((element) => JSON.stringify(element.strokes) !== JSON.stringify(first.strokes))
   const isRectangle = single?.kind === 'rectangle' && !single.network
@@ -409,8 +454,31 @@ function AppearancePanel({ elements, leaves, onUpdate, onUpdateElements, gesture
     <>
       <section className="vector-panel" aria-label="Appearance">
         <h2 className="vector-panel__title">Appearance</h2>
-        <PaintList label="Fill" paints={fills} mixed={fillsMixed} onChange={(paints, record) => apply(fillsPatch(paints), record)} gesture={gesture} />
-        <PaintList label="Stroke" paints={strokes} mixed={strokesMixed} onChange={(paints, record) => apply(strokesPatch(paints), record)} gesture={gesture} />
+        <PaintList
+          label="Fill"
+          paints={fills}
+          mixed={fillsMixed}
+          palette={palette}
+          header={<StyleLink kind="fill" styles={styles} linked={fillStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
+          onChange={(paints, record) => {
+            // A linked paint edits its style, which repaints every object that follows it.
+            if (fillStyle && onUpdateStyle) onUpdateStyle(fillStyle.id, paints, record)
+            else apply(fillsPatch(paints), record)
+          }}
+          gesture={gesture}
+        />
+        <PaintList
+          label="Stroke"
+          paints={strokes}
+          mixed={strokesMixed}
+          palette={palette}
+          header={<StyleLink kind="stroke" styles={styles} linked={strokeStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
+          onChange={(paints, record) => {
+            if (strokeStyle && onUpdateStyle) onUpdateStyle(strokeStyle.id, paints, record)
+            else apply(strokesPatch(paints), record)
+          }}
+          gesture={gesture}
+        />
         {groupOpacity ? (
           <NumberField label="Opacity" value={Math.round(groupOpacity.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(opacity) => onUpdate(groupOpacity.id, { opacity: opacity / 100 })} {...gesture} />
         ) : (
@@ -617,6 +685,81 @@ function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
       <SwitchField label="Clip content" checked={element.clipContent !== false} onChange={(clipContent) => onUpdate(element.id, { clipContent })} />
       <p className="vector-panel__hint">A frame keeps its own box and exports at its own size. Drop layers onto it to put them inside.</p>
     </section>
+  )
+}
+
+/** Every named style in the document, with what uses it. */
+function StylesPanel({ styles, elements, onRename, onDelete }: {
+  styles: VectorStyle[]
+  elements: VectorElement[]
+  onRename?: (styleId: string, name: string) => void
+  onDelete?: (styleId: string) => void
+}) {
+  if (styles.length === 0) return null
+  return (
+    <section className="vector-panel" aria-label="Styles">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Styles</h2>
+        <span className="vector-panel__meta">{styles.length} {styles.length === 1 ? 'style' : 'styles'}</span>
+      </div>
+      <ul className="vector-styles">
+        {styles.map((style) => {
+          const usage = styleUsage(elements, style)
+          return (
+            <li key={style.id} className="vector-styles__row">
+              <span className="vector-styles__chip" style={{ background: summaryColor(style.paints) }} aria-hidden="true" />
+              <input
+                className="vector-styles__name"
+                defaultValue={style.name}
+                key={style.name}
+                aria-label={`${style.name} name`}
+                spellCheck={false}
+                onBlur={(event) => onRename?.(style.id, event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') event.currentTarget.blur()
+                  if (event.key === 'Escape') { event.currentTarget.value = style.name; event.currentTarget.blur() }
+                }}
+              />
+              <span className="vector-styles__meta">{style.kind === 'fill' ? 'Fill' : 'Stroke'} · {usage}</span>
+              <Tooltip content={usage > 0 ? `Delete and detach ${usage} ${usage === 1 ? 'object' : 'objects'}` : 'Delete style'}>
+                <IconButton label={`Delete ${style.name}`} onClick={() => onDelete?.(style.id)}><IconTrash /></IconButton>
+              </Tooltip>
+            </li>
+          )
+        })}
+      </ul>
+    </section>
+  )
+}
+
+/** The style a paint follows: pick one, make one from what is painted, or cut the link. */
+function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }: {
+  kind: VectorStyleKind
+  styles: VectorStyle[]
+  linked: VectorStyle | null
+  source: VectorElement
+  onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
+  onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
+}) {
+  if (!onLinkStyle && !onCreateStyle) return null
+  const options = styles.filter((style) => style.kind === kind)
+  return (
+    <div className="vector-style-link">
+      <SelectField
+        label="Style"
+        value={linked?.id ?? ''}
+        options={[{ value: '', label: options.length ? 'No style' : 'No style yet' }, ...options.map((style) => ({ value: style.id, label: style.name }))]}
+        onChange={(value) => onLinkStyle?.(kind, value || null)}
+      />
+      <div className="vector-style-link__actions">
+        {linked ? (
+          <Button variant="quiet" size="sm" data-action={`detach-${kind}-style`} onClick={() => onLinkStyle?.(kind, null)}>Detach</Button>
+        ) : (
+          <Button variant="quiet" size="sm" data-action={`create-${kind}-style`} onClick={() => onCreateStyle?.(kind, source)}>Create style</Button>
+        )}
+      </div>
+      {linked ? <p className="vector-panel__hint">Editing this {kind} updates “{linked.name}” everywhere it is used.</p> : null}
+    </div>
   )
 }
 

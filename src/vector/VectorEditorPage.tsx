@@ -32,6 +32,17 @@ import {
 import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
+import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
+import {
+  applyStylePatch,
+  detachStylePatch,
+  pushRecentColor,
+  styleFromElement,
+  styleIdKey,
+  syncStylePatches,
+  toggleSwatch,
+} from '@/vector/styles'
+import type { PaintPalette } from '@/vector/VectorPaintPanel'
 import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
 import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
@@ -39,7 +50,7 @@ import { ancestorIds, childrenOf, descendantIds, isContainer, leafElements } fro
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
-import type { VectorElement, VectorTool } from '@/vector/types'
+import type { VectorElement, VectorPaint, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 type SelectionTool = Extract<VectorTool, 'select' | 'transform'>
@@ -81,6 +92,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const appearanceClipboard = useRef<Appearance | null>(null)
   const elementClipboard = useRef<VectorElement[]>([])
   const opacityBuffer = useRef<OpacityBuffer | null>(null)
+  const [sampler, setSampler] = useState<{ sample: CanvasSample; apply: (hex: string) => void } | null>(null)
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
@@ -515,6 +527,90 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     downloadBlob(png, name)
   }
 
+  const palette: PaintPalette = {
+    recent: document.recentColors,
+    swatches: document.swatches,
+    onColorUsed: (hex) => editor.updateDocument({ recentColors: pushRecentColor(document.recentColors, hex) }, false),
+    onAddSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex) }),
+    onRemoveSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex, true) }),
+    onPickFromCanvas: (apply) => { void startCanvasPick(apply) },
+  }
+
+  /** Renders the page offscreen once, then the next canvas click reads a pixel out of it. */
+  const startCanvasPick = async (apply: (hex: string) => void) => {
+    setExportError(null)
+    const sample = await sampleDocument(document)
+    if (!sample) {
+      setExportError('This browser could not render the drawing to sample a colour from it.')
+      return
+    }
+    setSampler({ sample, apply })
+  }
+
+  const finishCanvasPick = (point: { x: number; y: number } | null) => {
+    const active = sampler
+    setSampler(null)
+    if (!active || !point) return
+    const hex = colorAt(active.sample, point)
+    if (!hex) return
+    active.apply(hex)
+    editor.updateDocument({ recentColors: pushRecentColor(document.recentColors, hex) }, false)
+  }
+
+  const createStyle = (kind: 'fill' | 'stroke', source: VectorElement) => {
+    const existing = document.styles ?? []
+    const base = kind === 'fill' ? 'Fill style' : 'Stroke style'
+    let name = `${base} ${existing.filter((style) => style.kind === kind).length + 1}`
+    while (existing.some((style) => style.name === name)) name = `${name}'`
+    const style = styleFromElement(source, kind, name, crypto.randomUUID())
+    const targets = leafElements(document.elements, selectedIds)
+    editor.editDocument((current) => ({
+      ...current,
+      styles: [...(current.styles ?? []), style],
+      elements: current.elements.map((element) => targets.some((target) => target.id === element.id) ? { ...element, ...applyStylePatch(style) } : element),
+    }))
+  }
+
+  const linkStyle = (kind: 'fill' | 'stroke', styleId: string | null) => {
+    const style = styleId ? (document.styles ?? []).find((item) => item.id === styleId) : null
+    if (styleId && !style) return
+    const targets = leafElements(document.elements, selectedIds)
+    if (targets.length === 0) return
+    editor.updateElements(targets.map((element) => ({ id: element.id, patch: style ? applyStylePatch(style) : detachStylePatch(kind) })))
+  }
+
+  const updateStyle = (styleId: string, paints: VectorPaint[], record?: boolean) => {
+    editor.editDocument((current) => {
+      const styles = (current.styles ?? []).map((style) => style.id === styleId ? { ...style, paints } : style)
+      const style = styles.find((item) => item.id === styleId)
+      if (!style) return current
+      const patches = new Map(syncStylePatches(current.elements, style).map((entry) => [entry.id, entry.patch]))
+      return {
+        ...current,
+        styles,
+        elements: current.elements.map((element) => patches.has(element.id) ? { ...element, ...patches.get(element.id)! } : element),
+      }
+    }, record)
+  }
+
+  const renameStyle = (styleId: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    editor.updateDocument({ styles: (document.styles ?? []).map((style) => style.id === styleId ? { ...style, name: trimmed.slice(0, 60) } : style) })
+  }
+
+  const deleteStyle = (styleId: string) => {
+    const style = (document.styles ?? []).find((item) => item.id === styleId)
+    if (!style) return
+    const key = styleIdKey(style.kind)
+    editor.editDocument((current) => ({
+      ...current,
+      styles: (current.styles ?? []).filter((item) => item.id !== styleId),
+      // The objects keep the look they had; only the link goes.
+      elements: current.elements.map((element) => element[key] === styleId ? { ...element, [key]: undefined } : element),
+    }))
+  }
+
   const savePreset = (name: string, settings: ExportSettings) => {
     const presets = [...(document.exportPresets ?? []), { id: crypto.randomUUID(), name: name.trim().slice(0, 60), ...settings }].slice(-MAX_EXPORT_PRESETS)
     editor.updateDocument({ exportPresets: presets })
@@ -687,6 +783,12 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureCancel={editor.cancelGesture}
           saveBadge={<VectorSaveBadge file={file} />}
           saveMessage={file.message ?? exportError}
+          palette={palette}
+          onCreateStyle={createStyle}
+          onLinkStyle={linkStyle}
+          onUpdateStyle={updateStyle}
+          onRenameStyle={renameStyle}
+          onDeleteStyle={deleteStyle}
         />
       }
     >
@@ -831,6 +933,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
+          sampling={!!sampler}
+          onSample={finishCanvasPick}
         />
         </ContextTarget>
         </ContextMenuRoot>

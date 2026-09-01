@@ -5,6 +5,7 @@ import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPres
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
+import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
@@ -293,6 +294,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     seen.add(valid.id)
     return [valid]
   })
+  const styles = sanitizeStyles(source.styles)
   return {
     version: 1,
     id: source.id,
@@ -300,10 +302,13 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     background: typeof source.background === 'string' && /^#[0-9a-f]{6}$/i.test(source.background) ? source.background.toUpperCase() : DEFAULT_BACKGROUND,
     width: source.width,
     height: source.height,
-    elements: sanitizeParents(elements),
+    elements: pruneStyleLinks(sanitizeParents(elements), styles ?? []),
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
+    ...(styles ? { styles } : {}),
+    ...(sanitizeColorList(source.swatches, MAX_SWATCHES) ? { swatches: sanitizeColorList(source.swatches, MAX_SWATCHES) } : {}),
+    ...(sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) ? { recentColors: sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : new Date(0).toISOString(),
   }
@@ -397,6 +402,8 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(cornerRadius !== undefined ? { cornerRadius } : {}),
     ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
+    ...(typeof source.fillStyleId === 'string' && source.fillStyleId ? { fillStyleId: source.fillStyleId } : {}),
+    ...(typeof source.strokeStyleId === 'string' && source.strokeStyleId ? { strokeStyleId: source.strokeStyleId } : {}),
     ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
     ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
   }
