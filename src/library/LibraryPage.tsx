@@ -13,7 +13,9 @@ import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
 import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
-import { createVectorDocument, elementMarkup, getVectorDocument } from '@/vector/document'
+import { createVectorDocument, documentThumbnail, getVectorDocument, saveVectorDocument } from '@/vector/document'
+import { getProjectHandle, listRecentProjects, type RecentProject } from '@/vector/fileHandles'
+import { importProject } from '@/vector/project'
 
 export function LibraryPage() {
   const [params, setParams] = useSearchParams()
@@ -22,7 +24,44 @@ export function LibraryPage() {
   const [rigs, setRigs] = useState<RigManifest[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main'>('main')
+  const [recent, setRecent] = useState<RecentProject[]>([])
+  const [recentError, setRecentError] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    let cancelled = false
+    void listRecentProjects().then((entries) => {
+      if (!cancelled) setRecent(entries)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const openRecent = async (entry: RecentProject) => {
+    setRecentError(null)
+    if (getVectorDocument(entry.id)) {
+      navigate(`/r/${entry.id}`)
+      return
+    }
+    const handle = await getProjectHandle(entry.id)
+    if (!handle) {
+      setRecentError(`“${entry.name}” is no longer in this browser and has no linked file.`)
+      return
+    }
+    const permission = await handle.requestPermission?.({ mode: 'read' })
+    if (permission && permission !== 'granted') {
+      setRecentError(`Reading “${entry.fileName ?? entry.name}” was not allowed.`)
+      return
+    }
+    const result = importProject(await (await handle.getFile()).text())
+    if (!result.ok) {
+      setRecentError(result.error)
+      return
+    }
+    saveVectorDocument(result.project.document)
+    navigate(`/r/${result.project.document.id}`)
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -80,6 +119,29 @@ export function LibraryPage() {
             <a href="https://paramrig.com/docs/persistence/">About local data</a>
           </p>
         )}
+        {recent.length > 0 ? (
+          <section className="library-recent" aria-label="Recent projects">
+            <h2 className="library-recent__title">Recent</h2>
+            {recentError ? <StatusMessage tone="error">{recentError}</StatusMessage> : null}
+            <ul className="library-recent__list">
+              {recent.map((entry) => (
+                <li key={entry.id}>
+                  <button type="button" className="library-recent__item" onClick={() => void openRecent(entry)}>
+                    <span className="library-recent__preview" style={{ background: entry.background }}>
+                      {entry.thumbnail ? (
+                        <svg viewBox={`0 0 ${entry.width} ${entry.height}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: entry.thumbnail }} />
+                      ) : null}
+                    </span>
+                    <span className="library-recent__text">
+                      <span className="library-recent__name">{entry.name}</span>
+                      <span className="library-recent__meta">{formatRecentDate(entry.savedAt)}{entry.fileName ? ` · ${entry.fileName}` : ''}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
         <label className="search-field">
           <IconSearch />
           <span className="visually-hidden">Find a rig</span>
@@ -148,6 +210,12 @@ export function LibraryPage() {
   )
 }
 
+function formatRecentDate(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return 'Unknown date'
+  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
 function SkeletonCard() {
   return (
     <div className="skeleton-card">
@@ -156,18 +224,6 @@ function SkeletonCard() {
       <div className="skeleton skeleton--line skeleton--short" />
     </div>
   )
-}
-
-function thumbnailMarkup(elements: Array<Parameters<typeof elementMarkup>[0]>, prefix: string): string {
-  const defs: string[] = []
-  const bodies: string[] = []
-  for (const element of elements) {
-    if (!element.visible || element.kind === 'group') continue
-    const markup = elementMarkup(element, prefix)
-    if (markup.defs) defs.push(markup.defs)
-    bodies.push(`<g opacity="${element.opacity}">${markup.body}</g>`)
-  }
-  return `${defs.length ? `<defs>${defs.join('')}</defs>` : ''}${bodies.join('')}`
 }
 
 function RigThumb({ rig }: { rig: RigManifest }) {
@@ -179,7 +235,7 @@ function RigThumb({ rig }: { rig: RigManifest }) {
         className="vector-thumb"
         viewBox={`0 0 ${document.width} ${document.height}`}
         aria-hidden="true"
-        dangerouslySetInnerHTML={{ __html: thumbnailMarkup(document.elements, `thumb-${document.id}`) }}
+        dangerouslySetInnerHTML={{ __html: documentThumbnail(document) }}
       />
     ) : null
   }

@@ -30,10 +30,13 @@ export function useVectorDocument(documentId: string) {
   const [enteredGroupId, setEnteredGroupId] = useState<string | null>(null)
   const [history, setHistory] = useState<VectorHistory>({ past: [], future: [] })
   const gestureStart = useRef<VectorDocument | null>(null)
+  const loadedId = useRef(documentId)
   const latest = useRef<VectorDocument | null>(initial)
   latest.current = document
 
   useEffect(() => {
+    if (loadedId.current === documentId) return
+    loadedId.current = documentId
     setDocument(getVectorDocument(documentId))
     setSelectedIdsState([])
     setEnteredGroupId(null)

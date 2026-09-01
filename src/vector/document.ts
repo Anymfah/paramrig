@@ -30,13 +30,32 @@ function readAll(): Record<string, VectorDocument> {
   }
 }
 
-function writeAll(documents: Record<string, VectorDocument>): void {
-  if (typeof localStorage === 'undefined') return
+/** Outcome of a browser-storage write, so callers can tell the user when a draft did not land. */
+export type StorageResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' }
+
+function writeAll(documents: Record<string, VectorDocument>): StorageResult {
+  if (typeof localStorage === 'undefined') return { ok: false, reason: 'unavailable' }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(documents))
-  } catch {
-    /* Editing remains available in memory when storage is unavailable. */
+    return { ok: true }
+  } catch (error) {
+    /* Editing remains available in memory when storage is full or blocked. */
+    return { ok: false, reason: isQuotaError(error) ? 'quota' : 'unavailable' }
   }
+}
+
+function isQuotaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const { name, code } = error as { name?: unknown; code?: unknown }
+  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || code === 22 || code === 1014
+}
+
+export const STORAGE_FULL_MESSAGE = 'Browser storage is full. Save this project to a file to keep your changes.'
+export const STORAGE_BLOCKED_MESSAGE = 'Browser storage is unavailable. Save this project to a file to keep your changes.'
+
+export function storageMessage(result: StorageResult): string | null {
+  if (result.ok) return null
+  return result.reason === 'quota' ? STORAGE_FULL_MESSAGE : STORAGE_BLOCKED_MESSAGE
 }
 
 export function createVectorDocument(): VectorDocument {
@@ -65,10 +84,10 @@ export function getVectorDocument(id: string): VectorDocument | null {
   return readAll()[id] ?? null
 }
 
-export function saveVectorDocument(document: VectorDocument): void {
+export function saveVectorDocument(document: VectorDocument): StorageResult {
   const documents = readAll()
   documents[document.id] = sanitizeVectorDocument(document) ?? document
-  writeAll(documents)
+  return writeAll(documents)
 }
 
 export function vectorManifest(document: VectorDocument): RigManifest {
@@ -140,6 +159,19 @@ export function serializeVectorDocument(document: VectorDocument): string {
 export function elementMarkup(element: VectorElement, prefix: string): { defs: string; body: string } {
   const model = renderModel(element, prefix)
   return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id) }
+}
+
+/** Inline SVG markup for a document preview: every visible leaf, no wrapper. */
+export function documentThumbnail(document: Pick<VectorDocument, 'id' | 'elements'>): string {
+  const defs: string[] = []
+  const bodies: string[] = []
+  for (const element of document.elements) {
+    if (!element.visible || element.kind === 'group') continue
+    const markup = elementMarkup(element, `thumb-${document.id}`)
+    if (markup.defs) defs.push(markup.defs)
+    bodies.push(`<g opacity="${element.opacity}">${markup.body}</g>`)
+  }
+  return `${defs.length ? `<defs>${defs.join('')}</defs>` : ''}${bodies.join('')}`
 }
 
 function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): string[] {

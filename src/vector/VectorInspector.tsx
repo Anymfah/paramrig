@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { StatusMessage } from '@/ui/StatusMessage'
 import { IconTrash } from '@/ui/icons'
 import { Button, IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
@@ -43,6 +44,9 @@ type VectorInspectorProps = {
   onGestureStart: () => void
   onGestureEnd: () => void
   onGestureCancel: () => void
+  /** Autosave state shown in the header, and the message when a write failed. */
+  saveBadge?: ReactNode
+  saveMessage?: string | null
 }
 
 export function VectorInspector({
@@ -64,6 +68,8 @@ export function VectorInspector({
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
+  saveBadge,
+  saveMessage,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -204,8 +210,10 @@ export function VectorInspector({
             }
           }}
         />
+        {saveBadge}
       </div>
       <div className="vector-inspector__body scroll-area">
+        {saveMessage ? <div className="vector-inspector__notice"><StatusMessage tone="error">{saveMessage}</StatusMessage></div> : null}
         {selectedElements.length === 0 ? (
           <>
             <section className="vector-panel vector-panel--document" aria-label="Page properties">

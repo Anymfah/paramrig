@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Button, IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
 import { GradientField } from '@/ui/GradientField'
@@ -6,7 +6,9 @@ import { IconEye, IconEyeOff, IconMinus, IconPlus } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SliderField } from '@/ui/SliderField'
+import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
+import { dataUrlBytes, readImageFile } from '@/vector/images'
 import { defaultStops, MAX_IMAGE_BYTES, MAX_PAINTS, solidPaint } from '@/vector/paints'
 import type { VectorPaint } from '@/vector/types'
 
@@ -67,6 +69,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture }: {
   gesture: Gesture
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
+  const [imageError, setImageError] = useState<string | null>(null)
   const typeLabel = paint.type === 'solid' ? 'Solid' : paint.type === 'linear' ? 'Linear' : paint.type === 'radial' ? 'Radial' : 'Image'
   const changeType = (type: VectorPaint['type']) => {
     if (type === paint.type) return
@@ -79,15 +82,18 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture }: {
   }
   const pickImage = (file: File | undefined) => {
     if (!file) return
-    if (file.size > MAX_IMAGE_BYTES) {
-      onChange({ imageMode: paint.imageMode ?? 'fill' })
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (typeof reader.result === 'string' && reader.result.startsWith('data:image/')) onChange({ image: reader.result })
-    }
-    reader.readAsDataURL(file)
+    setImageError(null)
+    void readImageFile(file).then((image) => {
+      if (!image) {
+        setImageError('That image could not be read.')
+        return
+      }
+      if (dataUrlBytes(image) > MAX_IMAGE_BYTES) {
+        setImageError('That image is too large to store, even compressed. Use a smaller one.')
+        return
+      }
+      onChange({ image })
+    })
   }
   return (
     <div className="vector-paint" data-hidden={!paint.visible || undefined}>
@@ -128,6 +134,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture }: {
             <Button variant="quiet" size="sm" onClick={() => fileInput.current?.click()}>{paint.image ? 'Replace image' : 'Choose image'}</Button>
             <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml" className="visually-hidden" tabIndex={-1} onChange={(event) => { pickImage(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
           </div>
+          {imageError ? <StatusMessage tone="error">{imageError}</StatusMessage> : null}
           <SelectField
             label="Mode"
             value={paint.imageMode ?? 'fill'}

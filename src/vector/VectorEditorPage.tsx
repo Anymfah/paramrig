@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconDownload, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconImport, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -13,7 +13,10 @@ import { readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
 import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
-import { createVectorElement, serializeVectorDocument } from '@/vector/document'
+import { createVectorDocument, createVectorElement, serializeVectorDocument } from '@/vector/document'
+import { VectorFileMenu } from '@/vector/VectorFileMenu'
+import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
+import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
 import { childrenOf, leafElements } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
@@ -52,10 +55,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   })
   const controller = useRef<VectorCanvasController | null>(null)
   const importInput = useRef<HTMLInputElement>(null)
+  const projectInput = useRef<HTMLInputElement>(null)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
+  const file = useProjectFile(editor.document)
+  const fileRef = useRef(file)
+  fileRef.current = file
 
   const document = editor.document
   const selectedIds = editor.selectedIds
@@ -130,6 +137,20 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     current.setSelectedIds([group.id])
   }, [pasteElements])
 
+  const openProject = useCallback(async (picked?: File) => {
+    const opened = await fileRef.current.openFromDisk(picked)
+    if (opened) navigate(`/r/${opened.id}`)
+  }, [navigate])
+
+  const requestOpen = useCallback(() => {
+    if (typeof window.showOpenFilePicker === 'function') void openProject()
+    else projectInput.current?.click()
+  }, [openProject])
+
+  const newDocument = useCallback(() => {
+    navigate(`/r/${createVectorDocument().id}`)
+  }, [navigate])
+
   const alignSelection = useCallback((mode: AlignMode) => {
     const current = editorRef.current
     const doc = current.document
@@ -174,6 +195,17 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         event.preventDefault()
         if (event.shiftKey) current.redo()
         else current.undo()
+        return
+      }
+      if (meta && key === 's') {
+        event.preventDefault()
+        if (event.shiftKey) void fileRef.current.saveAs()
+        else void fileRef.current.saveNow()
+        return
+      }
+      if (meta && key === 'o') {
+        event.preventDefault()
+        requestOpen()
         return
       }
       if (meta && key === 'd') {
@@ -285,7 +317,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements])
+  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, requestOpen])
 
   if (!document) {
     return (
@@ -383,12 +415,21 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
+          saveBadge={<VectorSaveBadge file={file} />}
+          saveMessage={file.message}
         />
       }
     >
       <h1 className="visually-hidden">{document.name}</h1>
       <div className="workspace-toolbar vector-toolbar" role="toolbar" aria-label="Vector tools">
         <div className="workspace-toolbar__group">
+          <VectorFileMenu
+            file={file}
+            onNewDocument={newDocument}
+            onOpenProject={requestOpen}
+            onImportSvg={() => importInput.current?.click()}
+            onExportSvg={download}
+          />
           <Tooltip content="Undo · ⌘Z">
             <IconButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconUndo /></IconButton>
           </Tooltip>
@@ -455,13 +496,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
               </Tooltip>
             </div>
           ) : null}
-          <Tooltip content="Import SVG">
-            <IconButton label="Import SVG" onClick={() => importInput.current?.click()}><IconImport /></IconButton>
-          </Tooltip>
           <input ref={importInput} type="file" accept=".svg,image/svg+xml" className="visually-hidden" tabIndex={-1} onChange={(event) => { void importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
-          <Tooltip content="Export SVG">
-            <IconButton label="Export SVG" onClick={download}><IconDownload /></IconButton>
-          </Tooltip>
+          <input ref={projectInput} type="file" accept=".json,application/json" className="visually-hidden" tabIndex={-1} onChange={(event) => { const picked = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (picked) void openProject(picked) }} />
         </div>
       </div>
       <div className="preview-stage vector-stage" id="main" tabIndex={-1}>
