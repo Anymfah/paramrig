@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { chains, extendNetwork, networkFromRuns, runPathData, worldNetwork, type AbsNetwork } from '@/vector/network'
-import { computeFaces, faceContainsPoint, loopToRun, networkFingerprint } from '@/vector/planar'
+import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, networkFingerprint } from '@/vector/planar'
 import type { VectorElement } from '@/vector/types'
 
 const rect: VectorElement = { id: 'r', kind: 'rectangle', name: 'R', x: 0, y: 0, width: 100, height: 100, rotation: 0, fill: '#000000', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }
@@ -51,6 +51,19 @@ describe('planar faces', () => {
     expect(big.holes).toHaveLength(1)
     expect(faceContainsPoint(network, big, { x: 50, y: 50 })).toBe(false)
     expect(faceContainsPoint(network, big, { x: 10, y: 10 })).toBe(true)
+  })
+
+  it('names the faces that only exist inside another one', () => {
+    const outer = square()
+    const inner = worldNetwork({ ...rect, x: 25, y: 25, width: 50, height: 50 })
+    const network: AbsNetwork = { nodes: [...outer.nodes, ...inner.nodes.map((node) => ({ ...node, id: `i${node.id}` }))], segments: [...outer.segments, ...inner.segments.map((segment) => ({ ...segment, id: `i${segment.id}`, a: `i${segment.a}`, b: `i${segment.b}` }))] }
+    const faces = computeFaces(network)
+
+    const holes = holeFaceKeys(faces)
+
+    expect(holes).toHaveLength(1)
+    expect(holes[0]).toBe(faces.find((face) => face.area < 9000)!.key)
+    expect(holeFaceKeys(computeFaces(square()))).toEqual([])
   })
 
   it('handles a pentagram: five points and a centre region', () => {

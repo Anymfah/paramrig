@@ -5,7 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { IconButton } from '@/ui/Button'
-import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBucket, IconCheck, IconChevron, IconChevronRight, IconEllipse, IconFlipH, IconFlipV, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPen, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -284,6 +284,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'b') chooseTool('bucket')
       else if (key === 'p' && event.shiftKey) chooseTool('pencil')
       else if (key === 'p') chooseTool('pen')
+      else if (key === 't') chooseTool('text')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
@@ -294,6 +295,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             current.setEnteredGroupId(selected.id)
             const first = childrenOf(current.document?.elements ?? [], selected.id).at(-1)
             if (first) current.setSelectedIds([first.id])
+          } else if (selected.kind === 'text') {
+            controller.current?.editText(selected.id)
           } else if (!selected.locked) {
             chooseTool('node')
           }
@@ -444,11 +447,12 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             onChange={(next) => chooseTool(next)}
             onActivate={() => chooseTool(selectionTool)}
           />
-          <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
+          <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || selectedElements[0]?.kind === 'text' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
           <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
+          <ToolButton label="Text · T" active={tool === 'text'} onClick={() => chooseTool('text')}><IconText /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -518,7 +522,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onToolChange={chooseTool}
           onAddElements={(elements) => {
             editor.addElements(elements)
-            if (tool === 'rectangle' || tool === 'ellipse') chooseTool('select')
+            if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}

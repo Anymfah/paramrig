@@ -3,6 +3,7 @@ import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
 import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNetwork, type AbsNetwork, type Run } from '@/vector/network'
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
 import { computeFaces, faceContainsPoint, loopToRun, type Face } from '@/vector/planar'
+import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
 
 export type RenderDef =
@@ -28,6 +29,21 @@ export type RenderLayer = {
   markerEnd?: string
 }
 
+/** A laid-out text run: `<text>` with one `<tspan>` per line, in element coordinates. */
+export type TextRender = {
+  lines: Array<{ text: string; x: number; y: number }>
+  anchor: 'start' | 'middle' | 'end'
+  fontFamily: string
+  fontSize: number
+  fontWeight: number
+  letterSpacing: number
+  fill: string
+  fillOpacity: number
+  stroke: string | null
+  strokeOpacity: number
+  strokeWidth: number
+}
+
 export type RenderModel = {
   /** Stroke outline in local coordinates (every chain), used for hit testing. */
   d: string
@@ -37,6 +53,8 @@ export type RenderModel = {
   opacity: number
   defs: RenderDef[]
   layers: RenderLayer[]
+  /** Set for text elements; their paint rides on the `<text>` rather than on paths. */
+  text?: TextRender
 }
 
 /** Local-space geometry of an element: chains for strokes and faces for fills, corners applied. */
@@ -97,6 +115,7 @@ export function renderModel(element: VectorElement, prefix: string): RenderModel
 }
 
 function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
+  if (element.kind === 'text') return buildTextModel(element, prefix)
   const defs: RenderDef[] = []
   const layers: RenderLayer[] = []
   const geometry = localGeometry(element)
@@ -153,6 +172,43 @@ function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
   }
 
   return { d, fillD, transform, opacity: element.opacity, defs, layers }
+}
+
+/** Box outline plus the laid-out lines; the box carries hit testing, the `<text>` the paint. */
+function buildTextModel(element: VectorElement, prefix: string): RenderModel {
+  const defs: RenderDef[] = []
+  const key = `${prefix}-${element.id}`
+  const bounds = { x: element.x, y: element.y, width: element.width, height: element.height }
+  const properties = textProperties(element)
+  const layout = layoutText(properties, element.width, canvasMeasure)
+  const box = `M ${round(bounds.x)} ${round(bounds.y)} L ${round(bounds.x + bounds.width)} ${round(bounds.y)} L ${round(bounds.x + bounds.width)} ${round(bounds.y + bounds.height)} L ${round(bounds.x)} ${round(bounds.y + bounds.height)} Z`
+  const center = { x: element.x + element.width / 2, y: element.y + element.height / 2 }
+  const fill = fillsOf(element).filter((paint) => paint.visible && paint.opacity > 0).at(-1)
+  const stroke = strokesOf(element).filter((paint) => paint.visible && paint.opacity > 0).at(-1)
+  const fillReference = fill ? paintReference(fill, `${key}-text-fill`, bounds, defs) : null
+  const strokeReference = stroke && element.strokeWidth > 0 ? paintReference(stroke, `${key}-text-stroke`, bounds, defs) : null
+  const text: TextRender = {
+    lines: layout.lines.map((line) => ({ text: line.text, x: round(bounds.x + line.x), y: round(bounds.y + line.y) })),
+    anchor: layout.anchor,
+    fontFamily: fontStack(properties.fontFamily),
+    fontSize: properties.fontSize,
+    fontWeight: properties.fontWeight,
+    letterSpacing: properties.letterSpacing,
+    fill: fillReference ?? 'none',
+    fillOpacity: fill?.opacity ?? 1,
+    stroke: strokeReference,
+    strokeOpacity: stroke?.opacity ?? 1,
+    strokeWidth: element.strokeWidth,
+  }
+  return {
+    d: box,
+    fillD: box,
+    transform: `rotate(${element.rotation} ${round(center.x)} ${round(center.y)})`,
+    opacity: element.opacity,
+    defs,
+    layers: [],
+    text,
+  }
 }
 
 function marker(defs: RenderDef[], id: string, shape: Exclude<VectorArrowhead, 'none'>, color: string, end: boolean): string {
@@ -238,11 +294,39 @@ function stopsToSvg(stops: VectorGradientStop[]): string {
 
 /** SVG markup for one element's layers (no group wrapper). */
 export function layersToSvg(model: RenderModel, id: string): string {
+  if (model.text) return textToSvg(model, id)
   return model.layers.map((layer, index) => {
     const attributes = layerAttributes(layer)
     const svgAttributes = Object.entries(attributes).map(([name, value]) => `${camelToKebab(name)}="${String(value)}"`).join(' ')
     return `<path${index === 0 ? ` id="${id}"` : ''} d="${layer.d}" ${svgAttributes} transform="${model.transform}"/>`
   }).join('')
+}
+
+function textToSvg(model: RenderModel, id: string): string {
+  const text = model.text!
+  const attributes = [
+    `id="${escapeAttribute(id)}"`,
+    `font-family="${escapeAttribute(text.fontFamily)}"`,
+    `font-size="${text.fontSize}"`,
+    `font-weight="${text.fontWeight}"`,
+    text.letterSpacing ? `letter-spacing="${text.letterSpacing}"` : '',
+    `text-anchor="${text.anchor}"`,
+    `fill="${escapeAttribute(text.fill)}"`,
+    `fill-opacity="${text.fillOpacity}"`,
+    text.stroke ? `stroke="${escapeAttribute(text.stroke)}" stroke-opacity="${text.strokeOpacity}" stroke-width="${text.strokeWidth}"` : '',
+    `xml:space="preserve"`,
+    `transform="${model.transform}"`,
+  ].filter(Boolean).join(' ')
+  const spans = text.lines.map((line) => `<tspan x="${line.x}" y="${line.y}">${escapeText(line.text)}</tspan>`).join('')
+  return `<text ${attributes}>${spans}</text>`
+}
+
+function escapeAttribute(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+}
+
+function escapeText(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 
 /** Attribute bag for a layer in React prop names. */

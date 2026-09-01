@@ -263,6 +263,20 @@ function arrangeFaces(world: AbsNetwork): Face[] {
   return faces
 }
 
+/** Stable key of a loop, matching the `key` of the face that loop bounds. */
+export function loopKey(loop: FaceLoop): string {
+  return [...new Set(loop.pieces.map((piece) => `${piece.segmentId}#${piece.index}`))].sort().join('|')
+}
+
+/**
+ * Keys of the faces that only exist because they sit inside another face — the counters of a
+ * glyph, the hole of a ring. Callers that want a solid shape switch these off.
+ */
+export function holeFaceKeys(faces: Face[]): string[] {
+  const holes = new Set(faces.flatMap((face) => face.holes.map(loopKey)))
+  return faces.filter((face) => holes.has(face.key)).map((face) => face.key)
+}
+
 /** Exact cubic of one traversed piece. */
 export function pieceCubic(world: AbsNetwork, piece: FacePiece): { cubic: Cubic; straight: boolean } {
   const segment = world.segments.find((item) => item.id === piece.segmentId)!

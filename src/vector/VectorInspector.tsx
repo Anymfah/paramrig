@@ -15,6 +15,8 @@ import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation 
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorElement } from '@/vector/document'
+import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_FACES, TEXT_WEIGHTS } from '@/vector/text'
+import { outlineText } from '@/vector/textOutline'
 import { components, connectNodes, mergeNetworks, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
@@ -139,6 +141,26 @@ export function VectorInspector({
       regionsOff: undefined,
     })
   }
+  const outlineTextElement = async () => {
+    const target = single
+    if (!target || target.kind !== 'text') return
+    const geometry = await outlineText(target)
+    if (!geometry) return
+    onUpdate(target.id, {
+      ...geometry,
+      kind: 'path',
+      rotation: 0,
+      text: undefined,
+      fontFamily: undefined,
+      fontSize: undefined,
+      fontWeight: undefined,
+      lineHeight: undefined,
+      letterSpacing: undefined,
+      textAlign: undefined,
+      textSizing: undefined,
+    })
+  }
+
   const combine = () => {
     if (combinable.length < 2) return
     const merged = normalizeWorld(mergeNetworks(combinable.map((element) => worldNetwork(element))))
@@ -305,7 +327,10 @@ export function VectorInspector({
               ) : null}
             </section>
             <AppearancePanel elements={selectedElements} leaves={leaves} onUpdate={onUpdate} onUpdateElements={onUpdateElements} gesture={gesture} />
-            {single && single.kind !== 'group' ? (
+            {single && single.kind === 'text' ? (
+              <TextPanel element={single} onUpdate={onUpdate} onOutline={outlineTextElement} gesture={gesture} />
+            ) : null}
+            {single && single.kind !== 'group' && single.kind !== 'text' ? (
               <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
             ) : null}
             {combinable.length > 1 ? (
@@ -326,7 +351,7 @@ export function VectorInspector({
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
-            ) : single && single.kind !== 'group' && (single.strokeWidth > 0 || single.network) ? (
+            ) : single && single.kind !== 'group' && single.kind !== 'text' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
                   {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" onClick={outline}>Outline stroke</Button> : null}
@@ -555,6 +580,72 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
   )
 }
 
+function TextPanel({ element, onUpdate, onOutline, gesture }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onOutline: () => Promise<void>
+  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
+}) {
+  const properties = textProperties(element)
+  const apply = (patch: Partial<VectorElement>, record?: boolean) => onUpdate(element.id, resizeTextPatch(element, patch, canvasMeasure), record)
+  const outlineable = canOutline(properties.fontFamily)
+  return (
+    <section className="vector-panel" aria-label="Text">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Text</h2>
+        <span className="vector-panel__meta">{properties.text.split('\n').length} {properties.text.split('\n').length === 1 ? 'line' : 'lines'}</span>
+      </div>
+      <SelectField
+        label="Font"
+        value={properties.fontFamily}
+        options={TEXT_FACES.map((face) => ({ value: face.value, label: face.label }))}
+        onChange={(fontFamily) => apply({ fontFamily })}
+      />
+      <div className="vector-field-grid">
+        <NumberField label="Size" value={properties.fontSize} min={1} max={2000} step={1} unit="px" variant="field" onChange={(fontSize) => apply({ fontSize })} {...gesture} />
+        <SelectField
+          label="Weight"
+          value={String(properties.fontWeight)}
+          options={TEXT_WEIGHTS.map((weight) => ({ value: String(weight), label: weightLabel(weight) }))}
+          onChange={(value) => apply({ fontWeight: Number(value) })}
+        />
+      </div>
+      <div className="vector-field-grid">
+        <NumberField label="Line height" value={properties.lineHeight} min={0.5} max={6} step={0.05} onChange={(lineHeight) => apply({ lineHeight })} variant="field" {...gesture} />
+        <NumberField label="Tracking" value={properties.letterSpacing} min={-200} max={200} step={0.5} unit="px" variant="field" onChange={(letterSpacing) => apply({ letterSpacing })} {...gesture} />
+      </div>
+      <SelectField
+        label="Align"
+        value={properties.textAlign}
+        options={[{ value: 'left', label: 'Left' }, { value: 'center', label: 'Center' }, { value: 'right', label: 'Right' }]}
+        onChange={(textAlign) => apply({ textAlign: textAlign as VectorElement['textAlign'] })}
+      />
+      <SelectField
+        label="Box"
+        value={properties.textSizing}
+        options={[{ value: 'auto', label: 'Auto width' }, { value: 'fixed', label: 'Fixed width' }]}
+        onChange={(textSizing) => apply({ textSizing: textSizing as VectorElement['textSizing'] })}
+      />
+      <div className="vector-panel__actions">
+        <Tooltip content={outlineable ? 'Convert the letters into editable paths' : `${properties.fontFamily} is a system font, so its glyphs cannot be read`}>
+          <span>
+            <Button variant="quiet" size="sm" data-action="outline-text" disabled={!outlineable} onClick={() => void onOutline()}>Outline text</Button>
+          </span>
+        </Tooltip>
+      </div>
+      <p className="vector-panel__hint">Double-click the text on the canvas to edit it, or press Enter with it selected.</p>
+    </section>
+  )
+}
+
+function weightLabel(weight: number): string {
+  if (weight <= 300) return 'Light'
+  if (weight === 400) return 'Regular'
+  if (weight === 500) return 'Medium'
+  if (weight === 600) return 'Semibold'
+  return 'Bold'
+}
+
 function kindLabel(element: VectorElement): string {
   if (element.network && element.kind !== 'path') return `${element.kind === 'ellipse' ? 'Ellipse' : 'Rectangle'} · edited`
   switch (element.kind) {
@@ -562,6 +653,7 @@ function kindLabel(element: VectorElement): string {
     case 'ellipse': return 'Ellipse'
     case 'path': return 'Path'
     case 'group': return 'Group'
+    case 'text': return 'Text'
   }
 }
 

@@ -2,6 +2,7 @@ import { elementCorners, elementCenter, type Bounds } from '@/vector/geometry'
 import { rotatePoint } from '@/vector/directTransform'
 import type { VectorElement, VectorPoint } from '@/vector/types'
 import { normalizeWorld, worldNetwork } from '@/vector/network'
+import { textProperties } from '@/vector/text'
 
 /** Row-major 2D affine: x' = a x + c y + e, y' = b x + d y + f. */
 export type Affine = { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -65,6 +66,15 @@ export function transformElementAffine(element: VectorElement, m: Affine): Parti
     width: round(width),
     height: round(height),
     rotation: round(normalizeDegrees(rotation)),
+  }
+  if (element.kind === 'text') {
+    // Letters follow the box: a text scaled by an affine keeps the same number of lines.
+    const scale = Math.sqrt(Math.abs(determinant)) || 1
+    if (Math.abs(scale - 1) > 1e-6) {
+      const properties = textProperties(element)
+      patch.fontSize = round(properties.fontSize * scale)
+      if (properties.letterSpacing) patch.letterSpacing = round(properties.letterSpacing * scale)
+    }
   }
   if (determinant < 0 && element.kind === 'rectangle' && typeof element.cornerRadius === 'object') {
     const [tl, tr, br, bl] = element.cornerRadius

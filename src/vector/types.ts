@@ -1,6 +1,6 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text'
 
 export type VectorPoint = { x: number; y: number }
 
@@ -47,6 +47,10 @@ export type VectorPaint = {
   imageMode?: 'fill' | 'fit' | 'tile'
 }
 
+export type VectorTextAlign = 'left' | 'center' | 'right'
+/** `auto` grows the box with the content; `fixed` wraps the content into the box width. */
+export type VectorTextSizing = 'auto' | 'fixed'
+
 export type VectorStrokeAlign = 'center' | 'inside' | 'outside'
 export type VectorStrokeCap = 'butt' | 'round' | 'square'
 export type VectorStrokeJoin = 'miter' | 'round' | 'bevel'
@@ -87,6 +91,17 @@ export type VectorElement = {
   opacity: number
   visible: boolean
   locked: boolean
+  /** Text content, `\n` between lines. Text elements only. */
+  text?: string
+  fontFamily?: string
+  fontSize?: number
+  fontWeight?: number
+  /** Line advance as a multiple of the font size. */
+  lineHeight?: number
+  /** Extra advance between characters, in pixels at the current font size. */
+  letterSpacing?: number
+  textAlign?: VectorTextAlign
+  textSizing?: VectorTextSizing
   /** Editable geometry as a graph; primitives without one use their implicit outline. */
   network?: VectorNetwork
   /** Face keys whose fill is switched off with the paint bucket. */

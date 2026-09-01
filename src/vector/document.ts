@@ -3,6 +3,7 @@ import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, sanitizeParents, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorElementKind } from '@/vector/types'
 import { sanitizeNetwork } from '@/vector/network'
+import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
@@ -12,6 +13,7 @@ const DEFAULT_HEIGHT = 600
 const DEFAULT_BACKGROUND = '#151516'
 export const DEFAULT_SHAPE_FILL = '#1C1D1E'
 const DEFAULT_PATH_STROKE = '#D4E7E1'
+export const DEFAULT_TEXT_FILL = '#D4E7E1'
 export const MAX_DOCUMENT_SIZE = 10000
 
 function readAll(): Record<string, VectorDocument> {
@@ -108,7 +110,9 @@ export function vectorManifest(document: VectorDocument): RigManifest {
   }
 }
 
-export type CreateElementOptions = Partial<Pick<VectorElement, 'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff'>>
+export type CreateElementOptions = Partial<Pick<VectorElement,
+  'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff'
+  | 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'textAlign' | 'textSizing'>>
 
 export function createVectorElement(
   kind: VectorElementKind,
@@ -117,6 +121,7 @@ export function createVectorElement(
 ): VectorElement {
   const isPath = kind === 'path'
   const isGroup = kind === 'group'
+  const isText = kind === 'text'
   const element: VectorElement = {
     id: crypto.randomUUID(),
     kind,
@@ -126,8 +131,8 @@ export function createVectorElement(
     width: Math.max(1, round(bounds.width)),
     height: Math.max(1, round(bounds.height)),
     rotation: 0,
-    fill: options.fill ?? (isPath || isGroup ? 'none' : DEFAULT_SHAPE_FILL),
-    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup ? 'none' : DEFAULT_SHAPE_FILL),
+    fill: options.fill ?? (isText ? DEFAULT_TEXT_FILL : isPath || isGroup ? 'none' : DEFAULT_SHAPE_FILL),
+    stroke: options.stroke ?? (isPath ? DEFAULT_PATH_STROKE : isGroup || isText ? 'none' : DEFAULT_SHAPE_FILL),
     strokeWidth: options.strokeWidth ?? (isPath ? 2 : 0),
     opacity: 1,
     visible: true,
@@ -135,6 +140,16 @@ export function createVectorElement(
   }
   if (options.network) element.network = options.network
   if (options.regionsOff?.length) element.regionsOff = options.regionsOff
+  if (isText) {
+    element.text = options.text ?? DEFAULT_TEXT.text
+    element.fontFamily = options.fontFamily ?? DEFAULT_TEXT.fontFamily
+    element.fontSize = options.fontSize ?? DEFAULT_TEXT.fontSize
+    element.fontWeight = options.fontWeight ?? DEFAULT_TEXT.fontWeight
+    element.lineHeight = options.lineHeight ?? DEFAULT_TEXT.lineHeight
+    element.letterSpacing = options.letterSpacing ?? DEFAULT_TEXT.letterSpacing
+    element.textAlign = options.textAlign ?? DEFAULT_TEXT.textAlign
+    element.textSizing = options.textSizing ?? DEFAULT_TEXT.textSizing
+  }
   return element
 }
 
@@ -144,6 +159,7 @@ function defaultName(kind: VectorElementKind): string {
     case 'ellipse': return 'Ellipse'
     case 'path': return 'Path'
     case 'group': return 'Group'
+    case 'text': return 'Text'
   }
 }
 
@@ -185,7 +201,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
-    const simple = !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+    const simple = element.kind !== 'text' && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
@@ -282,7 +298,8 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group') return null
+  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text') return null
+  if (source.kind === 'text' && typeof source.text !== 'string') return null
   if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string') return null
   if (![source.x, source.y, source.width, source.height, source.rotation, source.strokeWidth, source.opacity].every(Number.isFinite)) return null
   const fill = sanitizePaint(source.fill)
@@ -292,7 +309,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const strokes = sanitizePaints(source.strokes)
   const strokeSides = source.kind === 'rectangle' && !source.network ? sanitizeStrokeSides(source.strokeSides) : undefined
   const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
-  const network = source.kind === 'group' ? null : sanitizeNetwork(source.network)
+  const network = source.kind === 'group' || source.kind === 'text' ? null : sanitizeNetwork(source.network)
   if (source.kind === 'path' && !network) return null
   const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
@@ -324,6 +341,23 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(cornerRadius !== undefined ? { cornerRadius } : {}),
     ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
+    ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
+  }
+}
+
+function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorElement> {
+  const known = TEXT_FACES.some((face) => face.value === source.fontFamily)
+  const number = (value: unknown, min: number, max: number, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
+  return {
+    text: (source.text ?? '').slice(0, MAX_TEXT_LENGTH),
+    fontFamily: known ? source.fontFamily! : DEFAULT_TEXT.fontFamily,
+    fontSize: number(source.fontSize, 1, 2000, DEFAULT_TEXT.fontSize),
+    fontWeight: number(source.fontWeight, 100, 900, DEFAULT_TEXT.fontWeight),
+    lineHeight: number(source.lineHeight, 0.5, 6, DEFAULT_TEXT.lineHeight),
+    letterSpacing: number(source.letterSpacing, -200, 200, DEFAULT_TEXT.letterSpacing),
+    textAlign: source.textAlign === 'center' || source.textAlign === 'right' ? source.textAlign : DEFAULT_TEXT.textAlign,
+    textSizing: source.textSizing === 'fixed' ? 'fixed' : DEFAULT_TEXT.textSizing,
   }
 }
 

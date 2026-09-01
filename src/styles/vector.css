@@ -1077,3 +1077,23 @@
 @media (pointer: coarse) {
   .library-recent__item { min-height: 64px; }
 }
+
+/* In-place text editing: the editable sits exactly where the <text> would paint. */
+.vector-text-editor {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  transform-origin: center;
+  overflow-wrap: break-word;
+  -webkit-user-select: text;
+  user-select: text;
+  caret-color: currentColor;
+  box-shadow: 0 0 0 1px var(--vector-selection);
+}
+.vector-text-editor::selection,
+.vector-text-editor *::selection { background: var(--vector-selection-fill); }
+.vector-canvas[data-tool='text'] .vector-artboard { cursor: text; }

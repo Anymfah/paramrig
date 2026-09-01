@@ -52,3 +52,33 @@ describe('affine transforms', () => {
     expect(elementInLasso(createVectorElement('rectangle', { x: 300, y: 300, width: 40, height: 40 }), shape)).toBe(false)
   })
 })
+
+describe('text under an affine', () => {
+  const text = (): VectorElement => ({
+    id: 't', kind: 'text', name: 'Text', x: 0, y: 0, width: 100, height: 40, rotation: 0,
+    fill: '#FFFFFF', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false,
+    text: 'Hi', fontSize: 20, letterSpacing: 2,
+  })
+
+  it('scales the letters with the box', () => {
+    const patch = transformElementAffine(text(), { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 })
+
+    expect(patch).toMatchObject({ width: 200, height: 80, fontSize: 40, letterSpacing: 4 })
+  })
+
+  it('leaves the letters alone when the box only moves or turns', () => {
+    const moved = transformElementAffine(text(), { a: 1, b: 0, c: 0, d: 1, e: 30, f: 10 })
+    const turned = transformElementAffine(text(), rotationAffine(90, { x: 50, y: 20 }))
+
+    expect(moved.fontSize).toBeUndefined()
+    expect(turned.fontSize).toBeUndefined()
+    expect(turned.rotation).toBe(90)
+  })
+
+  it('keeps a mirrored text readable rather than shrinking it', () => {
+    const patch = transformElementAffine(text(), flipAffine('x', { x: 50, y: 20 }))
+
+    expect(patch.fontSize).toBeUndefined()
+    expect(patch).toMatchObject({ width: 100, height: 40 })
+  })
+})

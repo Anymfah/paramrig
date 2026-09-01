@@ -99,3 +99,42 @@ describe('render model caching', () => {
     expect(widened.d).not.toBe(first.d)
   })
 })
+
+describe('text models', () => {
+  const text = (patch: Partial<VectorElement> = {}): VectorElement => ({
+    id: 'txt', kind: 'text', name: 'Text', x: 10, y: 20, width: 200, height: 60, rotation: 0,
+    fill: '#D4E7E1', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false,
+    text: 'one\ntwo', fontSize: 20, lineHeight: 1.5, ...patch,
+  })
+
+  it('lays the lines out inside the box instead of emitting paths', () => {
+    const model = renderModel(text(), 'canvas')
+
+    expect(model.layers).toEqual([])
+    expect(model.text?.lines.map((line) => line.text)).toEqual(['one', 'two'])
+    expect(model.text?.anchor).toBe('start')
+    expect(model.text?.fill).toBe('#D4E7E1')
+    expect(model.text!.lines[1]!.y - model.text!.lines[0]!.y).toBe(30)
+    expect(model.text!.lines[0]!.x).toBe(10)
+  })
+
+  it('gives the box to hit testing so a text is grabbed anywhere inside it', () => {
+    const model = renderModel(text(), 'canvas')
+
+    expect(model.d).toBe(model.fillD)
+    expect(model.d).toContain('M 10 20')
+    expect(model.d).toContain('210')
+  })
+
+  it('anchors centred and right-aligned text on the box', () => {
+    expect(renderModel(text({ textAlign: 'center' }), 'canvas').text?.anchor).toBe('middle')
+    expect(renderModel(text({ textAlign: 'right', textSizing: 'fixed' }), 'canvas').text?.lines[0]!.x).toBe(210)
+  })
+
+  it('carries a stroke onto the letters when there is one', () => {
+    const model = renderModel(text({ stroke: '#112233', strokeWidth: 2 }), 'canvas')
+
+    expect(model.text?.stroke).toBe('#112233')
+    expect(model.text?.strokeWidth).toBe(2)
+  })
+})

@@ -5,13 +5,15 @@ import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResi
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
+import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
+import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
   bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
   transformNodes, worldNetwork, type AbsNetwork, type AbsSegment,
 } from '@/vector/network'
 import { pencilNodes } from '@/vector/pencil'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
-import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef } from '@/vector/render'
+import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import { collectSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
@@ -43,6 +45,8 @@ export type VectorHud = { label: string; x: number; y: number }
 export type VectorCanvasController = {
   fit: (bounds: Bounds | null, padding?: number) => void
   zoomTo: (zoom: number) => void
+  /** Opens in-place editing on a text element, as a double-click does. */
+  editText: (id: string) => void
 }
 
 type Interaction =
@@ -166,6 +170,9 @@ export function VectorCanvas({
   const [selectedSegmentId, setSelectedSegmentState] = useState<string | null>(null)
   const [draftGuide, setDraftGuide] = useState<VectorGuide | null>(null)
   const [coarse, setCoarse] = useState(false)
+  const [textEditId, setTextEditId] = useState<string | null>(null)
+  const textDraft = useRef('')
+  const editText = useRef<(element: VectorElement) => void>(() => undefined)
 
   const setPenDraft = (draft: PenDraft | null) => {
     penDraftRef.current = draft
@@ -183,7 +190,8 @@ export function VectorCanvas({
   const elements = document.elements
   const selectedElements = useMemo(() => elements.filter((element) => selectedIds.includes(element.id)), [elements, selectedIds])
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
-  const editing = (tool === 'node' || tool === 'bucket') && selected && selected.kind !== 'group' && selected.visible && !selected.locked ? selected : null
+  const editing = (tool === 'node' || tool === 'bucket') && selected && selected.kind !== 'group' && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
+  const textEditing = textEditId ? elements.find((element) => element.id === textEditId && element.kind === 'text') ?? null : null
   const selectedLeaves = useMemo(() => leafElements(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
   const tree = useMemo(() => buildTree(elements), [elements])
 
@@ -258,6 +266,10 @@ export function VectorCanvas({
         const ratio = clamp(nextZoom, 0.1, 8) / current.zoom
         onZoomChange(clamp(nextZoom, 0.1, 8))
         onPanChange({ x: current.pan.x * ratio, y: current.pan.y * ratio })
+      },
+      editText: (id) => {
+        const element = documentRef.current.elements.find((item) => item.id === id)
+        if (element?.kind === 'text' && !element.locked) editText.current(element)
       },
     }
     return () => { controller.current = null }
@@ -625,13 +637,67 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  /** Opens the in-place editor; the whole edit becomes one undo entry. */
+  const openTextEditor = (element: VectorElement) => {
+    if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
+    textDraft.current = element.text ?? ''
+    onGestureStart()
+    setTextEditId(element.id)
+  }
+
+  editText.current = openTextEditor
+
+  /** A click drops an auto-sized text, a drag gives it a fixed box; both open the editor. */
+  const addText = (box: Bounds | null, at: Point) => {
+    const properties = textProperties({})
+    const placeholder = { width: properties.fontSize * 4, height: properties.fontSize * properties.lineHeight }
+    const bounds = box ?? { x: at.x, y: at.y - placeholder.height / 2, ...placeholder }
+    const element = createVectorElement('text', bounds, { text: '', ...(box ? { textSizing: 'fixed' as const } : {}) })
+    textDraft.current = ''
+    onGestureStart()
+    onAddElements([element])
+    setTextEditId(element.id)
+  }
+
+  /** Keeps the box around the content: an auto box follows the text, a fixed box only grows down. */
+  const applyTextEdit = (element: VectorElement, text: string) => {
+    textDraft.current = text
+    onUpdate(element.id, resizeTextPatch(element, { text }, canvasMeasure), false)
+  }
+
+  const closeTextEditor = (cancel: boolean) => {
+    const id = textEditId
+    setTextEditId(null)
+    if (!id) return
+    if (cancel) {
+      onGestureCancel()
+      return
+    }
+    // A text nobody typed into leaves nothing behind.
+    if (!textDraft.current.trim()) {
+      onEditElements((all) => all.filter((item) => item.id !== id), false)
+      onSelectIds([])
+      onGestureEnd()
+      return
+    }
+    // An untouched name follows the content, the way a layer list expects.
+    const element = documentRef.current.elements.find((item) => item.id === id)
+    if (element && element.name === 'Text') {
+      const first = textDraft.current.split('\n').find((line) => line.trim())?.trim()
+      if (first) onUpdate(id, { name: first.slice(0, 40) }, false)
+    }
+    onGestureEnd()
+  }
+
   const finish = (event: ReactPointerEvent<SVGSVGElement>) => {
     flushPointerMove()
     const active = interaction.current
     if (!active || active.kind === 'modal' || active.pointerId !== event.pointerId) return
     if (active.kind === 'create') {
       const bounds = boundsBetween(active.start, active.current, event.shiftKey)
-      if (bounds.width >= 2 && bounds.height >= 2) {
+      if (tool === 'text') {
+        addText(bounds.width >= 8 && bounds.height >= 8 ? (viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds) : null, active.start)
+      } else if (bounds.width >= 2 && bounds.height >= 2) {
         onAddElements([createVectorElement(tool === 'ellipse' ? 'ellipse' : 'rectangle', viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds)])
       }
     } else if (active.kind === 'marquee') {
@@ -747,7 +813,7 @@ export function VectorCanvas({
 
   const onShapePointerDown = (element: VectorElement, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -837,6 +903,10 @@ export function VectorCanvas({
     if (resolvedElement.locked) return
     onSelectIds([resolvedElement.id])
     onSelectNodes([])
+    if (resolvedElement.kind === 'text') {
+      openTextEditor(resolvedElement)
+      return
+    }
     onToolChange('node')
   }
 
@@ -851,7 +921,7 @@ export function VectorCanvas({
   const onCanvasPointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -1426,6 +1496,7 @@ export function VectorCanvas({
               pixelPreview={viewOptions.pixelPreview}
               selectedIds={selectedIds}
               editingId={editing?.id ?? null}
+              textEditingId={textEditId}
               inheritedLocked={false}
               viewBounds={viewBounds}
               onPointerDown={stableShapePointerDown}
@@ -1534,6 +1605,19 @@ export function VectorCanvas({
           onPointerCancel={() => { if (interaction.current?.kind === 'guide-create') clearInteraction() }}
         />
       ) : null}
+      {textEditing ? (
+        <VectorTextEditor
+          element={textEditing}
+          zoom={zoom}
+          pan={pan}
+          viewport={viewportSize}
+          page={{ width: document.width, height: document.height }}
+          color={textEditing.fill === 'none' ? 'currentColor' : textEditing.fill}
+          onChange={(text) => applyTextEdit(textEditing, text)}
+          onCommit={() => closeTextEditor(false)}
+          onCancel={() => closeTextEditor(true)}
+        />
+      ) : null}
       {hud ? <div className="vector-hud" role="status" aria-live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</div> : null}
       {viewOptions.minimap ? (
         <Minimap
@@ -1593,13 +1677,14 @@ function nodeModalMap(mode: VectorTransformMode, axis: VectorTransformAxis, orig
   return (point) => ({ x: origin.x + (point.x - origin.x) * factorX, y: origin.y + (point.y - origin.y) * factorY })
 }
 
-function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, inheritedLocked, viewBounds, onPointerDown, onHover }: {
+function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, textEditingId, inheritedLocked, viewBounds, onPointerDown, onHover }: {
   nodes: TreeNode[]
   zoom: number
   coarse: boolean
   pixelPreview: VectorPixelPreview
   selectedIds: string[]
   editingId: string | null
+  textEditingId: string | null
   inheritedLocked: boolean
   viewBounds: Bounds | null
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
@@ -1620,6 +1705,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 pixelPreview={pixelPreview}
                 selectedIds={selectedIds}
                 editingId={editingId}
+                textEditingId={textEditingId}
                 inheritedLocked={inheritedLocked || element.locked}
                 viewBounds={viewBounds}
                 onPointerDown={onPointerDown}
@@ -1638,6 +1724,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
             pixelPreview={pixelPreview}
             selected={selectedIds.includes(element.id)}
             editing={element.id === editingId}
+            hideText={element.id === textEditingId}
             hitTarget={withinView(element, viewBounds)}
             onPointerDown={onPointerDown}
             onHover={onHover}
@@ -1652,7 +1739,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
  * One painted shape plus its stroke hit companion. Memoised on primitive props so a gesture
  * re-renders only the object it edits; the hit companion is skipped for shapes outside the view.
  */
-const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hitTarget, onPointerDown, onHover }: {
+const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hideText, hitTarget, onPointerDown, onHover }: {
   element: VectorElement
   locked: boolean
   zoom: number
@@ -1660,6 +1747,7 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   pixelPreview: VectorPixelPreview
   selected: boolean
   editing: boolean
+  hideText: boolean
   hitTarget: boolean
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
@@ -1669,7 +1757,9 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   const model = renderModel(rendered, 'canvas')
   const pointerDown = (event: ReactPointerEvent<SVGElement>) => onPointerDown(element, event)
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
-  const fillEvents = fillPointerEvents({ locked, visible: element.visible, fill: hitTarget && model.layers.some((layer) => layer.kind === 'fill') ? '#000000' : 'none' })
+  // A text box is grabbed anywhere inside it; a shape only where it actually paints.
+  const painted = model.text ? hitTarget : hitTarget && model.layers.some((layer) => layer.kind === 'fill')
+  const fillEvents = fillPointerEvents({ locked, visible: element.visible, fill: painted ? '#000000' : 'none' })
   return (
     <>
       {model.defs.length ? <defs><RenderDefs defs={model.defs} /></defs> : null}
@@ -1686,9 +1776,11 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
         {model.layers.map((layer, index) => (
           <path key={index} d={layer.d} transform={model.transform} {...layerAttributes(layer)} pointerEvents={layer.kind === 'fill' ? fillEvents : 'none'} />
         ))}
-        {model.layers.length === 0 ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents="none" /> : null}
+        {model.text ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents={fillEvents === 'none' ? 'none' : 'all'} /> : null}
+        {model.text && !hideText ? <TextLayer text={model.text} transform={model.transform} /> : null}
+        {model.layers.length === 0 && !model.text ? <path d={model.d} transform={model.transform} fill="none" stroke="none" pointerEvents="none" /> : null}
       </g>
-      {hittable ? (
+      {hittable && !model.text ? (
         <path
           className="vector-hit"
           data-vector-element={element.id}
@@ -1702,6 +1794,29 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
     </>
   )
 })
+
+/** One `<text>` with a `<tspan>` per line; the paint rides on the text itself. */
+function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>; transform: string }) {
+  return (
+    <text
+      transform={transform}
+      fontFamily={text.fontFamily}
+      fontSize={text.fontSize}
+      fontWeight={text.fontWeight}
+      letterSpacing={text.letterSpacing || undefined}
+      textAnchor={text.anchor}
+      fill={text.fill}
+      fillOpacity={text.fillOpacity}
+      stroke={text.stroke ?? undefined}
+      strokeOpacity={text.stroke ? text.strokeOpacity : undefined}
+      strokeWidth={text.stroke ? text.strokeWidth : undefined}
+      pointerEvents="none"
+      xmlSpace="preserve"
+    >
+      {text.lines.map((line, index) => <tspan key={index} x={line.x} y={line.y}>{line.text}</tspan>)}
+    </text>
+  )
+}
 
 /** Whether an element's box, generously padded for rotation and stroke, meets the visible area. */
 function withinView(element: VectorElement, view: Bounds | null): boolean {

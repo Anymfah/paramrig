@@ -9,6 +9,7 @@ import {
   serializeVectorDocument,
   vectorManifest,
 } from '@/vector/document'
+import type { VectorElement } from '@/vector/types'
 
 describe('vector documents', () => {
   beforeEach(() => {
@@ -152,5 +153,67 @@ describe('paths, paints, groups and guides', () => {
     const result = sanitizeVectorDocument({ ...document, elements: [orphan, empty] })
     expect(result?.elements).toHaveLength(1)
     expect(result?.elements[0]?.parentId).toBeUndefined()
+  })
+})
+
+describe('text elements', () => {
+  beforeEach(() => localStorage.clear())
+
+  const textElement = (patch: Partial<VectorElement> = {}): VectorElement => ({
+    ...createVectorElement('text', { x: 10, y: 20, width: 120, height: 40 }, { text: 'Hello\nthere' }),
+    ...patch,
+  })
+
+  it('creates a text element with the shipped face and a paint that reads on the canvas', () => {
+    const element = createVectorElement('text', { x: 0, y: 0, width: 100, height: 40 })
+
+    expect(element).toMatchObject({
+      kind: 'text', name: 'Text', text: 'Text', fontFamily: 'Public Sans',
+      fontSize: 32, fontWeight: 400, lineHeight: 1.3, letterSpacing: 0,
+      textAlign: 'left', textSizing: 'auto', stroke: 'none',
+    })
+    expect(element.fill).not.toBe('none')
+  })
+
+  it('keeps the text properties through a sanitise round trip', () => {
+    const element = textElement({ fontFamily: 'Georgia', fontSize: 18, fontWeight: 700, lineHeight: 1.6, letterSpacing: 2, textAlign: 'center', textSizing: 'fixed' })
+
+    const clean = sanitizeVectorDocument({ ...createVectorDocument(), elements: [element] })
+
+    expect(clean?.elements[0]).toMatchObject({
+      kind: 'text', text: 'Hello\nthere', fontFamily: 'Georgia', fontSize: 18,
+      fontWeight: 700, lineHeight: 1.6, letterSpacing: 2, textAlign: 'center', textSizing: 'fixed',
+    })
+  })
+
+  it('refuses a text element with no content, clamps sizes and falls back on unknown faces', () => {
+    const document = createVectorDocument()
+
+    expect(sanitizeVectorDocument({ ...document, elements: [{ ...textElement(), text: undefined }] })?.elements).toEqual([])
+    expect(sanitizeVectorDocument({ ...document, elements: [textElement({ fontFamily: 'Comic Papyrus', fontSize: -4, lineHeight: 99, textAlign: 'justify' as never })] })?.elements[0]).toMatchObject({
+      fontFamily: 'Public Sans', fontSize: 1, lineHeight: 6, textAlign: 'left',
+    })
+  })
+
+  it('exports one tspan per line instead of a rectangle', () => {
+    const document = { ...createVectorDocument(), elements: [textElement({ textAlign: 'center' })] }
+
+    const svg = serializeVectorDocument(document)
+
+    expect(svg).toContain('<text ')
+    expect(svg).not.toContain('<rect')
+    expect(svg).toContain('text-anchor="middle"')
+    expect(svg.match(/<tspan /g)).toHaveLength(2)
+    expect(svg).toContain('>Hello</tspan>')
+    expect(svg).toContain('>there</tspan>')
+  })
+
+  it('escapes markup in the text it exports', () => {
+    const document = { ...createVectorDocument(), elements: [textElement({ text: '<b>&"</b>' })] }
+
+    const svg = serializeVectorDocument(document)
+
+    expect(svg).toContain('&lt;b&gt;&amp;"&lt;/b&gt;')
+    expect(svg).not.toContain('<b>')
   })
 })
