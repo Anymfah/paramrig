@@ -25,6 +25,8 @@ import { cutNode, cutSegment, scaleStylePatch, uniformFactor } from '@/vector/cu
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import type { FilterPrimitive } from '@/vector/filters'
+import { renderStats } from '@/vector/render'
+import { faceCacheStats } from '@/vector/planar'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, transformLeaves, type TreeNode } from '@/vector/tree'
@@ -347,6 +349,11 @@ export function VectorCanvas({
     }
     return () => { controller.current = null }
   }, [controller, onPanChange, onZoomChange])
+
+  // Diagnostics: the caches a QA run reads to tell a repaint apart from a rebuild.
+  useEffect(() => {
+    Object.assign(window, { paramrigVectorStats: { render: renderStats, faces: faceCacheStats } })
+  }, [])
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return

@@ -47,13 +47,17 @@ function fixed(value: number): string {
 export function computeFaces(world: AbsNetwork): Face[] {
   const key = networkFingerprint(world)
   const cached = faceCache.get(key)
-  if (cached) return cached
+  if (cached) {
+    faceCacheStats.hits += 1
+    return cached
+  }
+  faceCacheStats.misses += 1
   const faces = arrangeFaces(world)
   faceCache.set(key, faces)
   return faces
 }
 
-export const faceCacheStats = { get size() { return faceCache.size } }
+export const faceCacheStats = { hits: 0, misses: 0, get size() { return faceCache.size } }
 
 function arrangeFaces(world: AbsNetwork): Face[] {
   if (world.segments.length < 2) return []

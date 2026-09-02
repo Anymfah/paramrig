@@ -131,10 +131,17 @@ const modelCache = createLruCache<RenderModel>(MODEL_CACHE_SIZE)
  * Models are cached by element content, so callers must treat the result as frozen: a shape that
  * has not changed reuses the model from the previous frame instead of re-arranging its faces.
  */
+/** Hits and misses on the model cache, so a QA run can tell a repaint from a rebuild. */
+export const renderStats = { hits: 0, misses: 0, get size() { return modelCache.size } }
+
 export function renderModel(element: VectorElement, prefix: string): RenderModel {
   const key = `${prefix}\u0000${JSON.stringify(element)}`
   const cached = modelCache.get(key)
-  if (cached) return cached
+  if (cached) {
+    renderStats.hits += 1
+    return cached
+  }
+  renderStats.misses += 1
   const model = buildRenderModel(element, prefix)
   modelCache.set(key, model)
   return model
