@@ -39,13 +39,23 @@ export type VectorNetwork = {
 
 export type VectorGradientStop = { t: number; color: string }
 
+/** One knot of a mesh gradient: where it sits in the element box, and the colour it carries. */
+export type VectorMeshPoint = { x: number; y: number; color: string }
+
+/**
+ * A mesh gradient: a grid of `rows` by `cols` patches, so `(rows + 1) * (cols + 1)` points, in
+ * row-major order. Positions and colours interpolate bilinearly between the four corners of a
+ * patch; there are no per-point tangents.
+ */
+export type VectorMesh = { rows: number; cols: number; points: VectorMeshPoint[] }
+
 /** How the tiles of a pattern are laid out against each other. */
 export type VectorPatternMode = 'grid' | 'brick' | 'hex'
 
 /** One paint layer. Solid colours stay hex; gradients run along the element box; images are data URLs. */
 export type VectorPaint = {
   id: string
-  type: 'solid' | 'linear' | 'radial' | 'image' | 'pattern'
+  type: 'solid' | 'linear' | 'radial' | 'image' | 'pattern' | 'mesh'
   color?: string
   opacity: number
   visible: boolean
@@ -67,6 +77,8 @@ export type VectorPaint = {
   scale?: number
   offset?: VectorPoint
   patternMode?: VectorPatternMode
+  /** Mesh fills: the grid of coloured points. */
+  mesh?: VectorMesh
   /** Where the picture sits inside the box, in fractions of the box, and how big it is drawn. */
   imageOffset?: VectorPoint
   imageScale?: number

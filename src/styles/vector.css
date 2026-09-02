@@ -1925,3 +1925,19 @@
 .vector-font__note { flex: none; font-size: var(--text-xs); color: var(--text-muted); }
 .vector-font__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
 .vector-font__hint { font-size: var(--text-xs); color: var(--text-muted); }
+
+/* The mesh gradient editor: the grid of knots over the shape. */
+.vector-mesh__line {
+  stroke: var(--vector-selection);
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.vector-mesh__hit { fill: transparent; cursor: move; }
+.vector-mesh__knot {
+  stroke: var(--vector-handle-fill);
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-mesh__knot[data-selected] { stroke: var(--vector-selection); stroke-width: 2.5; }

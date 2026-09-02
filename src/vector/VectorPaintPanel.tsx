@@ -10,6 +10,7 @@ import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { dataUrlBytes, readImageFile } from '@/vector/images'
 import { defaultStops, MAX_IMAGE_BYTES, MAX_PAINTS, solidPaint } from '@/vector/paints'
+import { defaultMesh } from '@/vector/mesh'
 import type { VectorPaint } from '@/vector/types'
 
 type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
@@ -34,10 +35,11 @@ type PaintListProps = {
   palette?: PaintPalette
   /** Extra controls shown next to the layer title, used for style links. */
   header?: ReactNode
+  selectedMeshPoint?: number | null
 }
 
 /** Stacked paint layers for a fill or stroke, bottom first in the model, top first on screen. */
-export function PaintList({ label, paints, mixed = false, onChange, gesture, palette, header }: PaintListProps) {
+export function PaintList({ label, paints, mixed = false, onChange, gesture, palette, header, selectedMeshPoint }: PaintListProps) {
   const update = (index: number, patch: Partial<VectorPaint>, record?: boolean) => {
     onChange(paints.map((paint, position) => position === index ? { ...paint, ...patch } : paint), record)
   }
@@ -70,13 +72,19 @@ export function PaintList({ label, paints, mixed = false, onChange, gesture, pal
           onRemove={() => remove(index)}
           gesture={gesture}
           palette={palette}
+          selectedMeshPoint={selectedMeshPoint}
         />
       ))}
     </div>
   )
 }
 
-function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palette }: {
+/** One knot repainted, the rest of the mesh untouched. */
+function withKnot(mesh: NonNullable<VectorPaint['mesh']>, index: number, color: string) {
+  return { ...mesh, points: mesh.points.map((point, position) => position === index ? { ...point, color } : point) }
+}
+
+function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palette, selectedMeshPoint }: {
   label: string
   paint: VectorPaint
   removable: boolean
@@ -84,14 +92,17 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
   onRemove: () => void
   gesture: Gesture
   palette?: PaintPalette
+  /** Which mesh knot the canvas has selected, so its colour can be edited here. */
+  selectedMeshPoint?: number | null
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState<string | null>(null)
-  const typeLabel = paint.type === 'solid' ? 'Solid' : paint.type === 'linear' ? 'Linear' : paint.type === 'radial' ? 'Radial' : paint.type === 'pattern' ? 'Pattern' : 'Image'
+  const typeLabel = paint.type === 'solid' ? 'Solid' : paint.type === 'linear' ? 'Linear' : paint.type === 'radial' ? 'Radial' : paint.type === 'pattern' ? 'Pattern' : paint.type === 'mesh' ? 'Mesh' : 'Image'
   const changeType = (type: VectorPaint['type']) => {
     if (type === paint.type) return
     const base = paint.type === 'solid' && paint.color ? paint.color : paint.stops?.[0]?.color ?? '#D4E7E1'
-    if (type === 'solid') onChange({ type, color: base, stops: undefined, image: undefined, angle: undefined })
+    if (type === 'solid') onChange({ type, color: base, stops: undefined, image: undefined, angle: undefined, mesh: undefined })
+    else if (type === 'mesh') onChange({ type, mesh: paint.mesh ?? defaultMesh(), color: undefined, stops: undefined, image: undefined })
     else if (type === 'image') {
       onChange({ type, imageMode: paint.imageMode ?? 'fill', color: undefined, stops: undefined })
       requestAnimationFrame(() => fileInput.current?.click())
@@ -135,6 +146,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
           { value: 'linear', label: 'Linear' },
           { value: 'radial', label: 'Radial' },
           { value: 'image', label: 'Image' },
+          { value: 'mesh', label: 'Mesh' },
           ...(paint.type === 'pattern' ? [{ value: 'pattern', label: 'Pattern' }] : []),
         ]}
         onChange={(value) => changeType(value as VectorPaint['type'])}
@@ -176,6 +188,27 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
             onChange={(value) => onChange({ imageMode: value as VectorPaint['imageMode'] })}
           />
           <p className="vector-panel__hint">Images up to 512 KB are stored inside the document.</p>
+        </>
+      ) : null}
+      {paint.type === 'mesh' && paint.mesh ? (
+        <>
+          <p className="vector-panel__hint">Drag the knots on the canvas. Double-click inside the shape to add a row and a column.</p>
+          {typeof selectedMeshPoint === 'number' && paint.mesh.points[selectedMeshPoint] ? (
+            <ColorField
+              label="Knot"
+              value={paint.mesh.points[selectedMeshPoint]!.color}
+              recent={palette?.recent}
+              swatches={palette?.swatches}
+              onAddSwatch={palette?.onAddSwatch}
+              onRemoveSwatch={palette?.onRemoveSwatch}
+              onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((hex) => onChange({ mesh: withKnot(paint.mesh!, selectedMeshPoint, hex) })) : undefined}
+              onColorUsed={palette?.onColorUsed}
+              onChange={(color) => onChange({ mesh: withKnot(paint.mesh!, selectedMeshPoint, color) }, false)}
+              onGestureStart={gesture.onGestureStart}
+              onGestureEnd={gesture.onGestureEnd}
+              onGestureCancel={gesture.onGestureCancel}
+            />
+          ) : <p className="vector-panel__hint">Select a knot on the canvas to change its colour.</p>}
         </>
       ) : null}
       {paint.type === 'pattern' && paint.tile ? (

@@ -28,12 +28,13 @@ import type { FilterPrimitive } from '@/vector/filters'
 import { renderStats } from '@/vector/render'
 import { handleRadii } from '@/vector/hitPriority'
 import { nearestOnRuns, removeProfilePoint, setProfilePoint, walkRun } from '@/vector/strokeProfile'
+import { meshPoint, splitMesh } from '@/vector/mesh'
 import { worldRuns } from '@/vector/booleans'
 import { faceCacheStats } from '@/vector/planar'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, transformLeaves, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorGuide, VectorPaint, VectorTool } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorGuide, VectorMesh, VectorMeshPoint, VectorPaint, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
 type Corner = Extract<DirectResizeHandle, 'nw' | 'ne' | 'se' | 'sw'>
@@ -93,6 +94,7 @@ type Interaction =
   | { kind: 'corner'; pointerId: number; element: VectorElement; corner: CornerName; alone: boolean }
   | { kind: 'gradient'; pointerId: number; element: VectorElement; index: number; handle: GradientHandle; stop: number }
   | { kind: 'image-place'; pointerId: number; start: Point; element: VectorElement; index: number; paint: VectorPaint }
+  | { kind: 'mesh'; pointerId: number; element: VectorElement; index: number; point: number }
   | { kind: 'width'; pointerId: number; element: VectorElement; runs: Run[]; t: number }
   | { kind: 'measure'; pointerId: number; from: Point; to: Point; targets: SnapTarget[] }
   | { kind: 'zoom'; pointerId: number; start: Point; current: Point; out: boolean }
@@ -136,6 +138,8 @@ type VectorCanvasProps = {
   /** While set, a click reads a colour off the drawing instead of selecting; null cancels. */
   sampling?: boolean
   onSample?: (point: Point | null) => void
+  /** Which knot of a mesh fill is selected, so the inspector can offer its colour. */
+  onMeshPointChange?: (index: number | null) => void
   onGestureStart: (label?: string) => void
   onGestureEnd: (label?: string) => void
   onGestureCancel: () => void
@@ -178,6 +182,7 @@ export function VectorCanvas({
   onEscape,
   sampling = false,
   onSample,
+  onMeshPointChange,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -210,6 +215,12 @@ export function VectorCanvas({
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   /** Where the width tool would put a point, and the profile points already on the chain. */
+  const meshTargetRef = useRef<{ element: VectorElement; index: number } | null>(null)
+  const [selectedMeshPoint, setSelectedMeshPointState] = useState<number | null>(null)
+  const setSelectedMeshPoint = (index: number | null) => {
+    setSelectedMeshPointState(index)
+    onMeshPointChange?.(index)
+  }
   const [widthHover, setWidthHover] = useState<{ t: number; point: Point } | null>(null)
   const widthHoverRef = useRef(widthHover)
   widthHoverRef.current = widthHover
@@ -1021,6 +1032,8 @@ export function VectorCanvas({
       onSelectNodes(active.additive ? [...new Set([...selectedNodeIdsRef.current, ...hits])] : hits)
       if (hits.length) setSelectedSegment(null)
       setMarqueeBounds(null)
+    } else if (active.kind === 'mesh') {
+      onGestureEnd('Move mesh point')
     } else if (active.kind === 'width') {
       onGestureEnd('Stroke width')
     } else if (active.kind === 'measure') {
@@ -1210,6 +1223,18 @@ export function VectorCanvas({
    */
   const onCanvasDoubleClick = (event: ReactMouseEvent<SVGSVGElement>) => {
     if (event.button !== 0) return
+    // A mesh being edited takes the double-click: it puts a row and a column through the spot.
+    if (meshTargetRef.current) {
+      const target = meshTargetRef.current
+      const at = point(event.nativeEvent)
+      const inside = at.x >= target.element.x && at.x <= target.element.x + target.element.width
+        && at.y >= target.element.y && at.y <= target.element.y + target.element.height
+      if (inside) {
+        if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
+        splitMeshAt(target.element, target.index, at)
+        return
+      }
+    }
     const stack = window.document.elementsFromPoint(event.clientX, event.clientY)
     const nodeHit = stack.map((node) => (node as Element).closest('[data-vector-node]')?.getAttribute('data-vector-node') ?? null).find((value): value is string => value !== null)
     if (nodeHit !== undefined && editing) {
@@ -1486,6 +1511,21 @@ export function VectorCanvas({
       const handleAt = event.shiftKey ? constrainAngle(anchor, at) : at
       setPenDraft(penDragHandle(draft, handleAt, event.altKey))
       showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'mesh') {
+      const box = active.element
+      const fraction = {
+        x: box.width > 0 ? clamp((at.x - box.x) / box.width, 0, 1) : 0,
+        y: box.height > 0 ? clamp((at.y - box.y) / box.height, 0, 1) : 0,
+      }
+      const paints = fillsOf(active.element).map((paint, position) => {
+        if (position !== active.index || !paint.mesh) return paint
+        const points = paint.mesh.points.map((point, index) => index === active.point ? { ...point, x: Math.round(fraction.x * 1000) / 1000, y: Math.round(fraction.y * 1000) / 1000 } : point)
+        return { ...paint, mesh: { ...paint.mesh, points } }
+      })
+      onUpdate(active.element.id, { fills: paints }, false)
+      showHud(`${Math.round(fraction.x * 100)}%, ${Math.round(fraction.y * 100)}%`, event.nativeEvent)
       return
     }
     if (active.kind === 'width') {
@@ -1782,6 +1822,28 @@ export function VectorCanvas({
     })
   }, [])
 
+  /** Drags one knot of a mesh; the whole drag is a single history entry. */
+  const startMeshPoint = (element: VectorElement, index: number, point: number, event: ReactPointerEvent<SVGElement>) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart('Move mesh point')
+    interaction.current = { kind: 'mesh', pointerId: event.pointerId, element: structuredClone(element), index, point }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  /** A double-click on the mesh puts a row and a column through the spot, so a knot lands there. */
+  const splitMeshAt = (element: VectorElement, index: number, at: Point) => {
+    const paints = fillsOf(element)
+    const paint = paints[index]
+    if (!paint?.mesh) return
+    const fraction = {
+      x: element.width > 0 ? (at.x - element.x) / element.width : 0.5,
+      y: element.height > 0 ? (at.y - element.y) / element.height : 0.5,
+    }
+    const next = paints.map((item, position) => position === index ? { ...item, mesh: splitMesh(paint.mesh!, fraction) } : item)
+    onUpdate(element.id, { fills: next }, true, 'Add mesh line')
+  }
+
   const onGuidePointerDown = (guide: VectorGuide, event: ReactPointerEvent<SVGElement>) => {
     if (event.button !== 0 || tool !== 'select' && tool !== 'transform') return
     event.stopPropagation()
@@ -1998,6 +2060,20 @@ export function VectorCanvas({
     }
     return null
   })()
+
+  /** The mesh being edited on the canvas: the topmost visible mesh fill of a lone selection. */
+  const meshTarget = (() => {
+    if (!showHandles || cropping || selectedElements.length !== 1 || !selected || selected.locked) return null
+    const paints = fillsOf(selected)
+    for (let index = paints.length - 1; index >= 0; index -= 1) {
+      const paint = paints[index]!
+      if (!paint.visible || paint.opacity <= 0) continue
+      return paint.type === 'mesh' && paint.mesh ? { element: selected, index, mesh: paint.mesh } : null
+    }
+    return null
+  })()
+
+  meshTargetRef.current = meshTarget
 
   /** The image fill being placed, once "Edit image" has been opened on it. */
   const imagePlacing = (() => {
@@ -2221,6 +2297,17 @@ export function VectorCanvas({
               dropping={droppingStop}
               onStart={startGradient}
               onAddStop={addGradientStop}
+            />
+          ) : null}
+          {meshTarget ? (
+            <MeshOverlay
+              element={meshTarget.element}
+              mesh={meshTarget.mesh}
+              zoom={zoom}
+              coarse={coarse}
+              selected={selectedMeshPoint}
+              onSelect={setSelectedMeshPoint}
+              onStart={(point, event) => { setSelectedMeshPoint(point); startMeshPoint(meshTarget.element, meshTarget.index, point, event) }}
             />
           ) : null}
           {imagePlacing ? (
@@ -2839,6 +2926,12 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
             return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" fillRule="evenodd" /></mask>
           case 'textPath':
             return <path key={def.id} id={def.id} d={def.d} fill="none" />
+          case 'meshPattern':
+            return (
+              <pattern key={def.id} id={def.id} patternUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}>
+                {def.cells.map((cell, index) => <path key={index} d={cell.d} fill={cell.color} shapeRendering="crispEdges" />)}
+              </pattern>
+            )
           case 'objectPattern':
             return (
               <Fragment key={def.id}>
@@ -3228,6 +3321,60 @@ function Pivot({ point, custom, zoom, onPointerDown, onDoubleClick }: { point: P
 }
 
 /** Distance lines between two boxes along each axis, drawn where the boxes do not overlap. */
+/** The knots of a mesh gradient: draggable, and a double-click adds a row and a column. */
+function MeshOverlay({ element, mesh, zoom, coarse, selected, onSelect, onStart }: {
+  element: VectorElement
+  mesh: VectorMesh
+  zoom: number
+  coarse: boolean
+  selected: number | null
+  onSelect: (index: number) => void
+  onStart: (index: number, event: ReactPointerEvent<SVGElement>) => void
+}) {
+  const { hit, glyph } = handleRadii(zoom, coarse)
+  const at = (point: VectorMeshPoint) => ({ x: element.x + point.x * element.width, y: element.y + point.y * element.height })
+  const lines: Array<{ key: string; from: Point; to: Point }> = []
+  for (let row = 0; row <= mesh.rows; row += 1) {
+    for (let col = 0; col <= mesh.cols; col += 1) {
+      const from = at(meshPoint(mesh, row, col))
+      if (col < mesh.cols) lines.push({ key: `h${row}-${col}`, from, to: at(meshPoint(mesh, row, col + 1)) })
+      if (row < mesh.rows) lines.push({ key: `v${row}-${col}`, from, to: at(meshPoint(mesh, row + 1, col)) })
+    }
+  }
+  return (
+    <g className="vector-mesh">
+      {lines.map((line) => (
+        <line key={line.key} className="vector-mesh__line" x1={line.from.x} y1={line.from.y} x2={line.to.x} y2={line.to.y} strokeWidth={1 / zoom} />
+      ))}
+      {mesh.points.map((point, index) => {
+        const spot = at(point)
+        return (
+          <g key={index}>
+            <circle
+              className="vector-mesh__hit"
+              data-vector-handle={`mesh-${index}`}
+              cx={spot.x}
+              cy={spot.y}
+              r={hit}
+              onPointerDown={(event) => onStart(index, event)}
+              onClick={() => onSelect(index)}
+            />
+            <circle
+              className="vector-mesh__knot"
+              data-selected={selected === index || undefined}
+              cx={spot.x}
+              cy={spot.y}
+              r={glyph}
+              strokeWidth={1.5 / zoom}
+              style={{ fill: point.color }}
+            />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
 /** Where the width profile has its points, and where the pointer would add one. */
 function WidthMarks({ element, hover, zoom }: { element: VectorElement; hover: { t: number; point: Point } | null; zoom: number }) {
   const runs = worldRuns(element).strokes

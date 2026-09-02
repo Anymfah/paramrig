@@ -76,6 +76,8 @@ type VectorInspectorProps = {
   onCropImage?: (id: string) => void
   /** Wraps the given shapes in a boolean group. */
   onBooleanGroup?: (operation: BooleanOperation, ids: string[]) => void
+  /** Which mesh knot the canvas has selected. */
+  selectedMeshPoint?: number | null
   /** Turns a selected path into a brush the document keeps. */
   onDefineBrush?: (element: VectorElement) => void
   /** Applies a font to the selection, loading and registering it with the document when needed. */
@@ -115,6 +117,7 @@ export function VectorInspector({
   onDeleteStyle,
   onCropImage,
   onBooleanGroup,
+  selectedMeshPoint,
   onDefineBrush,
   onPickFont,
   onImportFont,
@@ -411,6 +414,7 @@ export function VectorInspector({
               styles={document.styles ?? []}
               brushes={document.brushes ?? []}
               palette={palette}
+              selectedMeshPoint={selectedMeshPoint}
               onUpdate={onUpdate}
               onUpdateElements={onUpdateElements}
               onCreateStyle={onCreateStyle}
@@ -503,12 +507,13 @@ export function VectorInspector({
   )
 }
 
-function AppearancePanel({ elements, leaves, styles, brushes, palette, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, onDefineBrush, gesture }: {
+function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedMeshPoint, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, onDefineBrush, gesture }: {
   elements: VectorElement[]
   leaves: VectorElement[]
   styles: VectorStyle[]
   brushes: VectorBrush[]
   palette?: PaintPalette
+  selectedMeshPoint?: number | null
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
   onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
@@ -554,6 +559,7 @@ function AppearancePanel({ elements, leaves, styles, brushes, palette, onUpdate,
           mixed={fillsMixed}
           palette={palette}
           header={<StyleLink kind="fill" styles={styles} linked={fillStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
+          selectedMeshPoint={selectedMeshPoint}
           onChange={(paints, record) => {
             // A linked paint edits its style, which repaints every object that follows it.
             if (fillStyle && onUpdateStyle) onUpdateStyle(fillStyle.id, paints, record)

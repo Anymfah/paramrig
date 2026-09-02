@@ -7,6 +7,7 @@ import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontFeatureSettings, fontStack, layoutText, textProperties } from '@/vector/text'
 import { patternCell, patternTransform } from '@/vector/patterns'
+import { meshCells, meshSubdivisions } from '@/vector/mesh'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
 import { envelopePath } from '@/vector/strokeProfile'
@@ -20,6 +21,7 @@ export type RenderDef =
   | { type: 'pattern'; id: string; image: string; mode: 'fill' | 'fit' | 'tile'; x: number; y: number; width: number; height: number; offset?: VectorPoint; scale?: number }
   | { type: 'clipPath'; id: string; d: string }
   | { type: 'textPath'; id: string; d: string }
+  | { type: 'meshPattern'; id: string; x: number; y: number; width: number; height: number; cells: Array<{ d: string; color: string }> }
   | {
       type: 'objectPattern'
       id: string
@@ -392,6 +394,15 @@ function paintReference(
     defs.push({ type: 'radialGradient', id, cx: round(circle.center.x), cy: round(circle.center.y), r: round(circle.radius), stops: paint.stops })
     return `url(#${id})`
   }
+  if (paint.type === 'mesh') {
+    if (!paint.mesh) return null
+    // No browser draws a mesh gradient, so it is cut into flat cells and carried as a pattern the
+    // size of the box: that way a mesh is a paint like any other, on the canvas and in the file.
+    // A pattern's content is drawn from the tile's own origin, so the cells start at zero.
+    const cells = meshCells(paint.mesh, { x: 0, y: 0, width: bounds.width, height: bounds.height }, meshSubdivisions(Math.max(bounds.width, bounds.height)))
+    defs.push({ type: 'meshPattern', id, x: round(bounds.x), y: round(bounds.y), width: round(bounds.width), height: round(bounds.height), cells })
+    return `url(#${id})`
+  }
   if (paint.type === 'pattern') {
     const source = scene.find((item) => item.id === paint.sourceId)
     if (!source || !paint.tile) return null
@@ -459,6 +470,8 @@ export function defsToSvg(defs: RenderDef[]): string {
         return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
       case 'textPath':
         return `<path id="${def.id}" d="${def.d}" fill="none"/>`
+      case 'meshPattern':
+        return `<pattern id="${def.id}" patternUnits="userSpaceOnUse" x="${def.x}" y="${def.y}" width="${def.width}" height="${def.height}">${def.cells.map((cell) => `<path d="${cell.d}" fill="${cell.color}" shape-rendering="crispEdges"/>`).join('')}</pattern>`
       case 'objectPattern': {
         const body = def.stamps
           .map((stamp, index) => `<g transform="translate(${stamp.x} ${stamp.y})">${layersToSvg(def.content, `${def.id}-${index}`)}</g>`)

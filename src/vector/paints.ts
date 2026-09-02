@@ -1,4 +1,5 @@
 import { sanitizePoint } from '@/vector/gradient'
+import { sanitizeMesh } from '@/vector/mesh'
 import type { VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
 
 export const MAX_PAINTS = 8
@@ -31,6 +32,7 @@ export function summaryColor(paints: VectorPaint[]): string {
     if (paint.type === 'solid' && paint.color) return paint.color
     if ((paint.type === 'linear' || paint.type === 'radial') && paint.stops?.length) return paint.stops[0]!.color
     if (paint.type === 'image' || paint.type === 'pattern') return '#808080'
+    if (paint.type === 'mesh' && paint.mesh?.points.length) return paint.mesh.points[0]!.color
   }
   return 'none'
 }
@@ -64,12 +66,16 @@ export function sanitizePaints(value: unknown): VectorPaint[] | undefined {
     if (!candidate || typeof candidate !== 'object') continue
     const source = candidate as Partial<VectorPaint>
     if (typeof source.id !== 'string' || !source.id) continue
-    const type = source.type === 'linear' || source.type === 'radial' || source.type === 'image' || source.type === 'pattern' ? source.type : 'solid'
+    const type = source.type === 'linear' || source.type === 'radial' || source.type === 'image' || source.type === 'pattern' || source.type === 'mesh' ? source.type : 'solid'
     const opacity = typeof source.opacity === 'number' && Number.isFinite(source.opacity) ? Math.min(1, Math.max(0, source.opacity)) : 1
     const paint: VectorPaint = { id: source.id, type, opacity, visible: source.visible !== false }
     if (type === 'solid') {
       if (typeof source.color !== 'string' || !/^#[0-9a-f]{6}$/i.test(source.color)) continue
       paint.color = source.color.toUpperCase()
+    } else if (type === 'mesh') {
+      const mesh = sanitizeMesh(source.mesh)
+      if (!mesh) continue
+      paint.mesh = mesh
     } else if (type === 'pattern') {
       if (typeof source.sourceId !== 'string' || !source.sourceId) continue
       const tile = source.tile

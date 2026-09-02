@@ -112,6 +112,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [viewTool, setViewTool] = useState<ViewTool>('hand')
   /** Same idea for the shapes: the toolbar shows the last one drawn. */
   const [shapeTool, setShapeTool] = useState<ShapeTool>('rectangle')
+  /** The mesh knot the canvas has selected, so the inspector can offer its colour. */
+  const [meshPoint, setMeshPoint] = useState<number | null>(null)
   const [transformOpen, setTransformOpen] = useState(false)
   const [rotateCopiesOpen, setRotateCopiesOpen] = useState(false)
   /** ⌘⇧T reopens the dialog on the values it was last applied with. */
@@ -1135,6 +1137,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onRenameStyle={renameStyle}
           onDeleteStyle={deleteStyle}
           onCropImage={(id) => controller.current?.cropImage(id)}
+          selectedMeshPoint={meshPoint}
           onDefineBrush={defineBrush}
           onPickFont={pickFont}
           onImportFont={importFont}
@@ -1295,6 +1298,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureCancel={editor.cancelGesture}
           sampling={!!sampler}
           onSample={finishCanvasPick}
+          onMeshPointChange={setMeshPoint}
         />
         </ContextTarget>
         </ContextMenuRoot>
