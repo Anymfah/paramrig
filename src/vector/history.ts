@@ -57,3 +57,16 @@ export function countedLabel(verb: string, count: number, noun = 'object'): stri
   if (count <= 1) return verb
   return `${verb} ${count} ${noun}s`
 }
+
+/**
+ * The objects an undo or a redo actually touched: added, removed or changed. Used to put the
+ * selection back where the user was working, rather than leaving it on whatever was selected.
+ */
+export function changedIds(before: Array<{ id: string }>, after: Array<{ id: string }>): string[] {
+  const beforeById = new Map(before.map((element) => [element.id, JSON.stringify(element)]))
+  const afterById = new Map(after.map((element) => [element.id, JSON.stringify(element)]))
+  const ids: string[] = []
+  for (const [id, json] of afterById) if (beforeById.get(id) !== json) ids.push(id)
+  for (const [id] of beforeById) if (!afterById.has(id) && !ids.includes(id)) ids.push(id)
+  return ids
+}

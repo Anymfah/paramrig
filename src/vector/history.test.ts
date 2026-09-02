@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countedLabel, historyRows, stepDistance, type HistoryStep } from '@/vector/history'
+import { changedIds, countedLabel, historyRows, stepDistance, type HistoryStep } from '@/vector/history'
 import type { VectorVersion } from '@/vector/types'
 
 const steps: HistoryStep[] = [
@@ -66,5 +66,22 @@ describe('labels', () => {
     expect(countedLabel('Move', 1)).toBe('Move')
     expect(countedLabel('Move', 3)).toBe('Move 3 objects')
     expect(countedLabel('Move', 2, 'node')).toBe('Move 2 nodes')
+  })
+})
+
+describe('what a history step touched', () => {
+  const box = (id: string, x: number) => ({ id, x })
+
+  it('names the objects that changed', () => {
+    expect(changedIds([box('a', 0), box('b', 0)], [box('a', 0), box('b', 10)])).toEqual(['b'])
+  })
+
+  it('names the ones that appeared and the ones that went', () => {
+    expect(changedIds([box('a', 0)], [box('a', 0), box('c', 0)])).toEqual(['c'])
+    expect(changedIds([box('a', 0), box('d', 0)], [box('a', 0)])).toEqual(['d'])
+  })
+
+  it('says nothing when nothing moved', () => {
+    expect(changedIds([box('a', 0)], [box('a', 0)])).toEqual([])
   })
 })

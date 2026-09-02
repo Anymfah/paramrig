@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { syncBooleanGroups } from '@/vector/booleanGroups'
 import { reorderIndex } from '@/vector/commands'
-import { countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
+import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
 import { selectionBounds } from '@/vector/geometry'
 import { boxBounds, boxCenter, numericPatches, stepBetween, type NumericTransform } from '@/vector/repeat'
@@ -368,6 +368,13 @@ export function useVectorDocument(documentId: string) {
     }, true, 'Delete version')
   }, [replace])
 
+  /** After stepping through the history, the selection lands on what the step touched. */
+  const selectChanged = useCallback((before: VectorElement[], after: VectorElement[]) => {
+    const survivors = new Set(after.map((element) => element.id))
+    const touched = changedIds(before, after).filter((id) => survivors.has(id))
+    if (touched.length) setSelectedIds(touched)
+  }, [setSelectedIds])
+
   const undo = useCallback(() => {
     if (gestureStart.current) return
     const value = historyRef.current
@@ -381,7 +388,8 @@ export function useVectorDocument(documentId: string) {
     })
     latest.current = clone(previous.document)
     setDocument(latest.current)
-  }, [writeHistory])
+    selectChanged(current.elements, latest.current.elements)
+  }, [selectChanged, writeHistory])
 
   const redo = useCallback(() => {
     if (gestureStart.current) return
@@ -395,7 +403,8 @@ export function useVectorDocument(documentId: string) {
     })
     latest.current = clone(next.document)
     setDocument(latest.current)
-  }, [writeHistory])
+    selectChanged(current.elements, latest.current.elements)
+  }, [selectChanged, writeHistory])
 
   /** Sends the document to any recorded state in one move, undoing or redoing as far as needed. */
   const goToStep = useCallback((index: number) => {
@@ -422,7 +431,8 @@ export function useVectorDocument(documentId: string) {
     })
     latest.current = clone(states[target]!.document)
     setDocument(latest.current)
-  }, [writeHistory])
+    selectChanged(current.elements, latest.current.elements)
+  }, [selectChanged, writeHistory])
 
   const historySteps: HistoryStep[] = [
     { index: 0, label: START_LABEL, at: history.past[0]?.at ?? openedAt.current },

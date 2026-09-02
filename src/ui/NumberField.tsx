@@ -46,6 +46,8 @@ export function NumberField({
   const fieldId = id ?? generated
   const inputRef = useRef<HTMLInputElement>(null)
   const discardOnBlur = useRef(false)
+  /** What the field held when it took focus, so Escape can put it back. */
+  const valueOnFocus = useRef<number | null>(null)
   const valueRef = useRef(value)
   valueRef.current = value
   const [draft, setDraft] = useState(formatNumber(value, step))
@@ -217,9 +219,11 @@ export function NumberField({
           setDraft(event.target.value)
           setError(null)
         }}
+        onFocus={() => { valueOnFocus.current = value }}
         onBlur={(event) => {
           if (!discardOnBlur.current) commit(event.currentTarget.value)
           discardOnBlur.current = false
+          valueOnFocus.current = null
           if (gesture.current === 'arrows') {
             gesture.current = 'none'
             onGestureEnd?.()
@@ -233,7 +237,10 @@ export function NumberField({
           if (event.key === 'Escape') {
             event.preventDefault()
             discardOnBlur.current = true
-            setDraft(formatNumber(value, step))
+            // Back to the value the field held when it took focus, scrubs and arrows included.
+            const before = valueOnFocus.current
+            if (before !== null && before !== value) onChange(before)
+            setDraft(formatNumber(before ?? value, step))
             setError(null)
             event.currentTarget.blur()
           }
