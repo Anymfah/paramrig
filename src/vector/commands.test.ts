@@ -7,6 +7,7 @@ import {
   matchingIds,
   nextSiblingId,
   opacityFromDigit,
+  fitBoxMap,
   renamePreview,
   renameWithPattern,
   reorderIndex,
@@ -197,5 +198,32 @@ describe('batch rename', () => {
   it('previews the whole run in order', () => {
     expect(renamePreview('Item $n', elements)).toEqual(['Item 1', 'Item 2'])
     expect(renamePreview('Item $n', elements, 10)).toEqual(['Item 10', 'Item 11'])
+  })
+})
+
+describe('paste to replace', () => {
+  const target = { x: 100, y: 100, width: 200, height: 100 }
+
+  it('scales the content to fit the box it replaces and centres it', () => {
+    const map = fitBoxMap({ x: 0, y: 0, width: 400, height: 400 }, target)
+    const at = (x: number, y: number) => ({ x: map.a * x + map.c * y + map.e, y: map.b * x + map.d * y + map.f })
+
+    // The tall source fits by height, so it lands 100 × 100 centred in the 200 × 100 box.
+    expect(at(0, 0)).toEqual({ x: 150, y: 100 })
+    expect(at(400, 400)).toEqual({ x: 250, y: 200 })
+  })
+
+  it('keeps the shape rather than stretching to the box', () => {
+    const map = fitBoxMap({ x: 0, y: 0, width: 100, height: 50 }, target)
+
+    expect(map.a).toBe(map.d)
+    expect(map.a).toBe(2)
+  })
+
+  it('does not blow up on a box with no size', () => {
+    const map = fitBoxMap({ x: 0, y: 0, width: 0, height: 0 }, target)
+
+    expect(Number.isFinite(map.a)).toBe(true)
+    expect(Number.isFinite(map.e)).toBe(true)
   })
 })

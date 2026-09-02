@@ -45,10 +45,24 @@ describe('text layout', () => {
     expect(layoutText({ ...properties, textSizing: 'auto' }, 80, measure).lines.map((line) => line.text)).toEqual(['one two three'])
   })
 
-  it('breaks a word that cannot fit rather than dropping it', () => {
+  it('splits a word no line can hold rather than letting it hang outside', () => {
     const layout = layoutText(base({ text: 'short verylongword', textSizing: 'fixed' }), 60, measure)
 
-    expect(layout.lines.map((line) => line.text)).toEqual(['short', 'verylongword'])
+    // Six characters fit in 60 px at ten pixels each.
+    expect(layout.lines.map((line) => line.text)).toEqual(['short', 'verylo', 'ngword'])
+    expect(layout.lines.every((line) => line.width <= 60)).toBe(true)
+  })
+
+  it('keeps a single character on a line even when the box is narrower than it', () => {
+    const layout = layoutText(base({ text: 'abc', textSizing: 'fixed' }), 4, measure)
+
+    expect(layout.lines.map((line) => line.text)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('leaves an over-long word alone when the box grows with the content', () => {
+    const layout = layoutText(base({ text: 'verylongword', textSizing: 'auto' }), 20, measure)
+
+    expect(layout.lines.map((line) => line.text)).toEqual(['verylongword'])
   })
 
   it('anchors each line by the alignment', () => {

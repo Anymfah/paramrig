@@ -122,16 +122,38 @@ function wrapParagraph(paragraph: string, properties: TextProperties, boxWidth: 
   const lines: string[] = []
   let current = ''
   for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word
-    if (current && measure(candidate, properties) > boxWidth) {
+    if (current && measure(`${current} ${word}`, properties) > boxWidth) {
       lines.push(current)
-      current = word
+      current = ''
+    }
+    if (!current && measure(word, properties) > boxWidth) {
+      // A word no line can hold is split rather than left hanging outside the box.
+      const pieces = breakWord(word, properties, boxWidth, measure)
+      lines.push(...pieces.slice(0, -1))
+      current = pieces[pieces.length - 1]!
+      continue
+    }
+    current = current ? `${current} ${word}` : word
+  }
+  lines.push(current)
+  return lines
+}
+
+/** Splits one word across lines, always keeping at least one character so it makes progress. */
+function breakWord(word: string, properties: TextProperties, boxWidth: number, measure: Measure): string[] {
+  const pieces: string[] = []
+  let current = ''
+  for (const character of word) {
+    const candidate = `${current}${character}`
+    if (current && measure(candidate, properties) > boxWidth) {
+      pieces.push(current)
+      current = character
     } else {
       current = candidate
     }
   }
-  lines.push(current)
-  return lines
+  pieces.push(current)
+  return pieces
 }
 
 /** Box an auto-sized text element should take for its content. */

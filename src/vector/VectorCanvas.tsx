@@ -1286,8 +1286,12 @@ export function VectorCanvas({
         showHud(polar ? `${round(polar.length)} · ${round(polar.angle)}°` : `${round(target.x)}, ${round(target.y)}`, event.nativeEvent)
         return
       }
-      const candidate = { x: active.anchorStart.x + dx, y: active.anchorStart.y + dy }
-      const snapped = snapFreePoint(candidate, active.targets)
+      // Shift holds the move to a fifteen-degree step from where the node started, the way a
+      // handle does; without it the node snaps to the other nodes and objects.
+      const dragged = { x: active.anchorStart.x + dx, y: active.anchorStart.y + dy }
+      const snapped = event.shiftKey
+        ? { point: constrainToAngle(active.anchorStart, dragged), matches: [] }
+        : snapFreePoint(dragged, active.targets)
       const delta = { x: snapped.point.x - active.anchorStart.x, y: snapped.point.y - active.anchorStart.y }
       onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
       setSnapMatches(snapped.matches)

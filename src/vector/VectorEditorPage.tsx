@@ -21,6 +21,7 @@ import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/Conte
 import {
   appearanceOf,
   appearancePatch,
+  fitBoxMap,
   matchingIds,
   nextSiblingId,
   opacityFromDigit,
@@ -251,15 +252,36 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     current.updateElements(targets.map((element) => ({ id: element.id, patch: appearancePatch(appearance) })), true, 'Paste properties')
   }, [])
 
-  /** Keeps each target's box and replaces everything else with the copied objects. */
+  /**
+   * Drops the copied objects into the space the selection occupied: scaled to fit its box,
+   * keeping their shape, at the same place in the stack, in one undo step.
+   */
   const pasteToReplace = useCallback(() => {
     const current = editorRef.current
-    if (elementClipboard.current.length === 0 || current.selectedIds.length === 0) return
-    const replaced = current.selectedIds
-    const ids = pasteElements(elementClipboard.current, 0)
-    current.removeElements(replaced)
-    if (ids.length) current.setSelectedIds(ids)
-  }, [pasteElements])
+    const doc = current.document
+    const clipboard = elementClipboard.current
+    if (!doc || clipboard.length === 0 || current.selectedIds.length === 0) return
+    const targets = leafElements(doc.elements, current.selectedIds)
+    const sources = clipboard.filter((element) => element.kind !== 'group')
+    if (targets.length === 0 || sources.length === 0) return
+    const map = fitBoxMap(selectionBounds(sources), selectionBounds(targets))
+    const parent = doc.elements.find((element) => element.id === current.selectedIds[0])?.parentId
+    const idMap = new Map(clipboard.map((element) => [element.id, crypto.randomUUID()]))
+    const copies = clipboard.map((element): VectorElement => {
+      const { parentId, ...rest } = element
+      const mapped = parentId && idMap.has(parentId) ? idMap.get(parentId)! : parent
+      return { ...rest, ...transformElementAffine(element, map), id: idMap.get(element.id)!, ...(mapped ? { parentId: mapped } : {}) }
+    })
+    const removed = new Set(current.selectedIds.flatMap((id) => [id, ...descendantIds(doc.elements, id)]))
+    current.editElements((elements) => {
+      const anchor = Math.max(...current.selectedIds.map((id) => elements.findIndex((element) => element.id === id)))
+      const rest = elements.filter((element) => !removed.has(element.id))
+      const at = rest.findIndex((element) => elements.indexOf(element) > anchor)
+      const index = at < 0 ? rest.length : at
+      return [...rest.slice(0, index), ...copies, ...rest.slice(index)]
+    }, true, 'Paste to replace')
+    current.setSelectedIds(copies.filter((copy) => !copy.parentId || !copies.some((other) => other.id === copy.parentId)).map((copy) => copy.id))
+  }, [])
 
   const order = useCallback((mode: 'forward' | 'backward' | 'front' | 'back') => {
     const current = editorRef.current

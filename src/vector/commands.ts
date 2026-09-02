@@ -1,3 +1,5 @@
+import type { Affine } from '@/vector/affine'
+import type { Bounds } from '@/vector/geometry'
 import { childrenOf, siblingIndex } from '@/vector/tree'
 import type { VectorElement } from '@/vector/types'
 
@@ -161,6 +163,25 @@ function sameProperty(element: VectorElement, reference: VectorElement, key: Mat
   if (key === 'strokeWidth') return element.strokeWidth === reference.strokeWidth
   if (key === 'fill') return element.fill === reference.fill && JSON.stringify(element.fills) === JSON.stringify(reference.fills)
   return element.stroke === reference.stroke && JSON.stringify(element.strokes) === JSON.stringify(reference.strokes)
+}
+
+/**
+ * Maps one box onto another for "paste to replace": the content is scaled to fit inside the box
+ * it replaces, uniformly so it keeps its shape, and centred on it.
+ */
+export function fitBoxMap(source: Bounds, target: Bounds): Affine {
+  const scale = Math.min(target.width / Math.max(1e-6, source.width), target.height / Math.max(1e-6, source.height))
+  const factor = Number.isFinite(scale) && scale > 0 ? scale : 1
+  const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 }
+  const targetCenter = { x: target.x + target.width / 2, y: target.y + target.height / 2 }
+  return {
+    a: factor,
+    b: 0,
+    c: 0,
+    d: factor,
+    e: targetCenter.x - sourceCenter.x * factor,
+    f: targetCenter.y - sourceCenter.y * factor,
+  }
 }
 
 export const RENAME_TOKENS = { index: '$n', name: '$name', kind: '$kind' }
