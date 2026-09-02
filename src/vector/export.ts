@@ -4,7 +4,7 @@ import { fontFaceRule } from '@/vector/fonts'
 import { fontData } from '@/vector/fontLoader'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { descendantIds } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorFont } from '@/vector/types'
+import type { VectorColorSpace, VectorDocument, VectorElement, VectorFont } from '@/vector/types'
 
 export type ExportTargetKind = 'document' | 'frame' | 'selection'
 
@@ -59,7 +59,7 @@ export function exportMarkup(document: VectorDocument, settings: ExportSettings,
   const bounds = exportBounds(document, settings.target, selection)
   if (!bounds) return null
   const elements = exportElements(document, settings.target, selection)
-  return serializeVectorMarkup(elements, bounds, settings.transparent ? undefined : document.background)
+  return serializeVectorMarkup(elements, bounds, settings.transparent ? undefined : document.background, document.colorSpace)
 }
 
 export function exportFileName(document: VectorDocument, settings: ExportSettings, frameName?: string): string {
@@ -103,7 +103,7 @@ export async function embedFonts(markup: string, fonts: VectorFont[] = []): Prom
 }
 
 /** Draws an SVG string into a canvas and returns the PNG bytes. */
-export async function rasterize(markup: string, bounds: Bounds, scale: number, type: 'image/png' | 'image/jpeg' = 'image/png'): Promise<Blob | null> {
+export async function rasterize(markup: string, bounds: Bounds, scale: number, type: 'image/png' | 'image/jpeg' = 'image/png', space?: VectorColorSpace): Promise<Blob | null> {
   if (typeof globalThis.document === 'undefined' || typeof Image === 'undefined') return null
   const size = rasterSize(bounds, scale)
   const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
@@ -117,7 +117,10 @@ export async function rasterize(markup: string, bounds: Bounds, scale: number, t
   const canvas = globalThis.document.createElement('canvas')
   canvas.width = size.width
   canvas.height = size.height
-  const context = canvas.getContext('2d')
+  // A wide-gamut document rasterises into a wide-gamut canvas where the browser has one.
+  const context = space === 'display-p3'
+    ? (canvas.getContext('2d', { colorSpace: 'display-p3' }) ?? canvas.getContext('2d'))
+    : canvas.getContext('2d')
   if (!context) return null
   context.drawImage(image, 0, 0, size.width, size.height)
   if (type === 'image/jpeg') {

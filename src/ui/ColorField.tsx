@@ -4,6 +4,7 @@ import { hexToRgb, hsvToHex, rgbToHsv } from '@/ui/color'
 import { IconButton } from '@/ui/Button'
 import { IconNone, IconPipette, IconPlus, IconScreenPick } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
+import { cmykLabel, outOfSrgbGamut } from '@/vector/colorSpace'
 
 type ColorFieldProps = {
   label: string
@@ -22,6 +23,8 @@ type ColorFieldProps = {
   onRemoveSwatch?: (hex: string) => void
   /** Samples a colour from the drawing itself, alongside the system eyedropper. */
   onPickFromCanvas?: () => void
+  /** The document's colour space, for the gamut mark and the print read-out. */
+  space?: 'srgb' | 'display-p3'
   /** Called with a colour the user settled on, so callers can keep a "recent" row. */
   onColorUsed?: (hex: string) => void
   onGestureStart?: () => void
@@ -43,6 +46,7 @@ export function ColorField({
   onAddSwatch,
   onRemoveSwatch,
   onPickFromCanvas,
+  space,
   onColorUsed,
   onGestureStart,
   onGestureEnd,
@@ -224,6 +228,14 @@ export function ColorField({
                 onAdd={onAddSwatch && !none ? () => onAddSwatch(value.toUpperCase()) : undefined}
                 onRemove={onRemoveSwatch}
               />
+            ) : null}
+            <div className="color-popover__readout">
+              <span>CMYK</span>
+              <span className="color-popover__cmyk">{cmykLabel(none ? restore : value)}</span>
+              <span className="color-popover__note">indicative, no profile</span>
+            </div>
+            {outOfSrgbGamut(none ? restore : value, space) ? (
+              <p className="color-popover__gamut">Outside sRGB: this colour needs a Display P3 screen to show as it is.</p>
             ) : null}
             {recent && recent.length > 0 ? (
               <SwatchRow title="Recent" colors={recent} onPick={(hex) => { onChange(hex); setDraft(hex); onColorUsed?.(hex) }} />

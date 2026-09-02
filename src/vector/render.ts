@@ -10,10 +10,11 @@ import { patternCell, patternTransform } from '@/vector/patterns'
 import { meshCells, meshSubdivisions } from '@/vector/mesh'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
+import { cssColor } from '@/vector/colorSpace'
 import { envelopePath } from '@/vector/strokeProfile'
 import { brushOutline, resolveBrush } from '@/vector/brushes'
 import { resolveSelfIntersections } from '@/vector/booleans'
-import type { VectorArrowhead, VectorBrush, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
+import type { VectorArrowhead, VectorBrush, VectorColorSpace, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
 
 export type RenderDef =
   | { type: 'linearGradient'; id: string; x1: number; y1: number; x2: number; y2: number; stops: VectorGradientStop[] }
@@ -522,12 +523,17 @@ function stopsToSvg(stops: VectorGradientStop[]): string {
 }
 
 /** SVG markup for one element's layers (no group wrapper). */
-export function layersToSvg(model: RenderModel, id: string): string {
+export function layersToSvg(model: RenderModel, id: string, space?: VectorColorSpace): string {
   if (model.image) return imageToSvg(model, id)
   if (model.text) return textToSvg(model, id)
   return model.layers.map((layer, index) => {
-    const attributes = layerAttributes(layer)
-    const svgAttributes = Object.entries(attributes).map(([name, value]) => `${camelToKebab(name)}="${String(value)}"`).join(' ')
+    const attributes = layerAttributes(layer, space)
+    // The style comes back as the object React wants; the file wants it written out as CSS.
+    const svgAttributes = Object.entries(attributes)
+      .map(([name, value]) => typeof value === 'object'
+        ? `style="${Object.entries(value).map(([property, item]) => `${camelToKebab(property)}:${item}`).join(';')}"`
+        : `${camelToKebab(name)}="${String(value)}"`)
+      .join(' ')
     return `<path${index === 0 ? ` id="${id}"` : ''} d="${layer.d}" ${svgAttributes} transform="${model.transform}"/>`
   }).join('')
 }
@@ -582,13 +588,23 @@ function escapeText(value: string): string {
 }
 
 /** Attribute bag for a layer in React prop names. */
-export function layerAttributes(layer: RenderLayer): Record<string, string | number> {
+export function layerAttributes(layer: RenderLayer, space?: VectorColorSpace): Record<string, string | number | Record<string, string>> {
+  // On a wide-gamut document the colour is stated twice: the attribute is the sRGB fallback, and
+  // the style carries the same components read in Display P3, which wins wherever it is understood.
+  const wide = space === 'display-p3' && layer.paint.startsWith('#') ? cssColor(layer.paint, space) : null
   if (layer.kind === 'fill') {
-    return { fill: layer.paint, fillOpacity: layer.opacity, fillRule: layer.fillRule ?? 'evenodd', stroke: 'none' }
+    return {
+      fill: layer.paint,
+      fillOpacity: layer.opacity,
+      fillRule: layer.fillRule ?? 'evenodd',
+      stroke: 'none',
+      ...(wide ? { style: { fill: wide } } : {}),
+    }
   }
   return {
     fill: 'none',
     stroke: layer.paint,
+    ...(wide ? { style: { stroke: wide } } : {}),
     strokeOpacity: layer.opacity,
     strokeWidth: layer.strokeWidth ?? 1,
     strokeLinecap: layer.cap ?? 'butt',

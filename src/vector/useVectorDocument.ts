@@ -29,7 +29,7 @@ const HISTORY_LIMIT = 100
 
 const ORDER_LABELS = { forward: 'Bring forward', backward: 'Send backward', front: 'Bring to front', back: 'Send to back' } as const
 
-export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets' | 'styles' | 'swatches' | 'recentColors'>>
+export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets' | 'styles' | 'swatches' | 'recentColors' | 'colorSpace' | 'fonts' | 'brushes'>>
 
 function clone(document: VectorDocument): VectorDocument {
   return structuredClone(document)

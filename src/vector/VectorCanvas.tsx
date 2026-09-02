@@ -23,7 +23,7 @@ import {
 import { pencilNodes } from '@/vector/pencil'
 import { cutNode, cutSegment, scaleStylePatch, uniformFactor } from '@/vector/cut'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
-import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
+import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderLayer, type RenderModel } from '@/vector/render'
 import type { FilterPrimitive } from '@/vector/filters'
 import { renderStats } from '@/vector/render'
 import { handleRadii } from '@/vector/hitPriority'
@@ -34,7 +34,7 @@ import { faceCacheStats } from '@/vector/planar'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, transformLeaves, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorGuide, VectorMesh, VectorMeshPoint, VectorPaint, VectorTool } from '@/vector/types'
+import type { VectorColorSpace, VectorDocument, VectorElement, VectorGuide, VectorMesh, VectorMeshPoint, VectorPaint, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
 type Corner = Extract<DirectResizeHandle, 'nw' | 'ne' | 'se' | 'sw'>
@@ -2217,6 +2217,7 @@ export function VectorCanvas({
               inheritedLocked={false}
               viewBounds={viewBounds}
               scene={elements}
+              space={document.colorSpace}
               onPointerDown={stableShapePointerDown}
               onHover={setHoveredId}
             />
@@ -2444,7 +2445,7 @@ function nodeModalMap(mode: VectorTransformMode, axis: VectorTransformAxis, orig
   return (point) => ({ x: origin.x + (point.x - origin.x) * factorX, y: origin.y + (point.y - origin.y) * factorY })
 }
 
-function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, textEditingId, inheritedLocked, viewBounds, scene, onPointerDown, onHover }: {
+function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, textEditingId, inheritedLocked, viewBounds, scene, space, onPointerDown, onHover }: {
   nodes: TreeNode[]
   zoom: number
   coarse: boolean
@@ -2455,6 +2456,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
   inheritedLocked: boolean
   viewBounds: Bounds | null
   scene: VectorElement[]
+  space: VectorColorSpace | undefined
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
@@ -2478,6 +2480,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
               hideText={false}
               hitTarget={withinView(element, viewBounds)}
               scene={scene}
+            space={space}
               onPointerDown={onPointerDown}
               onHover={onHover}
             />
@@ -2496,6 +2499,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
               textEditingId={textEditingId}
               inheritedLocked={inheritedLocked || element.locked}
               scene={scene}
+            space={space}
               viewBounds={viewBounds}
               onPointerDown={onPointerDown}
               onHover={onHover}
@@ -2514,6 +2518,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 hideText={false}
                 hitTarget={withinView(element, viewBounds)}
                 scene={scene}
+            space={space}
                 onPointerDown={onPointerDown}
                 onHover={onHover}
               />
@@ -2546,6 +2551,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 textEditingId={textEditingId}
                 inheritedLocked={inheritedLocked || element.locked}
               scene={scene}
+            space={space}
                 viewBounds={viewBounds}
                 onPointerDown={onPointerDown}
                 onHover={onHover}
@@ -2561,6 +2567,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
             element={element}
             locked={inheritedLocked || element.locked}
             scene={scene}
+            space={space}
             zoom={zoom}
             coarse={coarse}
             pixelPreview={pixelPreview}
@@ -2581,7 +2588,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
  * One painted shape plus its stroke hit companion. Memoised on primitive props so a gesture
  * re-renders only the object it edits; the hit companion is skipped for shapes outside the view.
  */
-const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hideText, hitTarget, scene, onPointerDown, onHover }: {
+const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hideText, hitTarget, scene, space, onPointerDown, onHover }: {
   element: VectorElement
   locked: boolean
   zoom: number
@@ -2593,12 +2600,15 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   hitTarget: boolean
   /** Every element, so a pattern fill can find the object it stamps. */
   scene: VectorElement[]
+  /** How the document says its colours are meant to be shown. */
+  space: VectorColorSpace | undefined
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
   const rendered = previewGeometry(element, pixelPreview)
   const hittable = isHittable({ ...element, locked }) && hitTarget
   const model = renderModel(rendered, 'canvas', scene)
+  const attributes = (layer: RenderLayer) => layerAttributes(layer, space)
   const pointerDown = (event: ReactPointerEvent<SVGElement>) => onPointerDown(element, event)
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
   // A text box is grabbed anywhere inside it; a shape only where it actually paints.
@@ -2624,7 +2634,7 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
         {...hover}
       >
         {model.layers.map((layer, index) => (
-          <path key={index} d={layer.d} transform={model.transform} {...layerAttributes(layer)} pointerEvents={layer.kind === 'fill' ? fillEvents : 'none'} />
+          <path key={index} d={layer.d} transform={model.transform} {...attributes(layer)} pointerEvents={layer.kind === 'fill' ? fillEvents : 'none'} />
         ))}
         {model.image ? (
           <>

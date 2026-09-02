@@ -94,6 +94,9 @@ export type VectorTraceOptions = {
   minArea: number
 }
 
+/** How a document's colours are meant to be shown. They are stored as sRGB hex either way. */
+export type VectorColorSpace = 'srgb' | 'display-p3'
+
 export type VectorFontSource = 'system' | 'google' | 'file'
 
 /**
@@ -344,6 +347,8 @@ export type VectorDocument = {
   brushes?: VectorBrush[]
   /** Fonts this document uses beyond the ones the app offers. */
   fonts?: VectorFont[]
+  /** Absent means sRGB, which is what a document is unless it says otherwise. */
+  colorSpace?: VectorColorSpace
   /** Colours pinned to this document, and the last ones used. */
   swatches?: string[]
   recentColors?: string[]

@@ -852,7 +852,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       downloadBlob(new Blob([embedded], { type: 'image/svg+xml' }), name)
       return
     }
-    const png = await rasterize(embedded, bounds, settings.scale)
+    const png = await rasterize(embedded, bounds, settings.scale, 'image/png', document.colorSpace)
     if (!png) {
       setExportError('That drawing could not be rendered to PNG in this browser.')
       return
@@ -861,6 +861,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   }
 
   const palette: PaintPalette = {
+    space: document.colorSpace,
     recent: document.recentColors,
     swatches: document.swatches,
     onColorUsed: (hex) => editor.updateDocument({ recentColors: pushRecentColor(document.recentColors, hex) }, false),

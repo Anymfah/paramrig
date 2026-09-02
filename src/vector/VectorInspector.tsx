@@ -311,6 +311,13 @@ export function VectorInspector({
                 onChange={(background) => onUpdateDocument({ background })}
                 {...gesture}
               />
+              <SelectField
+                label="Colours"
+                value={document.colorSpace ?? 'srgb'}
+                options={[{ value: 'srgb', label: 'sRGB' }, { value: 'display-p3', label: 'Display P3' }]}
+                onChange={(value) => onUpdateDocument({ colorSpace: value === 'display-p3' ? 'display-p3' : undefined })}
+              />
+              <p className="vector-panel__hint">Colours are stored as sRGB either way. Display P3 reads the same numbers in the wider space, on screens that have one.</p>
             </section>
             <section className="vector-panel" aria-label="Guides">
               <div className="vector-panel__row">

@@ -18,6 +18,8 @@ type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGesture
 /** Document-wide colour aids offered inside every picker. */
 export type PaintPalette = {
   recent?: string[]
+  /** The document's colour space, so a picker can say when a colour needs a wider screen. */
+  space?: 'srgb' | 'display-p3'
   swatches?: string[]
   onAddSwatch?: (hex: string) => void
   onRemoveSwatch?: (hex: string) => void
@@ -162,6 +164,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
           onRemoveSwatch={palette?.onRemoveSwatch}
           onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((color) => onChange({ color })) : undefined}
           onColorUsed={palette?.onColorUsed}
+          space={palette?.space}
           {...gesture}
         />
       ) : null}
@@ -203,6 +206,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
               onRemoveSwatch={palette?.onRemoveSwatch}
               onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((hex) => onChange({ mesh: withKnot(paint.mesh!, selectedMeshPoint, hex) })) : undefined}
               onColorUsed={palette?.onColorUsed}
+          space={palette?.space}
               onChange={(color) => onChange({ mesh: withKnot(paint.mesh!, selectedMeshPoint, color) }, false)}
               onGestureStart={gesture.onGestureStart}
               onGestureEnd={gesture.onGestureEnd}

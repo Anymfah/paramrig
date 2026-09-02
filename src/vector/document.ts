@@ -1,7 +1,7 @@
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, descendantIds, sanitizeParents, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPreset } from '@/vector/types'
+import type { VectorColorSpace, VectorDocument, VectorElement, VectorElementKind, VectorExportPreset } from '@/vector/types'
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, sanitizeFontFeatures, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
@@ -11,6 +11,7 @@ import { sanitizeStrokeProfile } from '@/vector/strokeProfile'
 import { sanitizeBrushes, sanitizeBrushSettings } from '@/vector/brushes'
 import { sanitizeTextPath, syncTextPaths } from '@/vector/textPath'
 import { sanitizeFonts } from '@/vector/fonts'
+import { cssColor, sanitizeColorSpace } from '@/vector/colorSpace'
 import { OVERRIDE_KEYS, syncInstances } from '@/vector/instances'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
@@ -202,7 +203,7 @@ function defaultName(kind: VectorElementKind): string {
 }
 
 export function serializeVectorDocument(document: VectorDocument): string {
-  return serializeVectorMarkup(document.elements, { x: 0, y: 0, width: document.width, height: document.height })
+  return serializeVectorMarkup(document.elements, { x: 0, y: 0, width: document.width, height: document.height }, undefined, document.colorSpace)
 }
 
 /** SVG for a subset of a document over an arbitrary box, with an optional painted background. */
@@ -210,9 +211,10 @@ export function serializeVectorMarkup(
   elements: VectorElement[],
   viewBox: { x: number; y: number; width: number; height: number },
   background?: string,
+  space?: VectorColorSpace,
 ): string {
   const defs: string[] = []
-  const lines = serializeNodes(buildTree(elements), 1, defs, elements)
+  const lines = serializeNodes(buildTree(elements), 1, defs, elements, space)
   const body = lines.join('\n')
   // A baked backdrop repeats the defs of what it copies; the same string twice is the same def.
   const unique = [...new Set(defs)]
@@ -230,9 +232,9 @@ export function serializeVectorMarkup(
 }
 
 /** Markup for one element's paint layers plus the defs it needs; used by exports and thumbnails. */
-export function elementMarkup(element: VectorElement, prefix: string, scene: VectorElement[] = []): { defs: string; body: string } {
+export function elementMarkup(element: VectorElement, prefix: string, scene: VectorElement[] = [], space?: VectorColorSpace): { defs: string; body: string } {
   const model = renderModel(element, prefix, scene)
-  return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id) }
+  return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id, space) }
 }
 
 /**
@@ -257,7 +259,7 @@ export function componentThumbnail(elements: VectorElement[], componentId: strin
   return `${unique.length ? `<defs>${unique.join('')}</defs>` : ''}${body}`
 }
 
-function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene: VectorElement[]): string[] {
+function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene: VectorElement[], space?: VectorColorSpace): string[] {
   const indent = '  '.repeat(depth)
   return nodes.flatMap((node) => {
     const element = node.element
@@ -267,9 +269,9 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
       const model = renderModel(element, 'svg', scene)
       const background = defsToSvg(model.defs)
       if (background) defs.push(background)
-      const children = serializeNodes(node.children, depth + 1, defs, scene)
+      const children = serializeNodes(node.children, depth + 1, defs, scene, space)
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-      const body = layersToSvg(model, element.id)
+      const body = layersToSvg(model, element.id, space)
       if (element.clipContent && children.length) {
         const clipId = `frame-clip-${element.id}`
         defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.d}" transform="${model.transform}"/></clipPath>`)
@@ -288,7 +290,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
     // A component and an instance serialise like a group: the shapes they hold, expanded.
     if (element.kind === 'group' || element.kind === 'component' || element.kind === 'instance') {
       const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
-      const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs, scene)
+      const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs, scene, space)
       if (children.length === 0) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       if (maskNode) {
@@ -306,7 +308,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
     }
     if (element.kind === 'boolean') {
       // The combined shape is what the file carries; its members are not exported.
-      const markup = elementMarkup(element, 'svg', scene)
+      const markup = elementMarkup(element, 'svg', scene, space)
       if (markup.defs) defs.push(markup.defs)
       if (!markup.body) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
@@ -318,19 +320,28 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
+      // On a wide-gamut document the same colours are stated again in CSS, as everywhere else.
+      const wide = space === 'display-p3'
+        ? [element.fill, element.stroke].some((color) => color.startsWith('#'))
+          ? ` style="${[
+            element.fill.startsWith('#') ? `fill:${cssColor(element.fill, space)}` : '',
+            element.stroke.startsWith('#') ? `stroke:${cssColor(element.stroke, space)}` : '',
+          ].filter(Boolean).join(';')}"`
+          : ''
+        : ''
       const common = [
         `fill="${escapeXml(element.fill)}"`,
         `stroke="${escapeXml(element.stroke)}"`,
         `stroke-width="${element.strokeWidth}"`,
         `opacity="${element.opacity}"`,
         `transform="${transform}"`,
-      ].join(' ')
+      ].join(' ') + wide
       if (element.kind === 'ellipse') {
         return [...backdrop, `${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
       }
       return [...backdrop, `${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
     }
-    const markup = elementMarkup(element, 'svg', scene)
+    const markup = elementMarkup(element, 'svg', scene, space)
     if (markup.defs) defs.push(markup.defs)
     if (!markup.body) return []
     const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
@@ -446,6 +457,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     ...(styles ? { styles } : {}),
     ...(sanitizeBrushes(source.brushes) ? { brushes: sanitizeBrushes(source.brushes) } : {}),
     ...(fonts ? { fonts } : {}),
+    ...(sanitizeColorSpace(source.colorSpace) ? { colorSpace: sanitizeColorSpace(source.colorSpace) } : {}),
     ...(sanitizeColorList(source.swatches, MAX_SWATCHES) ? { swatches: sanitizeColorList(source.swatches, MAX_SWATCHES) } : {}),
     ...(sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) ? { recentColors: sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),

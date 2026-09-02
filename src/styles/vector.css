@@ -2005,3 +2005,15 @@
 .vector-assets__thumb svg { width: 100%; height: 100%; }
 .vector-assets__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vector-assets__count { flex: none; color: var(--text-muted); font-size: var(--text-xs); }
+
+/* The colour read-outs in the picker. */
+.color-popover__readout {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.color-popover__cmyk { color: var(--text-primary); font-family: var(--font-mono, ui-monospace, monospace); }
+.color-popover__note { margin-inline-start: auto; }
+.color-popover__gamut { margin: 0; font-size: var(--text-xs); color: var(--text-secondary); }
