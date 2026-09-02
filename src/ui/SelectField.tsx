@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, type CSSProperties } from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
 import { IconCheck, IconChevron } from '@/ui/icons'
 
@@ -14,6 +14,8 @@ type SelectFieldProps = {
 }
 
 const SEGMENT_MAX = 4
+/** Beyond this many characters across all options, a segment would truncate in an inspector column. */
+const SEGMENT_MAX_CHARS = 28
 
 export function SelectField({
   id,
@@ -25,26 +27,30 @@ export function SelectField({
 }: SelectFieldProps) {
   const generated = useId()
   const fieldId = id ?? generated
-  if (options.length >= 2 && options.length <= SEGMENT_MAX) {
+  const segmented = options.length >= 2 && options.length <= SEGMENT_MAX
+    && options.reduce((total, option) => total + option.label.length, 0) <= SEGMENT_MAX_CHARS
+  if (segmented) {
     return (
       <div className="control control--select control--segmented">
-        <span className="control__label" id={fieldId}>
-          {label}
-        </span>
-        <div className="segment" role="radiogroup" aria-labelledby={fieldId}>
-          {options.map((option) => (
-            <label key={option.value} className="segment__opt">
-              <input
-                type="radio"
-                name={fieldId}
-                value={option.value}
-                checked={option.value === value}
-                disabled={disabled}
-                onChange={() => onChange(option.value)}
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
+        <div className="segment-field" style={{ '--segment-count': options.length } as CSSProperties}>
+          <span className="control__label segment-field__label" id={fieldId}>
+            {label}
+          </span>
+          <div className="segment" role="radiogroup" aria-labelledby={fieldId}>
+            {options.map((option) => (
+              <label key={option.value} className="segment__opt">
+                <input
+                  type="radio"
+                  name={fieldId}
+                  value={option.value}
+                  checked={option.value === value}
+                  disabled={disabled}
+                  onChange={() => onChange(option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
       </div>
     )
@@ -53,16 +59,18 @@ export function SelectField({
   const current = options.find((option) => option.value === value)?.label ?? value
   return (
     <div className="control control--select">
-      <label className="control__label" htmlFor={fieldId}>
-        {label}
-      </label>
       <SelectPrimitive.Root value={value} onValueChange={onChange} disabled={disabled}>
         <SelectPrimitive.Trigger id={fieldId} className="select-trigger" aria-label={label}>
-          <SelectPrimitive.Value>{current}</SelectPrimitive.Value>
+          <span className="select-trigger__label" aria-hidden="true">
+            {label}
+          </span>
+          <span className="select-trigger__value">
+            <SelectPrimitive.Value>{current}</SelectPrimitive.Value>
+          </span>
           <IconChevron className="select-trigger__icon" />
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
-          <SelectPrimitive.Content className="select-content" position="popper" sideOffset={8} align="start">
+          <SelectPrimitive.Content className="select-content" position="popper" sideOffset={8} align="end">
             <SelectPrimitive.Viewport>
               {options.map((option) => (
                 <SelectPrimitive.Item key={option.value} value={option.value} className="select-item">

@@ -150,7 +150,7 @@ export function RadialController({
     {zones.length ? <div className="radial-controller__zones" aria-hidden="true">
       {zones.map(zone => <span key={zone.label} style={{ left: `${zone.start * 100}%`, width: `${(zone.end - zone.start) * 100}%` }}>{zone.label}</span>)}
     </div> : null}
-    {current && layer ? <output className="radial-controller__readout" aria-live="polite">{layer.name} — R {(current.x * 100).toFixed(1)}% | V {(current.y * 100).toFixed(1)}%</output> : null}
+    {current && layer ? <output className="visually-hidden" aria-live="polite">{layer.name}, radius {(current.x * 100).toFixed(1)} percent, value {(current.y * 100).toFixed(1)} percent</output> : null}
     {layer && tab !== ALL ? <>
       <SwitchField label="Enabled" checked={layer.enabled !== false} onChange={enabled => onChange(replaceLayer(layers, focused, { ...layer, enabled }))} />
       <TextController label="Layer name" value={layer.name} maxLength={32} onChange={name => onChange(replaceLayer(layers, focused, { ...layer, name: name.trim() || layer.name }))} />

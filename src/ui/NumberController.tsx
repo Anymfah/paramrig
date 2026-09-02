@@ -34,8 +34,8 @@ function BaseNumberController({param,value,onChange,...gesture}: GestureProps & 
     else next=snapToStep(next,param.min,param.step)
     onChange(Math.max(param.min,Math.min(param.max,next)))
   }
-  if(param.readOnly)return <div className="control"><span className="control__label">{param.label}</span><output>{value.toFixed(2)}{param.unit??''}</output></div>
-  if(view==='seed') return <div className="controller-stack"><NumberField {...p} variant="stepper"/><Button size="sm" variant="quiet" onClick={()=>onChange(param.min+Math.floor(Math.random()*(Math.floor((param.max-param.min)/param.step)+1))*param.step)}>New seed</Button></div>
+  if(param.readOnly)return <div className="control control--field"><div className="number-value number-value--readonly"><span className="number-value__label">{param.label}</span><output className="number-value__readout">{value.toFixed(2)}</output>{param.unit?<span className="number-value__unit">{param.unit}</span>:null}</div></div>
+  if(view==='seed') return <div className="controller-stack"><NumberField {...p} variant="stepper"/><div className="controller-actions"><Button size="sm" variant="quiet" onClick={()=>onChange(param.min+Math.floor(Math.random()*(Math.floor((param.max-param.min)/param.step)+1))*param.step)}>New seed</Button></div></div>
   if(view==='knob'||view==='angle') return <div className="controller-stack">
     <NumberField {...p} variant="field"/>
     <div className="dial-row"><div className="controller-dial" role="slider" tabIndex={0} aria-label={`${param.label} dial`} aria-valuemin={param.min} aria-valuemax={param.max} aria-valuenow={value} aria-valuetext={`${value}${param.unit??''}`}
@@ -49,7 +49,9 @@ function BaseNumberController({param,value,onChange,...gesture}: GestureProps & 
   </div>
   if(view==='field'||view==='stepper') return <NumberField {...p} variant={view}/>
   if(!log&&!param.stops?.length) return <SliderField {...p} sliderMin={param.sliderMin} sliderMax={param.sliderMax}/>
+  const stopFraction=(stop:number)=>Math.max(0,Math.min(1,log?Math.log(Math.max(lo,stop)/lo)/Math.log(hi/lo):(stop-lo)/(hi-lo||1)))
   return <div className="controller-stack"><NumberField {...p} variant="field"/><div className="slider-wrap" style={{'--p':String(fraction)} as CSSProperties}><span className="slider__track"><span className="slider__fill"/></span>
+    {param.stops?.map(stop=><span key={stop} className="slider__stop" data-reached={stop<=value||undefined} style={{'--at':String(stopFraction(stop))} as CSSProperties} aria-hidden="true"/>)}
     <input type="range" className="slider" aria-label={`${param.label} slider`} aria-valuemin={param.min} aria-valuemax={param.max} aria-valuenow={value} aria-valuetext={`${value}${param.unit??''}`} min={0} max={1000} step={1} value={Math.max(0,Math.min(1000,fraction*1000))} onPointerDown={e=>{drag.start(e,true)}} {...drag.handlers} onKeyDown={e=>{
       if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key))return
       e.preventDefault()
@@ -58,5 +60,5 @@ function BaseNumberController({param,value,onChange,...gesture}: GestureProps & 
       if(param.stops?.length){const stops=[...param.stops].sort((a,b)=>a-b);onChange(direction>0?stops.find(v=>v>value)??stops[stops.length-1]!:stops.reverse().find(v=>v<value)??stops[stops.length-1]!)}
       else convert(Math.max(0,Math.min(1,fraction+direction*(e.key.startsWith('Page')?0.1:0.01))))
     }} onChange={e=>convert(Number(e.target.value)/1000)}/></div>
-    <p className="field__hint">{log?'Logarithmic scale':param.stops?.join(' · ')}</p></div>
+    {log?<p className="field__hint">Logarithmic scale</p>:null}</div>
 }

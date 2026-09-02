@@ -775,7 +775,9 @@ html[data-resizing='column'] * {
   padding: var(--space-5);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  /* The base surface, not the raised one: in the light theme the raised and inset tones
+     coincide, and a field box must stay visible against its card. */
+  background: var(--surface);
   user-select: none;
   -webkit-user-select: none;
   transition: border-color var(--duration-fast) var(--ease-out);

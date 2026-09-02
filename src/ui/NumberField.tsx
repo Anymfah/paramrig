@@ -197,11 +197,11 @@ export function NumberField({
         }
       }}
     >
-      {variant === 'field' ? (
+      {variant === 'stepper' ? null : (
         <label className="number-value__label" htmlFor={fieldId}>
           {label}
         </label>
-      ) : null}
+      )}
       <input
         ref={inputRef}
         id={fieldId}
@@ -277,11 +277,11 @@ export function NumberField({
 
   if (variant === 'stepper') {
     return (
-      <div className="control">
-        <label className="control__label" htmlFor={fieldId}>
-          {label}
-        </label>
+      <div className="control control--field">
         <div className="stepper">
+          <label className="stepper__label" htmlFor={fieldId}>
+            {label}
+          </label>
           <Tooltip content={value <= min ? `${label} is at its minimum` : `Decrease ${label}`}>
             <IconButton
               label={`Decrease ${label}`}
@@ -329,11 +329,6 @@ export function NumberField({
 
   const field = (
     <>
-      {variant === 'field' ? null : (
-        <label className="control__label" htmlFor={fieldId}>
-          {label}
-        </label>
-      )}
       {guidedValueControl}
       {error ? (
         <p className="field__error" id={`${fieldId}-error`}>

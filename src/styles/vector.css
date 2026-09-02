@@ -907,6 +907,7 @@
 .vector-paint__preview--empty { display: block; background: repeating-linear-gradient(45deg, var(--surface) 0 4px, var(--surface-raised) 4px 8px); }
 .vector-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-3); }
 .vector-paint .control--segmented { grid-template-columns: minmax(0, 1fr); }
+.vector-paint .control--segmented .segment-field { padding-inline-start: 2px; }
 .vector-paint .control--segmented .control__label {
   position: absolute;
   width: 1px;

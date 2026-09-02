@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useId, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { BezierCurve } from '@/rigs/types'
 import { IconExpand } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
+import { NumberField } from '@/ui/NumberField'
 import { Tooltip } from '@/ui/Tooltip'
 import { applyCurvePreset, CURVE_PRESETS, defaultHandle, matchingCurvePreset } from '@/ui/curve-presets'
 import { HIT_TARGET_COARSE_PX } from '@/ui/hit-target'
@@ -133,30 +134,25 @@ export function CurveField({
       <details className="curve-field__exact">
         <summary>Exact coordinates</summary>
         <div className="curve-field__nums">
-          <CurveCoord
-            caption="Start X"
-            ariaLabel={`${label} start X`}
-            value={value.p1[0]}
-            onCommit={(next) => onChange({ ...value, p1: [next, value.p1[1]] })}
-          />
-          <CurveCoord
-            caption="Start Y"
-            ariaLabel={`${label} start Y`}
-            value={value.p1[1]}
-            onCommit={(next) => onChange({ ...value, p1: [value.p1[0], next] })}
-          />
-          <CurveCoord
-            caption="End X"
-            ariaLabel={`${label} end X`}
-            value={value.p2[0]}
-            onCommit={(next) => onChange({ ...value, p2: [next, value.p2[1]] })}
-          />
-          <CurveCoord
-            caption="End Y"
-            ariaLabel={`${label} end Y`}
-            value={value.p2[1]}
-            onCommit={(next) => onChange({ ...value, p2: [value.p2[0], next] })}
-          />
+          {([['p1', 0, 'Start X'], ['p1', 1, 'Start Y'], ['p2', 0, 'End X'], ['p2', 1, 'End Y']] as const).map(([which, axis, caption]) => (
+            <NumberField
+              key={caption}
+              variant="field"
+              label={caption}
+              value={value[which][axis]}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(next) => {
+                const point: [number, number] = [...value[which]]
+                point[axis] = next
+                onChange({ ...value, [which]: point })
+              }}
+              onGestureStart={onGestureStart}
+              onGestureEnd={onGestureEnd}
+              onGestureCancel={onGestureCancel}
+            />
+          ))}
         </div>
       </details>
       <p className="visually-hidden">Custom curve control. Drag the handles, choose a preset, or type coordinates.</p>
@@ -312,60 +308,5 @@ function Handle({
         aria-hidden="true"
       />
     </g>
-  )
-}
-
-function CurveCoord({
-  caption,
-  ariaLabel,
-  value,
-  onCommit,
-}: {
-  caption: string
-  ariaLabel: string
-  value: number
-  onCommit: (value: number) => void
-}) {
-  const [draft, setDraft] = useState(value.toFixed(2))
-  useEffect(() => {
-    setDraft(value.toFixed(2))
-  }, [value])
-
-  const commit = (raw: string) => {
-    const next = Number(raw)
-    if (raw.trim() === '' || Number.isNaN(next)) {
-      setDraft(value.toFixed(2))
-      return
-    }
-    onCommit(Math.min(1, Math.max(0, next)))
-  }
-
-  return (
-    <label className="curve-field__num">
-      {caption}
-      <input
-        inputMode="decimal"
-        value={draft}
-        aria-label={ariaLabel}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={(event) => commit(event.currentTarget.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter') {
-            commit(event.currentTarget.value)
-            event.currentTarget.blur()
-          }
-          if (event.key === 'Escape') {
-            setDraft(value.toFixed(2))
-            event.currentTarget.blur()
-          }
-          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
-            event.preventDefault()
-            const delta = event.shiftKey ? 0.01 : 0.05
-            const next = Math.min(1, Math.max(0, value + (event.key === 'ArrowUp' ? delta : -delta)))
-            onCommit(Number(next.toFixed(2)))
-          }
-        }}
-      />
-    </label>
   )
 }

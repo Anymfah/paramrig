@@ -1,6 +1,7 @@
 import { lazy, Suspense, useRef, type CSSProperties, type PointerEvent } from 'react'
 import type { CameraValue, Gizmo2DValue, Gizmo3DValue, TextureFrameValue } from '@/rigs/extended-types'
 import { NumberField } from './NumberField'
+import { SelectField } from './SelectField'
 import { useControllerGesture, type GestureProps } from './controller-gesture'
 
 const Gizmo3DScene=lazy(()=>import('@/renderers/three/Gizmo3DScene').then(module=>({default:module.Gizmo3DScene})))
@@ -26,7 +27,7 @@ export function Gizmo2DController({value,onChange,...gesture}:GestureProps&{valu
 }
 export function Gizmo3DController({value,onChange,...gesture}:GestureProps&{value:Gizmo3DValue;onChange:(value:Gizmo3DValue)=>void}) {
   return <fieldset className="controller-stack controller-fieldset"><legend>3D transform gizmo</legend>
-    <div className="controller-actions visual-mode" role="group" aria-label="3D transform mode">{(['translate','rotate','scale'] as const).map(mode=><button type="button" key={mode} aria-pressed={value.mode===mode} onClick={()=>onChange({...value,mode})}>{mode}</button>)}</div>
+    <SelectField label="Mode" value={value.mode} options={[{value:'translate',label:'Translate'},{value:'rotate',label:'Rotate'},{value:'scale',label:'Scale'}]} onChange={mode=>onChange({...value,mode:mode as Gizmo3DValue['mode']})}/>
     <Suspense fallback={<div className="three-gizmo-stage">Starting 3D transform preview…</div>}><Gizmo3DScene value={value} onChange={onChange} {...gesture}/></Suspense>
     <div className="controller-components"><NumberField label="X" variant="field" value={value.position[0]} min={-1} max={1} step={.01} onChange={x=>onChange({...value,position:[x,value.position[1],value.position[2]]})}/><NumberField label="Y" variant="field" value={value.position[1]} min={-1} max={1} step={.01} onChange={y=>onChange({...value,position:[value.position[0],y,value.position[2]]})}/></div>
   </fieldset>

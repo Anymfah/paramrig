@@ -32,7 +32,7 @@ export function ControlsPage() {
     <p className="lede">One value contract, several instruments. Try every controller with undo, saved local state and the same fields used in the inspector.</p>
     <p className="field__hint">This page tests each controller independently. For a composed preview, history and timeline, <Link className="text-link" to="/r/controller-lab">open the full Controller lab</Link>.</p>
     <div className="catalog-toolbar">
-      <label className="controller-stack"><span className="control__label">Find a controller</span><input className="controller-input" type="search" placeholder="Search by name or type…" value={query} onChange={e=>{setQuery(e.target.value);if(e.target.value)setCategory('all')}}/></label>
+      <label className="text-field catalog-search"><span className="text-field__label">Find a controller</span><input className="text-field__input" type="search" placeholder="Name or type…" autoComplete="off" spellCheck={false} value={query} onChange={e=>{setQuery(e.target.value);if(e.target.value)setCategory('all')}}/></label>
       <SelectField label="Family" value={category} options={[{value:'all',label:'All controllers'},...controllerCategories.map(c=>({value:c.id,label:c.label}))]} onChange={next=>{setCategory(next);setQuery('')}}/>
       <div className="controller-actions"><Button size="sm" variant="quiet" disabled={!session.canUndo()} onClick={()=>session.undo()}>Undo</Button><Button size="sm" variant="quiet" disabled={!session.canRedo()} onClick={()=>session.redo()}>Redo</Button><Button size="sm" variant="quiet" onClick={()=>session.resetAll()}>Reset examples</Button></div>
     </div>
