@@ -41,6 +41,11 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
   const timer = useRef<number | null>(null)
   /** The document snapshot already on disk and in storage; identity, not deep equality. */
   const written = useRef<VectorDocument | null>(document)
+  /** True between a change and the write that lands it, so unload and unmount can react. */
+  const pending = useRef(false)
+  /** A write in flight, and whether another change arrived while it ran. */
+  const writing = useRef(false)
+  const again = useRef(false)
   latest.current = document
 
   const documentId = document?.id ?? null
@@ -52,6 +57,7 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
     setSavedAt(null)
     setMessage(null)
     written.current = latest.current
+    pending.current = false
     if (!documentId) return
     let cancelled = false
     void getProjectHandle(documentId).then((found) => {
@@ -67,6 +73,12 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
   const write = useCallback(async (): Promise<void> => {
     const current = latest.current
     if (!current) return
+    // One write at a time: a second `createWritable` on the same file while one is open fails.
+    if (writing.current) {
+      again.current = true
+      return
+    }
+    writing.current = true
     setState('saving')
     const stored = saveVectorDocument(current)
     let error = storageMessage(stored)
@@ -91,24 +103,32 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
           handle: target,
         })
       } catch (failure) {
+        writing.current = false
         setState('error')
         setMessage(failure instanceof Error ? failure.message : 'That file could not be written.')
         return
       }
     }
+    writing.current = false
     if (error) {
       setState('error')
       setMessage(error)
       return
     }
     written.current = current
+    pending.current = false
     setMessage(null)
     setSavedAt(new Date().toISOString())
     setState('saved')
+    if (again.current) {
+      again.current = false
+      void write()
+    }
   }, [])
 
   useEffect(() => {
     if (!document || document === written.current) return
+    pending.current = true
     setState((current) => (current === 'saving' ? current : 'pending'))
     if (timer.current !== null) window.clearTimeout(timer.current)
     timer.current = window.setTimeout(() => {
@@ -123,13 +143,20 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (timer.current === null && state !== 'error') return
+      if (!pending.current && !writing.current && state !== 'error') return
       event.preventDefault()
       event.returnValue = ''
     }
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [state])
+
+  // Leaving the editor must not drop the changes the debounce was still holding.
+  const flush = useRef(() => undefined as void)
+  flush.current = () => {
+    if (pending.current) void write()
+  }
+  useEffect(() => () => flush.current(), [])
 
   const downloadProject = useCallback(() => {
     const current = latest.current

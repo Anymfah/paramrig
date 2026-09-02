@@ -1377,7 +1377,12 @@ export function VectorCanvas({
     if (latest) moveHandler.current(latest)
   }, [])
 
-  useEffect(() => flushPointerMove, [flushPointerMove])
+  // On unmount the pending move is dropped, not applied: nobody is dragging any more.
+  useEffect(() => () => {
+    if (moveFrame.current !== null) cancelAnimationFrame(moveFrame.current)
+    moveFrame.current = null
+    pendingMove.current = null
+  }, [])
 
   const onCanvasPointerMove = useCallback((event: ReactPointerEvent<SVGSVGElement>) => {
     pendingMove.current = event

@@ -48,18 +48,16 @@ export function clampCrop(crop: Crop): Crop {
  */
 export function resizeCrop(box: Bounds, crop: Crop, handle: DirectResizeHandle, point: { x: number; y: number }): { box: Bounds; crop: Crop } {
   const display = displayRect(box, crop)
-  const left = handle.includes('w') ? point.x : box.x
-  const right = handle.includes('e') ? point.x : box.x + box.width
-  const top = handle.includes('n') ? point.y : box.y
-  const bottom = handle.includes('s') ? point.y : box.y + box.height
-  const limited = {
-    x: Math.max(display.x, Math.min(left, right - MIN_BOX)),
-    y: Math.max(display.y, Math.min(top, bottom - MIN_BOX)),
-    width: 0,
-    height: 0,
-  }
-  limited.width = Math.min(display.x + display.width, Math.max(right, limited.x + MIN_BOX)) - limited.x
-  limited.height = Math.min(display.y + display.height, Math.max(bottom, limited.y + MIN_BOX)) - limited.y
+  let left = box.x
+  let right = box.x + box.width
+  let top = box.y
+  let bottom = box.y + box.height
+  // Only the edges the handle owns move, each held inside the picture and short of the opposite edge.
+  if (handle.includes('w')) left = Math.min(Math.max(display.x, point.x), right - MIN_BOX)
+  if (handle.includes('e')) right = Math.max(Math.min(display.x + display.width, point.x), left + MIN_BOX)
+  if (handle.includes('n')) top = Math.min(Math.max(display.y, point.y), bottom - MIN_BOX)
+  if (handle.includes('s')) bottom = Math.max(Math.min(display.y + display.height, point.y), top + MIN_BOX)
+  const limited = { x: left, y: top, width: right - left, height: bottom - top }
   return { box: limited, crop: cropForBox(display, limited) }
 }
 

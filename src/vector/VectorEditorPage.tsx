@@ -94,6 +94,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [renameOpen, setRenameOpen] = useState(false)
   const appearanceClipboard = useRef<Appearance | null>(null)
   const elementClipboard = useRef<VectorElement[]>([])
+  /** Mirrors what the clipboards hold, so the palette and menus can grey the right entries. */
+  const [clipboard, setClipboard] = useState({ elements: 0, appearance: false })
   const opacityBuffer = useRef<OpacityBuffer | null>(null)
   const [sampler, setSampler] = useState<{ sample: CanvasSample; apply: (hex: string) => void } | null>(null)
   const restorePanels = useRef<{ nav: boolean; inspector: boolean } | null>(null)
@@ -230,6 +232,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     const block = selectionBlock()
     if (block.length === 0) return
     elementClipboard.current = structuredClone(block)
+    setClipboard((current) => ({ ...current, elements: block.length }))
     if (cut) editorRef.current.removeElements(editorRef.current.selectedIds)
   }, [selectionBlock])
 
@@ -240,7 +243,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
 
   const copyAppearance = useCallback(() => {
     const source = editorRef.current.selectedElements.find((element) => element.kind !== 'group')
-    if (source) appearanceClipboard.current = appearanceOf(source)
+    if (!source) return
+    appearanceClipboard.current = appearanceOf(source)
+    setClipboard((current) => ({ ...current, appearance: true }))
   }, [])
 
   const pasteAppearance = useCallback(() => {
@@ -334,6 +339,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       event.preventDefault()
       writeClipboardPayload(event.clipboardData, elements, doc)
       elementClipboard.current = structuredClone(elements)
+      setClipboard((value) => ({ ...value, elements: elements.length }))
       if (cut) current.removeElements(current.selectedIds)
     }
     const onPaste = (event: ClipboardEvent) => {
@@ -702,10 +708,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     { id: 'redo', label: 'Redo', section: 'Edit', shortcut: SHORTCUTS.redo, disabled: !editor.canRedo, run: editor.redo },
     { id: 'copy', label: 'Copy', section: 'Edit', shortcut: SHORTCUTS.copy, disabled: !hasSelection, run: () => copySelection(false) },
     { id: 'cut', label: 'Cut', section: 'Edit', shortcut: SHORTCUTS.cut, disabled: !hasSelection, run: () => copySelection(true) },
-    { id: 'paste', label: 'Paste', section: 'Edit', shortcut: SHORTCUTS.paste, disabled: elementClipboard.current.length === 0, run: pasteStored },
-    { id: 'paste-replace', label: 'Paste to replace', section: 'Edit', shortcut: SHORTCUTS.pasteToReplace, disabled: !hasSelection || elementClipboard.current.length === 0, run: pasteToReplace },
+    { id: 'paste', label: 'Paste', section: 'Edit', shortcut: SHORTCUTS.paste, disabled: clipboard.elements === 0, run: pasteStored },
+    { id: 'paste-replace', label: 'Paste to replace', section: 'Edit', shortcut: SHORTCUTS.pasteToReplace, disabled: !hasSelection || clipboard.elements === 0, run: pasteToReplace },
     { id: 'copy-properties', label: 'Copy properties', section: 'Edit', shortcut: SHORTCUTS.copyProperties, disabled: !paintReference, run: copyAppearance },
-    { id: 'paste-properties', label: 'Paste properties', section: 'Edit', shortcut: SHORTCUTS.pasteProperties, disabled: !hasSelection || !appearanceClipboard.current, run: pasteAppearance },
+    { id: 'paste-properties', label: 'Paste properties', section: 'Edit', shortcut: SHORTCUTS.pasteProperties, disabled: !hasSelection || !clipboard.appearance, run: pasteAppearance },
     { id: 'duplicate', label: 'Duplicate', section: 'Edit', shortcut: SHORTCUTS.duplicate, disabled: !hasSelection, run: editor.duplicateSelection },
     { id: 'delete', label: 'Delete', section: 'Edit', shortcut: SHORTCUTS.delete, disabled: !hasSelection, run: () => editor.removeElements(selectedIds) },
     { id: 'select-all', label: 'Select all', section: 'Selection', shortcut: SHORTCUTS.selectAll, run: () => editor.setSelectedIds(childrenOf(document.elements, editor.enteredGroupId).filter((element) => element.visible && !element.locked).map((element) => element.id)) },

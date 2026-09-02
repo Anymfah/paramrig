@@ -56,6 +56,21 @@ describe('dragging the crop window', () => {
     expect(result.crop).toMatchObject({ x: 0, width: 1 })
   })
 
+  it('holds the edge that is not being dragged still, even when the drag crosses it', () => {
+    const result = resizeCrop(box, FULL_CROP, 'e', { x: 40, y: 0 })
+
+    expect(result.box.x).toBe(100)
+    expect(result.box.width).toBe(4)
+    expect(result.box.y).toBe(100)
+    expect(result.box.height).toBe(100)
+  })
+
+  it('moves only the edges the handle owns', () => {
+    const result = resizeCrop(box, FULL_CROP, 'n', { x: 999, y: 140 })
+
+    expect(result.box).toMatchObject({ x: 100, width: 200, y: 140, height: 60 })
+  })
+
   it('keeps a corner drag from collapsing the box', () => {
     const result = resizeCrop(box, FULL_CROP, 'se', { x: 100, y: 100 })
 
