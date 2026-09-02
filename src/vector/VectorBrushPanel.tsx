@@ -1,7 +1,7 @@
 import { Button, IconButton } from '@/ui/Button'
 import { IconMinus } from '@/ui/icons'
 import { SelectField } from '@/ui/SelectField'
-import { SliderField } from '@/ui/SliderField'
+import { BarField } from '@/ui/BarField'
 import { Tooltip } from '@/ui/Tooltip'
 import { brushesOf, DEFAULT_BRUSH_SETTINGS, findBrush, stampPath } from '@/vector/brushes'
 import type { VectorBrush, VectorBrushSettings, VectorElement } from '@/vector/types'
@@ -32,9 +32,9 @@ export function BrushPanel({ element, brushes, onChange, onDefine, canDefine, ge
   }
   const current = findBrush({ brushes }, settings?.id)
   return (
-    <section className="vector-panel" aria-label="Brush">
+    <div className="vector-fold__panel" aria-label="Brush">
       <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Brush</h2>
+        <span className="vector-row__label">Brush</span>
         {settings ? (
           <Tooltip content="Back to a plain stroke">
             <IconButton label="Remove the brush" data-action="clear-brush" onClick={() => onChange(undefined)}><IconMinus /></IconButton>
@@ -50,9 +50,9 @@ export function BrushPanel({ element, brushes, onChange, onDefine, canDefine, ge
       {current ? <BrushPreview brush={current} settings={settings ?? DEFAULT_BRUSH_SETTINGS} /> : null}
       {settings ? (
         <>
-          <SliderField label="Spacing" value={Math.round(settings.spacing * 100)} min={5} max={400} step={5} unit="%" onChange={(value) => onChange({ ...settings, spacing: value / 100 }, false)} {...gesture} />
-          <SliderField label="Jitter" value={Math.round(settings.jitter * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ ...settings, jitter: value / 100 }, false)} {...gesture} />
-          <SliderField label="Taper" value={Math.round(settings.taper * 200)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ ...settings, taper: value / 200 }, false)} {...gesture} />
+          <BarField label="Spacing" value={Math.round(settings.spacing * 100)} min={5} max={400} step={5} unit="%" onChange={(value) => onChange({ ...settings, spacing: value / 100 }, false)} {...gesture} />
+          <BarField label="Jitter" value={Math.round(settings.jitter * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ ...settings, jitter: value / 100 }, false)} {...gesture} />
+          <BarField label="Taper" value={Math.round(settings.taper * 200)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ ...settings, taper: value / 200 }, false)} {...gesture} />
         </>
       ) : null}
       <div className="vector-brush__actions">
@@ -62,7 +62,7 @@ export function BrushPanel({ element, brushes, onChange, onDefine, canDefine, ge
           </span>
         </Tooltip>
       </div>
-    </section>
+    </div>
   )
 }
 

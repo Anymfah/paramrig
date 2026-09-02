@@ -1,0 +1,8 @@
+toolbar controls at 1440: 17
+toolbar control clusters at 1440: 11
+sections with nothing selected: 3
+sections with one rectangle: 6
+inspector content height for a rectangle: 860px
+sections in node mode: 5
+inspector content height in node mode: 860px
+toolbar controls at 320: 14

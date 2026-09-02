@@ -119,7 +119,7 @@ export function VectorFontPicker({ value, fonts, onPick, onImport }: {
                 ))}
               </div>
             </div>
-            {rows.length === 0 ? <p className="vector-panel__hint">No font matches “{query}”.</p> : null}
+            {rows.length === 0 ? <p className="vector-empty">No fonts match “{query}”. Try another name</p> : null}
             {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
             <div className="vector-font__actions">
               <Button variant="quiet" size="sm" data-action="import-font" onClick={() => fileInput.current?.click()}>Import font file…</Button>

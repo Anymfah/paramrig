@@ -14,7 +14,7 @@ import { IconAlignBottom, IconAlignCenterH, IconAlignCenterV, IconAlignLeft, Ico
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
-import { SliderField } from '@/ui/SliderField'
+import { BarField } from '@/ui/BarField'
 import { AdjustmentsPanel, BlendMode, EffectList, MAX_EFFECTS_PER_ELEMENT } from '@/vector/VectorEffectsPanel'
 import { BrushPanel } from '@/vector/VectorBrushPanel'
 import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
@@ -542,7 +542,7 @@ function LayerSection({ elements, leaves, onUpdate, onUpdateElements, gesture }:
         <BlendMode mode={first.blendMode ?? 'normal'} onChange={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')} />
       </Exposable>
       <Exposable property="opacity" min={0} max={1} step={0.01}>
-        <SliderField label="Opacity" value={Math.round((single ?? first).opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => single ? onUpdate(single.id, { opacity: value / 100 }) : apply({ opacity: value / 100 })} {...gesture} />
+        <BarField label="Opacity" value={Math.round((single ?? first).opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => single ? onUpdate(single.id, { opacity: value / 100 }) : apply({ opacity: value / 100 })} {...gesture} />
       </Exposable>
       <Exposable property="visible">
         <SwitchField label="Visible" checked={allVisible} mixed={elements.some((element) => element.visible) && !allVisible} onChange={(visible) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { visible } })))} />
@@ -959,11 +959,7 @@ function ImagePanel({ element, onUpdate, onCrop }: {
   const natural = element.imageWidth && element.imageHeight ? `${element.imageWidth} × ${element.imageHeight}` : 'Unknown size'
   const box = { x: element.x, y: element.y, width: element.width, height: element.height }
   return (
-    <section className="vector-panel" aria-label="Image">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Image</h2>
-        <span className="vector-panel__meta">{natural}{cropped ? ' · cropped' : ''}</span>
-      </div>
+    <>
       <SelectField
         label="Rendering"
         value={element.imageRendering ?? 'smooth'}
@@ -981,8 +977,8 @@ function ImagePanel({ element, onUpdate, onCrop }: {
           >Show whole image</Button>
         ) : null}
       </div>
-      <p className="vector-panel__hint">Double-click the picture to crop it. Resizing keeps its shape unless Shift is held.</p>
-    </section>
+      <p className="vector-empty">{natural}{cropped ? ' · cropped' : ''}. Double-click the picture to crop it; resizing keeps its shape unless Shift is held.</p>
+    </>
   )
 }
 
@@ -1015,11 +1011,7 @@ function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
     ])
   }
   return (
-    <section className="vector-panel" aria-label="Frame">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Frame</h2>
-        <span className="vector-panel__meta">{children.length === 0 ? 'Empty' : `${children.length} ${children.length === 1 ? 'object' : 'objects'}`}</span>
-      </div>
+    <VectorSection id="frame" title="Frame" meta={children.length === 0 ? 'Empty' : `${children.length} ${children.length === 1 ? 'object' : 'objects'}`}>
       <SelectField
         label="Size"
         value={preset}
@@ -1027,8 +1019,8 @@ function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
         onChange={applyPreset}
       />
       <SwitchField label="Clip content" checked={element.clipContent !== false} onChange={(clipContent) => onUpdate(element.id, { clipContent })} />
-      <p className="vector-panel__hint">A frame keeps its own box and exports at its own size. Drop layers onto it to put them inside.</p>
-    </section>
+      <p className="vector-empty">A frame keeps its own box and exports at its own size. Drop layers onto it to put them inside.</p>
+    </VectorSection>
   )
 }
 
@@ -1060,11 +1052,7 @@ function TextPanel({ element, fonts, onUpdate, onOutline, onPickFont, onImportFo
   const apply = (patch: Partial<VectorElement>, record?: boolean) => onUpdate(element.id, resizeTextPatch(element, patch, canvasMeasure), record, 'Change text style')
   const outlineable = canOutline(properties.fontFamily, fonts)
   return (
-    <section className="vector-panel" aria-label="Text">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Text</h2>
-        <span className="vector-panel__meta">{properties.text.split('\n').length} {properties.text.split('\n').length === 1 ? 'line' : 'lines'}</span>
-      </div>
+    <VectorSection id="text" title="Text" meta={`${properties.text.split('\n').length} ${properties.text.split('\n').length === 1 ? 'line' : 'lines'}`}>
       <VectorFontPicker
         value={properties.fontFamily}
         fonts={fonts}
@@ -1104,7 +1092,7 @@ function TextPanel({ element, fonts, onUpdate, onOutline, onPickFont, onImportFo
       </div>
       {element.textPath ? (
         <>
-          <SliderField label="Path offset" value={Math.round(element.textPath.offset * 100)} min={0} max={100} step={1} unit="%" onChange={(offset) => apply({ textPath: { ...element.textPath!, offset: offset / 100 } })} {...gesture} />
+          <BarField label="Path offset" value={Math.round(element.textPath.offset * 100)} min={0} max={100} step={1} unit="%" onChange={(offset) => apply({ textPath: { ...element.textPath!, offset: offset / 100 } })} {...gesture} />
           <SelectField
             label="Side"
             value={element.textPath.side}
@@ -1123,8 +1111,8 @@ function TextPanel({ element, fonts, onUpdate, onOutline, onPickFont, onImportFo
           </span>
         </Tooltip>
       </div>
-      <p className="vector-panel__hint">Double-click the text on the canvas to edit it, or press Enter with it selected.</p>
-    </section>
+      <p className="vector-empty">Double-click the text on the canvas to edit it, or press Enter with it selected.</p>
+    </VectorSection>
   )
 }
 

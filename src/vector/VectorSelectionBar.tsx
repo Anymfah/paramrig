@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { IconButton } from '@/ui/Button'
 import type { ContextMenuItem } from '@/ui/ContextMenu'
 import {
@@ -55,10 +55,11 @@ export function VectorSelectionBar({ anchor, actions, nodeActions }: {
   actions: SelectionBarActions
   nodeActions: NodeBarActions
 }) {
+  // Handed over as custom properties, so a narrow layout can place the bar itself.
   const style = {
-    left: anchor.x,
-    top: anchor.placement === 'above' ? anchor.y - BAR_OFFSET : anchor.y + BAR_OFFSET,
-  }
+    '--bar-x': `${anchor.x}px`,
+    '--bar-y': `${anchor.placement === 'above' ? anchor.y - BAR_OFFSET : anchor.y + BAR_OFFSET}px`,
+  } as CSSProperties
   return (
     <VectorChip
       className="vector-selection-bar"
