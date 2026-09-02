@@ -6,6 +6,8 @@ import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } f
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
+import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
+import { blendModeCss } from '@/vector/effects'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
 
 export type RenderDef =
@@ -15,6 +17,7 @@ export type RenderDef =
   | { type: 'clipPath'; id: string; d: string }
   | { type: 'mask'; id: string; d: string; x: number; y: number; width: number; height: number }
   | { type: 'marker'; id: string; shape: Exclude<VectorArrowhead, 'none'>; color: string; end: boolean }
+  | FilterDef
 
 export type RenderLayer = {
   kind: 'fill' | 'stroke'
@@ -70,6 +73,12 @@ export type RenderModel = {
   text?: TextRender
   /** Set for image elements. */
   image?: ImageRender
+  /** `url(#…)` of the element's effect filter, when it has one. */
+  filter?: string
+  /** CSS blend mode, absent when the element mixes normally. */
+  blend?: string
+  /** Background blur radius: SVG has no backdrop, so this rides on CSS instead. */
+  backdropBlur?: number
 }
 
 /** Local-space geometry of an element: chains for strokes and faces for fills, corners applied. */
@@ -132,6 +141,25 @@ export function renderModel(element: VectorElement, prefix: string): RenderModel
 }
 
 function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
+  return withEffects(element, `${prefix}-${element.id}`, buildBaseModel(element, prefix))
+}
+
+/** Adds the effect filter, the blend mode and the background blur to a freshly built model. */
+function withEffects(element: VectorElement, key: string, model: RenderModel): RenderModel {
+  const bounds = { x: element.x, y: element.y, width: element.width, height: element.height }
+  const filter = elementFilter(element, bounds, `${key}-filter`)
+  const blur = backdropBlur(element)
+  const blend = element.blendMode && element.blendMode !== 'normal' ? blendModeCss(element.blendMode) : undefined
+  if (!filter && !blend && !blur) return model
+  return {
+    ...model,
+    ...(filter ? { defs: [...model.defs, filter], filter: `url(#${filter.id})` } : {}),
+    ...(blend ? { blend } : {}),
+    ...(blur ? { backdropBlur: blur } : {}),
+  }
+}
+
+function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
   if (element.kind === 'text') return buildTextModel(element, prefix)
   if (element.kind === 'image') return buildImageModel(element, prefix)
   const defs: RenderDef[] = []
@@ -327,6 +355,8 @@ export function defsToSvg(defs: RenderDef[]): string {
         return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
       case 'mask':
         return `<mask id="${def.id}" maskUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}"><rect x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}" fill="#fff"/><path d="${def.d}" fill="#000" fill-rule="evenodd"/></mask>`
+      case 'filter':
+        return `<filter id="${def.id}" filterUnits="userSpaceOnUse" x="${def.x}" y="${def.y}" width="${def.width}" height="${def.height}">${primitivesToSvg(def.primitives)}</filter>`
       case 'marker': {
         const shape = markerShape(def.shape)
         return `<marker id="${def.id}" markerUnits="strokeWidth" markerWidth="${shape.size}" markerHeight="${shape.size}" refX="${shape.refX}" refY="${shape.size / 2}" orient="${def.end ? 'auto' : 'auto-start-reverse'}"><path d="${shape.d}" fill="${shape.fill ? def.color : 'none'}" stroke="${def.color}" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></marker>`
@@ -351,6 +381,14 @@ export function patternPlacement(def: Extract<RenderDef, { type: 'pattern' }>) {
     width: tileWidth * scale,
     height: tileHeight * scale,
   }
+}
+
+function primitivesToSvg(primitives: FilterPrimitive[]): string {
+  return primitives.map((primitive) => {
+    const attributes = Object.entries(primitive.attrs).map(([name, value]) => `${name}="${escapeAttribute(String(value))}"`).join(' ')
+    const open = `<${primitive.tag}${attributes ? ` ${attributes}` : ''}`
+    return primitive.children?.length ? `${open}>${primitivesToSvg(primitive.children)}</${primitive.tag}>` : `${open}/>`
+  }).join('')
 }
 
 function stopsToSvg(stops: VectorGradientStop[]): string {

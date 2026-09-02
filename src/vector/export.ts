@@ -1,4 +1,5 @@
 import { serializeVectorMarkup } from '@/vector/document'
+import { boundsWithEffects } from '@/vector/effects'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { descendantIds } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
@@ -46,7 +47,9 @@ export function exportBounds(document: VectorDocument, target: ExportTargetKind,
   const elements = document.elements.filter((element) => selection.selectedIds.includes(element.id))
   if (elements.length === 0) return null
   const bounds = selectionBounds(elements)
-  return bounds.width > 0 && bounds.height > 0 ? bounds : null
+  if (bounds.width <= 0 || bounds.height <= 0) return null
+  // A shadow or a blur paints outside the box; the export box grows so nothing is cut off.
+  return boundsWithEffects(bounds, elements)
 }
 
 /** Self-contained SVG for an export, image fills already inline in the paint model. */

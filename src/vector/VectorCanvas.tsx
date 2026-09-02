@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { createElement, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
@@ -24,6 +24,7 @@ import { pencilNodes } from '@/vector/pencil'
 import { cutNode, cutSegment, scaleStylePatch, uniformFactor } from '@/vector/cut'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
+import type { FilterPrimitive } from '@/vector/filters'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, transformLeaves, type TreeNode } from '@/vector/tree'
@@ -92,6 +93,9 @@ type Interaction =
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
   | { kind: 'modal'; target: 'elements'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; elements: VectorElement[]; preview: VectorElement[] }
   | { kind: 'modal'; target: 'nodes'; mode: VectorTransformMode; axis: VectorTransformAxis; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; preview: VectorElement }
+
+/** The interactions during which the moving objects drop their filters. */
+const MOVING_KINDS: string[] = ['move', 'resize', 'rotate', 'node', 'segment-move', 'node-resize', 'node-rotate', 'crop', 'shape', 'corner', 'modal']
 
 type VectorCanvasProps = {
   document: VectorDocument
@@ -414,7 +418,20 @@ export function VectorCanvas({
     setRotateArc(null)
   }, [])
 
+  /**
+   * While something is being dragged the moving objects lose their filters: a shadow or a blur
+   * recomputed on every frame is what turns a fifty-object drag into a slideshow. This is set on
+   * the DOM directly so the drag itself does not go through React, and CSS takes it from there.
+   */
+  const setDragging = useCallback((on: boolean) => {
+    const node = viewportRef.current
+    if (!node) return
+    if (on) node.dataset.dragging = 'true'
+    else delete node.dataset.dragging
+  }, [])
+
   const clearInteraction = useCallback(() => {
+    setDragging(false)
     interaction.current = null
     setDraftBounds(null)
     setMarqueeBounds(null)
@@ -429,7 +446,7 @@ export function VectorCanvas({
     setZoomBox(null)
     setDroppingStop(false)
     clearOverlays()
-  }, [clearOverlays])
+  }, [clearOverlays, setDragging])
 
   const cancelInteraction = useCallback(() => {
     const active = interaction.current
@@ -1353,6 +1370,7 @@ export function VectorCanvas({
   const applyCanvasPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
     const active = interaction.current
     const at = point(event.nativeEvent)
+    if (active && MOVING_KINDS.includes(active.kind)) setDragging(true)
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
       const draft = penDraftRef.current
       const last = draft?.current ? draft.world.nodes.find((node) => node.id === draft.current)?.point ?? null : null
@@ -2378,6 +2396,12 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
         data-locked={locked || undefined}
         data-editing={editing || undefined}
         opacity={model.opacity}
+        filter={model.filter}
+        style={model.blend || model.backdropBlur ? {
+          ...(model.blend ? { mixBlendMode: model.blend as CSSProperties['mixBlendMode'] } : {}),
+          // SVG has no backdrop filter of its own; CSS frosts what shows through.
+          ...(model.backdropBlur ? { backdropFilter: `blur(${model.backdropBlur}px)` } : {}),
+        } : undefined}
         pointerEvents={fillEvents}
         onPointerDown={pointerDown}
         {...hover}
@@ -2661,6 +2685,20 @@ function withinView(element: VectorElement, view: Bounds | null): boolean {
     && centerY + reach >= view.y && centerY - reach <= view.y + view.height
 }
 
+/** Walks the filter primitives a def carries; each is a plain SVG element with its attributes. */
+function FilterNodes({ primitives }: { primitives: FilterPrimitive[] }) {
+  return (
+    <>
+      {primitives.map((primitive, index) => createElement(
+        primitive.tag,
+        // The model spells attributes the way SVG does; React wants them camel-cased.
+        { key: index, ...Object.fromEntries(Object.entries(primitive.attrs).map(([name, value]) => [name.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase()), value])) },
+        primitive.children?.length ? <FilterNodes primitives={primitive.children} /> : undefined,
+      ))}
+    </>
+  )
+}
+
 export function RenderDefs({ defs }: { defs: RenderDef[] }) {
   return (
     <>
@@ -2682,6 +2720,12 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
             return <clipPath key={def.id} id={def.id}><path d={def.d} clipRule="evenodd" /></clipPath>
           case 'mask':
             return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" fillRule="evenodd" /></mask>
+          case 'filter':
+            return (
+              <filter key={def.id} id={def.id} filterUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}>
+                <FilterNodes primitives={def.primitives} />
+              </filter>
+            )
           case 'marker': {
             const shape = markerShape(def.shape)
             return <marker key={def.id} id={def.id} markerUnits="strokeWidth" markerWidth={shape.size} markerHeight={shape.size} refX={shape.refX} refY={shape.size / 2} orient={def.end ? 'auto' : 'auto-start-reverse'}><path d={shape.d} fill={shape.fill ? def.color : 'none'} stroke={def.color} strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" /></marker>

@@ -8,6 +8,7 @@ import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import { SliderField } from '@/ui/SliderField'
+import { AdjustmentsPanel, BlendPanel, EffectsPanel } from '@/vector/VectorEffectsPanel'
 import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
 import { linkedStyle, styleUsage } from '@/vector/styles'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
@@ -508,6 +509,7 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
   const strokes = strokesOf(first)
   const fillStyle = linkedStyle(styles, first, 'fill')
   const strokeStyle = linkedStyle(styles, first, 'stroke')
+  const effectStyle = linkedStyle(styles, first, 'effect')
   const fillsMixed = !same('fill') || targets.some((element) => JSON.stringify(element.fills) !== JSON.stringify(first.fills))
   const strokesMixed = !same('stroke') || targets.some((element) => JSON.stringify(element.strokes) !== JSON.stringify(first.strokes))
   const isRectangle = single?.kind === 'rectangle' && !single.network
@@ -556,6 +558,24 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
         )}
         {!single && (!same('strokeWidth') || !same('opacity')) ? <p className="vector-panel__hint">Mixed values show the first object. Editing applies to all.</p> : null}
       </section>
+      <EffectsPanel
+        effects={first.effects ?? []}
+        mixed={targets.some((element) => JSON.stringify(element.effects ?? []) !== JSON.stringify(first.effects ?? []))}
+        palette={palette}
+        header={<StyleLink kind="effect" styles={styles} linked={effectStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
+        onChange={(effects, record) => apply({ effects: effects.length ? effects : undefined }, record, 'Change effects')}
+        gesture={gesture}
+      />
+      <BlendPanel
+        mode={first.blendMode ?? 'normal'}
+        opacity={groupOpacity ? groupOpacity.opacity : first.opacity}
+        onChangeMode={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')}
+        onChangeOpacity={(opacity) => groupOpacity ? onUpdate(groupOpacity.id, { opacity }) : apply({ opacity })}
+        gesture={gesture}
+      />
+      {single && single.kind === 'image' ? (
+        <AdjustmentsPanel element={single} onChange={(adjustments, record) => onUpdate(single.id, { adjustments }, record, 'Adjust picture')} gesture={gesture} />
+      ) : null}
       {strokes.length > 0 ? (
         <section className="vector-panel" aria-label="Stroke properties">
           <h2 className="vector-panel__title">Stroke</h2>

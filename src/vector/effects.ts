@@ -27,7 +27,7 @@ export function blendModeCss(mode: VectorBlendMode): string {
   return mode.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
 }
 
-export function createEffect(kind: VectorEffectKind, id = crypto.randomUUID()): VectorEffect {
+export function createEffect(kind: VectorEffectKind, id: string = crypto.randomUUID()): VectorEffect {
   if (kind === 'layerBlur' || kind === 'backgroundBlur') return { id, kind, visible: true, blur: 8 }
   return { id, kind, visible: true, dx: 0, dy: kind === 'dropShadow' ? 4 : 2, blur: 8, spread: 0, color: '#000000', opacity: kind === 'dropShadow' ? 0.25 : 0.35 }
 }

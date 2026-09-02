@@ -257,7 +257,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
           `${indent}</g>`,
         ]
       }
-      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
+      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
     }
     if (element.kind === 'group') {
       const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
@@ -282,11 +282,11 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       if (markup.defs) defs.push(markup.defs)
       if (!markup.body) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>${markup.body}</g>`]
+      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
     }
     // Only a plain box or a whole ellipse takes the short export path.
     const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
-    const simple = element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'polygon' && !sliced && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+    const simple = !element.effects?.length && !element.blendMode && element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'polygon' && !sliced && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
@@ -306,8 +306,15 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
     if (markup.defs) defs.push(markup.defs)
     if (!markup.body) return []
     const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-    return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>${markup.body}</g>`]
+    return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
   })
+}
+
+/** The filter and blend attributes an element's effects put on its wrapper. */
+function effectAttributes(element: VectorElement, prefix = 'svg'): string {
+  const model = renderModel(element, prefix)
+  const blend = model.blend ? ` style="mix-blend-mode:${model.blend}"` : ''
+  return `${model.filter ? ` filter="${escapeXml(model.filter)}"` : ''}${blend}`
 }
 
 function sanitizeStrokeSides(value: unknown): VectorElement['strokeSides'] | undefined {
