@@ -529,6 +529,22 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { visible } })), true, visible ? 'Show' : 'Hide')
         return
       }
+      if (meta && (event.code === 'Equal' || event.code === 'Minus' || event.code === 'NumpadAdd' || event.code === 'NumpadSubtract')) {
+        event.preventDefault()
+        controller.current?.zoomStep(event.code === 'Equal' || event.code === 'NumpadAdd' ? 1 : -1)
+        return
+      }
+      if ((meta || event.shiftKey) && (key === '0' || key === '1' || key === '2' || event.code === 'Digit0' || event.code === 'Digit1' || event.code === 'Digit2')) {
+        event.preventDefault()
+        const doc = current.document
+        if (event.code === 'Digit0') controller.current?.zoomTo(1)
+        else if (event.code === 'Digit1') controller.current?.fit(null)
+        else if (event.code === 'Digit2' && doc) {
+          const leaves = leafElements(doc.elements, current.selectedIds)
+          controller.current?.fit(leaves.length ? selectionBounds(leaves) : null, 96)
+        }
+        return
+      }
       if (meta) return
       if (key === 'tab') {
         // Only the canvas walks objects with Tab; everywhere else it still moves focus.
@@ -574,15 +590,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         transformSelection((center) => flipAffine(key === 'h' ? 'x' : 'y', center), key === 'h' ? 'Flip horizontal' : 'Flip vertical')
         return
       }
-      if (event.shiftKey && (key === '0' || key === '1' || key === '2' || event.code === 'Digit0' || event.code === 'Digit1' || event.code === 'Digit2')) {
+      if (event.code === 'Equal' || event.code === 'Minus' || event.code === 'NumpadAdd' || event.code === 'NumpadSubtract') {
         event.preventDefault()
-        const doc = current.document
-        if (event.code === 'Digit0') controller.current?.zoomTo(1)
-        else if (event.code === 'Digit1') controller.current?.fit(null)
-        else if (event.code === 'Digit2' && doc) {
-          const leaves = leafElements(doc.elements, current.selectedIds)
-          controller.current?.fit(leaves.length ? selectionBounds(leaves) : null, 96)
-        }
+        controller.current?.zoomStep(event.code === 'Equal' || event.code === 'NumpadAdd' ? 1 : -1)
         return
       }
       if (event.repeat && !['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key)) return

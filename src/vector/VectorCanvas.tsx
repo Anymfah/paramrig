@@ -63,6 +63,8 @@ export type VectorCanvasController = {
   editText: (id: string) => void
   /** The pivot the user has placed, or null when it still sits at the centre of the selection. */
   pivot: () => Point | null
+  /** One zoom step around the pointer, for the + and − keys. */
+  zoomStep: (direction: -1 | 1) => void
   /** Adds picture files as image elements, centred on the middle of the page. */
   addImages: (files: File[], at?: Point) => Promise<void>
   /** Opens crop editing on an image element, as a double-click does. */
@@ -99,6 +101,9 @@ type Interaction =
 
 /** The interactions during which the moving objects drop their filters. */
 const MOVING_KINDS: string[] = ['move', 'resize', 'rotate', 'node', 'segment-move', 'node-resize', 'node-rotate', 'crop', 'shape', 'corner', 'modal']
+
+const GLIDE_FRAMES = 3
+const GLIDE_DECAY = 0.6
 
 type VectorCanvasProps = {
   document: VectorDocument
@@ -182,6 +187,8 @@ export function VectorCanvas({
   const spaceHeld = useRef(false)
   const latestPointer = useRef<Point | null>(null)
   const pointerClient = useRef<Point | null>(null)
+  /** The tail of a two-finger scroll: a little speed kept for a couple of frames. */
+  const glide = useRef({ velocity: { x: 0, y: 0 }, frames: 0, raf: null as number | null, timer: 0 }).current
   const documentRef = useRef(document)
   const toolRef = useRef(tool)
   const viewRef = useRef(viewOptions)
@@ -335,6 +342,19 @@ export function VectorCanvas({
         onPanChange({ x: current.pan.x * ratio, y: current.pan.y * ratio })
       },
       pivot: () => pivotRef.current,
+      zoomStep: (direction) => {
+        const size = viewportRef.current
+        const current = camera.current
+        const to = clamp(nextZoom(current.zoom, direction), MIN_ZOOM, MAX_ZOOM)
+        if (to === current.zoom) return
+        // Around the pointer when it is over the canvas, around the middle otherwise.
+        const anchor = pointerClient.current && size
+          ? { x: pointerClient.current.x - size.clientWidth / 2, y: pointerClient.current.y - size.clientHeight / 2 }
+          : { x: 0, y: 0 }
+        const ratio = to / current.zoom
+        onPanChange({ x: anchor.x - (anchor.x - current.pan.x) * ratio, y: anchor.y - (anchor.y - current.pan.y) * ratio })
+        onZoomChange(to)
+      },
       editText: (id) => {
         const element = documentRef.current.elements.find((item) => item.id === id)
         if (element?.kind === 'text' && !element.locked) editText.current(element)
@@ -400,11 +420,35 @@ export function VectorCanvas({
       }
       const horizontal = event.shiftKey && Math.abs(event.deltaX) < 1 ? event.deltaY : event.deltaX
       const vertical = event.shiftKey && Math.abs(event.deltaX) < 1 ? 0 : event.deltaY
-      onPanChange({ x: current.pan.x - horizontal * scale, y: current.pan.y - vertical * scale })
+      const dx = -horizontal * scale
+      const dy = -vertical * scale
+      // Keep the speed of the last flick so the pan carries a couple of frames past the fingers.
+      glide.velocity = { x: dx * 0.5 + glide.velocity.x * 0.5, y: dy * 0.5 + glide.velocity.y * 0.5 }
+      glide.frames = GLIDE_FRAMES
+      if (glide.raf !== null) { cancelAnimationFrame(glide.raf); glide.raf = null }
+      window.clearTimeout(glide.timer)
+      glide.timer = window.setTimeout(startGlide, 60)
+      onPanChange({ x: current.pan.x + dx, y: current.pan.y + dy })
+    }
+    const startGlide = () => {
+      const step = () => {
+        glide.frames -= 1
+        glide.velocity = { x: glide.velocity.x * GLIDE_DECAY, y: glide.velocity.y * GLIDE_DECAY }
+        const speed = Math.hypot(glide.velocity.x, glide.velocity.y)
+        if (glide.frames <= 0 || speed < 0.5) { glide.raf = null; glide.velocity = { x: 0, y: 0 }; return }
+        const current = camera.current
+        onPanChange({ x: current.pan.x + glide.velocity.x, y: current.pan.y + glide.velocity.y })
+        glide.raf = requestAnimationFrame(step)
+      }
+      glide.raf = requestAnimationFrame(step)
     }
     viewport.addEventListener('wheel', onWheel, { passive: false })
-    return () => viewport.removeEventListener('wheel', onWheel)
-  }, [onPanChange, onZoomChange])
+    return () => {
+      viewport.removeEventListener('wheel', onWheel)
+      window.clearTimeout(glide.timer)
+      if (glide.raf !== null) cancelAnimationFrame(glide.raf)
+    }
+  }, [glide, onPanChange, onZoomChange])
 
   const commitPen = useCallback(() => {
     const draft = penDraftRef.current
