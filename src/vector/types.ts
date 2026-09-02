@@ -1,4 +1,4 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon' | 'scissors' | 'scale'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon' | 'scissors' | 'scale' | 'hand' | 'zoom' | 'measure'
 
 export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon' | 'boolean'
 

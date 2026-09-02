@@ -4,9 +4,10 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { nextZoom } from '@/vector/measure'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconHand, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconRuler, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock, IconZoomTool } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -547,6 +548,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'l') chooseTool('line')
       else if (key === 'c') chooseTool('scissors')
       else if (key === 'k') chooseTool('scale')
+      else if (key === 'h') chooseTool('hand')
+      else if (key === 'z' && !event.metaKey && !event.ctrlKey) chooseTool('zoom')
+      else if (key === 'm' && event.shiftKey) chooseTool('measure')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
@@ -955,6 +959,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Scissors · C" active={tool === 'scissors'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('scissors')}><IconScissors /></ToolButton>
           <ToolButton label="Scale · K" active={tool === 'scale'} onClick={() => chooseTool('scale')}><IconScale /></ToolButton>
+          <ToolButton label="Hand · H" active={tool === 'hand'} onClick={() => chooseTool('hand')}><IconHand /></ToolButton>
+          <ToolButton label="Zoom · Z" active={tool === 'zoom'} onClick={() => chooseTool('zoom')}><IconZoomTool /></ToolButton>
+          <ToolButton label="Measure · ⇧M" active={tool === 'measure'} onClick={() => chooseTool('measure')}><IconRuler /></ToolButton>
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
           <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
           <ToolButton label="Frame · F" active={tool === 'frame'} onClick={() => chooseTool('frame')}><IconFrame /></ToolButton>
@@ -973,11 +980,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         <div className="workspace-toolbar__group vector-toolbar__end">
           <div className="vector-toolbar__zoom">
             <Tooltip content="Zoom out">
-              <IconButton label="Zoom out" disabled={zoom <= 0.1} onClick={() => setZoom((value) => steppedZoom(value, -1))}><IconMinus /></IconButton>
+              <IconButton label="Zoom out" disabled={zoom <= 0.1} onClick={() => setZoom((value) => nextZoom(value, -1))}><IconMinus /></IconButton>
             </Tooltip>
             <button type="button" className="vector-zoom" aria-label="Reset canvas view" onClick={() => { setZoom(0.8); setPan({ x: 0, y: 0 }) }}>{Math.round(zoom * 100)}%</button>
             <Tooltip content="Zoom in">
-              <IconButton label="Zoom in" disabled={zoom >= 8} onClick={() => setZoom((value) => steppedZoom(value, 1))}><IconPlus /></IconButton>
+              <IconButton label="Zoom in" disabled={zoom >= 8} onClick={() => setZoom((value) => nextZoom(value, 1))}><IconPlus /></IconButton>
             </Tooltip>
           </div>
           <Tooltip content={withShortcut(fullscreen ? 'Leave full screen' : 'Full screen', 'fullscreen')}>
@@ -1251,11 +1258,6 @@ function centeredBounds(document: { width: number; height: number }, width: numb
   return { x: (document.width - width) / 2, y: (document.height - height) / 2, width, height }
 }
 
-function steppedZoom(current: number, direction: -1 | 1): number {
-  const levels = [0.1, 0.25, 0.5, 0.8, 1, 1.5, 2, 3, 4, 6, 8]
-  if (direction > 0) return levels.find((level) => level > current + 0.001) ?? 8
-  return [...levels].reverse().find((level) => level < current - 0.001) ?? 0.1
-}
 
 function downloadBlob(blob: Blob, name: string): void {
   const href = URL.createObjectURL(blob)

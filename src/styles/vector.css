@@ -1658,3 +1658,43 @@
 .vector-canvas[data-tool='scissors'] .vector-hit,
 .vector-canvas[data-tool='scissors'] .vector-nodes__segment-hit { cursor: crosshair; }
 .vector-canvas[data-tool='scale'] .vector-hit { cursor: nwse-resize; }
+
+/* Navigating and measuring: the hand, the zoom and the ruler. */
+.vector-canvas[data-tool='hand'],
+.vector-canvas[data-tool='hand'] .vector-artboard,
+.vector-canvas[data-tool='hand'] [data-vector-element],
+.vector-canvas[data-tool='hand'] .vector-hit { cursor: grab; }
+.vector-canvas[data-tool='hand'][data-panning],
+.vector-canvas[data-tool='hand'][data-panning] .vector-artboard { cursor: grabbing; }
+.vector-canvas[data-tool='zoom'],
+.vector-canvas[data-tool='zoom'] .vector-artboard,
+.vector-canvas[data-tool='zoom'] [data-vector-element],
+.vector-canvas[data-tool='zoom'] .vector-hit { cursor: zoom-in; }
+.vector-canvas[data-tool='measure'],
+.vector-canvas[data-tool='measure'] .vector-artboard,
+.vector-canvas[data-tool='measure'] [data-vector-element],
+.vector-canvas[data-tool='measure'] .vector-hit { cursor: crosshair; }
+.vector-zoom-box {
+  fill: color-mix(in srgb, var(--vector-selection) 12%, transparent);
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-ruler {
+  pointer-events: none;
+}
+.vector-ruler line {
+  stroke: var(--vector-snap);
+  vector-effect: non-scaling-stroke;
+}
+.vector-ruler[data-draft] line { stroke-dasharray: 4 3; }
+.vector-ruler text {
+  fill: var(--vector-snap);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  paint-order: stroke;
+  stroke: var(--vector-hud-ink, #0b0d0b);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+@media (forced-colors: active) { .vector-ruler line, .vector-zoom-box { stroke: Highlight; } }

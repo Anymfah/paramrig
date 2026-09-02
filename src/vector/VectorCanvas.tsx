@@ -13,6 +13,7 @@ import { fillsOf, fillsPatch } from '@/vector/paints'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
 import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
+import { measurementLabel, nextZoom, zoomAround, zoomToBox, type Measurement } from '@/vector/measure'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
@@ -82,6 +83,8 @@ type Interaction =
   | { kind: 'corner'; pointerId: number; element: VectorElement; corner: CornerName; alone: boolean }
   | { kind: 'gradient'; pointerId: number; element: VectorElement; index: number; handle: GradientHandle; stop: number }
   | { kind: 'image-place'; pointerId: number; start: Point; element: VectorElement; index: number; paint: VectorPaint }
+  | { kind: 'measure'; pointerId: number; from: Point; to: Point; targets: SnapTarget[] }
+  | { kind: 'zoom'; pointerId: number; start: Point; current: Point; out: boolean }
   | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
@@ -185,6 +188,11 @@ export function VectorCanvas({
   const placingRef = useRef(false)
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
+  const [measurements, setMeasurements] = useState<Measurement[]>([])
+  const measurementsRef = useRef(measurements)
+  measurementsRef.current = measurements
+  const [measureDraft, setMeasureDraft] = useState<Measurement | null>(null)
+  const [zoomBox, setZoomBox] = useState<Bounds | null>(null)
   const [panning, setPanning] = useState(false)
   const [spaceDown, setSpaceDown] = useState(false)
   const [directCursor, setDirectCursor] = useState<string | null>(null)
@@ -412,6 +420,8 @@ export function VectorCanvas({
     setDraftGuide(null)
     setPencilPoints(null)
     setLassoPoints(null)
+    setMeasureDraft(null)
+    setZoomBox(null)
     setDroppingStop(false)
     clearOverlays()
   }, [clearOverlays])
@@ -419,7 +429,7 @@ export function VectorCanvas({
   const cancelInteraction = useCallback(() => {
     const active = interaction.current
     if (!active) return
-    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create' || active.kind === 'pencil' || active.kind === 'lasso' || active.kind === 'pivot'
+    const passive = active.kind === 'create' || active.kind === 'marquee' || active.kind === 'node-marquee' || active.kind === 'pen' || active.kind === 'guide-create' || active.kind === 'pencil' || active.kind === 'lasso' || active.kind === 'pivot' || active.kind === 'measure' || active.kind === 'zoom'
     if (!passive) callbacks.current.onGestureCancel()
     if (active.kind === 'move' && active.originalIds.length) callbacks.current.onSelectIds(active.originalIds)
     clearInteraction()
@@ -547,11 +557,15 @@ export function VectorCanvas({
           cancelInteraction()
           return
         }
+        if (measurementsRef.current.length > 0) {
+          setMeasurements([])
+          return
+        }
         if (penDraftRef.current) {
           commitPen()
           return
         }
-        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors') {
+        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors' || toolRef.current === 'hand' || toolRef.current === 'zoom' || toolRef.current === 'measure') {
           callbacks.current.onSelectNodes([])
           setSelectedSegment(null)
           callbacks.current.onToolChange('select')
@@ -912,6 +926,28 @@ export function VectorCanvas({
       onSelectNodes(active.additive ? [...new Set([...selectedNodeIdsRef.current, ...hits])] : hits)
       if (hits.length) setSelectedSegment(null)
       setMarqueeBounds(null)
+    } else if (active.kind === 'measure') {
+      setMeasureDraft(null)
+      // A measurement is a reading, not an edit: it stays on screen and never touches the document.
+      if (Math.hypot(active.to.x - active.from.x, active.to.y - active.from.y) * zoom >= 4) {
+        setMeasurements((current) => [...current, { id: `m${Date.now()}${current.length}`, from: active.from, to: active.to }])
+      }
+    } else if (active.kind === 'zoom') {
+      setZoomBox(null)
+      const size = viewportRef.current
+      const doc = documentRef.current
+      const page = { width: doc.width, height: doc.height }
+      const box = boundsBetween(active.start, active.current, false)
+      if (size && box.width * zoom >= 12 && box.height * zoom >= 12 && !active.out) {
+        const view = zoomToBox(box, { width: size.clientWidth, height: size.clientHeight }, page)
+        onZoomChange(view.zoom)
+        onPanChange(view.pan)
+      } else {
+        // A click steps through the zoom levels, keeping the point under the pointer still.
+        const to = nextZoom(zoom, active.out || event.altKey ? -1 : 1)
+        onPanChange(zoomAround(active.start, camera.current.pan, zoom, to, page))
+        onZoomChange(to)
+      }
     } else if (active.kind === 'lasso') {
       const polygon = active.points
       if (polygon.length >= 3) {
@@ -1034,7 +1070,7 @@ export function VectorCanvas({
     if (event.button !== 0) return
     // While sampling, a shape is just something to read a colour off: let the click reach the canvas.
     if (sampling) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'hand' || tool === 'zoom' || tool === 'measure') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -1156,7 +1192,7 @@ export function VectorCanvas({
       return
     }
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'zoom' || tool === 'measure'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -1173,6 +1209,19 @@ export function VectorCanvas({
       else off.add(face.key)
       onUpdate(target.id, { regionsOff: off.size ? [...off] : undefined, kind: target.kind === 'group' ? target.kind : 'path', ...(target.network ? {} : { network: worldNetworkAsLocal(target) }) })
       if (!editing) onSelectIds([target.id])
+      return
+    }
+    if (tool === 'measure') {
+      const targets = snapTargetsFor([])
+      const from = snapFreePoint(rawAt, targets).point
+      interaction.current = { kind: 'measure', pointerId: event.pointerId, from, to: from, targets }
+      setMeasureDraft({ id: 'draft', from, to: from })
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
+    if (tool === 'zoom') {
+      interaction.current = { kind: 'zoom', pointerId: event.pointerId, start: rawAt, current: rawAt, out: event.altKey }
+      event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
     if (tool === 'lasso') {
@@ -1320,6 +1369,18 @@ export function VectorCanvas({
       const handleAt = event.shiftKey ? constrainAngle(anchor, at) : at
       setPenDraft(penDragHandle(draft, handleAt, event.altKey))
       showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'measure') {
+      const to = event.shiftKey ? constrainAngle(active.from, at) : snapFreePoint(at, active.targets).point
+      active.to = to
+      setMeasureDraft({ id: 'draft', from: active.from, to })
+      showHud(measurementLabel(active.from, to), event.nativeEvent)
+      return
+    }
+    if (active.kind === 'zoom') {
+      active.current = at
+      setZoomBox(boundsBetween(active.start, at, false))
       return
     }
     if (active.kind === 'lasso') {
@@ -1855,7 +1916,7 @@ export function VectorCanvas({
       data-rulers={viewOptions.rulers || undefined}
       style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background } as CSSProperties}
       onPointerDownCapture={(event) => {
-        if (event.button !== 1 && !(event.button === 0 && spaceHeld.current)) return
+        if (event.button !== 1 && !(event.button === 0 && (spaceHeld.current || tool === 'hand'))) return
         event.preventDefault()
         event.stopPropagation()
         event.currentTarget.setPointerCapture(event.pointerId)
@@ -1980,6 +2041,10 @@ export function VectorCanvas({
           ) : null}
           {pencilPoints && pencilPoints.length > 1 ? <polyline className="vector-pencil__path" points={pencilPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
           {lassoPoints && lassoPoints.length > 1 ? <polygon className="vector-lasso" points={lassoPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
+          {zoomBox ? <rect className="vector-zoom-box" x={zoomBox.x} y={zoomBox.y} width={zoomBox.width} height={zoomBox.height} /> : null}
+          {[...measurements, ...(measureDraft ? [measureDraft] : [])].map((item) => (
+            <Ruler key={item.id} measurement={item} zoom={zoom} draft={item.id === 'draft'} />
+          ))}
           {showHandles && (singleDirect || multiBounds) ? (
             <Pivot
               point={pivot ?? elementCenter(singleDirect ?? multiBounds!)}
@@ -2982,6 +3047,28 @@ function Pivot({ point, custom, zoom, onPointerDown, onDoubleClick }: { point: P
 }
 
 /** Distance lines between two boxes along each axis, drawn where the boxes do not overlap. */
+/** A measurement laid on the canvas: the line, its end ticks and its reading. */
+function Ruler({ measurement, zoom, draft }: { measurement: Measurement; zoom: number; draft: boolean }) {
+  const { from, to } = measurement
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const length = Math.hypot(dx, dy) || 1
+  // The ticks sit across the line and keep their size on screen whatever the zoom.
+  const tick = 5 / zoom
+  const across = { x: (-dy / length) * tick, y: (dx / length) * tick }
+  const mid = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 }
+  return (
+    <g className="vector-ruler" data-draft={draft || undefined}>
+      <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} strokeWidth={1 / zoom} />
+      <line x1={from.x - across.x} y1={from.y - across.y} x2={from.x + across.x} y2={from.y + across.y} strokeWidth={1 / zoom} />
+      <line x1={to.x - across.x} y1={to.y - across.y} x2={to.x + across.x} y2={to.y + across.y} strokeWidth={1 / zoom} />
+      <text x={mid.x + across.x * 2.4} y={mid.y + across.y * 2.4} fontSize={11 / zoom} textAnchor="middle">
+        {measurementLabel(from, to)}
+      </text>
+    </g>
+  )
+}
+
 function Measurements({ from, to, zoom }: { from: Bounds; to: Bounds; zoom: number }) {
   const lines: Array<{ x1: number; y1: number; x2: number; y2: number; label: string }> = []
   const fromRight = from.x + from.width

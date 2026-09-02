@@ -1,6 +1,9 @@
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import {
   ArrowRight,
+  Hand,
+  ZoomIn,
+  Ruler,
   Box,
   Camera,
   ClipboardPaste,
@@ -110,6 +113,9 @@ export const IconLine = glyph(LineGlyph)
 export const IconPolygon = glyph(Star)
 export const IconScissors = glyph(Scissors)
 export const IconScale = glyph(Maximize)
+export const IconHand = glyph(Hand)
+export const IconZoomTool = glyph(ZoomIn)
+export const IconRuler = glyph(Ruler)
 export const IconMask = glyph(SquareDashed)
 
 export const IconPaste = glyph(ClipboardPaste)
