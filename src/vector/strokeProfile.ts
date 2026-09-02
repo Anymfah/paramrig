@@ -105,6 +105,25 @@ export function walkRun(run: Run): Walk[] {
   })
 }
 
+/** Where a point falls on a set of chains: the nearest walk step, and how far off it sits. */
+export type Nearest = { runIndex: number; t: number; distance: number; point: VectorPoint; normal: VectorPoint }
+
+/**
+ * The closest place on the chains to a point. The width tool works from this: `t` says where
+ * along the chain a profile point belongs, and the distance says how wide the user is asking for.
+ */
+export function nearestOnRuns(runs: Run[], point: VectorPoint): Nearest | null {
+  let best: Nearest | null = null
+  runs.forEach((run, runIndex) => {
+    for (const entry of walkRun(run)) {
+      const distance = Math.hypot(entry.point.x - point.x, entry.point.y - point.y)
+      if (best && distance >= best.distance) continue
+      best = { runIndex, t: entry.t, distance, point: entry.point, normal: entry.normal }
+    }
+  })
+  return best
+}
+
 /**
  * The outline of a profiled stroke along one chain, as fillable path data.
  *

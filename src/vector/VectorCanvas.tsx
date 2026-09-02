@@ -18,7 +18,7 @@ import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
   cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, smoothSegments, toggleNodeSmooth,
-  transformNodes, worldNetwork, type AbsNetwork, type AbsSegment,
+  transformNodes, worldNetwork, type AbsNetwork, type AbsSegment, type Run,
 } from '@/vector/network'
 import { pencilNodes } from '@/vector/pencil'
 import { cutNode, cutSegment, scaleStylePatch, uniformFactor } from '@/vector/cut'
@@ -27,6 +27,8 @@ import { layerAttributes, markerShape, outlinePathData, patternPlacement, render
 import type { FilterPrimitive } from '@/vector/filters'
 import { renderStats } from '@/vector/render'
 import { handleRadii } from '@/vector/hitPriority'
+import { nearestOnRuns, removeProfilePoint, setProfilePoint, walkRun } from '@/vector/strokeProfile'
+import { worldRuns } from '@/vector/booleans'
 import { faceCacheStats } from '@/vector/planar'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
@@ -91,6 +93,7 @@ type Interaction =
   | { kind: 'corner'; pointerId: number; element: VectorElement; corner: CornerName; alone: boolean }
   | { kind: 'gradient'; pointerId: number; element: VectorElement; index: number; handle: GradientHandle; stop: number }
   | { kind: 'image-place'; pointerId: number; start: Point; element: VectorElement; index: number; paint: VectorPaint }
+  | { kind: 'width'; pointerId: number; element: VectorElement; runs: Run[]; t: number }
   | { kind: 'measure'; pointerId: number; from: Point; to: Point; targets: SnapTarget[] }
   | { kind: 'zoom'; pointerId: number; start: Point; current: Point; out: boolean }
   | { kind: 'pivot'; pointerId: number }
@@ -101,6 +104,8 @@ type Interaction =
 
 /** The interactions during which the moving objects drop their filters. */
 const MOVING_KINDS: string[] = ['move', 'resize', 'rotate', 'node', 'segment-move', 'node-resize', 'node-rotate', 'crop', 'shape', 'corner', 'modal']
+
+const WIDTH_REACH_PX = 40
 
 const GLIDE_FRAMES = 3
 const GLIDE_DECAY = 0.6
@@ -204,6 +209,10 @@ export function VectorCanvas({
   const placingRef = useRef(false)
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
+  /** Where the width tool would put a point, and the profile points already on the chain. */
+  const [widthHover, setWidthHover] = useState<{ t: number; point: Point } | null>(null)
+  const widthHoverRef = useRef(widthHover)
+  widthHoverRef.current = widthHover
   const [measurements, setMeasurements] = useState<Measurement[]>([])
   const measurementsRef = useRef(measurements)
   measurementsRef.current = measurements
@@ -260,7 +269,9 @@ export function VectorCanvas({
   const elements = document.elements
   const selectedElements = useMemo(() => elements.filter((element) => selectedIds.includes(element.id)), [elements, selectedIds])
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
+  const editingCandidateRef = useRef<VectorElement | null>(null)
   const editingCandidate = selected && !isContainer(selected) && selected.kind !== 'text' && selected.kind !== 'image' && selected.visible && !selected.locked ? selected : null
+  editingCandidateRef.current = editingCandidate
   const editing = (tool === 'node' || tool === 'bucket' || tool === 'scissors') && selected && !isContainer(selected) && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
   const textEditing = textEditId ? elements.find((element) => element.id === textEditId && element.kind === 'text') ?? null : null
   const cropping = cropId ? elements.find((element) => element.id === cropId && element.kind === 'image' && !element.locked) ?? null : null
@@ -639,7 +650,7 @@ export function VectorCanvas({
           commitPen()
           return
         }
-        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors' || toolRef.current === 'hand' || toolRef.current === 'zoom' || toolRef.current === 'measure') {
+        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors' || toolRef.current === 'width' || toolRef.current === 'hand' || toolRef.current === 'zoom' || toolRef.current === 'measure') {
           callbacks.current.onSelectNodes([])
           setSelectedSegment(null)
           callbacks.current.onToolChange('select')
@@ -665,6 +676,16 @@ export function VectorCanvas({
           const next = penRemoveLast(penDraftRef.current)
           setPenDraft(next)
           if (!next) setPenCloseHint(false)
+          return
+        }
+      }
+      if (toolRef.current === 'width' && (key === 'backspace' || key === 'delete')) {
+        const hover = widthHoverRef.current
+        const target = editingCandidateRef.current
+        if (hover && target?.strokeProfile) {
+          event.preventDefault()
+          event.stopImmediatePropagation()
+          callbacks.current.onUpdate(target.id, { strokeProfile: removeProfilePoint(target.strokeProfile, hover.t) }, true, 'Stroke width')
           return
         }
       }
@@ -1000,6 +1021,8 @@ export function VectorCanvas({
       onSelectNodes(active.additive ? [...new Set([...selectedNodeIdsRef.current, ...hits])] : hits)
       if (hits.length) setSelectedSegment(null)
       setMarqueeBounds(null)
+    } else if (active.kind === 'width') {
+      onGestureEnd('Stroke width')
     } else if (active.kind === 'measure') {
       setMeasureDraft(null)
       // A measurement is a reading, not an edit: it stays on screen and never touches the document.
@@ -1144,7 +1167,7 @@ export function VectorCanvas({
     if (event.button !== 0) return
     // While sampling, a shape is just something to read a colour off: let the click reach the canvas.
     if (sampling) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'hand' || tool === 'zoom' || tool === 'measure') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'hand' || tool === 'zoom' || tool === 'measure' || tool === 'width') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -1266,7 +1289,7 @@ export function VectorCanvas({
       return
     }
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'zoom' || tool === 'measure'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors' || tool === 'zoom' || tool === 'measure' || tool === 'width'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -1283,6 +1306,20 @@ export function VectorCanvas({
       else off.add(face.key)
       onUpdate(target.id, { regionsOff: off.size ? [...off] : undefined, kind: target.kind === 'group' ? target.kind : 'path', ...(target.network ? {} : { network: worldNetworkAsLocal(target) }) })
       if (!editing) onSelectIds([target.id])
+      return
+    }
+    if (tool === 'width') {
+      const target = editingCandidate
+      if (!target || target.strokeWidth <= 0) return
+      const runs = worldRuns(target).strokes
+      const nearest = nearestOnRuns(runs, rawAt)
+      if (!nearest || nearest.distance > WIDTH_REACH_PX / zoom) return
+      onGestureStart('Stroke width')
+      const factor = Math.max(0, (nearest.distance * 2) / target.strokeWidth)
+      interaction.current = { kind: 'width', pointerId: event.pointerId, element: structuredClone(target), runs, t: nearest.t }
+      onUpdate(target.id, { strokeProfile: setProfilePoint(target.strokeProfile, nearest.t, factor) }, false)
+      showHud(`${round(target.strokeWidth * factor)} px`, event.nativeEvent)
+      event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
     if (tool === 'measure') {
@@ -1423,6 +1460,11 @@ export function VectorCanvas({
     const active = interaction.current
     const at = point(event.nativeEvent)
     if (active && MOVING_KINDS.includes(active.kind)) setDragging(true)
+    if (tool === 'width' && !active) {
+      const target = editingCandidate
+      const nearest = target ? nearestOnRuns(worldRuns(target).strokes, at) : null
+      setWidthHover(nearest && nearest.distance <= WIDTH_REACH_PX / zoom ? { t: nearest.t, point: nearest.point } : null)
+    }
     if (tool === 'pen' && (!active || active.kind !== 'pen')) {
       const draft = penDraftRef.current
       const last = draft?.current ? draft.world.nodes.find((node) => node.id === draft.current)?.point ?? null : null
@@ -1444,6 +1486,15 @@ export function VectorCanvas({
       const handleAt = event.shiftKey ? constrainAngle(anchor, at) : at
       setPenDraft(penDragHandle(draft, handleAt, event.altKey))
       showHud(`${round(Math.hypot(handleAt.x - anchor.x, handleAt.y - anchor.y))} · ${round(normalizeDegrees(Math.atan2(-(handleAt.y - anchor.y), handleAt.x - anchor.x) * 180 / Math.PI))}°`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'width') {
+      const nearest = nearestOnRuns(active.runs, at)
+      const reference = nearest ?? { distance: 0, t: active.t }
+      // The width follows how far the pointer is from the line, on either side of it.
+      const factor = Math.max(0, (reference.distance * 2) / active.element.strokeWidth)
+      onUpdate(active.element.id, { strokeProfile: setProfilePoint(active.element.strokeProfile, active.t, factor) }, false)
+      showHud(`${round(active.element.strokeWidth * factor)} px`, event.nativeEvent)
       return
     }
     if (active.kind === 'measure') {
@@ -2114,6 +2165,9 @@ export function VectorCanvas({
           ) : null}
           {pencilPoints && pencilPoints.length > 1 ? <polyline className="vector-pencil__path" points={pencilPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
           {lassoPoints && lassoPoints.length > 1 ? <polygon className="vector-lasso" points={lassoPoints.map((item) => `${item.x},${item.y}`).join(' ')} /> : null}
+          {tool === 'width' && editingCandidate ? (
+            <WidthMarks element={editingCandidate} hover={widthHover} zoom={zoom} />
+          ) : null}
           {zoomBox ? <rect className="vector-zoom-box" x={zoomBox.x} y={zoomBox.y} width={zoomBox.width} height={zoomBox.height} /> : null}
           {[...measurements, ...(measureDraft ? [measureDraft] : [])].map((item) => (
             <Ruler key={item.id} measurement={item} zoom={zoom} draft={item.id === 'draft'} />
@@ -3144,6 +3198,26 @@ function Pivot({ point, custom, zoom, onPointerDown, onDoubleClick }: { point: P
 }
 
 /** Distance lines between two boxes along each axis, drawn where the boxes do not overlap. */
+/** Where the width profile has its points, and where the pointer would add one. */
+function WidthMarks({ element, hover, zoom }: { element: VectorElement; hover: { t: number; point: Point } | null; zoom: number }) {
+  const runs = worldRuns(element).strokes
+  const walks = runs.map((run) => walkRun(run))
+  const marks = (element.strokeProfile ?? []).flatMap((point) => walks.flatMap((walk) => {
+    const entry = walk.reduce((best, candidate) => Math.abs(candidate.t - point.t) < Math.abs(best.t - point.t) ? candidate : best, walk[0]!)
+    if (!entry) return []
+    const half = (element.strokeWidth * point.width) / 2
+    return [{ key: `${point.t}-${entry.point.x}`, from: { x: entry.point.x + entry.normal.x * half, y: entry.point.y + entry.normal.y * half }, to: { x: entry.point.x - entry.normal.x * half, y: entry.point.y - entry.normal.y * half } }]
+  }))
+  return (
+    <g className="vector-width" aria-hidden="true">
+      {marks.map((mark) => (
+        <line key={mark.key} className="vector-width__mark" x1={mark.from.x} y1={mark.from.y} x2={mark.to.x} y2={mark.to.y} strokeWidth={1.5 / zoom} />
+      ))}
+      {hover ? <circle className="vector-width__hover" cx={hover.point.x} cy={hover.point.y} r={4 / zoom} strokeWidth={1.5 / zoom} /> : null}
+    </g>
+  )
+}
+
 /** A measurement laid on the canvas: the line, its end ticks and its reading. */
 function Ruler({ measurement, zoom, draft }: { measurement: Measurement; zoom: number; draft: boolean }) {
   const { from, to } = measurement

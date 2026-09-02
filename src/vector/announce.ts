@@ -4,7 +4,7 @@ const TOOL_NAMES: Record<VectorTool, string> = {
   select: 'Select', transform: 'Transform', node: 'Edit nodes', pen: 'Pen', pencil: 'Pencil',
   lasso: 'Lasso', bucket: 'Paint bucket', rectangle: 'Rectangle', ellipse: 'Ellipse', text: 'Text',
   frame: 'Frame', line: 'Line', polygon: 'Polygon', scissors: 'Scissors', scale: 'Scale',
-  hand: 'Hand', zoom: 'Zoom', measure: 'Measure',
+  hand: 'Hand', zoom: 'Zoom', measure: 'Measure', width: 'Width',
 }
 
 export function toolAnnouncement(tool: VectorTool): string {

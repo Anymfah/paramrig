@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { envelopePath, profileWidth, removeProfilePoint, sanitizeStrokeProfile, setProfilePoint, walkRun } from '@/vector/strokeProfile'
+import { envelopePath, nearestOnRuns, profileWidth, removeProfilePoint, sanitizeStrokeProfile, setProfilePoint, walkRun } from '@/vector/strokeProfile'
 import type { Run } from '@/vector/network'
 
 const line: Run = { points: [{ anchor: { x: 0, y: 0 } }, { anchor: { x: 100, y: 0 } }], closed: false }
@@ -119,5 +119,25 @@ describe('the envelope of a profiled stroke', () => {
     const squared = corners(envelopePath(line, 10, undefined, 'square'))
     expect(squared.some(([x]) => x === 105)).toBe(true)
     expect(squared.some(([x]) => x === -5)).toBe(true)
+  })
+})
+
+describe('finding the nearest place on a chain', () => {
+  it('reports where along the chain it falls and how far off the point sits', () => {
+    const nearest = nearestOnRuns([line], { x: 50, y: 12 })!
+
+    expect(nearest.t).toBeCloseTo(0.5, 1)
+    expect(nearest.distance).toBeCloseTo(12, 0)
+    expect(nearest.runIndex).toBe(0)
+  })
+
+  it('picks the closer of two chains', () => {
+    const far = { points: [{ anchor: { x: 0, y: 500 } }, { anchor: { x: 100, y: 500 } }], closed: false }
+
+    expect(nearestOnRuns([far, line], { x: 50, y: 5 })!.runIndex).toBe(1)
+  })
+
+  it('gives up on nothing to walk', () => {
+    expect(nearestOnRuns([], { x: 0, y: 0 })).toBeNull()
   })
 })

@@ -9,7 +9,7 @@ import { nodeAnnouncement, selectionAnnouncement, toolAnnouncement } from '@/vec
 import { MAX_ZOOM, MIN_ZOOM, nextZoom } from '@/vector/measure'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconHand, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconRuler, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock, IconZoomTool } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconHand, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconRuler, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock, IconWidth, IconZoomTool } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -633,6 +633,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'l') { setShapeTool('line'); chooseTool('line') }
       else if (key === 'c') chooseTool('scissors')
       else if (key === 'k') chooseTool('scale')
+      else if (key === 'w' && event.shiftKey) chooseTool('width')
       else if (key === 'h') { setViewTool('hand'); chooseTool('hand') }
       else if (key === 'z' && !event.metaKey && !event.ctrlKey) { setViewTool('zoom'); chooseTool('zoom') }
       else if (key === 'm' && event.shiftKey) { setViewTool('measure'); chooseTool('measure') }
@@ -904,6 +905,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'reset-stroke-width', label: 'Reset stroke width', section: 'Object', disabled: !selectedElements.some((element) => element.strokeProfile), run: () => {
+      const targets = selectedElements.filter((element) => element.strokeProfile)
+      editor.updateElements(targets.map((element) => ({ id: element.id, patch: { strokeProfile: undefined } })), true, 'Reset stroke width')
+    } },
     { id: 'transform', label: 'Transform…', section: 'Arrange', shortcut: SHORTCUTS.transform, disabled: !hasSelection, run: () => setTransformOpen(true) },
     { id: 'rotate-copies', label: 'Rotate copies…', section: 'Arrange', disabled: !hasSelection, run: () => setRotateCopiesOpen(true) },
     { id: 'rename', label: 'Rename layers…', section: 'Object', disabled: !hasSelection, run: () => setRenameOpen(true) },
@@ -1070,6 +1075,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
           <ToolButton label="Scissors · C" active={tool === 'scissors'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('scissors')}><IconScissors /></ToolButton>
+          <ToolButton label="Width · ⇧W" active={tool === 'width'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('width')}><IconWidth /></ToolButton>
           <ToolButton label="Scale · K" active={tool === 'scale'} onClick={() => chooseTool('scale')}><IconScale /></ToolButton>
           <ViewToolMenu value={viewTool} active={tool === viewTool} onChange={(next) => { setViewTool(next); chooseTool(next) }} onActivate={() => chooseTool(viewTool)} />
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>

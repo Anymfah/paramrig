@@ -4,6 +4,7 @@ import {
   Hand,
   ZoomIn,
   Ruler,
+  Spline,
   Box,
   Camera,
   ClipboardPaste,
@@ -116,6 +117,7 @@ export const IconScale = glyph(Maximize)
 export const IconHand = glyph(Hand)
 export const IconZoomTool = glyph(ZoomIn)
 export const IconRuler = glyph(Ruler)
+export const IconWidth = glyph(Spline)
 export const IconMask = glyph(SquareDashed)
 
 export const IconPaste = glyph(ClipboardPaste)

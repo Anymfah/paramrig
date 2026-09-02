@@ -587,6 +587,12 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
             <NumberField label="Dash" value={first.strokeDash?.[0] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(dash) => apply({ strokeDash: dash > 0 ? [dash, first.strokeDash?.[1] ?? dash] : undefined })} {...gesture} />
             <NumberField label="Gap" value={first.strokeDash?.[1] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" disabled={!first.strokeDash} onChange={(gap) => apply({ strokeDash: first.strokeDash ? [first.strokeDash[0], gap] : undefined })} {...gesture} />
           </div>
+          {single?.strokeProfile ? (
+            <div className="vector-panel__row">
+              <span className="vector-panel__subtitle">Width profile · {single.strokeProfile.length} points</span>
+              <Button variant="quiet" size="sm" data-action="reset-stroke-width" onClick={() => onUpdate(single.id, { strokeProfile: undefined }, true, 'Reset stroke width')}>Reset</Button>
+            </div>
+          ) : null}
           {isPath ? (
             <div className="vector-field-grid">
               <SelectField label="Start" value={first.strokeArrowStart ?? 'none'} options={ARROW_OPTIONS} onChange={(value) => apply({ strokeArrowStart: value === 'none' ? undefined : value as VectorElement['strokeArrowStart'] })} />

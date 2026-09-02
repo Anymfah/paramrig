@@ -1839,3 +1839,20 @@
 @media (forced-colors: active) {
   .vector-canvas { --vector-halo: Canvas; }
 }
+
+/* The width tool: where the profile has its points, and where a new one would land. */
+.vector-width { pointer-events: none; }
+.vector-width__mark {
+  stroke: var(--vector-selection);
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+.vector-width__hover {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  vector-effect: non-scaling-stroke;
+}
+.vector-canvas[data-tool='width'],
+.vector-canvas[data-tool='width'] .vector-artboard,
+.vector-canvas[data-tool='width'] [data-vector-element],
+.vector-canvas[data-tool='width'] .vector-hit { cursor: crosshair; }
