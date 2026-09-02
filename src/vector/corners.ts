@@ -120,3 +120,52 @@ export function cornerRadiusPatch(box: CornerBox, corner: CornerName, radius: nu
   radii[CORNERS.indexOf(corner)] = rounded
   return { cornerRadius: radii.some(Boolean) ? radii : undefined }
 }
+
+/**
+ * A corner of a path, read from the two neighbours around it. `bisector` points into the corner,
+ * `halfAngle` is half the turn it makes, and `reach` is how far the nearer neighbour is — which is
+ * what caps how round the corner can get before it eats its own edges.
+ */
+export type NodeCorner = { bisector: VectorPoint; halfAngle: number; reach: number }
+
+export function nodeCorner(previous: VectorPoint, anchor: VectorPoint, next: VectorPoint): NodeCorner | null {
+  const toPrevious = unit(previous, anchor)
+  const toNext = unit(next, anchor)
+  const dot = Math.max(-1, Math.min(1, toPrevious.x * toNext.x + toPrevious.y * toNext.y))
+  const angle = Math.acos(dot)
+  // A node whose neighbours line up straight through it, or double back on it, has no corner.
+  if (!Number.isFinite(angle) || angle < 1e-3 || Math.abs(angle - Math.PI) < 1e-3) return null
+  const sum = { x: toPrevious.x + toNext.x, y: toPrevious.y + toNext.y }
+  const length = Math.hypot(sum.x, sum.y)
+  if (length < 1e-6) return null
+  return {
+    bisector: { x: sum.x / length, y: sum.y / length },
+    halfAngle: angle / 2,
+    reach: Math.min(
+      Math.hypot(previous.x - anchor.x, previous.y - anchor.y),
+      Math.hypot(next.x - anchor.x, next.y - anchor.y),
+    ) / 2,
+  }
+}
+
+/** The largest radius a corner of a path can take before its arc runs past its own edges. */
+export function maxNodeRadius(corner: NodeCorner): number {
+  return Math.max(0, corner.reach * Math.tan(corner.halfAngle))
+}
+
+/**
+ * Where the handle that rounds a corner sits: on the bisector, as far in as the arc's own tangent
+ * points, and never closer than a few screen pixels so it can still be grabbed at radius zero.
+ */
+export function nodeRadiusHandle(anchor: VectorPoint, corner: NodeCorner, radius: number, zoom: number): VectorPoint {
+  const cut = Math.min(corner.reach, Math.max(radius, 0) / Math.tan(corner.halfAngle))
+  const distance = Math.max(cut, MIN_INSET / zoom)
+  return { x: anchor.x + corner.bisector.x * distance, y: anchor.y + corner.bisector.y * distance }
+}
+
+/** The radius a drag to `point` asks of a corner: how far along the bisector it went. */
+export function nodeRadiusAt(anchor: VectorPoint, corner: NodeCorner, point: VectorPoint): number {
+  const along = (point.x - anchor.x) * corner.bisector.x + (point.y - anchor.y) * corner.bisector.y
+  const cut = Math.min(corner.reach, Math.max(0, along))
+  return Math.round(cut * Math.tan(corner.halfAngle) * 100) / 100
+}

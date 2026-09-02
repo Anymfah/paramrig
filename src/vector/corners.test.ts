@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, cornerRadii, maxCornerRadius } from '@/vector/corners'
+import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, cornerRadii, maxCornerRadius, maxNodeRadius, nodeCorner, nodeRadiusAt, nodeRadiusHandle } from '@/vector/corners'
 import type { VectorElement } from '@/vector/types'
 
 const box = { x: 100, y: 100, width: 200, height: 120, rotation: 0 } as Pick<VectorElement, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'cornerRadius'>
@@ -63,5 +63,47 @@ describe('writing the radius back', () => {
 
   it('forgets the radius once every corner is square again', () => {
     expect(cornerRadiusPatch({ ...box, cornerRadius: [0, 0, 5, 0] }, 'se', 0, true)).toEqual({ cornerRadius: undefined })
+  })
+})
+
+describe('rounding a corner of a path', () => {
+  const anchor = { x: 100, y: 100 }
+  const previous = { x: 0, y: 100 }
+  const next = { x: 100, y: 0 }
+
+  it('reads a right angle and how far its neighbours are', () => {
+    const corner = nodeCorner(previous, anchor, next)!
+    expect(corner.halfAngle).toBeCloseTo(Math.PI / 4)
+    // The bisector points up and to the left, into the corner.
+    expect(corner.bisector.x).toBeCloseTo(-Math.SQRT1_2)
+    expect(corner.bisector.y).toBeCloseTo(-Math.SQRT1_2)
+    expect(corner.reach).toBe(50)
+  })
+
+  it('says there is no corner where the path runs straight through', () => {
+    expect(nodeCorner({ x: 0, y: 100 }, anchor, { x: 200, y: 100 })).toBeNull()
+    expect(nodeCorner({ x: 0, y: 100 }, anchor, { x: 0, y: 100 })).toBeNull()
+  })
+
+  it('caps the radius at what the shorter edge allows', () => {
+    // A right angle: tan(45°) is 1, so the cap is the reach itself.
+    expect(maxNodeRadius(nodeCorner(previous, anchor, next)!)).toBeCloseTo(50)
+  })
+
+  it('puts the handle on the bisector, and keeps it grabbable at zero', () => {
+    const corner = nodeCorner(previous, anchor, next)!
+    const atZero = nodeRadiusHandle(anchor, corner, 0, 1)
+    expect(Math.hypot(atZero.x - anchor.x, atZero.y - anchor.y)).toBeCloseTo(10)
+    const at20 = nodeRadiusHandle(anchor, corner, 20, 1)
+    expect(Math.hypot(at20.x - anchor.x, at20.y - anchor.y)).toBeCloseTo(20)
+  })
+
+  it('reads a radius back from where the handle was dragged to', () => {
+    const corner = nodeCorner(previous, anchor, next)!
+    const point = { x: anchor.x + corner.bisector.x * 30, y: anchor.y + corner.bisector.y * 30 }
+    expect(nodeRadiusAt(anchor, corner, point)).toBeCloseTo(30)
+    // Dragged back past the corner, or past what the edges allow.
+    expect(nodeRadiusAt(anchor, corner, { x: anchor.x + 40, y: anchor.y + 40 })).toBe(0)
+    expect(nodeRadiusAt(anchor, corner, { x: anchor.x + corner.bisector.x * 500, y: anchor.y + corner.bisector.y * 500 })).toBeCloseTo(50)
   })
 })

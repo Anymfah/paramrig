@@ -6,8 +6,8 @@ import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks,
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
-import { anglePoint, arcProperties, isFullEllipse, localPoint, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type ShapeHandle } from '@/vector/shapes'
-import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, CORNERS, type CornerName } from '@/vector/corners'
+import { anglePoint, arcProperties, DEFAULT_INNER_RATIO, DEFAULT_SIDES, isFullEllipse, localPoint, polygonPathData, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type PolygonProperties, type ShapeHandle } from '@/vector/shapes'
+import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, CORNERS, maxNodeRadius, nodeCorner, nodeRadiusAt, nodeRadiusHandle, type CornerName, type NodeCorner } from '@/vector/corners'
 import { addStop, dropStop, gradientCircle, gradientLine, linearPatch, moveStop, pointAt, projectOnLine, radialPatch, STOP_DROP_PX } from '@/vector/gradient'
 import { fillsOf, fillsPatch } from '@/vector/paints'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
@@ -94,6 +94,7 @@ type Interaction =
   | { kind: 'crop'; pointerId: number; start: Point; element: VectorElement; box: Bounds; crop: Crop; handle: DirectResizeHandle | null }
   | { kind: 'shape'; pointerId: number; start: Point; element: VectorElement; handle: ShapeHandle }
   | { kind: 'corner'; pointerId: number; element: VectorElement; corner: CornerName; alone: boolean }
+  | { kind: 'node-radius'; pointerId: number; element: VectorElement; nodeId: string; anchor: Point; corner: NodeCorner }
   | { kind: 'gradient'; pointerId: number; element: VectorElement; index: number; handle: GradientHandle; stop: number }
   | { kind: 'image-place'; pointerId: number; start: Point; element: VectorElement; index: number; paint: VectorPaint }
   | { kind: 'mesh'; pointerId: number; element: VectorElement; index: number; point: number }
@@ -152,6 +153,8 @@ type VectorCanvasProps = {
    * it should not be there at all, which is during any gesture — and hands the point over.
    */
   overlay?: (anchor: SelectionAnchor | null) => ReactNode
+  /** What the shape tool draws: a plain polygon, or a star with its points pulled in. */
+  shape?: PolygonProperties
 }
 
 /** What a modal G / R / S transform is called in the history. */
@@ -197,6 +200,7 @@ export function VectorCanvas({
   onGestureEnd,
   onGestureCancel,
   overlay,
+  shape = { sides: DEFAULT_SIDES, innerRatio: DEFAULT_INNER_RATIO },
 }: VectorCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const instanceId = useId().replace(/:/g, '')
@@ -223,7 +227,7 @@ export function VectorCanvas({
   samplingRef.current = sampling
   const croppingRef = useRef(false)
   const placingRef = useRef(false)
-  const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
+  const [draft, setDraft] = useState<{ bounds: Bounds; from: Point; to: Point } | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   /** Where the width tool would put a point, and the profile points already on the chain. */
   const meshTargetRef = useRef<{ element: VectorElement; index: number } | null>(null)
@@ -520,7 +524,7 @@ export function VectorCanvas({
   const clearInteraction = useCallback(() => {
     setDragging(false)
     interaction.current = null
-    setDraftBounds(null)
+    setDraft(null)
     setMarqueeBounds(null)
     setTransformStatus(null)
     setDirectCursor(null)
@@ -875,6 +879,15 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  /** Pulling the little handle on a corner's bisector rounds that corner of the path. */
+  const startNodeRadius = (event: ReactPointerEvent<SVGElement>, element: VectorElement, nodeId: string, anchor: Point, corner: NodeCorner) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart('Round the corner')
+    interaction.current = { kind: 'node-radius', pointerId: event.pointerId, element: structuredClone(element), nodeId, anchor, corner }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
   const startGradient = (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number, handle: GradientHandle, stop: number) => {
     if (event.button !== 0) return
     event.stopPropagation()
@@ -1029,7 +1042,10 @@ export function VectorCanvas({
         addLine(active.start, event.shiftKey ? constrainAngle(active.start, active.current) : active.current)
       } else if (bounds.width >= 2 && bounds.height >= 2) {
         const kind = tool === 'ellipse' ? 'ellipse' : tool === 'frame' ? 'frame' : tool === 'polygon' ? 'polygon' : 'rectangle'
-        onAddElements([createVectorElement(kind, viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds)])
+        const options = kind === 'polygon'
+          ? { sides: shape.sides, innerRatio: shape.innerRatio, ...(shape.innerRatio > 0 ? { name: 'Star' } : {}) }
+          : {}
+        onAddElements([createVectorElement(kind, viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds, options)])
       }
     } else if (active.kind === 'marquee') {
       const bounds = boundsBetween(active.start, active.current, false)
@@ -1492,7 +1508,7 @@ export function VectorCanvas({
     const targets = snapTargetsFor([])
     const start = snapFreePoint(at, targets).point
     interaction.current = { kind: 'create', pointerId: event.pointerId, start, current: start, targets }
-    setDraftBounds({ x: start.x, y: start.y, width: 0, height: 0 })
+    setDraft({ bounds: { x: start.x, y: start.y, width: 0, height: 0 }, from: start, to: start })
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
@@ -1608,7 +1624,7 @@ export function VectorCanvas({
       const snapped = snapFreePoint(at, active.targets)
       active.current = snapped.point
       const bounds = boundsBetween(active.start, snapped.point, event.shiftKey)
-      setDraftBounds(bounds)
+      setDraft({ bounds, from: active.start, to: tool === 'line' && event.shiftKey ? constrainAngle(active.start, snapped.point) : snapped.point })
       setSnapMatches(snapped.matches)
       showHud(`${bounds.width} × ${bounds.height}`, event.nativeEvent)
       return
@@ -1696,6 +1712,17 @@ export function VectorCanvas({
       const radius = cornerRadiusAt(active.element, active.corner, at)
       onUpdate(active.element.id, cornerRadiusPatch(active.element, active.corner, radius, active.alone), false)
       showHud(`${round(radius)} px${active.alone ? ' · one corner' : ''}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'node-radius') {
+      const radius = Math.min(maxNodeRadius(active.corner), nodeRadiusAt(active.anchor, active.corner, at))
+      const network = active.element.network ?? normalizeWorld(worldNetwork(active.element)).network
+      onUpdate(active.element.id, {
+        kind: 'path',
+        ...(active.element.network ? {} : normalizeWorld(worldNetwork(active.element))),
+        network: { ...network, nodes: network.nodes.map((node) => node.id === active.nodeId ? { ...node, radius: radius > 0 ? radius : undefined } : node) },
+      }, false)
+      showHud(`${round(radius)} px`, event.nativeEvent)
       return
     }
     if (active.kind === 'gradient') {
@@ -2275,6 +2302,7 @@ export function VectorCanvas({
               onHoverSegment={setHoveredSegment}
               onNodePointerDown={onNodePointerDown}
               onSegmentPointerDown={onSegmentPointerDown}
+              onNodeRadiusPointerDown={(nodeId, anchor, corner, event) => startNodeRadius(event, editing, nodeId, anchor, corner)}
             />
           ) : null}
           {nodeBox && nodeBox.width + nodeBox.height > 0 ? (
@@ -2374,13 +2402,7 @@ export function VectorCanvas({
               ? <line key={index} className="vector-smart-guide" data-kind={match.kind} x1={match.value} x2={match.value} y1={match.from} y2={match.to} />
               : <line key={index} className="vector-smart-guide" data-kind={match.kind} x1={match.from} x2={match.to} y1={match.value} y2={match.value} />
           ))}
-          {draftBounds ? (
-            tool === 'ellipse' ? (
-              <ellipse className="vector-draft" cx={draftBounds.x + draftBounds.width / 2} cy={draftBounds.y + draftBounds.height / 2} rx={draftBounds.width / 2} ry={draftBounds.height / 2} />
-            ) : (
-              <rect className="vector-draft" {...draftBounds} />
-            )
-          ) : null}
+          {draft ? <ShapeDraft tool={tool} draft={draft} shape={shape} /> : null}
           {marqueeBounds ? <rect className="vector-marquee" data-vector-marquee="true" {...marqueeBounds} /> : null}
         </g>
       </svg>
@@ -3080,7 +3102,7 @@ function GuideLines({ guides, draft, selectedId, interactive, onPointerDown }: {
 }
 
 /** Node-edit overlay: every segment is selectable, every node draggable, handles on selected nodes. */
-function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, onHoverNode, onHoverSegment, onNodePointerDown, onSegmentPointerDown }: {
+function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, onHoverNode, onHoverSegment, onNodePointerDown, onSegmentPointerDown, onNodeRadiusPointerDown }: {
   element: VectorElement
   world: AbsNetwork
   zoom: number
@@ -3092,6 +3114,8 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
   onHoverSegment: (id: string | null) => void
   onNodePointerDown: (nodeId: string, handle: HandleRef | null, event: ReactPointerEvent<SVGElement>) => void
   onSegmentPointerDown: (segmentId: string, event: ReactPointerEvent<SVGElement>) => void
+  /** Pulling the handle on a corner's bisector rounds it. */
+  onNodeRadiusPointerDown: (nodeId: string, anchor: Point, corner: NodeCorner, event: ReactPointerEvent<SVGElement>) => void
 }) {
   const hitRadius = 5 / zoom
   const pointRadius = 3.5 / zoom
@@ -3142,6 +3166,14 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
       {world.nodes.map((node) => {
         const incident = world.segments.filter((segment) => segment.a === node.id || segment.b === node.id)
         const smooth = incident.some((segment) => (segment.a === node.id && segment.ah) || (segment.b === node.id && segment.bh))
+        // A selected corner between two straight segments can be pulled round, right on the canvas.
+        const neighbours = incident.length === 2
+          ? incident.map((segment) => nodeMap.get(segment.a === node.id ? segment.b : segment.a)?.point)
+          : []
+        const corner = interactive && selectedSet.has(node.id) && !smooth && neighbours[0] && neighbours[1]
+          ? nodeCorner(neighbours[0], node.point, neighbours[1])
+          : null
+        const radiusHandle = corner ? nodeRadiusHandle(node.point, corner, node.radius ?? 0, zoom) : null
         return (
           <g key={node.id}>
             {interactive ? (
@@ -3159,11 +3191,39 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
             {smooth
               ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} cx={node.point.x} cy={node.point.y} r={pointRadius} />
               : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} x={node.point.x - pointRadius} y={node.point.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
+            {corner && radiusHandle ? (
+              <>
+                <circle
+                  className="vector-nodes__radius-hit"
+                  data-vector-node-radius={node.id}
+                  cx={radiusHandle.x}
+                  cy={radiusHandle.y}
+                  r={hitRadius}
+                  onPointerDown={(event) => onNodeRadiusPointerDown(node.id, node.point, corner, event)}
+                />
+                <circle className="vector-nodes__radius" cx={radiusHandle.x} cy={radiusHandle.y} r={controlRadius} />
+              </>
+            ) : null}
           </g>
         )
       })}
     </g>
   )
+}
+
+/** What a drag draws before it lands: the shape itself, not a box standing in for it. */
+function ShapeDraft({ tool, draft, shape }: {
+  tool: VectorTool
+  draft: { bounds: Bounds; from: Point; to: Point }
+  shape: PolygonProperties
+}) {
+  const { bounds, from, to } = draft
+  if (tool === 'line') return <line className="vector-draft" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
+  if (tool === 'ellipse') {
+    return <ellipse className="vector-draft" cx={bounds.x + bounds.width / 2} cy={bounds.y + bounds.height / 2} rx={bounds.width / 2} ry={bounds.height / 2} />
+  }
+  if (tool === 'polygon') return <path className="vector-draft" d={polygonPathData(bounds, shape)} />
+  return <rect className="vector-draft" {...bounds} />
 }
 
 function PenPreview({ draft, cursor, zoom, closeHint }: { draft: PenDraft; cursor: Point | null; zoom: number; closeHint: boolean }) {

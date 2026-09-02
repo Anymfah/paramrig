@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { useContext, useState, type ReactNode } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Button, IconButton } from '@/ui/Button'
@@ -6,42 +6,8 @@ import { IconDiamond } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { Tooltip } from '@/ui/Tooltip'
-import type { ParameterDef, ParamGroup } from '@/rigs/types'
+import { ExposeContext, type ExposeContextValue } from '@/vector/exposeContext'
 import { kindForProperty, parseBindableProperty, propertyLabel, type VectorBinding } from '@/vector/rig'
-
-/** What is asked for when a field is turned into a control. */
-export type ExposeRequest = {
-  elementId: string
-  property: string
-  label: string
-  group: string
-  newGroupLabel?: string
-  min?: number
-  max?: number
-  step?: number
-}
-
-type ExposeContextValue = {
-  /** The object whose fields are on screen; null when several are selected. */
-  elementId: string | null
-  /** The name of that object, used to prefill a control's label. */
-  elementName: string
-  groups: ParamGroup[]
-  /** The controls the document declares, so a bound field can name the one driving it. */
-  parameters: ParameterDef[]
-  bindings: VectorBinding[]
-  onExpose: (request: ExposeRequest) => void
-  onUnbind: (binding: VectorBinding) => void
-  onGoToControl: (binding: VectorBinding) => void
-  /** A control dragged from the Controls tab and dropped on a field. */
-  onDropParameter?: (parameterId: string, elementId: string, property: string) => void
-}
-
-const ExposeContext = createContext<ExposeContextValue | null>(null)
-
-export function ExposeProvider({ value, children }: { value: ExposeContextValue | null; children: ReactNode }) {
-  return <ExposeContext.Provider value={value}>{children}</ExposeContext.Provider>
-}
 
 /**
  * A field of the Design tab, with the ◇ that turns it into a control. The diamond is quiet until

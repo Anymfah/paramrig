@@ -52,7 +52,7 @@ import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { readInspectorPrefs, tabOf, withTab, writeInspectorPrefs, type InspectorTab } from '@/vector/inspectorPrefs'
 import { ToolGroup, ZoomControl } from '@/vector/VectorToolbar'
 import { DEFAULT_ENTRIES, groupOfTool, TOOL_GROUPS, type ToolGroupId } from '@/vector/toolGroups'
-import { STAR_INNER_RATIO } from '@/vector/shapes'
+import { DEFAULT_INNER_RATIO, DEFAULT_SIDES, STAR_INNER_RATIO } from '@/vector/shapes'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
 import {
   applyStylePatch,
@@ -78,7 +78,7 @@ import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
 import { documentAssets } from '@/vector/assets'
 import { controlId, DEFAULT_RIG_GROUP, emptyRig, parameterForProperty, resolveRigValues, type VectorBinding, type VectorRig } from '@/vector/rig'
-import { ExposeProvider, type ExposeRequest } from '@/vector/VectorExpose'
+import { ExposeContext, type ExposeRequest } from '@/vector/exposeContext'
 import { VectorControls } from '@/vector/VectorControls'
 import { ensureSession } from '@/state/workspace'
 import type { VectorMode } from '@/vector/inspectorPrefs'
@@ -1459,7 +1459,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
         />
       )}
       inspector={
-        <ExposeProvider value={{
+        <ExposeContext.Provider value={{
           elementId: single?.id ?? null,
           elementName: single?.name ?? '',
           groups: rig?.groups ?? [],
@@ -1520,7 +1520,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
           onImportFont={importFont}
           onBooleanGroup={booleanGroup}
         />
-        </ExposeProvider>
+        </ExposeContext.Provider>
       }
     >
       <h1 className="visually-hidden">{document.name}</h1>
@@ -1630,8 +1630,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
           onSelectNodes={setSelectedNodeIds}
           onToolChange={chooseTool}
           onAddElements={(elements) => {
-            const star = tool === 'polygon' && groupEntry.shapes === 'star'
-            editor.addElements(star ? elements.map((element) => element.kind === 'polygon' ? { ...element, name: 'Star', innerRatio: STAR_INNER_RATIO } : element) : elements)
+            editor.addElements(elements)
             if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'frame' || tool === 'polygon' || tool === 'line') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
@@ -1655,6 +1654,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
           onSample={finishCanvasPick}
           onMeshPointChange={setMeshPoint}
           onPlaceComponent={placeComponent}
+          shape={{ sides: DEFAULT_SIDES, innerRatio: groupEntry.shapes === 'star' ? STAR_INNER_RATIO : DEFAULT_INNER_RATIO }}
           overlay={(anchor) => anchor && (anchor.mode === 'nodes' ? !!nodeTarget : selectedIds.length > 0) ? (
             <VectorSelectionBar
               anchor={anchor}

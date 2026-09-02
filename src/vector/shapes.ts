@@ -68,6 +68,17 @@ export function polygonNetwork({ sides, innerRatio }: PolygonProperties): Vector
 }
 
 /**
+ * The outline of a polygon or a star laid into a box, as path data. The canvas draws this while a
+ * shape is being dragged out, so what is under the pointer is the shape and not a stand-in box.
+ */
+export function polygonPathData(bounds: { x: number; y: number; width: number; height: number }, properties: PolygonProperties): string {
+  const { nodes } = polygonNetwork(properties)
+  if (nodes.length === 0) return ''
+  const at = (node: { x: number; y: number }) => `${round(bounds.x + node.x * bounds.width)} ${round(bounds.y + node.y * bounds.height)}`
+  return `M ${at(nodes[0]!)} ${nodes.slice(1).map((node) => `L ${at(node)}`).join(' ')} Z`
+}
+
+/**
  * Sector, ring or ring segment carved out of the inscribed ellipse. A full sweep with no hole is
  * the ellipse itself; a full sweep with a hole is two separate rings.
  */

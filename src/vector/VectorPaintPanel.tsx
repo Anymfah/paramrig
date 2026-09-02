@@ -4,15 +4,17 @@ import * as Popover from '@radix-ui/react-popover'
 import { Button, IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
 import { GradientField } from '@/ui/GradientField'
-import { IconEye, IconEyeOff, IconMinus, IconMore } from '@/ui/icons'
+import { IconDiamond, IconEye, IconEyeOff, IconMinus, IconMore } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
-import { SliderField } from '@/ui/SliderField'
+import { BarField } from '@/ui/BarField'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { dataUrlBytes, readImageFile } from '@/vector/images'
 import { defaultStops, MAX_IMAGE_BYTES } from '@/vector/paints'
 import { defaultMesh } from '@/vector/mesh'
+import { Exposable } from '@/vector/VectorExpose'
+import { useDriven } from '@/vector/exposeContext'
 import type { VectorPaint } from '@/vector/types'
 
 type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
@@ -90,6 +92,7 @@ export function PaintList({ label, paints, mixed = false, onChange, gesture, pal
           key={paint.id}
           label={label}
           paint={paint}
+          index={index}
           style={style}
           onChange={(patch, record) => update(index, patch, record)}
           onRemove={() => remove(index)}
@@ -107,9 +110,11 @@ function withKnot(mesh: NonNullable<VectorPaint['mesh']>, index: number, color: 
   return { ...mesh, points: mesh.points.map((point, position) => position === index ? { ...point, color } : point) }
 }
 
-function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, selectedMeshPoint }: {
+function PaintRow({ label, paint, index, style, onChange, onRemove, gesture, palette, selectedMeshPoint }: {
   label: string
   paint: VectorPaint
+  /** Where this layer sits in the stack, which is how a binding names it. */
+  index: number
   style?: PaintStyleLink
   onChange: (patch: Partial<VectorPaint>, record?: boolean) => void
   onRemove: () => void
@@ -121,6 +126,9 @@ function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, s
   const fileInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
+  const list = label === 'Fill' ? 'fills' : 'strokes'
+  const path = (field: 'color' | 'opacity' | 'stops') => `${list}[${index}].${field}`
+  const driven = useDriven(path('color'), path('opacity'), path('stops'))
   const typeLabel = PAINT_TYPES.find((item) => item.value === paint.type)?.label ?? 'Solid'
   const changeType = (type: VectorPaint['type']) => {
     if (type === paint.type) return
@@ -148,12 +156,13 @@ function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, s
     })
   }
   return (
-    <div className="vector-row" data-hidden={!paint.visible || undefined} data-paint={paint.type}>
+    <div className="vector-row" data-hidden={!paint.visible || undefined} data-paint={paint.type} data-driven={driven || undefined}>
       <Popover.Root open={open} onOpenChange={setOpen}>
-        <Popover.Trigger className="vector-row__open" aria-label={`Edit ${typeLabel.toLowerCase()} ${label.toLowerCase()}`}>
+        <Popover.Trigger className="vector-row__open" aria-label={`Edit ${typeLabel.toLowerCase()} ${label.toLowerCase()}${driven ? ', driven by a control' : ''}`}>
           <span className="vector-row__chip" data-paint={paint.type} style={swatchStyle(paint)} aria-hidden="true" />
           <span className="vector-row__label">{typeLabel}</span>
           <span className="vector-row__value">{paintSummary(paint)}</span>
+          {driven ? <IconDiamond className="vector-row__driven" /> : null}
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="popover vector-paint-popover" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={`${typeLabel} ${label.toLowerCase()}`}>
@@ -164,6 +173,7 @@ function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, s
               onChange={(value) => changeType(value as VectorPaint['type'])}
             />
             {paint.type === 'solid' ? (
+              <Exposable property={path('color')} label={`${label} ${index + 1} colour`}>
               <ColorField
                 label={label}
                 value={paint.color ?? '#000000'}
@@ -177,10 +187,13 @@ function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, s
                 space={palette?.space}
                 {...gesture}
               />
+              </Exposable>
             ) : null}
             {paint.type === 'linear' || paint.type === 'radial' ? (
               <>
-                <GradientField label="Colours" value={paint.stops ?? defaultStops('#000000')} onChange={(stops) => onChange({ stops })} {...gesture} />
+                <Exposable property={path('stops')} label={`${label} ${index + 1} colours`}>
+                  <GradientField label="Colours" value={paint.stops ?? defaultStops('#000000')} onChange={(stops) => onChange({ stops })} {...gesture} />
+                </Exposable>
                 {paint.type === 'linear' ? (
                   <NumberField label="Angle" value={paint.angle ?? 0} min={0} max={360} step={1} unit="°" variant="field" onChange={(angle) => onChange({ angle })} {...gesture} />
                 ) : null}
@@ -238,11 +251,13 @@ function PaintRow({ label, paint, style, onChange, onRemove, gesture, palette, s
                   <NumberField label="Spacing" value={paint.spacing ?? 0} min={-1000} max={1000} step={1} unit="px" variant="field" onChange={(spacing) => onChange({ spacing })} {...gesture} />
                   <NumberField label="Angle" value={paint.angle ?? 0} min={0} max={360} step={1} unit="°" variant="field" onChange={(angle) => onChange({ angle })} {...gesture} />
                 </div>
-                <SliderField label="Scale" value={Math.round((paint.scale ?? 1) * 100)} min={5} max={400} step={1} unit="%" onChange={(value) => onChange({ scale: value / 100 })} {...gesture} />
+                <BarField label="Scale" value={Math.round((paint.scale ?? 1) * 100)} min={5} max={400} step={1} unit="%" onChange={(value) => onChange({ scale: value / 100 })} {...gesture} />
                 <p className="vector-empty">The pattern stamps an object of the document. Editing that object changes every fill that uses it.</p>
               </>
             ) : null}
-            <SliderField label="Layer opacity" value={Math.round(paint.opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(opacity) => onChange({ opacity: opacity / 100 })} {...gesture} />
+            <Exposable property={path('opacity')} label={`${label} ${index + 1} opacity`} min={0} max={1} step={0.01}>
+              <BarField label="Layer opacity" value={Math.round(paint.opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(opacity) => onChange({ opacity: opacity / 100 })} {...gesture} />
+            </Exposable>
             {style && !style.name && style.canCreate ? (
               <Button variant="quiet" size="sm" data-action={`create-${label.toLowerCase()}-style`} onClick={() => { style.onCreate(); setOpen(false) }}>Create style</Button>
             ) : null}

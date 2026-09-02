@@ -1,11 +1,13 @@
 import { IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
-import { IconBringForward, IconEye, IconEyeOff, IconMinus, IconReset, IconSendBackward } from '@/ui/icons'
+import { IconBringForward, IconDiamond, IconEye, IconEyeOff, IconMinus, IconReset, IconSendBackward } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
-import { SliderField } from '@/ui/SliderField'
+import { BarField } from '@/ui/BarField'
 import { Tooltip } from '@/ui/Tooltip'
 import { ADJUSTMENT_KEYS, BLEND_MODES, createEffect, effectLabel, EFFECT_KINDS } from '@/vector/effects'
+import { Exposable } from '@/vector/VectorExpose'
+import { useDriven } from '@/vector/exposeContext'
 import type { PaintPalette } from '@/vector/VectorPaintPanel'
 import type { VectorBlendMode, VectorEffect, VectorEffectKind, VectorElement, VectorImageAdjustments } from '@/vector/types'
 import { useState } from 'react'
@@ -56,6 +58,7 @@ export function EffectList({ effects, mixed, onChange, gesture, palette }: {
         <EffectRow
           key={effect.id}
           effect={effect}
+          index={index}
           first={index === effects.length - 1}
           last={index === 0}
           onChange={(patch, record) => update(index, patch, record)}
@@ -69,8 +72,10 @@ export function EffectList({ effects, mixed, onChange, gesture, palette }: {
   )
 }
 
-function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, palette }: {
+function EffectRow({ effect, index, first, last, onChange, onRemove, onMove, gesture, palette }: {
   effect: VectorEffect
+  /** Where this effect sits in the stack, which is how a binding names it. */
+  index: number
   first: boolean
   last: boolean
   onChange: (patch: Partial<VectorEffect>, record?: boolean) => void
@@ -81,18 +86,21 @@ function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, p
 }) {
   const [open, setOpen] = useState(false)
   const shadow = effect.kind === 'dropShadow' || effect.kind === 'innerShadow'
+  const path = (field: string) => `effects[${index}].${field}`
+  const driven = useDriven(...['dx', 'dy', 'blur', 'spread', 'color', 'opacity'].map(path))
   const name = effectLabel(effect.kind)
   const changeKind = (kind: VectorEffectKind) => {
     if (kind === effect.kind) return
     onChange({ ...createEffect(kind, effect.id), visible: effect.visible, blur: effect.blur })
   }
   return (
-    <div className="vector-row" data-hidden={!effect.visible || undefined} data-effect={effect.kind}>
+    <div className="vector-row" data-hidden={!effect.visible || undefined} data-effect={effect.kind} data-driven={driven || undefined}>
       <Popover.Root open={open} onOpenChange={setOpen}>
-        <Popover.Trigger className="vector-row__open" aria-label={`Edit the ${name.toLowerCase()}`}>
+        <Popover.Trigger className="vector-row__open" aria-label={`Edit the ${name.toLowerCase()}${driven ? ', driven by a control' : ''}`}>
           <span className="vector-row__chip" data-effect={effect.kind} style={shadow ? { background: effect.color ?? '#000000' } : undefined} aria-hidden="true" />
           <span className="vector-row__label">{name}</span>
           <span className="vector-row__value">{shadow ? `${Math.round(effect.dx ?? 0)}, ${Math.round(effect.dy ?? 0)} · ${Math.round(effect.blur)}px` : `${Math.round(effect.blur)}px`}</span>
+          {driven ? <IconDiamond className="vector-row__driven" /> : null}
         </Popover.Trigger>
         <Popover.Portal>
           <Popover.Content className="popover vector-paint-popover" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={name}>
@@ -103,17 +111,28 @@ function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, p
               onChange={(value) => changeKind(value as VectorEffectKind)}
             />
             {shadow ? (
-              <div className="vector-field-grid">
-                <NumberField label="X" value={effect.dx ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dx) => onChange({ dx })} {...gesture} />
-                <NumberField label="Y" value={effect.dy ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dy) => onChange({ dy })} {...gesture} />
-                <NumberField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" variant="field" onChange={(blur) => onChange({ blur })} {...gesture} />
-                <NumberField label="Spread" value={effect.spread ?? 0} min={-200} max={200} step={1} unit="px" variant="field" onChange={(spread) => onChange({ spread })} {...gesture} />
-              </div>
+              <>
+                <Exposable property={path('dx')} label={`Shadow ${index + 1} X`} min={-2000} max={2000}>
+                  <NumberField label="X" value={effect.dx ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dx) => onChange({ dx })} {...gesture} />
+                </Exposable>
+                <Exposable property={path('dy')} label={`Shadow ${index + 1} Y`} min={-2000} max={2000}>
+                  <NumberField label="Y" value={effect.dy ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dy) => onChange({ dy })} {...gesture} />
+                </Exposable>
+                <Exposable property={path('blur')} label={`Shadow ${index + 1} blur`} min={0} max={200}>
+                  <NumberField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" variant="field" onChange={(blur) => onChange({ blur })} {...gesture} />
+                </Exposable>
+                <Exposable property={path('spread')} label={`Shadow ${index + 1} spread`} min={-200} max={200}>
+                  <NumberField label="Spread" value={effect.spread ?? 0} min={-200} max={200} step={1} unit="px" variant="field" onChange={(spread) => onChange({ spread })} {...gesture} />
+                </Exposable>
+              </>
             ) : (
-              <SliderField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" onChange={(blur) => onChange({ blur })} {...gesture} />
+              <Exposable property={path('blur')} label={`${name} radius`} min={0} max={200}>
+                <BarField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" onChange={(blur) => onChange({ blur })} {...gesture} />
+              </Exposable>
             )}
             {shadow ? (
               <>
+                <Exposable property={path('color')} label={`Shadow ${index + 1} colour`}>
                 <ColorField
                   label="Shadow"
                   value={effect.color ?? '#000000'}
@@ -128,7 +147,10 @@ function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, p
                   onGestureEnd={gesture.onGestureEnd}
                   onGestureCancel={gesture.onGestureCancel}
                 />
-                <SliderField label="Shadow opacity" value={Math.round((effect.opacity ?? 1) * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ opacity: value / 100 })} {...gesture} />
+                </Exposable>
+                <Exposable property={path('opacity')} label={`Shadow ${index + 1} opacity`} min={0} max={1} step={0.01}>
+                  <BarField label="Shadow opacity" value={Math.round((effect.opacity ?? 1) * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ opacity: value / 100 })} {...gesture} />
+                </Exposable>
               </>
             ) : null}
             <div className="vector-popover__actions">
@@ -188,7 +210,7 @@ export function AdjustmentsPanel({ element, onChange, gesture }: {
         </Tooltip>
       </div>
       {ADJUSTMENT_KEYS.map((key) => (
-        <SliderField
+        <BarField
           key={key}
           label={ADJUSTMENT_LABELS[key]}
           value={Math.round((adjustments[key] ?? 0) * 100)}
