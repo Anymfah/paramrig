@@ -10,7 +10,7 @@ export type ExportTargetKind = 'document' | 'frame' | 'selection'
 
 export type ExportSettings = {
   target: ExportTargetKind
-  format: 'svg' | 'png'
+  format: 'svg' | 'png' | 'pdf'
   scale: 1 | 2 | 3
   transparent: boolean
 }
@@ -103,7 +103,7 @@ export async function embedFonts(markup: string, fonts: VectorFont[] = []): Prom
 }
 
 /** Draws an SVG string into a canvas and returns the PNG bytes. */
-export async function rasterize(markup: string, bounds: Bounds, scale: number): Promise<Blob | null> {
+export async function rasterize(markup: string, bounds: Bounds, scale: number, type: 'image/png' | 'image/jpeg' = 'image/png'): Promise<Blob | null> {
   if (typeof globalThis.document === 'undefined' || typeof Image === 'undefined') return null
   const size = rasterSize(bounds, scale)
   const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
@@ -120,6 +120,18 @@ export async function rasterize(markup: string, bounds: Bounds, scale: number): 
   const context = canvas.getContext('2d')
   if (!context) return null
   context.drawImage(image, 0, 0, size.width, size.height)
+  if (type === 'image/jpeg') {
+    // A JPEG goes into a PDF as it is; it needs an opaque ground under it first.
+    const flat = globalThis.document.createElement('canvas')
+    flat.width = size.width
+    flat.height = size.height
+    const ground = flat.getContext('2d')
+    if (!ground) return null
+    ground.fillStyle = '#ffffff'
+    ground.fillRect(0, 0, size.width, size.height)
+    ground.drawImage(canvas, 0, 0)
+    return new Promise<Blob | null>((resolve) => flat.toBlob((blob) => resolve(blob), 'image/jpeg', 0.92))
+  }
   return new Promise<Blob | null>((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/png'))
 }
 

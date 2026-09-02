@@ -52,7 +52,7 @@ export function VectorExportMenu({ settings, onSettings, frameName, selectionCou
           <DropdownMenu.Separator className="menu__sep" />
           <p className="vector-export__label">Format</p>
           <div className="vector-export__row">
-            {(['svg', 'png'] as const).map((format) => (
+            {(['svg', 'png', 'pdf'] as const).map((format) => (
               <button
                 key={format}
                 type="button"

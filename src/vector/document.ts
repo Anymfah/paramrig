@@ -462,7 +462,7 @@ export function sanitizeExportPresets(value: unknown): VectorExportPreset[] | un
     const source = candidate as Partial<VectorExportPreset>
     if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string' || !source.name.trim()) return []
     const target = source.target === 'frame' || source.target === 'selection' ? source.target : 'document'
-    const format = source.format === 'png' ? 'png' : 'svg'
+    const format = source.format === 'png' ? 'png' : source.format === 'pdf' ? 'pdf' : 'svg'
     const scale = source.scale === 1 || source.scale === 2 || source.scale === 3 ? source.scale : 1
     return [{ id: source.id, name: source.name.trim().slice(0, 60), target, format, scale, transparent: source.transparent === true }]
   })

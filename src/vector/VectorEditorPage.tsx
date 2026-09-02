@@ -45,6 +45,8 @@ import { patternFromElement } from '@/vector/patterns'
 import { componentFrom, detachInstance, instanceOf, resetOverrides } from '@/vector/instances'
 import { summaryColor } from '@/vector/paints'
 import { pathBounds, pathDataOf } from '@/vector/textPath'
+import { exportPdf, pdfPages } from '@/vector/pdfExport'
+import { serializeVectorMarkup } from '@/vector/document'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
@@ -828,6 +830,24 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }
     const embedded = await embedFonts(markup, document.fonts ?? [])
     const name = exportFileName(document, settings, selectedFrame?.name)
+    if (settings.format === 'pdf') {
+      // Anything the format cannot say — an effect, a pattern, a mesh, a picture — is rasterised
+      // one element at a time and placed as an image, at twice the size so it holds up in print.
+      const rasteriseElement = async (element: VectorElement) => {
+        const box = { x: element.x, y: element.y, width: element.width, height: element.height }
+        const single = serializeVectorMarkup([{ ...element, rotation: 0 }], box)
+        const blob = await rasterize(await embedFonts(single, document.fonts ?? []), box, 2, 'image/jpeg')
+        if (!blob) return null
+        return { data: new Uint8Array(await blob.arrayBuffer()), width: Math.round(box.width * 2), height: Math.round(box.height * 2) }
+      }
+      const { bytes, notes } = await exportPdf(
+        pdfPages(document, settings.target === 'frame' || settings.target === 'document'),
+        { background: settings.transparent ? undefined : document.background, rasterise: rasteriseElement },
+      )
+      downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), name)
+      if (notes.skipped.length) setExportError(`${notes.skipped.join(', ')} could not be written into the PDF.`)
+      return
+    }
     if (settings.format === 'svg') {
       downloadBlob(new Blob([embedded], { type: 'image/svg+xml' }), name)
       return

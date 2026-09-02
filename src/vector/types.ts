@@ -306,7 +306,7 @@ export type VectorExportPreset = {
   id: string
   name: string
   target: 'document' | 'selection' | 'frame'
-  format: 'svg' | 'png'
+  format: 'svg' | 'png' | 'pdf'
   scale: 1 | 2 | 3
   transparent: boolean
 }
