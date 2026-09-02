@@ -6,8 +6,10 @@ export default run('chantier-i2', async ({ page, check, helpers, shot }) => {
   await page.keyboard.press('r')
   await helpers.drag({ x: 150, y: 150 }, { x: 450, y: 350 })
   await page.waitForTimeout(300)
-  await page.locator('.vector-paints').locator('.color-field__hex').first().fill('#FF0000')
-  await page.locator('.vector-paints').locator('.color-field__hex').first().press('Enter')
+  await helpers.openPaint('fill')
+  await page.locator('.vector-paint-popover').locator('.color-field__hex').first().fill('#FF0000')
+  await page.locator('.vector-paint-popover').locator('.color-field__hex').first().press('Enter')
+  await helpers.closePaint()
   await page.waitForTimeout(400)
 
   // 1. An sRGB document says nothing extra.
@@ -17,7 +19,7 @@ export default run('chantier-i2', async ({ page, check, helpers, shot }) => {
   // 2. Turning the document to Display P3 states them twice.
   await page.locator('#main').focus()
   await page.keyboard.press('Escape')
-  await page.waitForSelector('[aria-label="Page properties"]')
+  await page.waitForSelector('[data-section="page"]')
   await page.locator('.vector-inspector').locator('.segment__opt', { hasText: 'Display P3' }).first().click()
   await page.waitForTimeout(500)
   check('the document records the wider space', (await helpers.doc()).colorSpace === 'display-p3', String((await helpers.doc()).colorSpace))
@@ -34,7 +36,8 @@ export default run('chantier-i2', async ({ page, check, helpers, shot }) => {
   // 3. The picker reads the colour out in CMYK and says when it needs a wider screen.
   await page.locator('.vector-layer__select').first().click()
   await page.waitForTimeout(300)
-  await page.locator('.vector-paints').locator('.color-swatch').first().click()
+  await helpers.openPaint('fill')
+  await page.locator('.vector-paint-popover').locator('.color-swatch').first().click()
   await page.waitForSelector('.color-popover')
   const readout = await page.evaluate(() => ({
     cmyk: document.querySelector('.color-popover__cmyk')?.textContent,

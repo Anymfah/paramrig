@@ -52,9 +52,9 @@ export default run('chantier-f', async ({ page, check, helpers, shot }) => {
   check('and the cell draws the object', painted.paths > 0, JSON.stringify(painted))
   await shot('chantier-f-grid.png')
 
-  // 3. Brick doubles the cell and stamps twice.
-  await page.locator('[aria-label="Repeat"]').first().click().catch(() => {})
-  await page.locator('.control--select', { hasText: 'Repeat' }).locator('.segment__opt', { hasText: 'Brick' }).first().click()
+  // 3. Brick doubles the cell and stamps twice. The pattern's settings sit in the layer's popover.
+  await helpers.openPaint('fill')
+  await page.locator('.vector-paint-popover .control--select', { hasText: 'Repeat' }).locator('.segment__opt', { hasText: 'Brick' }).first().click({ force: true })
   await page.waitForTimeout(400)
   const brick = await page.evaluate(() => {
     const node = document.querySelector('[data-vector-element] path')
@@ -65,7 +65,7 @@ export default run('chantier-f', async ({ page, check, helpers, shot }) => {
   check('a brick is two rows tall and stamps twice', brick.height === '80' && brick.stamps === 2, JSON.stringify(brick))
 
   // 4. Angle and scale ride on the pattern transform.
-  const angle = page.locator('.vector-paints').getByLabel('Angle', { exact: true }).first()
+  const angle = page.locator('.vector-paint-popover').getByLabel('Angle', { exact: true }).first()
   await angle.fill('30')
   await angle.press('Enter')
   await page.waitForTimeout(400)
@@ -86,7 +86,7 @@ export default run('chantier-f', async ({ page, check, helpers, shot }) => {
     return document.querySelector(`${fill.slice(5, -1).replace(/^/, '#')} path`)?.getAttribute('d') ?? ''
   })
   const before = await tilePath()
-  const height = page.locator('[aria-label="Geometry"]').getByLabel('H', { exact: true }).first()
+  const height = page.locator('[data-section="position"]').getByLabel('H', { exact: true }).first()
   await height.fill('12')
   await height.press('Enter')
   await page.waitForTimeout(400)

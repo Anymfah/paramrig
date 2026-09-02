@@ -1,4 +1,10 @@
 import { useState, type ReactNode } from 'react'
+import { INSPECTOR_TABS, type InspectorTab } from '@/vector/inspectorPrefs'
+import { VectorEmpty, VectorSection } from '@/vector/VectorSection'
+import { useSectionState } from '@/vector/useSectionState'
+
+import { createEffect } from '@/vector/effects'
+import { IconChevron } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { IconTrash } from '@/ui/icons'
 import { Button, IconButton } from '@/ui/Button'
@@ -8,13 +14,14 @@ import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import { SliderField } from '@/ui/SliderField'
-import { AdjustmentsPanel, BlendPanel, EffectsPanel } from '@/vector/VectorEffectsPanel'
+import { AdjustmentsPanel, BlendPanel, EffectList, MAX_EFFECTS_PER_ELEMENT } from '@/vector/VectorEffectsPanel'
 import { BrushPanel } from '@/vector/VectorBrushPanel'
 import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
-import { linkedStyle, styleUsage } from '@/vector/styles'
-import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
+import { linkedStyle } from '@/vector/styles'
+import { addedPaints, fillsOf, fillsPatch, strokesOf, strokesPatch } from '@/vector/paints'
 import { cornerRadii } from '@/vector/corners'
-import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation } from '@/vector/booleans'
+import type { BooleanOperation } from '@/vector/booleans'
+import { geometryOps } from '@/vector/geometryOps'
 import { booleanLabel, BOOLEAN_OPERATIONS } from '@/vector/booleanGroups'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
@@ -22,7 +29,10 @@ import { createVectorElement } from '@/vector/document'
 import { FRAME_CUSTOM, FRAME_PRESETS, framePresetBounds, matchFramePreset } from '@/vector/frames'
 import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_WEIGHTS } from '@/vector/text'
 import { outlineText } from '@/vector/textOutline'
-import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
+import { commitWorld, components, connectNodes, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
+type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
+
+const ARROW_OPTIONS = [{ value: 'none', label: 'None' }, { value: 'arrow', label: 'Arrow' }, { value: 'triangle', label: 'Triangle' }, { value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }, { value: 'bar', label: 'Bar' }]
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
 import { isFullCrop, resetCropBox } from '@/vector/crop'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
@@ -61,6 +71,11 @@ type VectorInspectorProps = {
   onGestureCancel: () => void
   /** The message shown when a write to browser storage failed. */
   saveMessage?: string | null
+  /** Which of the three tabs is showing, and how to move between them. */
+  tab: InspectorTab
+  onTab: (tab: InspectorTab) => void
+  /** What the Controls tab holds, once the document carries a rig. */
+  controls?: ReactNode
   palette?: PaintPalette
   /** Creates a named style from what the selection currently paints. */
   onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
@@ -68,7 +83,7 @@ type VectorInspectorProps = {
   onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
   /** Writes a paint edit back to the style the selection follows. */
   onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
-  onRenameStyle?: (styleId: string, name: string) => void
+  /** Drops a named style, leaving every object with the look it already had. */
   onDeleteStyle?: (styleId: string) => void
   /** Opens crop editing on an image, the way a double-click does. */
   onCropImage?: (id: string) => void
@@ -105,11 +120,13 @@ export function VectorInspector({
   onGestureEnd,
   onGestureCancel,
   saveMessage,
+  tab,
+  onTab,
+  controls,
   palette,
   onCreateStyle,
   onLinkStyle,
   onUpdateStyle,
-  onRenameStyle,
   onDeleteStyle,
   onCropImage,
   onBooleanGroup,
@@ -120,79 +137,17 @@ export function VectorInspector({
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
-  const combinable = selectedElements.filter((element) => element.kind !== 'group')
-  const replaceWithPath = (sources: VectorElement[], geometry: ReturnType<typeof booleanOperation>, name: string) => {
-    if (!geometry) return
-    const first = sources[0]!
-    const result: VectorElement = {
-      ...createVectorElement('path', geometry, { name, fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, network: geometry.network }),
-      opacity: first.opacity,
-      ...(first.fills ? { fills: first.fills } : {}),
-      ...(first.strokes ? { strokes: first.strokes } : {}),
-      ...(first.strokeAlign ? { strokeAlign: first.strokeAlign } : {}),
-      ...(first.strokeCap ? { strokeCap: first.strokeCap } : {}),
-      ...(first.strokeJoin ? { strokeJoin: first.strokeJoin } : {}),
-      ...(first.strokeDash ? { strokeDash: first.strokeDash } : {}),
-      ...(first.parentId ? { parentId: first.parentId } : {}),
-    }
-    const ids = new Set(sources.map((element) => element.id))
-    onEditElements((elements) => {
-      const anchor = Math.max(...sources.map((element) => elements.findIndex((item) => item.id === element.id)))
-      const rest = elements.filter((element) => !ids.has(element.id))
-      const at = rest.findIndex((element) => elements.indexOf(element) > anchor)
-      const index = at < 0 ? rest.length : at
-      return [...rest.slice(0, index), result, ...rest.slice(index)]
-    })
-    onSelectIds([result.id])
-  }
-  /** Wraps the selection in a boolean group, which keeps every shape editable underneath. */
-  const runBoolean = (operation: BooleanOperation) => {
-    if (combinable.length < 2) return
-    const ordered = [...combinable].sort((a, b) => document.elements.indexOf(a) - document.elements.indexOf(b))
-    onBooleanGroup?.(operation, ordered.map((element) => element.id))
-  }
+  const nodeMode = tool === 'node'
+  const ops = geometryOps({
+    elements: document.elements,
+    selected: selectedElements,
+    onUpdate,
+    onEditElements,
+    onSelectIds,
+    onBooleanGroup,
+  })
+  const combinable = ops.combinable
 
-  const flattenBoolean = (operation: BooleanOperation) => {
-    if (combinable.length < 2) return
-    const ordered = [...combinable].sort((a, b) => document.elements.indexOf(a) - document.elements.indexOf(b))
-    replaceWithPath(ordered, booleanOperation(operation, ordered), booleanLabel(operation))
-  }
-  const flatten = () => {
-    const target = combinable[0]
-    if (!target) return
-    if (combinable.length > 1) {
-      const ordered = [...combinable].sort((a, b) => document.elements.indexOf(a) - document.elements.indexOf(b))
-      replaceWithPath(ordered, booleanOperation('unite', ordered), 'Flattened')
-      return
-    }
-    const geometry = flattenElement(target)
-    if (!geometry) return
-    onUpdate(target.id, { ...geometry, kind: 'path', rotation: 0, regionsOff: undefined })
-  }
-  const outline = () => {
-    const target = single
-    if (!target || target.kind === 'group' || target.strokeWidth <= 0) return
-    const geometry = outlineStroke(target)
-    if (!geometry) return
-    const strokePaint = target.strokes ?? undefined
-    onUpdate(target.id, {
-      ...geometry,
-      kind: 'path',
-      rotation: 0,
-      fill: target.stroke,
-      fills: strokePaint,
-      stroke: 'none',
-      strokes: undefined,
-      strokeWidth: 0,
-      strokeAlign: undefined,
-      strokeDash: undefined,
-      strokeArrowStart: undefined,
-      strokeArrowEnd: undefined,
-      strokeSides: undefined,
-      cornerRadius: undefined,
-      regionsOff: undefined,
-    })
-  }
   const outlineTextElement = async () => {
     const target = single
     if (!target || target.kind !== 'text') return
@@ -211,22 +166,6 @@ export function VectorInspector({
       textAlign: undefined,
       textSizing: undefined,
     })
-  }
-
-  const combine = () => {
-    if (combinable.length < 2) return
-    const merged = normalizeWorld(mergeNetworks(combinable.map((element) => worldNetwork(element))))
-    const first = combinable[0]!
-    const result: VectorElement = { ...createVectorElement('path', merged, { name: 'Path', fill: first.fill, stroke: first.stroke, strokeWidth: first.strokeWidth, network: merged.network }), opacity: first.opacity, ...(first.parentId ? { parentId: first.parentId } : {}) }
-    const ids = new Set(combinable.map((element) => element.id))
-    onEditElements((elements) => {
-      const anchor = Math.max(...combinable.map((element) => elements.findIndex((item) => item.id === element.id)))
-      const rest = elements.filter((element) => !ids.has(element.id))
-      const at = rest.findIndex((element) => elements.indexOf(element) > anchor)
-      const index = at < 0 ? rest.length : at
-      return [...rest.slice(0, index), result, ...rest.slice(index)]
-    })
-    onSelectIds([result.id])
   }
 
   const single = selectedElements.length === 1 ? selectedElements[0]! : null
@@ -266,14 +205,82 @@ export function VectorInspector({
     onUpdateElements(scaleElementsToBounds(leaves, bounds, { ...bounds, width: Math.max(1, width), height: Math.max(1, height) }))
   }
 
+  const tabPanelId = 'vector-inspector-panel'
   return (
     <aside className="inspector vector-inspector" aria-label="Vector inspector">
-      <div className="vector-inspector__body scroll-area">
+      <div className="vector-inspector__tabs" role="tablist" aria-label="Inspector panels">
+        {INSPECTOR_TABS.map((id) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            id={`vector-tab-${id}`}
+            aria-selected={tab === id}
+            aria-controls={tabPanelId}
+            tabIndex={tab === id ? 0 : -1}
+            onClick={() => onTab(id)}
+            onKeyDown={(event) => {
+              const index = INSPECTOR_TABS.indexOf(tab)
+              const move = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+              if (!move) return
+              event.preventDefault()
+              const next = INSPECTOR_TABS[(index + move + INSPECTOR_TABS.length) % INSPECTOR_TABS.length]!
+              onTab(next)
+              queueMicrotask(() => window.document.getElementById(`vector-tab-${next}`)?.focus())
+            }}
+          >
+            {id[0]!.toUpperCase() + id.slice(1)}
+          </button>
+        ))}
+      </div>
+      <div className="vector-inspector__body scroll-area" role="tabpanel" id={tabPanelId} aria-labelledby={`vector-tab-${tab}`}>
         {saveMessage ? <div className="vector-inspector__notice"><StatusMessage tone="error">{saveMessage}</StatusMessage></div> : null}
-        {selectedElements.length === 0 ? (
+        {tab === 'history' ? (
+          <VectorSection
+            id="history"
+            title="History"
+            meta={historyDepth === 0 ? 'Nothing to undo' : `${historyDepth} ${historyDepth === 1 ? 'step' : 'steps'}`}
+          >
+            <form className="vector-version-form" onSubmit={(event) => { event.preventDefault(); onSaveVersion(versionName); setVersionName('') }}>
+              <input className="vector-version-form__input" aria-label="Version name" placeholder="Version name" value={versionName} maxLength={80} onChange={(event) => setVersionName(event.currentTarget.value)} />
+              <Tooltip content="Keep a named copy of every object and guide"><Button variant="quiet" size="sm" type="submit">Save version</Button></Tooltip>
+            </form>
+            <ol className="vector-history" aria-label="History steps">
+              {historyRows(historySteps, historyIndex, document.versions ?? []).map((row) => (
+                row.kind === 'step' ? (
+                  <li key={`step-${row.index}`}>
+                    <button
+                      type="button"
+                      className="vector-history__step"
+                      data-current={row.current || undefined}
+                      data-undone={row.undone || undefined}
+                      data-step={row.index}
+                      aria-current={row.current || undefined}
+                      onClick={() => onGoToStep?.(row.index)}
+                    >
+                      <span className="vector-history__dot" aria-hidden="true" />
+                      <span className="vector-history__label">{row.label}</span>
+                      <span className="vector-history__time">{formatStepTime(row.at)}</span>
+                    </button>
+                  </li>
+                ) : (
+                  <li key={`version-${row.id}`} className="vector-history__version">
+                    <span className="vector-history__dot vector-history__dot--version" aria-hidden="true" />
+                    <span className="vector-history__label">{row.label}</span>
+                    <Button variant="quiet" size="sm" onClick={() => onRestoreVersion(row.id)}>Restore</Button>
+                    <Tooltip content="Delete version">
+                      <IconButton label={`Delete version ${row.label}`} onClick={() => onDeleteVersion(row.id)}><IconTrash /></IconButton>
+                    </Tooltip>
+                  </li>
+                )
+              ))}
+            </ol>
+          </VectorSection>
+        ) : null}
+        {tab === 'controls' ? (controls ?? <VectorEmpty>No controls yet. Expose a property with ◇</VectorEmpty>) : null}
+        {tab === 'design' && selectedElements.length === 0 ? (
           <>
-            <section className="vector-panel vector-panel--document" aria-label="Page properties">
-              <h2 className="vector-panel__title">Page</h2>
+            <VectorSection id="page" title="Page" meta={`${document.width} × ${document.height}`}>
               <div className="vector-field-grid">
                 <NumberField label="W" value={document.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdateDocument({ width: Math.round(width) })} {...gesture} />
                 <NumberField label="H" value={document.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdateDocument({ height: Math.round(height) })} {...gesture} />
@@ -295,105 +302,91 @@ export function VectorInspector({
                 options={[{ value: 'srgb', label: 'sRGB' }, { value: 'display-p3', label: 'Display P3' }]}
                 onChange={(value) => onUpdateDocument({ colorSpace: value === 'display-p3' ? 'display-p3' : undefined })}
               />
-              <p className="vector-panel__hint">Colours are stored as sRGB either way. Display P3 reads the same numbers in the wider space, on screens that have one.</p>
-            </section>
-            <section className="vector-panel" aria-label="Guides">
-              <div className="vector-panel__row">
-                <h2 className="vector-panel__title">Guides</h2>
-                <span className="vector-panel__meta">{document.guides.length === 0 ? 'None' : `${document.guides.length} ${document.guides.length === 1 ? 'guide' : 'guides'}`}</span>
-              </div>
-              <p className="vector-panel__hint">Drag from a ruler to add a guide. Drag a guide back onto its ruler to remove it.</p>
-              {document.guides.length > 0 ? (
-                <Button variant="quiet" size="sm" onClick={() => onUpdateDocument({ guides: [] })}>Clear guides</Button>
-              ) : null}
-            </section>
-            <StylesPanel styles={document.styles ?? []} elements={document.elements} onRename={onRenameStyle} onDelete={onDeleteStyle} />
-            <section className="vector-panel" aria-label="History">
-              <div className="vector-panel__row">
-                <h2 className="vector-panel__title">History</h2>
-                <span className="vector-panel__meta">{historyDepth === 0 ? 'Nothing to undo' : `${historyDepth} ${historyDepth === 1 ? 'step' : 'steps'} to undo`}</span>
-              </div>
-              <form className="vector-version-form" onSubmit={(event) => { event.preventDefault(); onSaveVersion(versionName); setVersionName('') }}>
-                <input className="vector-version-form__input" aria-label="Version name" placeholder="Version name" value={versionName} maxLength={80} onChange={(event) => setVersionName(event.currentTarget.value)} />
-                <Tooltip content="Keep a named copy of every object and guide"><Button variant="quiet" size="sm" type="submit">Save version</Button></Tooltip>
-              </form>
-              <ol className="vector-history" aria-label="History steps">
-                {historyRows(historySteps, historyIndex, document.versions ?? []).map((row) => (
-                  row.kind === 'step' ? (
-                    <li key={`step-${row.index}`}>
-                      <button
-                        type="button"
-                        className="vector-history__step"
-                        data-current={row.current || undefined}
-                        data-undone={row.undone || undefined}
-                        data-step={row.index}
-                        aria-current={row.current || undefined}
-                        onClick={() => onGoToStep?.(row.index)}
-                      >
-                        <span className="vector-history__dot" aria-hidden="true" />
-                        <span className="vector-history__label">{row.label}</span>
-                        <span className="vector-history__time">{formatStepTime(row.at)}</span>
-                      </button>
-                    </li>
-                  ) : (
-                    <li key={`version-${row.id}`} className="vector-history__version">
-                      <span className="vector-history__dot vector-history__dot--version" aria-hidden="true" />
-                      <span className="vector-history__label">{row.label}</span>
-                      <Button variant="quiet" size="sm" onClick={() => onRestoreVersion(row.id)}>Restore</Button>
-                      <Tooltip content="Delete version">
-                        <IconButton label={`Delete version ${row.label}`} onClick={() => onDeleteVersion(row.id)}><IconTrash /></IconButton>
-                      </Tooltip>
-                    </li>
-                  )
-                ))}
-              </ol>
-              <p className="vector-panel__hint">Click a step to go back to it, or forward again. Saved versions sit in the same list and keep a copy of every object and guide.</p>
-            </section>
-          </>
-        ) : (
-          <>
-            <section className="vector-panel" aria-label="Geometry">
-              <div className="vector-panel__row">
-                <h2 className="vector-panel__title">{single ? kindLabel(single) : `${selectedElements.length} objects`}</h2>
-                {single ? <span className="vector-panel__meta vector-panel__meta--name">{single.name}</span> : null}
-              </div>
-              {single && single.kind !== 'group' ? (
-                <>
-                  <div className="vector-field-grid">
-                    <NumberField label="X" value={single.x} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => onUpdate(single.id, { x })} {...gesture} />
-                    <NumberField label="Y" value={single.y} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => onUpdate(single.id, { y })} {...gesture} />
-                    <NumberField label="W" value={single.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdate(single.id, { width })} {...gesture} />
-                    <NumberField label="H" value={single.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdate(single.id, { height })} {...gesture} />
+              <p className="vector-empty">Colours are stored as sRGB either way. Display P3 reads the same numbers in the wider space, on screens that have one.</p>
+            </VectorSection>
+            <VectorSection
+              id="guides"
+              title="Guides"
+              meta={document.guides.length === 0 ? undefined : `${document.guides.length}`}
+              menu={document.guides.length > 0 ? [{ label: 'Clear guides', onSelect: () => onUpdateDocument({ guides: [] }) }] : undefined}
+            >
+              {document.guides.length === 0
+                ? <VectorEmpty>No guides. Drag one out of a ruler</VectorEmpty>
+                : <p className="vector-empty">Drag a guide back onto its ruler to remove it.</p>}
+            </VectorSection>
+            <VectorSection id="document-export" title="Export" meta={`${document.exportPresets?.length ?? 0}`}>
+              {(document.exportPresets ?? []).length === 0
+                ? <VectorEmpty>No export presets. Save one from the export menu</VectorEmpty>
+                : (document.exportPresets ?? []).map((preset) => (
+                  <div className="vector-row" key={preset.id}>
+                    <span className="vector-row__label">{preset.name}</span>
+                    <span className="vector-row__value">{preset.format.toUpperCase()} · {preset.scale}×</span>
                   </div>
-                  <NumberField label="Rotation" value={single.rotation} min={-360} max={360} step={1} unit="°" variant="field" onChange={(rotation) => onUpdate(single.id, { rotation })} {...gesture} />
-                </>
-              ) : bounds ? (
-                <div className="vector-field-grid">
-                  <NumberField label="X" value={round(bounds.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => moveSelection(x - bounds.x, 0)} {...gesture} />
-                  <NumberField label="Y" value={round(bounds.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => moveSelection(0, y - bounds.y)} {...gesture} />
-                  <NumberField label="W" value={round(bounds.width)} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => resizeSelection(width, bounds.height)} {...gesture} />
-                  <NumberField label="H" value={round(bounds.height)} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => resizeSelection(bounds.width, height)} {...gesture} />
-                </div>
-              ) : null}
-            </section>
-            <section className="vector-panel" aria-label="Align">
-              <h2 className="vector-panel__title">{selectedElements.length > 1 ? 'Align to selection' : 'Align to page'}</h2>
-              <div className="vector-align" role="group" aria-label="Align">
-                <AlignButton label="Align left" shortcut="⌥A" onClick={() => align('left')}><IconAlignLeft /></AlignButton>
-                <AlignButton label="Align horizontal centres" shortcut="⌥H" onClick={() => align('centerX')}><IconAlignCenterH /></AlignButton>
-                <AlignButton label="Align right" shortcut="⌥D" onClick={() => align('right')}><IconAlignRight /></AlignButton>
-                <AlignButton label="Align top" shortcut="⌥W" onClick={() => align('top')}><IconAlignTop /></AlignButton>
-                <AlignButton label="Align vertical centres" shortcut="⌥V" onClick={() => align('centerY')}><IconAlignCenterV /></AlignButton>
-                <AlignButton label="Align bottom" shortcut="⌥S" onClick={() => align('bottom')}><IconAlignBottom /></AlignButton>
-              </div>
-              {selectedElements.length > 2 ? (
-                <div className="vector-align" role="group" aria-label="Distribute">
-                  <AlignButton label="Distribute horizontally" onClick={() => distribute('x')}><IconDistributeH /></AlignButton>
-                  <AlignButton label="Distribute vertically" onClick={() => distribute('y')}><IconDistributeV /></AlignButton>
-                </div>
-              ) : null}
-            </section>
-            <AppearancePanel
+                ))}
+            </VectorSection>
+          </>
+        ) : null}
+        {tab === 'design' && selectedElements.length > 0 ? (
+          <>
+            {nodeMode && single ? (
+              <>
+                <NodeSection element={single} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onSelectNodes={onSelectNodes} gesture={gesture} />
+                <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} />
+              </>
+            ) : (
+              <VectorSection
+                id="position"
+                title="Position"
+                meta={single ? undefined : `${selectedElements.length} objects`}
+                actions={selectedElements.length === 1 ? <AlignRow align={align} /> : undefined}
+              >
+                {single && single.kind !== 'group' ? (
+                  <>
+                    <div className="vector-field-grid">
+                      <NumberField label="X" value={single.x} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => onUpdate(single.id, { x })} {...gesture} />
+                      <NumberField label="Y" value={single.y} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => onUpdate(single.id, { y })} {...gesture} />
+                      <NumberField label="W" value={single.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdate(single.id, { width })} {...gesture} />
+                      <NumberField label="H" value={single.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdate(single.id, { height })} {...gesture} />
+                    </div>
+                    <NumberField label="Rotation" value={single.rotation} min={-360} max={360} step={1} unit="°" variant="field" onChange={(rotation) => onUpdate(single.id, { rotation })} {...gesture} />
+                    <ShapeFields element={single} onUpdate={onUpdate} gesture={gesture} />
+                  </>
+                ) : bounds ? (
+                  <div className="vector-field-grid">
+                    <NumberField label="X" value={round(bounds.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => moveSelection(x - bounds.x, 0)} {...gesture} />
+                    <NumberField label="Y" value={round(bounds.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => moveSelection(0, y - bounds.y)} {...gesture} />
+                    <NumberField label="W" value={round(bounds.width)} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => resizeSelection(width, bounds.height)} {...gesture} />
+                    <NumberField label="H" value={round(bounds.height)} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => resizeSelection(bounds.width, height)} {...gesture} />
+                  </div>
+                ) : null}
+              </VectorSection>
+            )}
+            {!nodeMode && selectedElements.length > 1 ? (
+              <VectorSection id="align" title="Align" meta={`${selectedElements.length} objects`}>
+                <AlignRow align={align} />
+                {selectedElements.length > 2 ? (
+                  <div className="vector-align" role="group" aria-label="Distribute">
+                    <AlignButton label="Distribute horizontally" onClick={() => distribute('x')}><IconDistributeH /></AlignButton>
+                    <AlignButton label="Distribute vertically" onClick={() => distribute('y')}><IconDistributeV /></AlignButton>
+                  </div>
+                ) : null}
+              </VectorSection>
+            ) : null}
+            {nodeMode ? null : (
+              <LayerSection elements={selectedElements} leaves={leaves} onUpdate={onUpdate} onUpdateElements={onUpdateElements} gesture={gesture} />
+            )}
+            {!nodeMode && single && single.kind === 'text' ? (
+              <TextPanel
+                element={single}
+                fonts={document.fonts ?? []}
+                onUpdate={onUpdate}
+                onOutline={outlineTextElement}
+                onPickFont={onPickFont}
+                onImportFont={onImportFont}
+                gesture={gesture}
+              />
+            ) : null}
+            <PaintSections
               elements={selectedElements}
               leaves={leaves}
               styles={document.styles ?? []}
@@ -405,94 +398,161 @@ export function VectorInspector({
               onCreateStyle={onCreateStyle}
               onLinkStyle={onLinkStyle}
               onUpdateStyle={onUpdateStyle}
+              onDeleteStyle={onDeleteStyle}
               onDefineBrush={onDefineBrush}
               gesture={gesture}
             />
-            {single && single.kind === 'boolean' ? (
-              <section className="vector-panel" aria-label="Boolean">
-                <div className="vector-panel__row">
-                  <h2 className="vector-panel__title">Boolean</h2>
-                  <span className="vector-panel__meta">{document.elements.filter((element) => element.parentId === single.id).length} shapes</span>
-                </div>
+            {!nodeMode && single && single.kind === 'image' ? (
+              <VectorSection id="image" title="Image" meta={single.imageWidth && single.imageHeight ? `${single.imageWidth} × ${single.imageHeight}` : undefined}>
+                <ImagePanel element={single} onUpdate={onUpdate} onCrop={onCropImage} />
+                <AdjustmentsPanel element={single} onChange={(adjustments, record) => onUpdate(single.id, { adjustments }, record, 'Adjust picture')} gesture={gesture} />
+              </VectorSection>
+            ) : null}
+            {!nodeMode && single && single.kind === 'frame' ? (
+              <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
+            ) : null}
+            {!nodeMode && single && single.kind === 'boolean' ? (
+              <VectorSection id="boolean" title="Boolean" meta={`${document.elements.filter((element) => element.parentId === single.id).length} shapes`} menu={[{ label: 'Flatten', onSelect: () => onUpdate(single.id, { kind: 'path', operation: undefined }, true, 'Flatten the boolean') }]}>
                 <SelectField
                   label="Operation"
                   value={single.operation ?? 'unite'}
                   options={BOOLEAN_OPERATIONS.map((operation) => ({ value: operation, label: booleanLabel(operation) }))}
                   onChange={(value) => onUpdate(single.id, { operation: value as BooleanOperation }, true, 'Change the boolean')}
                 />
+                <p className="vector-empty">The shapes underneath stay editable: double-click to go in.</p>
+              </VectorSection>
+            ) : null}
+            {!nodeMode && combinable.length > 1 ? (
+              <VectorSection id="combine" title="Combine" meta={`${combinable.length} shapes`}>
                 <div className="vector-panel__actions">
-                  <Tooltip content="Replace the group with the shape it makes">
-                    <Button variant="quiet" size="sm" data-action="flatten-boolean" onClick={() => onUpdate(single.id, { kind: 'path', operation: undefined }, true, 'Flatten the boolean')}>Flatten</Button>
-                  </Tooltip>
-                </div>
-                <p className="vector-panel__hint">The shapes underneath stay editable: double-click to go in.</p>
-              </section>
-            ) : null}
-            {single && single.kind === 'polygon' && !single.network ? (
-              <PolygonPanel element={single} onUpdate={onUpdate} gesture={gesture} />
-            ) : null}
-            {single && single.kind === 'ellipse' && !single.network ? (
-              <ArcPanel element={single} onUpdate={onUpdate} gesture={gesture} />
-            ) : null}
-            {single && single.kind === 'image' ? (
-              <ImagePanel element={single} onUpdate={onUpdate} onCrop={onCropImage} />
-            ) : null}
-            {single && single.kind === 'frame' ? (
-              <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
-            ) : null}
-            {single && single.kind === 'text' ? (
-              <TextPanel
-                element={single}
-                fonts={document.fonts ?? []}
-                onUpdate={onUpdate}
-                onOutline={outlineTextElement}
-                onPickFont={onPickFont}
-                onImportFont={onImportFont}
-                gesture={gesture}
-              />
-            ) : null}
-            {single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' ? (
-              <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
-            ) : null}
-            {combinable.length > 1 ? (
-              <section className="vector-panel" aria-label="Paths">
-                <div className="vector-panel__row">
-                  <h2 className="vector-panel__title">Paths</h2>
-                  <span className="vector-panel__meta">{combinable.length} shapes</span>
+                  <Tooltip content="Merge the shapes into one"><Button variant="quiet" size="sm" onClick={() => ops.runBoolean('unite')}>Union</Button></Tooltip>
+                  <Tooltip content="Cut the shapes above out of the bottom one"><Button variant="quiet" size="sm" onClick={() => ops.runBoolean('subtract')}>Subtract</Button></Tooltip>
+                  <Tooltip content="Keep only what the shapes have in common"><Button variant="quiet" size="sm" onClick={() => ops.runBoolean('intersect')}>Intersect</Button></Tooltip>
+                  <Tooltip content="Keep everything but the overlap"><Button variant="quiet" size="sm" onClick={() => ops.runBoolean('exclude')}>Exclude</Button></Tooltip>
                 </div>
                 <div className="vector-panel__actions">
-                  <Tooltip content="Merge the shapes into one"><Button variant="quiet" size="sm" onClick={() => runBoolean('unite')}>Union</Button></Tooltip>
-                  <Tooltip content="Cut the shapes above out of the bottom one"><Button variant="quiet" size="sm" onClick={() => runBoolean('subtract')}>Subtract</Button></Tooltip>
-                  <Tooltip content="Keep only what the shapes have in common"><Button variant="quiet" size="sm" onClick={() => runBoolean('intersect')}>Intersect</Button></Tooltip>
-                  <Tooltip content="Keep everything but the overlap"><Button variant="quiet" size="sm" onClick={() => runBoolean('exclude')}>Exclude</Button></Tooltip>
+                  <Tooltip content={withShortcut('Keep every sub-path in one object', 'combine')}><Button variant="quiet" size="sm" data-action="combine" onClick={ops.combine}>Combine</Button></Tooltip>
+                  <Tooltip content="Unite the shapes into one path, losing the originals"><Button variant="quiet" size="sm" data-action="flatten-union" onClick={() => ops.flattenBoolean('unite')}>Union (flatten)</Button></Tooltip>
+                  <Tooltip content="Unite the shapes into a single outline"><Button variant="quiet" size="sm" data-action="flatten" onClick={ops.flatten}>Flatten</Button></Tooltip>
                 </div>
-                <div className="vector-panel__actions">
-                  <Tooltip content={withShortcut('Keep every sub-path in one object', 'combine')}><Button variant="quiet" size="sm" data-action="combine" onClick={combine}>Combine</Button></Tooltip>
-                  <Tooltip content="Unite the shapes into one path, losing the originals"><Button variant="quiet" size="sm" data-action="flatten-union" onClick={() => flattenBoolean('unite')}>Union (flatten)</Button></Tooltip>
-                  <Tooltip content="Unite the shapes into a single outline"><Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button></Tooltip>
-                </div>
-                <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
-              </section>
-            ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' && (single.strokeWidth > 0 || single.network) ? (
-              <section className="vector-panel" aria-label="Geometry operations">
-                <div className="vector-panel__actions">
-                  {single.strokeWidth > 0 && single.stroke !== 'none' ? <Tooltip content="Turn the stroke into a filled shape"><Button variant="quiet" size="sm" data-action="outline-stroke" onClick={outline}>Outline stroke</Button></Tooltip> : null}
-                  {single.network ? <Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button> : null}
-                </div>
-              </section>
+                <p className="vector-empty">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
+              </VectorSection>
             ) : null}
-            <section className="vector-panel" aria-label="State">
-              <SwitchField label="Locked" checked={selectedElements.every((element) => element.locked)} mixed={selectedElements.some((element) => element.locked) && !selectedElements.every((element) => element.locked)} onChange={(locked) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked } })))} />
-              <SwitchField label="Visible" checked={selectedElements.every((element) => element.visible)} mixed={selectedElements.some((element) => element.visible) && !selectedElements.every((element) => element.visible)} onChange={(visible) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible } })))} />
-            </section>
+            {!nodeMode && single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' ? (
+              <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} />
+            ) : null}
           </>
-        )}
+        ) : null}
       </div>
     </aside>
   )
 }
 
-function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedMeshPoint, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, onDefineBrush, gesture }: {
+/** The extra numbers a primitive carries: a rectangle's corners, a polygon's points, an arc. */
+function ShapeFields({ element, onUpdate, gesture }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  gesture: Gesture
+}) {
+  if (element.kind === 'rectangle' && !element.network) return <CornerFields element={element} onUpdate={onUpdate} gesture={gesture} />
+  if (element.kind === 'polygon' && !element.network) {
+    const { sides, innerRatio } = polygonProperties(element)
+    return (
+      <div className="vector-field-grid">
+        <NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} />
+        <NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} />
+      </div>
+    )
+  }
+  if (element.kind === 'ellipse' && !element.network) {
+    const arc = arcProperties(element)
+    const apply = (patch: Partial<VectorElement>, label: string) => onUpdate(element.id, { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: arc.ratio, ...patch }, true, label)
+    return (
+      <>
+        <div className="vector-field-grid">
+          <NumberField label="Arc start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} />
+          <NumberField label="Arc sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} />
+        </div>
+        <NumberField label="Inner radius" value={Math.round(arc.ratio * 100)} min={0} max={99} step={1} unit="%" variant="field" onChange={(value) => apply({ arcRatio: value / 100 }, 'Change ring')} {...gesture} />
+        {isFullEllipse(arc) ? null : (
+          <div className="vector-panel__actions">
+            <Button variant="quiet" size="sm" data-action="reset-arc" onClick={() => onUpdate(element.id, { arcStart: undefined, arcSweep: undefined, arcRatio: undefined }, true, 'Whole ellipse')}>Whole ellipse</Button>
+          </div>
+        )}
+      </>
+    )
+  }
+  return null
+}
+
+function CornerFields({ element, onUpdate, gesture }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  gesture: Gesture
+}) {
+  const radii = cornerRadii(element)
+  const uniform = typeof element.cornerRadius !== 'object'
+  const max = Math.floor(Math.min(element.width, element.height) / 2)
+  return (
+    <>
+      {uniform ? (
+        <div className="vector-field-grid">
+          <NumberField label="Radius" value={radii[0]} min={0} max={max} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { cornerRadius: radius > 0 ? radius : undefined })} {...gesture} />
+          <NumberField label="Smoothing" value={Math.round((element.cornerSmoothing ?? 0) * 100)} min={0} max={100} step={1} unit="%" variant="field" disabled={!radii.some(Boolean)} onChange={(value) => onUpdate(element.id, { cornerSmoothing: value > 0 ? value / 100 : undefined })} {...gesture} />
+        </div>
+      ) : (
+        <div className="vector-field-grid">
+          {(['Top left', 'Top right', 'Bottom right', 'Bottom left'] as const).map((label, index) => (
+            <NumberField key={label} label={label} value={radii[index]!} min={0} max={max} step={1} unit="px" variant="field" onChange={(value) => {
+              const next = [...radii] as [number, number, number, number]
+              next[index] = value
+              onUpdate(element.id, { cornerRadius: next })
+            }} {...gesture} />
+          ))}
+        </div>
+      )}
+      <SwitchField label="Radius per corner" checked={!uniform} onChange={(separate) => onUpdate(element.id, { cornerRadius: separate ? [radii[0], radii[1], radii[2], radii[3]] : radii[0] || undefined })} />
+    </>
+  )
+}
+
+/** What the selection is as a layer: how much of it shows, how it mixes, whether it can be touched. */
+function LayerSection({ elements, leaves, onUpdate, onUpdateElements, gesture }: {
+  elements: VectorElement[]
+  leaves: VectorElement[]
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
+  gesture: Gesture
+}) {
+  const single = elements.length === 1 ? elements[0]! : null
+  const targets = single ? [single] : leaves
+  const first = targets[0] ?? elements[0]
+  if (!first) return null
+  const apply = (patch: Partial<VectorElement>, record?: boolean, label = 'Change the layer') => {
+    if (single) onUpdate(single.id, patch, record, label)
+    else onUpdateElements(targets.map((element) => ({ id: element.id, patch })), record, label)
+  }
+  const allVisible = elements.every((element) => element.visible)
+  const allLocked = elements.every((element) => element.locked)
+  const maskable = single && single.parentId
+  return (
+    <VectorSection id="layer" title="Layer" meta={single ? `${kindLabel(single)} · ${Math.round(single.opacity * 100)}%` : `${Math.round(first.opacity * 100)}%`}>
+      <BlendPanel
+        mode={first.blendMode ?? 'normal'}
+        opacity={(single ?? first).opacity}
+        onChangeMode={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')}
+        onChangeOpacity={(opacity) => single ? onUpdate(single.id, { opacity }) : apply({ opacity })}
+        gesture={gesture}
+      />
+      <SwitchField label="Visible" checked={allVisible} mixed={elements.some((element) => element.visible) && !allVisible} onChange={(visible) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { visible } })))} />
+      <SwitchField label="Locked" checked={allLocked} mixed={elements.some((element) => element.locked) && !allLocked} onChange={(locked) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { locked } })))} />
+      {maskable ? <SwitchField label="Mask" checked={!!single.mask} onChange={(mask) => onUpdate(single.id, { mask: mask || undefined }, true, mask ? 'Use as mask' : 'Remove mask')} /> : null}
+    </VectorSection>
+  )
+}
+
+/** Fill, Stroke and Effects: three sections of lines, each with its own + and its own ⋯. */
+function PaintSections({ elements, leaves, styles, brushes, palette, selectedMeshPoint, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, onDeleteStyle, onDefineBrush, gesture }: {
   elements: VectorElement[]
   leaves: VectorElement[]
   styles: VectorStyle[]
@@ -504,19 +564,20 @@ function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedM
   onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
   onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
   onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
+  /** Drops a named style, leaving every object with the look it already had. */
+  onDeleteStyle?: (styleId: string) => void
   onDefineBrush?: (element: VectorElement) => void
-  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
+  gesture: Gesture
 }) {
   const single = elements.length === 1 && elements[0]!.kind !== 'group' ? elements[0]! : null
   const targets = single ? [single] : leaves
   if (targets.length === 0) return null
   const first = targets[0]!
-  const same = (key: 'fill' | 'stroke' | 'strokeWidth' | 'opacity') => targets.every((element) => element[key] === first[key])
+  const same = (key: 'fill' | 'stroke' | 'strokeWidth') => targets.every((element) => element[key] === first[key])
   const apply = (patch: Partial<VectorElement>, record?: boolean, label = 'Change appearance') => {
     if (single) onUpdate(single.id, patch, record, label)
     else onUpdateElements(targets.map((element) => ({ id: element.id, patch })), record, label)
   }
-  const groupOpacity = !single && elements.length === 1 && elements[0]!.kind === 'group' ? elements[0]! : null
   const fills = fillsOf(first)
   const strokes = strokesOf(first)
   const fillStyle = linkedStyle(styles, first, 'fill')
@@ -524,142 +585,254 @@ function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedM
   const effectStyle = linkedStyle(styles, first, 'effect')
   const fillsMixed = !same('fill') || targets.some((element) => JSON.stringify(element.fills) !== JSON.stringify(first.fills))
   const strokesMixed = !same('stroke') || targets.some((element) => JSON.stringify(element.strokes) !== JSON.stringify(first.strokes))
-  const isRectangle = single?.kind === 'rectangle' && !single.network
+  const effects = first.effects ?? []
+  const effectsMixed = targets.some((element) => JSON.stringify(element.effects ?? []) !== JSON.stringify(first.effects ?? []))
   const isPath = !!single?.network
-  const radii: [number, number, number, number] = single ? cornerRadii(single) : [0, 0, 0, 0]
-  const uniformRadius = typeof single?.cornerRadius !== 'object'
+  const isRectangle = single?.kind === 'rectangle' && !single.network
   const sides = single?.strokeSides ?? { top: true, right: true, bottom: true, left: true }
   const setSide = (side: keyof typeof sides, value: boolean) => {
     if (!single) return
     const next = { ...sides, [side]: value }
     onUpdate(single.id, { strokeSides: next.top && next.right && next.bottom && next.left ? undefined : next })
   }
+  const styleLink = (kind: VectorStyleKind, linked: VectorStyle | null) => ({
+    name: linked?.name ?? null,
+    canCreate: !!onCreateStyle,
+    onCreate: () => onCreateStyle?.(kind, first),
+    onDetach: () => onLinkStyle?.(kind, null),
+  })
+  const styleMenu = (kind: VectorStyleKind, linked: VectorStyle | null) => [
+    ...(linked ? [{ label: 'Detach style', onSelect: () => onLinkStyle?.(kind, null) }] : [{ label: 'Create style', onSelect: () => onCreateStyle?.(kind, first) }]),
+    ...styles.filter((style) => style.kind === kind && style.id !== linked?.id).map((style) => ({ label: `Use “${style.name}”`, onSelect: () => onLinkStyle?.(kind, style.id) })),
+    ...(linked && onDeleteStyle ? [{ label: `Delete “${linked.name}”`, onSelect: () => onDeleteStyle(linked.id) }] : []),
+  ]
+  const writePaints = (kind: 'fill' | 'stroke') => (paints: VectorPaint[], record?: boolean) => {
+    const linked = kind === 'fill' ? fillStyle : strokeStyle
+    if (linked && onUpdateStyle) onUpdateStyle(linked.id, paints, record)
+    else apply(kind === 'fill' ? fillsPatch(paints) : strokesPatch(paints), record, kind === 'fill' ? 'Change fill' : 'Change stroke')
+  }
   return (
     <>
-      <section className="vector-panel" aria-label="Appearance">
-        <h2 className="vector-panel__title">Appearance</h2>
+      <VectorSection
+        id="fill"
+        title="Fill"
+        meta={fills.length > 1 ? `${fills.length} layers` : undefined}
+        addLabel="Add fill layer"
+        addDisabled={!addedPaints('Fill', fills)}
+        onAdd={() => { const next = addedPaints('Fill', fills); if (next) writePaints('fill')(next) }}
+        menu={styleMenu('fill', fillStyle)}
+      >
         <PaintList
           label="Fill"
           paints={fills}
           mixed={fillsMixed}
           palette={palette}
-          header={<StyleLink kind="fill" styles={styles} linked={fillStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
+          style={styleLink('fill', fillStyle)}
           selectedMeshPoint={selectedMeshPoint}
-          onChange={(paints, record) => {
-            // A linked paint edits its style, which repaints every object that follows it.
-            if (fillStyle && onUpdateStyle) onUpdateStyle(fillStyle.id, paints, record)
-            else apply(fillsPatch(paints), record, 'Change fill')
-          }}
+          onChange={writePaints('fill')}
           gesture={gesture}
         />
+      </VectorSection>
+      <VectorSection
+        id="stroke"
+        title="Stroke"
+        meta={strokes.length > 0 ? `${first.strokeWidth} px` : undefined}
+        addLabel="Add stroke layer"
+        addDisabled={!addedPaints('Stroke', strokes)}
+        onAdd={() => { const next = addedPaints('Stroke', strokes); if (next) writePaints('stroke')(next) }}
+        menu={styleMenu('stroke', strokeStyle)}
+      >
         <PaintList
           label="Stroke"
           paints={strokes}
           mixed={strokesMixed}
           palette={palette}
-          header={<StyleLink kind="stroke" styles={styles} linked={strokeStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
-          onChange={(paints, record) => {
-            if (strokeStyle && onUpdateStyle) onUpdateStyle(strokeStyle.id, paints, record)
-            else apply(strokesPatch(paints), record, 'Change stroke')
-          }}
+          style={styleLink('stroke', strokeStyle)}
+          onChange={writePaints('stroke')}
           gesture={gesture}
         />
-        {groupOpacity ? (
-          <NumberField label="Opacity" value={Math.round(groupOpacity.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(opacity) => onUpdate(groupOpacity.id, { opacity: opacity / 100 })} {...gesture} />
-        ) : (
-          <NumberField label="Opacity" value={Math.round(first.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" mixed={!single && !same('opacity')} onChange={(opacity) => apply({ opacity: opacity / 100 })} {...gesture} />
-        )}
-      </section>
-      {single && strokes.length > 0 && single.kind !== 'text' && single.kind !== 'image' ? (
-        <BrushPanel
-          element={single}
-          brushes={brushes}
-          canDefine={!!single.network}
-          onDefine={() => onDefineBrush?.(single)}
-          onChange={(brush, record) => onUpdate(single.id, { brush }, record, 'Change brush')}
+        {strokes.length > 0 ? (
+          <StrokeDetail
+            first={first}
+            single={single}
+            isPath={isPath}
+            isRectangle={isRectangle}
+            sides={sides}
+            setSide={setSide}
+            mixedWidth={!single && !same('strokeWidth')}
+            brushes={brushes}
+            onDefineBrush={onDefineBrush}
+            onUpdate={onUpdate}
+            apply={apply}
+            gesture={gesture}
+          />
+        ) : null}
+      </VectorSection>
+      <VectorSection
+        id="effects"
+        title="Effects"
+        meta={effects.length > 0 ? `${effects.length}` : undefined}
+        addLabel="Add an effect"
+        addDisabled={effects.length >= MAX_EFFECTS_PER_ELEMENT}
+        onAdd={() => apply({ effects: [...effects, createEffect('dropShadow')] }, true, 'Add an effect')}
+        menu={styleMenu('effect', effectStyle)}
+      >
+        <EffectList
+          effects={effects}
+          mixed={effectsMixed}
+          palette={palette}
+          onChange={(next, record) => apply({ effects: next.length ? next : undefined }, record, 'Change effects')}
           gesture={gesture}
         />
-      ) : null}
-      <EffectsPanel
-        effects={first.effects ?? []}
-        mixed={targets.some((element) => JSON.stringify(element.effects ?? []) !== JSON.stringify(first.effects ?? []))}
-        palette={palette}
-        header={<StyleLink kind="effect" styles={styles} linked={effectStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
-        onChange={(effects, record) => apply({ effects: effects.length ? effects : undefined }, record, 'Change effects')}
-        gesture={gesture}
-      />
-      <BlendPanel
-        mode={first.blendMode ?? 'normal'}
-        opacity={groupOpacity ? groupOpacity.opacity : first.opacity}
-        onChangeMode={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')}
-        onChangeOpacity={(opacity) => groupOpacity ? onUpdate(groupOpacity.id, { opacity }) : apply({ opacity })}
-        gesture={gesture}
-      />
-      {single && single.kind === 'image' ? (
-        <AdjustmentsPanel element={single} onChange={(adjustments, record) => onUpdate(single.id, { adjustments }, record, 'Adjust picture')} gesture={gesture} />
-      ) : null}
-      {strokes.length > 0 ? (
-        <section className="vector-panel" aria-label="Stroke properties">
-          <h2 className="vector-panel__title">Stroke</h2>
-          <NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" mixed={!single && !same('strokeWidth')} onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
-          <SelectField label="Align" value={first.strokeAlign ?? 'center'} options={[{ value: 'inside', label: 'Inside' }, { value: 'center', label: 'Center' }, { value: 'outside', label: 'Outside' }]} onChange={(value) => apply({ strokeAlign: value === 'center' ? undefined : value as VectorElement['strokeAlign'] })} />
-          <SelectField label="Cap" value={first.strokeCap ?? 'butt'} options={[{ value: 'butt', label: 'Butt' }, { value: 'round', label: 'Round' }, { value: 'square', label: 'Square' }]} onChange={(value) => apply({ strokeCap: value === 'butt' ? undefined : value as VectorElement['strokeCap'] })} />
-          <SelectField label="Join" value={first.strokeJoin ?? 'miter'} options={[{ value: 'miter', label: 'Miter' }, { value: 'round', label: 'Round' }, { value: 'bevel', label: 'Bevel' }]} onChange={(value) => apply({ strokeJoin: value === 'miter' ? undefined : value as VectorElement['strokeJoin'] })} />
-          <div className="vector-field-grid">
-            <NumberField label="Dash" value={first.strokeDash?.[0] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(dash) => apply({ strokeDash: dash > 0 ? [dash, first.strokeDash?.[1] ?? dash] : undefined })} {...gesture} />
-            <NumberField label="Gap" value={first.strokeDash?.[1] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" disabled={!first.strokeDash} onChange={(gap) => apply({ strokeDash: first.strokeDash ? [first.strokeDash[0], gap] : undefined })} {...gesture} />
-          </div>
-          {single?.strokeProfile ? (
-            <div className="vector-panel__row">
-              <span className="vector-panel__subtitle">Width profile · {single.strokeProfile.length} points</span>
-              <Button variant="quiet" size="sm" data-action="reset-stroke-width" onClick={() => onUpdate(single.id, { strokeProfile: undefined }, true, 'Reset stroke width')}>Reset</Button>
-            </div>
-          ) : null}
-          {isPath ? (
-            <div className="vector-field-grid">
-              <SelectField label="Start" value={first.strokeArrowStart ?? 'none'} options={ARROW_OPTIONS} onChange={(value) => apply({ strokeArrowStart: value === 'none' ? undefined : value as VectorElement['strokeArrowStart'] })} />
-              <SelectField label="End" value={first.strokeArrowEnd ?? 'none'} options={ARROW_OPTIONS} onChange={(value) => apply({ strokeArrowEnd: value === 'none' ? undefined : value as VectorElement['strokeArrowEnd'] })} />
-            </div>
-          ) : null}
-          {isRectangle && !radii.some(Boolean) ? (
-            <div className="vector-sides" role="group" aria-label="Stroke sides">
-              <SwitchField label="Top" checked={sides.top} onChange={(value) => setSide('top', value)} />
-              <SwitchField label="Right" checked={sides.right} onChange={(value) => setSide('right', value)} />
-              <SwitchField label="Bottom" checked={sides.bottom} onChange={(value) => setSide('bottom', value)} />
-              <SwitchField label="Left" checked={sides.left} onChange={(value) => setSide('left', value)} />
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-      {isRectangle && single ? (
-        <section className="vector-panel" aria-label="Corners">
-          <div className="vector-panel__row">
-            <h2 className="vector-panel__title">Corners</h2>
-            <SwitchField label="Per corner" checked={!uniformRadius} onChange={(separate) => onUpdate(single.id, { cornerRadius: separate ? [radii[0], radii[1], radii[2], radii[3]] : radii[0] || undefined })} />
-          </div>
-          {uniformRadius ? (
-            <SliderField label="Radius" value={radii[0]} min={0} max={Math.floor(Math.min(single.width, single.height) / 2)} step={1} unit="px" onChange={(radius) => onUpdate(single.id, { cornerRadius: radius > 0 ? radius : undefined })} {...gesture} />
-          ) : (
-            <div className="vector-field-grid">
-              {(['Top left', 'Top right', 'Bottom right', 'Bottom left'] as const).map((label, index) => (
-                <NumberField key={label} label={label} value={radii[index]!} min={0} max={Math.floor(Math.min(single.width, single.height) / 2)} step={1} unit="px" variant="field" onChange={(value) => {
-                  const next = [...radii] as [number, number, number, number]
-                  next[index] = value
-                  onUpdate(single.id, { cornerRadius: next })
-                }} {...gesture} />
-              ))}
-            </div>
-          )}
-          <SliderField label="Smoothing" value={Math.round((single.cornerSmoothing ?? 0) * 100)} min={0} max={100} step={1} unit="%" disabled={!radii.some(Boolean)} onChange={(value) => onUpdate(single.id, { cornerSmoothing: value > 0 ? value / 100 : undefined })} {...gesture} />
-        </section>
-      ) : null}
+      </VectorSection>
     </>
   )
 }
 
-const ARROW_OPTIONS = [{ value: 'none', label: 'None' }, { value: 'arrow', label: 'Arrow' }, { value: 'triangle', label: 'Triangle' }, { value: 'circle', label: 'Circle' }, { value: 'square', label: 'Square' }, { value: 'bar', label: 'Bar' }]
+/** The contour's own numbers, folded away under one line until they are wanted. */
+function StrokeDetail({ first, single, isPath, isRectangle, sides, setSide, mixedWidth, brushes, onDefineBrush, onUpdate, apply, gesture }: {
+  first: VectorElement
+  single: VectorElement | null
+  isPath: boolean
+  isRectangle: boolean
+  sides: { top: boolean; right: boolean; bottom: boolean; left: boolean }
+  setSide: (side: 'top' | 'right' | 'bottom' | 'left', value: boolean) => void
+  mixedWidth: boolean
+  brushes: VectorBrush[]
+  onDefineBrush?: (element: VectorElement) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  apply: (patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  gesture: Gesture
+}) {
+  const [open, setOpen] = useSectionState('stroke-detail', false)
+  const panelId = 'vector-stroke-detail'
+  return (
+    <div className="vector-fold" data-open={open}>
+      <button type="button" className="vector-fold__head" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
+        <IconChevron />
+        <span>Width · Align · Cap · Join · Dash · Arrows</span>
+      </button>
+      <div className="vector-fold__panel" id={panelId} inert={!open} aria-hidden={!open}>
+        <NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" mixed={mixedWidth} onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
+        <SelectField label="Align" value={first.strokeAlign ?? 'center'} options={[{ value: 'inside', label: 'Inside' }, { value: 'center', label: 'Center' }, { value: 'outside', label: 'Outside' }]} onChange={(value) => apply({ strokeAlign: value === 'center' ? undefined : value as VectorElement['strokeAlign'] })} />
+        <SelectField label="Cap" value={first.strokeCap ?? 'butt'} options={[{ value: 'butt', label: 'Butt' }, { value: 'round', label: 'Round' }, { value: 'square', label: 'Square' }]} onChange={(value) => apply({ strokeCap: value === 'butt' ? undefined : value as VectorElement['strokeCap'] })} />
+        <SelectField label="Join" value={first.strokeJoin ?? 'miter'} options={[{ value: 'miter', label: 'Miter' }, { value: 'round', label: 'Round' }, { value: 'bevel', label: 'Bevel' }]} onChange={(value) => apply({ strokeJoin: value === 'miter' ? undefined : value as VectorElement['strokeJoin'] })} />
+        <div className="vector-field-grid">
+          <NumberField label="Dash" value={first.strokeDash?.[0] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(dash) => apply({ strokeDash: dash > 0 ? [dash, first.strokeDash?.[1] ?? dash] : undefined })} {...gesture} />
+          <NumberField label="Gap" value={first.strokeDash?.[1] ?? 0} min={0} max={1000} step={1} unit="px" variant="field" disabled={!first.strokeDash} onChange={(gap) => apply({ strokeDash: first.strokeDash ? [first.strokeDash[0], gap] : undefined })} {...gesture} />
+        </div>
+        {isPath ? (
+          <div className="vector-field-grid">
+            <SelectField label="Arrow start" value={first.strokeArrowStart ?? 'none'} options={ARROW_OPTIONS} onChange={(value) => apply({ strokeArrowStart: value === 'none' ? undefined : value as VectorElement['strokeArrowStart'] })} />
+            <SelectField label="Arrow end" value={first.strokeArrowEnd ?? 'none'} options={ARROW_OPTIONS} onChange={(value) => apply({ strokeArrowEnd: value === 'none' ? undefined : value as VectorElement['strokeArrowEnd'] })} />
+          </div>
+        ) : null}
+        {single?.strokeProfile ? (
+          <div className="vector-row vector-row--action">
+            <span className="vector-row__label">Width profile · {single.strokeProfile.length} points</span>
+            <Button variant="quiet" size="sm" data-action="reset-stroke-width" onClick={() => onUpdate(single.id, { strokeProfile: undefined }, true, 'Reset stroke width')}>Reset</Button>
+          </div>
+        ) : null}
+        {isRectangle && !cornerRadii(single ?? first).some(Boolean) ? (
+          <div className="vector-sides" role="group" aria-label="Stroke sides">
+            <SwitchField label="Top" checked={sides.top} onChange={(value) => setSide('top', value)} />
+            <SwitchField label="Right" checked={sides.right} onChange={(value) => setSide('right', value)} />
+            <SwitchField label="Bottom" checked={sides.bottom} onChange={(value) => setSide('bottom', value)} />
+            <SwitchField label="Left" checked={sides.left} onChange={(value) => setSide('left', value)} />
+          </div>
+        ) : null}
+        {single && single.kind !== 'text' && single.kind !== 'image' ? (
+          <BrushPanel
+            element={single}
+            brushes={brushes}
+            canDefine={!!single.network}
+            onDefine={() => onDefineBrush?.(single)}
+            onChange={(brush, record) => onUpdate(single.id, { brush }, record, 'Change brush')}
+            gesture={gesture}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
 
-function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, onSelectIds, onSelectNodes, gesture }: {
+/** The node under the pointer: where it is, how its handles behave, how far they reach. */
+function NodeSection({ element, selectedNodeIds, onUpdate, onSelectNodes, gesture }: {
+  element: VectorElement
+  selectedNodeIds: string[]
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onSelectNodes: (ids: string[]) => void
+  gesture: Gesture
+}) {
+  const world = worldNetwork(element)
+  const activeId = selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
+  const applyEdit = (edit: ReturnType<typeof toggleNodeSmooth> | null, selection?: string[]) => {
+    if (!edit) return
+    onUpdate(element.id, { ...edit, kind: 'path' })
+    if (selection) onSelectNodes(selection)
+  }
+  const active = activeId ? world.nodes.find((node) => node.id === activeId) ?? null : null
+  const incident = active ? world.segments.filter((segment) => segment.a === active.id || segment.b === active.id) : []
+  const smooth = active ? incident.some((segment) => (segment.a === active.id && segment.ah) || (segment.b === active.id && segment.bh)) : false
+  const handles = active
+    ? incident.flatMap((segment) => {
+      const end = segment.a === active.id ? 'a' : 'b'
+      const point = end === 'a' ? segment.ah : segment.bh
+      return point ? [{ segmentId: segment.id, end: end as 'a' | 'b', point }] : []
+    })
+    : []
+  const setHandle = (handle: { segmentId: string; end: 'a' | 'b' }, length: number, angle: number) => {
+    if (!active) return
+    onUpdate(element.id, { ...moveHandle(element, world, handle.segmentId, handle.end, handleFromPolar(active.point, Math.max(0, length), angle)), kind: 'path' }, true, 'Move handle')
+  }
+  return (
+    <VectorSection id="node" title="Node" meta={selectedNodeIds.length > 1 ? `${selectedNodeIds.length} selected` : active ? `${incident.length} ${incident.length === 1 ? 'segment' : 'segments'}` : undefined}>
+      {!active ? (
+        <VectorEmpty>{selectedNodeIds.length > 1 ? 'Several nodes. Line them up from the Network section.' : 'No node selected. Click one on the canvas'}</VectorEmpty>
+      ) : (
+        <>
+          <div className="vector-field-grid">
+            <NumberField label="X" value={round(active.point.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => applyEdit(moveNodes(element, world, [active.id], { x: x - active.point.x, y: 0 }))} {...gesture} />
+            <NumberField label="Y" value={round(active.point.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => applyEdit(moveNodes(element, world, [active.id], { x: 0, y: y - active.point.y }))} {...gesture} />
+          </div>
+          <SelectField
+            label="Handles"
+            value={smooth ? (active.handles ?? 'mirrored') : 'corner'}
+            options={[{ value: 'corner', label: 'Corner' }, { value: 'mirrored', label: 'Mirror' }, { value: 'asymmetric', label: 'Angle' }, { value: 'independent', label: 'Free' }]}
+            onChange={(value) => {
+              if (value === 'corner') {
+                if (smooth) applyEdit(toggleNodeSmooth(element, world, active.id), [active.id])
+                return
+              }
+              const mode = value as 'mirrored' | 'asymmetric' | 'independent'
+              if (!smooth) {
+                const smoothed = toggleNodeSmooth(element, world, active.id)
+                const next = { ...element, ...smoothed, kind: 'path' as const }
+                applyEdit(setHandleMode(next, worldNetwork(next), active.id, mode), [active.id])
+              } else {
+                applyEdit(setHandleMode(element, world, active.id, mode), [active.id])
+              }
+            }}
+          />
+          {handles.map((handle, index) => {
+            const polar = handlePolar(active.point, handle.point)
+            return (
+              <div key={`${handle.segmentId}-${handle.end}`} className="vector-field-grid">
+                <NumberField label={`Handle ${index + 1} length`} value={round(polar.length)} min={0} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(length) => setHandle(handle, length, polar.angle)} {...gesture} />
+                <NumberField label={`Handle ${index + 1} angle`} value={round(polar.angle)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(angle) => setHandle(handle, polar.length, angle)} {...gesture} />
+              </div>
+            )
+          })}
+          {!smooth && incident.length === 2 ? (
+            <NumberField label="Corner radius" value={active.radius ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { kind: 'path', network: { ...(element.network ?? normalizeWorld(world).network), nodes: (element.network ?? normalizeWorld(world).network).nodes.map((node) => node.id === active.id ? { ...node, radius: radius > 0 ? radius : undefined } : node) } })} {...gesture} />
+          ) : null}
+        </>
+      )}
+    </VectorSection>
+  )
+}
+
+function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, onSelectIds, onSelectNodes }: {
   element: VectorElement
   tool: VectorTool
   selectedNodeIds: string[]
@@ -667,17 +840,12 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onSelectIds: (ids: string[]) => void
   onSelectNodes: (ids: string[]) => void
-  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
   const world = worldNetwork(element)
   const edited = !!element.network
   const faces = computeFaces(world)
   const off = new Set(element.regionsOff ?? [])
   const filled = faces.filter((face) => !off.has(face.key)).length
-  const activeId = tool === 'node' && selectedNodeIds.length === 1 ? selectedNodeIds[0]! : null
-  const active = activeId ? world.nodes.find((node) => node.id === activeId) ?? null : null
-  const incident = active ? world.segments.filter((segment) => segment.a === active.id || segment.b === active.id) : []
-  const smooth = active ? incident.some((segment) => (segment.a === active.id && segment.ah) || (segment.b === active.id && segment.bh)) : false
   const pair = selectedNodeIds.length === 2 ? selectedNodeIds : null
   const canConnect = tool === 'node' && !!pair && !world.segments.some((segment) => (segment.a === pair[0] && segment.b === pair[1]) || (segment.a === pair[1] && segment.b === pair[0]))
   const groups = components(world)
@@ -712,29 +880,19 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
     const moved = distributePoints(picked.map((node) => node.point), axis)
     applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))), countedLabel('Distribute', picked.length, 'node'))
   }
-  const handles = active
-    ? incident.flatMap((segment) => {
-      const end = segment.a === active.id ? 'a' : 'b'
-      const point = end === 'a' ? segment.ah : segment.bh
-      return point ? [{ segmentId: segment.id, end: end as 'a' | 'b', point }] : []
-    })
-    : []
-  const setHandle = (handle: { segmentId: string; end: 'a' | 'b' }, length: number, angle: number) => {
-    if (!active) return
-    onUpdate(element.id, { ...moveHandle(element, world, handle.segmentId, handle.end, handleFromPolar(active.point, Math.max(0, length), angle)), kind: 'path' }, true, 'Move handle')
-  }
-
   return (
-    <section className="vector-panel" aria-label="Path">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Network</h2>
-        <span className="vector-panel__meta">{world.nodes.length} nodes · {world.segments.length} segments{edited ? '' : ' · primitive'}</span>
-      </div>
-      <div className="vector-panel__row">
-        <span className="vector-panel__meta">{faces.length === 0 ? 'No closed region' : `${filled} of ${faces.length} ${faces.length === 1 ? 'region' : 'regions'} filled`}</span>
-        <span className="vector-panel__meta">{groups.length > 1 ? `${groups.length} parts` : ''}</span>
-      </div>
-      {faces.length > 0 ? <p className="vector-panel__hint">Use the paint bucket (B) to switch regions on or off.</p> : null}
+    <VectorSection
+      id="network"
+      title="Network"
+      meta={`${world.nodes.length} nodes · ${world.segments.length} segments${edited ? '' : ' · primitive'}`}
+      menu={groups.length > 1 ? [{ label: 'Separate parts', onSelect: separate }] : undefined}
+      defaultOpen={tool === 'node'}
+    >
+      <p className="vector-empty">
+        {faces.length === 0 ? 'No closed region.' : `${filled} of ${faces.length} ${faces.length === 1 ? 'region' : 'regions'} filled.`}
+        {groups.length > 1 ? ` ${groups.length} parts.` : ''}
+        {faces.length > 0 ? ' Use the paint bucket (B) to switch regions on or off.' : ''}
+      </p>
       {tool === 'node' && picked.length > 1 ? (
         <div className="vector-nodes-align" aria-label="Align nodes">
           <div className="vector-panel__row">
@@ -756,88 +914,29 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
           ) : null}
         </div>
       ) : null}
-      {active && activeId ? (
-        <>
-          <div className="vector-panel__row">
-            <span className="vector-panel__meta">Node · {incident.length} {incident.length === 1 ? 'segment' : 'segments'}</span>
-          </div>
-          <div className="vector-field-grid">
-            <NumberField label="X" value={round(active.point.x)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => applyEdit(moveNodes(element, world, [activeId], { x: x - active.point.x, y: 0 }))} {...gesture} />
-            <NumberField label="Y" value={round(active.point.y)} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => applyEdit(moveNodes(element, world, [activeId], { x: 0, y: y - active.point.y }))} {...gesture} />
-          </div>
-          <SelectField
-            label="Handles"
-            value={smooth ? (active.handles ?? 'mirrored') : 'corner'}
-            options={[{ value: 'corner', label: 'Corner' }, { value: 'mirrored', label: 'Mirror' }, { value: 'asymmetric', label: 'Angle' }, { value: 'independent', label: 'Free' }]}
-            onChange={(value) => {
-              if (value === 'corner') {
-                if (smooth) applyEdit(toggleNodeSmooth(element, world, activeId), [activeId])
-                return
-              }
-              const mode = value as 'mirrored' | 'asymmetric' | 'independent'
-              if (!smooth) {
-                const smoothed = toggleNodeSmooth(element, world, activeId)
-                const next = { ...element, ...smoothed, kind: 'path' as const }
-                applyEdit(setHandleMode(next, worldNetwork(next), activeId, mode), [activeId])
-              } else {
-                applyEdit(setHandleMode(element, world, activeId, mode), [activeId])
-              }
-            }}
-          />
-          {handles.map((handle, index) => {
-            const polar = handlePolar(active.point, handle.point)
-            return (
-              <div key={`${handle.segmentId}-${handle.end}`} className="vector-handle-fields">
-                <span className="vector-panel__subtitle">Handle {index + 1}</span>
-                <div className="vector-field-grid">
-                  <NumberField
-                    label="Length"
-                    value={round(polar.length)}
-                    min={0}
-                    max={MAX_DOCUMENT_SIZE}
-                    step={1}
-                    unit="px"
-                    variant="field"
-                    onChange={(length) => setHandle(handle, length, polar.angle)}
-                    {...gesture}
-                  />
-                  <NumberField
-                    label="Angle"
-                    value={round(polar.angle)}
-                    min={-360}
-                    max={360}
-                    step={1}
-                    unit="°"
-                    variant="field"
-                    onChange={(angle) => setHandle(handle, polar.length, angle)}
-                    {...gesture}
-                  />
-                </div>
-              </div>
-            )
-          })}
-          {!smooth && incident.length === 2 ? (
-            <NumberField label="Corner radius" value={active.radius ?? 0} min={0} max={1000} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { kind: 'path', network: { ...(element.network ?? normalizeWorld(world).network), nodes: (element.network ?? normalizeWorld(world).network).nodes.map((node) => node.id === activeId ? { ...node, radius: radius > 0 ? radius : undefined } : node) } })} {...gesture} />
-          ) : null}
-        </>
-      ) : tool === 'node' ? (
-        <p className="vector-panel__hint">{selectedNodeIds.length > 1
-          ? 'Shift a handle to hold it to 15°. ⌥-click a region to select the nodes around it.'
-          : 'Select a node to edit it. Double-click a node to toggle corner and smooth; double-click a segment to add a node; ⌘-drag a segment to bend it; ⌥-click a region to select its nodes.'}</p>
-      ) : (
-        <p className="vector-panel__hint">Press Enter or double-click the shape to edit nodes.</p>
-      )}
+      <p className="vector-empty">{tool === 'node'
+        ? 'Double-click a node to toggle corner and smooth; double-click a segment to add a node; ⌘-drag a segment to bend it; ⌥-click a region to select its nodes.'
+        : 'Press Enter or double-click the shape to edit nodes.'}</p>
       {tool === 'node' && canConnect ? (
         <div className="vector-panel__actions">
           <Tooltip content={withShortcut('Join the two selected nodes', 'join')}><Button variant="quiet" size="sm" data-action="join" onClick={() => applyEdit(connectNodes(element, world, pair![0]!, pair![1]!), [])}>Connect</Button></Tooltip>
         </div>
       ) : null}
-      {groups.length > 1 && tool !== 'node' ? (
-        <div className="vector-panel__actions">
-          <Tooltip content="Split each disconnected part into its own object"><Button variant="quiet" size="sm" onClick={separate}>Separate parts</Button></Tooltip>
-        </div>
-      ) : null}
-    </section>
+    </VectorSection>
+  )
+}
+
+/** The six ways of lining things up, as one row of icons. */
+function AlignRow({ align }: { align: (mode: AlignMode) => void }) {
+  return (
+    <div className="vector-align" role="group" aria-label="Align">
+      <AlignButton label="Align left" shortcut="⌥A" onClick={() => align('left')}><IconAlignLeft /></AlignButton>
+      <AlignButton label="Align horizontal centres" shortcut="⌥H" onClick={() => align('centerX')}><IconAlignCenterH /></AlignButton>
+      <AlignButton label="Align right" shortcut="⌥D" onClick={() => align('right')}><IconAlignRight /></AlignButton>
+      <AlignButton label="Align top" shortcut="⌥W" onClick={() => align('top')}><IconAlignTop /></AlignButton>
+      <AlignButton label="Align vertical centres" shortcut="⌥V" onClick={() => align('centerY')}><IconAlignCenterV /></AlignButton>
+      <AlignButton label="Align bottom" shortcut="⌥S" onClick={() => align('bottom')}><IconAlignBottom /></AlignButton>
+    </div>
   )
 }
 
@@ -846,56 +945,6 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
     <Tooltip content={shortcut ? `${label} · ${shortcut}` : label}>
       <IconButton label={label} className="vector-align__button" onClick={onClick}>{children}</IconButton>
     </Tooltip>
-  )
-}
-
-function PolygonPanel({ element, onUpdate, gesture }: {
-  element: VectorElement
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
-  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
-}) {
-  const { sides, innerRatio } = polygonProperties(element)
-  return (
-    <section className="vector-panel" aria-label="Polygon">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Polygon</h2>
-        <span className="vector-panel__meta">{innerRatio > 0 ? 'Star' : 'Regular'}</span>
-      </div>
-      <NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} />
-      <NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} />
-      <p className="vector-panel__hint">Drag the point at the top to change the sides, the inner one to pull the star in. Editing a node freezes the shape.</p>
-    </section>
-  )
-}
-
-function ArcPanel({ element, onUpdate, gesture }: {
-  element: VectorElement
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
-  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
-}) {
-  const arc = arcProperties(element)
-  const full = isFullEllipse(arc)
-  const apply = (patch: Partial<VectorElement>, label: string) => onUpdate(element.id, { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: arc.ratio, ...patch }, true, label)
-  return (
-    <section className="vector-panel" aria-label="Arc">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Arc</h2>
-        <span className="vector-panel__meta">{full ? 'Whole ellipse' : arc.ratio > 0 ? 'Ring' : 'Sector'}</span>
-      </div>
-      <div className="vector-field-grid">
-        <NumberField label="Start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} />
-        <NumberField label="Sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} />
-      </div>
-      <NumberField label="Inner radius" value={Math.round(arc.ratio * 100)} min={0} max={99} step={1} unit="%" variant="field" onChange={(value) => apply({ arcRatio: value / 100 }, 'Change ring')} {...gesture} />
-      {full ? null : (
-        <div className="vector-panel__actions">
-          <Tooltip content="Close the slice back into a whole ellipse">
-            <Button variant="quiet" size="sm" data-action="reset-arc" onClick={() => onUpdate(element.id, { arcStart: undefined, arcSweep: undefined, arcRatio: undefined }, true, 'Whole ellipse')}>Whole ellipse</Button>
-          </Tooltip>
-        </div>
-      )}
-      <p className="vector-panel__hint">Drag the points on the edge for the ends of the slice, the inner one for the hole.</p>
-    </section>
   )
 }
 
@@ -978,95 +1027,6 @@ function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
       <SwitchField label="Clip content" checked={element.clipContent !== false} onChange={(clipContent) => onUpdate(element.id, { clipContent })} />
       <p className="vector-panel__hint">A frame keeps its own box and exports at its own size. Drop layers onto it to put them inside.</p>
     </section>
-  )
-}
-
-/** Every named style in the document, with what uses it. */
-function StylesPanel({ styles, elements, onRename, onDelete }: {
-  styles: VectorStyle[]
-  elements: VectorElement[]
-  onRename?: (styleId: string, name: string) => void
-  onDelete?: (styleId: string) => void
-}) {
-  if (styles.length === 0) return null
-  return (
-    <section className="vector-panel" aria-label="Styles">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Styles</h2>
-        <span className="vector-panel__meta">{styles.length} {styles.length === 1 ? 'style' : 'styles'}</span>
-      </div>
-      <ul className="vector-styles">
-        {styles.map((style) => {
-          const usage = styleUsage(elements, style)
-          return (
-            <li key={style.id} className="vector-styles__row">
-              <span
-                className="vector-styles__chip"
-                data-kind={style.kind}
-                // An effect style has no paint to show, so it gets a plain chip rather than an empty one.
-                style={{ background: style.kind === 'effect' ? 'var(--vector-guide)' : summaryColor(style.paints) }}
-                aria-hidden="true"
-              />
-              <input
-                className="vector-styles__name"
-                defaultValue={style.name}
-                key={style.name}
-                aria-label={`${style.name} name`}
-                spellCheck={false}
-                onBlur={(event) => onRename?.(style.id, event.currentTarget.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') event.currentTarget.blur()
-                  if (event.key === 'Escape') { event.currentTarget.value = style.name; event.currentTarget.blur() }
-                }}
-              />
-              <span className="vector-styles__meta">{style.kind === 'fill' ? 'Fill' : 'Stroke'} · {usage}</span>
-              <Tooltip content={usage > 0 ? `Delete and detach ${usage} ${usage === 1 ? 'object' : 'objects'}` : 'Delete style'}>
-                <IconButton label={`Delete ${style.name}`} onClick={() => onDelete?.(style.id)}><IconTrash /></IconButton>
-              </Tooltip>
-            </li>
-          )
-        })}
-      </ul>
-    </section>
-  )
-}
-
-/** The style a paint follows: pick one, make one from what is painted, or cut the link. */
-function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }: {
-  kind: VectorStyleKind
-  styles: VectorStyle[]
-  linked: VectorStyle | null
-  source: VectorElement
-  onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
-  onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
-}) {
-  if (!onLinkStyle && !onCreateStyle) return null
-  const options = styles.filter((style) => style.kind === kind)
-  // With nothing to pick from, the list would be an empty control: offer only the way in.
-  if (options.length === 0 && !linked) {
-    return (
-      <div className="vector-style-link__actions">
-        <Button variant="quiet" size="sm" data-action={`create-${kind}-style`} onClick={() => onCreateStyle?.(kind, source)}>Create style</Button>
-      </div>
-    )
-  }
-  return (
-    <div className="vector-style-link">
-      <SelectField
-        label="Style"
-        value={linked?.id ?? ''}
-        options={[{ value: '', label: 'No style' }, ...options.map((style) => ({ value: style.id, label: style.name }))]}
-        onChange={(value) => onLinkStyle?.(kind, value || null)}
-      />
-      <div className="vector-style-link__actions">
-        {linked ? (
-          <Button variant="quiet" size="sm" data-action={`detach-${kind}-style`} onClick={() => onLinkStyle?.(kind, null)}>Detach</Button>
-        ) : (
-          <Button variant="quiet" size="sm" data-action={`create-${kind}-style`} onClick={() => onCreateStyle?.(kind, source)}>Create style</Button>
-        )}
-      </div>
-      {linked ? <p className="vector-panel__hint">Editing this {kind} updates “{linked.name}” everywhere it is used.</p> : null}
-    </div>
   )
 }
 

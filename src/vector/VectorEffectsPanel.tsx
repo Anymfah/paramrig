@@ -1,6 +1,6 @@
 import { IconButton } from '@/ui/Button'
 import { ColorField } from '@/ui/ColorField'
-import { IconBringForward, IconEye, IconEyeOff, IconMinus, IconPlus, IconSendBackward } from '@/ui/icons'
+import { IconBringForward, IconEye, IconEyeOff, IconMinus, IconReset, IconSendBackward } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SliderField } from '@/ui/SliderField'
@@ -8,7 +8,8 @@ import { Tooltip } from '@/ui/Tooltip'
 import { ADJUSTMENT_KEYS, BLEND_MODES, createEffect, effectLabel, EFFECT_KINDS } from '@/vector/effects'
 import type { PaintPalette } from '@/vector/VectorPaintPanel'
 import type { VectorBlendMode, VectorEffect, VectorEffectKind, VectorElement, VectorImageAdjustments } from '@/vector/types'
-import type { ReactNode } from 'react'
+import { useState } from 'react'
+import * as Popover from '@radix-ui/react-popover'
 
 type Gesture = { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 
@@ -25,14 +26,15 @@ const ADJUSTMENT_LABELS: Record<keyof VectorImageAdjustments, string> = {
   temperature: 'Temperature', highlights: 'Highlights', shadows: 'Shadows',
 }
 
-/** Shadows and blurs on the selection, listed bottom first the way they are applied. */
-export function EffectsPanel({ effects, mixed, onChange, gesture, palette, header }: {
+export const MAX_EFFECTS_PER_ELEMENT = MAX_EFFECTS
+
+/** Shadows and blurs on the selection, one 32 px line each, top of the stack first. */
+export function EffectList({ effects, mixed, onChange, gesture, palette }: {
   effects: VectorEffect[]
   mixed?: boolean
   onChange: (effects: VectorEffect[], record?: boolean) => void
   gesture: Gesture
   palette?: PaintPalette
-  header?: ReactNode
 }) {
   const update = (index: number, patch: Partial<VectorEffect>, record?: boolean) => {
     onChange(effects.map((effect, position) => position === index ? { ...effect, ...patch } : effect), record)
@@ -47,16 +49,9 @@ export function EffectsPanel({ effects, mixed, onChange, gesture, palette, heade
   }
   const ordered = effects.map((effect, index) => ({ effect, index })).reverse()
   return (
-    <section className="vector-panel" aria-label="Effects">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Effects</h2>
-        <Tooltip content="Add an effect">
-          <IconButton label="Add an effect" data-action="add-effect" disabled={effects.length >= MAX_EFFECTS} onClick={() => onChange([...effects, createEffect('dropShadow')])}><IconPlus /></IconButton>
-        </Tooltip>
-      </div>
-      {header}
-      {mixed ? <p className="vector-panel__hint">Mixed effects. Editing replaces them on every selected object.</p> : null}
-      {effects.length === 0 ? <p className="vector-panel__hint">No effect.</p> : null}
+    <>
+      {mixed ? <p className="vector-empty">Mixed effects. Editing replaces them on every selected object.</p> : null}
+      {effects.length === 0 && !mixed ? <p className="vector-empty">No effects. Add one with +</p> : null}
       {ordered.map(({ effect, index }) => (
         <EffectRow
           key={effect.id}
@@ -70,7 +65,7 @@ export function EffectsPanel({ effects, mixed, onChange, gesture, palette, heade
           palette={palette}
         />
       ))}
-    </section>
+    </>
   )
 }
 
@@ -84,64 +79,77 @@ function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, p
   gesture: Gesture
   palette?: PaintPalette
 }) {
+  const [open, setOpen] = useState(false)
   const shadow = effect.kind === 'dropShadow' || effect.kind === 'innerShadow'
+  const name = effectLabel(effect.kind)
   const changeKind = (kind: VectorEffectKind) => {
     if (kind === effect.kind) return
     onChange({ ...createEffect(kind, effect.id), visible: effect.visible, blur: effect.blur })
   }
   return (
-    <div className="vector-effect" data-hidden={!effect.visible || undefined}>
-      <div className="vector-effect__head">
-        <SelectField
-          label="Effect"
-          value={effect.kind}
-          options={EFFECT_KINDS.map((kind) => ({ value: kind, label: effectLabel(kind) }))}
-          onChange={(value) => changeKind(value as VectorEffectKind)}
-        />
-        <Tooltip content={effect.visible ? 'Hide this effect' : 'Show this effect'}>
-          <IconButton label={effect.visible ? `Hide the ${effectLabel(effect.kind).toLowerCase()}` : `Show the ${effectLabel(effect.kind).toLowerCase()}`} aria-pressed={!effect.visible} onClick={() => onChange({ visible: !effect.visible })}>
-            {effect.visible ? <IconEye /> : <IconEyeOff />}
-          </IconButton>
-        </Tooltip>
-        <Tooltip content="Move this effect down">
-          <IconButton label={`Move the ${effectLabel(effect.kind).toLowerCase()} down`} disabled={first} onClick={() => onMove(-1)}><IconSendBackward /></IconButton>
-        </Tooltip>
-        <Tooltip content="Move this effect up">
-          <IconButton label={`Move the ${effectLabel(effect.kind).toLowerCase()} up`} disabled={last} onClick={() => onMove(1)}><IconBringForward /></IconButton>
-        </Tooltip>
-        <Tooltip content="Remove this effect">
-          <IconButton label={`Remove the ${effectLabel(effect.kind).toLowerCase()}`} onClick={onRemove}><IconMinus /></IconButton>
-        </Tooltip>
-      </div>
-      {shadow ? (
-        <div className="vector-field-grid">
-          <NumberField label="X" value={effect.dx ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dx) => onChange({ dx })} {...gesture} />
-          <NumberField label="Y" value={effect.dy ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dy) => onChange({ dy })} {...gesture} />
-          <NumberField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" variant="field" onChange={(blur) => onChange({ blur })} {...gesture} />
-          <NumberField label="Spread" value={effect.spread ?? 0} min={-200} max={200} step={1} unit="px" variant="field" onChange={(spread) => onChange({ spread })} {...gesture} />
-        </div>
-      ) : (
-        <SliderField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" onChange={(blur) => onChange({ blur })} {...gesture} />
-      )}
-      {shadow ? (
-        <>
-          <ColorField
-            label="Shadow"
-            value={effect.color ?? '#000000'}
-            recent={palette?.recent}
-            swatches={palette?.swatches}
-            onAddSwatch={palette?.onAddSwatch}
-            onRemoveSwatch={palette?.onRemoveSwatch}
-            onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((hex) => onChange({ color: hex })) : undefined}
-            onColorUsed={palette?.onColorUsed}
-            onChange={(color) => onChange({ color }, false)}
-            onGestureStart={gesture.onGestureStart}
-            onGestureEnd={gesture.onGestureEnd}
-            onGestureCancel={gesture.onGestureCancel}
-          />
-          <SliderField label="Shadow opacity" value={Math.round((effect.opacity ?? 1) * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ opacity: value / 100 })} {...gesture} />
-        </>
-      ) : null}
+    <div className="vector-row" data-hidden={!effect.visible || undefined} data-effect={effect.kind}>
+      <Popover.Root open={open} onOpenChange={setOpen}>
+        <Popover.Trigger className="vector-row__open" aria-label={`Edit the ${name.toLowerCase()}`}>
+          <span className="vector-row__chip" data-effect={effect.kind} style={shadow ? { background: effect.color ?? '#000000' } : undefined} aria-hidden="true" />
+          <span className="vector-row__label">{name}</span>
+          <span className="vector-row__value">{shadow ? `${Math.round(effect.dx ?? 0)}, ${Math.round(effect.dy ?? 0)} · ${Math.round(effect.blur)}px` : `${Math.round(effect.blur)}px`}</span>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content className="popover vector-paint-popover" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={name}>
+            <SelectField
+              label="Effect"
+              value={effect.kind}
+              options={EFFECT_KINDS.map((kind) => ({ value: kind, label: effectLabel(kind) }))}
+              onChange={(value) => changeKind(value as VectorEffectKind)}
+            />
+            {shadow ? (
+              <div className="vector-field-grid">
+                <NumberField label="X" value={effect.dx ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dx) => onChange({ dx })} {...gesture} />
+                <NumberField label="Y" value={effect.dy ?? 0} min={-2000} max={2000} step={1} unit="px" variant="field" onChange={(dy) => onChange({ dy })} {...gesture} />
+                <NumberField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" variant="field" onChange={(blur) => onChange({ blur })} {...gesture} />
+                <NumberField label="Spread" value={effect.spread ?? 0} min={-200} max={200} step={1} unit="px" variant="field" onChange={(spread) => onChange({ spread })} {...gesture} />
+              </div>
+            ) : (
+              <SliderField label="Blur" value={effect.blur} min={0} max={200} step={1} unit="px" onChange={(blur) => onChange({ blur })} {...gesture} />
+            )}
+            {shadow ? (
+              <>
+                <ColorField
+                  label="Shadow"
+                  value={effect.color ?? '#000000'}
+                  recent={palette?.recent}
+                  swatches={palette?.swatches}
+                  onAddSwatch={palette?.onAddSwatch}
+                  onRemoveSwatch={palette?.onRemoveSwatch}
+                  onPickFromCanvas={palette?.onPickFromCanvas ? () => palette.onPickFromCanvas!((hex) => onChange({ color: hex })) : undefined}
+                  onColorUsed={palette?.onColorUsed}
+                  onChange={(color) => onChange({ color }, false)}
+                  onGestureStart={gesture.onGestureStart}
+                  onGestureEnd={gesture.onGestureEnd}
+                  onGestureCancel={gesture.onGestureCancel}
+                />
+                <SliderField label="Shadow opacity" value={Math.round((effect.opacity ?? 1) * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChange({ opacity: value / 100 })} {...gesture} />
+              </>
+            ) : null}
+            <div className="vector-popover__actions">
+              <Tooltip content="Move this effect down">
+                <IconButton label={`Move the ${name.toLowerCase()} down`} disabled={first} onClick={() => onMove(-1)}><IconSendBackward /></IconButton>
+              </Tooltip>
+              <Tooltip content="Move this effect up">
+                <IconButton label={`Move the ${name.toLowerCase()} up`} disabled={last} onClick={() => onMove(1)}><IconBringForward /></IconButton>
+              </Tooltip>
+            </div>
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+      <Tooltip content={effect.visible ? 'Hide this effect' : 'Show this effect'}>
+        <IconButton label={effect.visible ? `Hide the ${name.toLowerCase()}` : `Show the ${name.toLowerCase()}`} aria-pressed={!effect.visible} onClick={() => onChange({ visible: !effect.visible })}>
+          {effect.visible ? <IconEye /> : <IconEyeOff />}
+        </IconButton>
+      </Tooltip>
+      <Tooltip content="Remove this effect">
+        <IconButton label={`Remove the ${name.toLowerCase()}`} onClick={onRemove}><IconMinus /></IconButton>
+      </Tooltip>
     </div>
   )
 }
@@ -155,8 +163,7 @@ export function BlendPanel({ mode, opacity, onChangeMode, onChangeOpacity, gestu
   gesture: Gesture
 }) {
   return (
-    <section className="vector-panel" aria-label="Blend">
-      <h2 className="vector-panel__title">Blend</h2>
+    <>
       <SelectField
         label="Mode"
         value={mode}
@@ -164,7 +171,7 @@ export function BlendPanel({ mode, opacity, onChangeMode, onChangeOpacity, gestu
         onChange={(value) => onChangeMode(value as VectorBlendMode)}
       />
       <SliderField label="Opacity" value={Math.round(opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChangeOpacity(value / 100)} {...gesture} />
-    </section>
+    </>
   )
 }
 
@@ -182,11 +189,11 @@ export function AdjustmentsPanel({ element, onChange, gesture }: {
   }
   const touched = ADJUSTMENT_KEYS.some((key) => Math.abs(adjustments[key] ?? 0) > 0.001)
   return (
-    <section className="vector-panel" aria-label="Adjustments">
-      <div className="vector-panel__row">
-        <h2 className="vector-panel__title">Adjustments</h2>
+    <>
+      <div className="vector-row vector-row--action">
+        <span className="vector-row__label">Adjustments</span>
         <Tooltip content="Back to the picture as it came">
-          <IconButton label="Reset the adjustments" disabled={!touched} onClick={() => onChange(undefined)}><IconMinus /></IconButton>
+          <IconButton label="Reset the adjustments" disabled={!touched} onClick={() => onChange(undefined)}><IconReset /></IconButton>
         </Tooltip>
       </div>
       {ADJUSTMENT_KEYS.map((key) => (
@@ -202,6 +209,6 @@ export function AdjustmentsPanel({ element, onChange, gesture }: {
           {...gesture}
         />
       ))}
-    </section>
+    </>
   )
 }

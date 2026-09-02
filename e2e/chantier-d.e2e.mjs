@@ -80,6 +80,8 @@ export default run('chantier-d', async ({ page, check, helpers, shot }) => {
   check('the profile survives a reload', !!(await helpers.doc()).elements[0].strokeProfile, JSON.stringify((await helpers.doc()).elements[0].strokeProfile))
   await page.locator('.vector-layer__select').first().click()
   await page.waitForTimeout(300)
+  await page.click('.vector-fold__head')
+  await page.waitForTimeout(200)
   await page.click('[data-action="reset-stroke-width"]')
   await page.waitForTimeout(300)
   check('Reset gives back an even width', !(await helpers.doc()).elements[0].strokeProfile)

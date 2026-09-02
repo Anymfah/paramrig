@@ -12,11 +12,13 @@ export default run('chantier-f2', async ({ page, check, helpers, shot }) => {
   await page.waitForSelector('.vector-paints')
 
   // 1. Switching the fill to a mesh paints one and shows its knots.
-  // Five fill types means the segmented control gives way to a menu.
-  await page.locator('.vector-paints').locator('button[role="combobox"]').first().click()
+  // Six paint types means the segmented control gives way to a menu, inside the layer's popover.
+  const fillPopover = await helpers.openPaint('fill')
+  await fillPopover.locator('button[role="combobox"]').first().click()
   await page.waitForTimeout(200)
   await page.getByRole('option', { name: 'Mesh', exact: true }).click()
   await page.waitForTimeout(500)
+  await helpers.closePaint()
   const paint = (await helpers.doc()).elements[0].fills?.[0]
   check('the fill becomes a mesh of one patch', paint?.type === 'mesh' && paint.mesh.rows === 1 && paint.mesh.points.length === 4,
     JSON.stringify(paint?.mesh && { rows: paint.mesh.rows, cols: paint.mesh.cols, points: paint.mesh.points.length }))
@@ -63,7 +65,8 @@ export default run('chantier-f2', async ({ page, check, helpers, shot }) => {
   // 4. The inspector paints the knot the canvas has selected.
   await page.locator('.vector-mesh__hit').nth(4).click()
   await page.waitForTimeout(300)
-  const knotField = page.locator('.vector-paints').locator('.control--color', { hasText: 'Knot' }).locator('.color-field__hex')
+  await helpers.openPaint('fill')
+  const knotField = page.locator('.vector-paint-popover').locator('.control--color', { hasText: 'Knot' }).locator('.color-field__hex')
   check('the selected knot offers its colour', await knotField.count() === 1, String(await knotField.count()))
   await knotField.fill('#FF0000')
   await knotField.press('Enter')

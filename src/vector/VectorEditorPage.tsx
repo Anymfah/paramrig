@@ -49,6 +49,7 @@ import { serializeVectorMarkup } from '@/vector/document'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
+import { readInspectorPrefs, tabOf, withTab, writeInspectorPrefs, type InspectorTab } from '@/vector/inspectorPrefs'
 import { ToolGroup, ZoomControl } from '@/vector/VectorToolbar'
 import { DEFAULT_ENTRIES, groupOfTool, TOOL_GROUPS, type ToolGroupId } from '@/vector/toolGroups'
 import { STAR_INNER_RATIO } from '@/vector/shapes'
@@ -71,6 +72,7 @@ import type { BooleanOperation } from '@/vector/booleans'
 import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, leafElements, transformLeaves } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorSelectionBar } from '@/vector/VectorSelectionBar'
+import { geometryOps } from '@/vector/geometryOps'
 import { connectNodes, deleteNodes, toggleNodeSmooth, worldNetwork } from '@/vector/network'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
@@ -111,6 +113,12 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT)
   const [exportError, setExportError] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  /** Which of the inspector's three tabs this document was left on. */
+  const [inspectorTab, setInspectorTabState] = useState<InspectorTab>(() => tabOf(readInspectorPrefs(), manifest.id))
+  const setInspectorTab = useCallback((next: InspectorTab) => {
+    setInspectorTabState(next)
+    writeInspectorPrefs(withTab(readInspectorPrefs(), manifest.id, next))
+  }, [manifest.id])
   const [renameOpen, setRenameOpen] = useState(false)
   /** The navigation tool the menu offers first: whichever was used last. */
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -935,12 +943,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }, record, 'Change style')
   }
 
-  const renameStyle = (styleId: string, name: string) => {
-    const trimmed = name.trim()
-    if (!trimmed) return
-    editor.updateDocument({ styles: (document.styles ?? []).map((style) => style.id === styleId ? { ...style, name: trimmed.slice(0, 60) } : style) }, true, 'Rename style')
-  }
-
   const deleteStyle = (styleId: string) => {
     const style = (document.styles ?? []).find((item) => item.id === styleId)
     if (!style) return
@@ -1033,6 +1035,15 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     },
   }
 
+  const ops = geometryOps({
+    elements: document.elements,
+    selected: selectedElements,
+    onUpdate: editor.updateElement,
+    onEditElements: editor.editElements,
+    onSelectIds: editor.setSelectedIds,
+    onBooleanGroup: booleanGroup,
+  })
+
   const commands: VectorCommand[] = [
     { id: 'undo', label: 'Undo', section: 'Edit', shortcut: SHORTCUTS.undo, disabled: !editor.canUndo, run: editor.undo },
     { id: 'redo', label: 'Redo', section: 'Edit', shortcut: SHORTCUTS.redo, disabled: !editor.canRedo, run: editor.redo },
@@ -1064,8 +1075,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     { id: 'opacity', label: 'Set opacity', section: 'Object', shortcut: SHORTCUTS.opacity, disabled: !hasSelection, run: () => setOpacity('0') },
     { id: 'edit-nodes', label: 'Edit nodes', section: 'Object', shortcut: SHORTCUTS.enter, disabled: !single || single.kind === 'group' || single.kind === 'text' || single.locked, run: () => chooseTool('node') },
     { id: 'edit-text', label: 'Edit text', section: 'Object', shortcut: SHORTCUTS.enter, disabled: single?.kind !== 'text', run: () => { if (single) controller.current?.editText(single.id) } },
-    { id: 'combine', label: 'Combine paths', section: 'Object', shortcut: SHORTCUTS.combine, disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="combine"]')?.click() },
-    { id: 'flatten', label: 'Flatten', section: 'Object', disabled: !hasSelection, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="flatten"]')?.click() },
+    { id: 'combine', label: 'Combine paths', section: 'Object', shortcut: SHORTCUTS.combine, disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2, run: () => ops.combine() },
+    { id: 'flatten', label: 'Flatten', section: 'Object', disabled: !hasSelection, run: ops.flatten },
     { id: 'arrowhead', label: single?.strokeArrowEnd && single.strokeArrowEnd !== 'none' ? 'Remove arrowhead' : 'Line with arrowhead', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => {
       if (!single) return
       const on = single.strokeArrowEnd && single.strokeArrowEnd !== 'none'
@@ -1079,7 +1090,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2,
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
-    { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: ops.outline },
     { id: 'create-component', label: 'Create component', section: 'Object', shortcut: SHORTCUTS.createComponent, disabled: !hasSelection, run: createComponent },
     { id: 'detach-instance', label: 'Detach instance', section: 'Object', shortcut: SHORTCUTS.detachInstance, disabled: !selectedElements.some((element) => element.kind === 'instance'), run: () => {
       const targets = selectedElements.filter((element) => element.kind === 'instance')
@@ -1259,6 +1270,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       inspector={
         <VectorInspector
           document={document}
+          tab={inspectorTab}
+          onTab={setInspectorTab}
           tool={tool}
           selectedElements={selectedElements}
           selectedNodeIds={selectedNodeIds}
@@ -1283,7 +1296,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onCreateStyle={createStyle}
           onLinkStyle={linkStyle}
           onUpdateStyle={updateStyle}
-          onRenameStyle={renameStyle}
           onDeleteStyle={deleteStyle}
           onCropImage={(id) => controller.current?.cropImage(id)}
           selectedMeshPoint={meshPoint}

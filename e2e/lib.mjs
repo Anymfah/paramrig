@@ -158,5 +158,32 @@ export function pageHelpers(page) {
     return probe
   }
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, captureExport }
+  /**
+   * Opens the detail of a paint layer. A fill or a stroke is a 32 px line in the inspector; its
+   * type, its colour and its opacity live in the popover that line opens.
+   */
+  const openPaint = async (section = 'fill', index = 0) => {
+    const rows = page.locator(`[data-section="${section}"] .vector-row__open`)
+    await rows.nth(index).click()
+    await page.waitForSelector('.vector-paint-popover')
+    await page.waitForTimeout(150)
+    return page.locator('.vector-paint-popover')
+  }
+
+  /** Closes whatever popover is open, without touching the selection. */
+  const closePaint = async () => {
+    await page.locator('.vector-paint-popover').press('Escape')
+    await page.waitForTimeout(200)
+  }
+
+  /** Folds a section open, so a control inside it can be reached. */
+  const openSection = async (section) => {
+    const node = page.locator(`[data-section="${section}"]`)
+    if (await node.getAttribute('data-open') === 'false') {
+      await node.locator('.vector-section__title').click()
+      await page.waitForTimeout(150)
+    }
+  }
+
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, captureExport, openPaint, closePaint, openSection }
 }

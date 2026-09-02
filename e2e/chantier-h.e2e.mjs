@@ -102,8 +102,10 @@ export default run('chantier-h', async ({ page, check, helpers, shot }) => {
   const selected = await page.$$eval('[data-vector-element][data-selected]', (nodes) => nodes.map((node) => node.getAttribute('data-vector-element')))
   check('a double-click reaches the copy inside the instance', selected.some((id) => id?.startsWith('inst:')), JSON.stringify(selected))
   if (selected.some((id) => id?.startsWith('inst:'))) {
-    await page.locator('.vector-paints').locator('.color-field__hex').first().fill('#00FF00')
-    await page.locator('.vector-paints').locator('.color-field__hex').first().press('Enter')
+    await helpers.openPaint('fill')
+    await page.locator('.vector-paint-popover').locator('.color-field__hex').first().fill('#00FF00')
+    await page.locator('.vector-paint-popover').locator('.color-field__hex').first().press('Enter')
+    await helpers.closePaint()
     await page.waitForTimeout(500)
     state = await helpers.doc()
     const instance = state.elements.find((element) => element.kind === 'instance' && element.overrides)

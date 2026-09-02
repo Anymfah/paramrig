@@ -648,6 +648,8 @@ export function VectorCanvas({
       }
       if (event.altKey) return
       if (key === 'escape') {
+        // A menu or a popover takes Escape first: closing one should not also drop the selection.
+        if (target instanceof Element && target.closest('[data-radix-popper-content-wrapper], .popover, .menu, [role="dialog"]')) return
         event.preventDefault()
         event.stopImmediatePropagation()
         if (samplingRef.current) {

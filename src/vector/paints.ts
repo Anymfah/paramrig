@@ -123,3 +123,11 @@ export function sanitizePaints(value: unknown): VectorPaint[] | undefined {
   }
   return paints.length ? paints : []
 }
+
+/** A new paint on top of the stack, taking its colour from the one under it. */
+export function addedPaints(label: 'Fill' | 'Stroke', paints: VectorPaint[]): VectorPaint[] | null {
+  if (paints.length >= MAX_PAINTS) return null
+  const last = paints[paints.length - 1]
+  const color = last?.type === 'solid' && last.color ? last.color : label === 'Fill' ? '#D4E7E1' : '#8CBDA8'
+  return [...paints, solidPaint(color)]
+}

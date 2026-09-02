@@ -13,10 +13,12 @@ export default run('chantier-d-brush', async ({ page, check, helpers, shot }) =>
   await page.keyboard.press('Escape')
   await page.keyboard.press('v')
   await helpers.clickAt({ x: 350, y: 400 })
+  // The brush, like the rest of the contour's numbers, is folded under the Stroke section.
+  await page.click('.vector-fold__head')
   await page.waitForSelector('[aria-label="Brush"]', { timeout: 4000 })
   check('a stroked path offers the brush section', true)
   // A wider stroke, so the stamps are big enough to tell apart.
-  const widthField = page.locator('[aria-label="Stroke properties"]').getByLabel('Width', { exact: true }).first()
+  const widthField = page.locator('.vector-fold__panel').getByLabel('Width', { exact: true }).first()
   await widthField.fill('12')
   await widthField.press('Enter')
   await page.waitForTimeout(300)
