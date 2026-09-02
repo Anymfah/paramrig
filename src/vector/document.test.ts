@@ -8,6 +8,7 @@ import {
   saveVectorDocument,
   serializeVectorDocument,
   serializeVectorMarkup,
+  documentThumbnail,
   vectorManifest,
 } from '@/vector/document'
 import type { VectorElement } from '@/vector/types'
@@ -283,5 +284,37 @@ describe('background blur at export', () => {
     // The second pane copies the first, but that copy carries no background blur of its own.
     expect(markup).toContain('bd-pane2-pane')
     expect(markup).not.toContain('backdrop-clip-bd-pane2-pane')
+  })
+})
+
+describe('document thumbnails', () => {
+  it('shows what the export shows: a frosted pane frosts', () => {
+    const photo = { ...createVectorElement('rectangle', { x: 0, y: 0, width: 400, height: 300 }), id: 'photo' }
+    const pane = {
+      ...createVectorElement('rectangle', { x: 50, y: 50, width: 200, height: 120 }),
+      id: 'pane',
+      effects: [{ id: 'fx', kind: 'backgroundBlur' as const, visible: true, blur: 12 }],
+    }
+    const thumbnail = documentThumbnail({ id: 'doc', elements: [photo, pane] })
+
+    expect(thumbnail).toContain('backdrop-clip-pane')
+    expect(thumbnail).toContain('<feGaussianBlur stdDeviation="6"/>')
+    expect(thumbnail.startsWith('<defs>')).toBe(true)
+  })
+
+  it('clips a frame\'s children the way the file does', () => {
+    const frame = { ...createVectorElement('frame', { x: 0, y: 0, width: 200, height: 200 }), id: 'frame', clipContent: true }
+    const child = { ...createVectorElement('rectangle', { x: 150, y: 20, width: 200, height: 40 }), id: 'child', parentId: 'frame' }
+    const thumbnail = documentThumbnail({ id: 'doc', elements: [child, frame] })
+
+    expect(thumbnail).toContain('clip-path="url(#frame-clip-frame)"')
+    expect(thumbnail).toContain('id="child"')
+  })
+
+  it('leaves a hidden object out', () => {
+    const shown = { ...createVectorElement('rectangle', { x: 0, y: 0, width: 10, height: 10 }), id: 'shown' }
+    const hidden = { ...createVectorElement('rectangle', { x: 0, y: 0, width: 10, height: 10 }), id: 'hidden', visible: false }
+
+    expect(documentThumbnail({ id: 'doc', elements: [shown, hidden] })).not.toContain('id="hidden"')
   })
 })

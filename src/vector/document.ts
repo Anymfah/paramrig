@@ -224,17 +224,16 @@ export function elementMarkup(element: VectorElement, prefix: string): { defs: s
   return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id) }
 }
 
-/** Inline SVG markup for a document preview: every visible leaf, no wrapper. */
+/**
+ * Inline SVG markup for a document preview: the same serialisation the export uses, without the
+ * `<svg>` wrapper. Sharing the one path is what keeps a thumbnail honest — frames clip, masks cut,
+ * effects paint and a frosted pane frosts, instead of a flat pile of leaves that shows none of it.
+ */
 export function documentThumbnail(document: Pick<VectorDocument, 'id' | 'elements'>): string {
   const defs: string[] = []
-  const bodies: string[] = []
-  for (const element of document.elements) {
-    if (!element.visible || element.kind === 'group') continue
-    const markup = elementMarkup(element, `thumb-${document.id}`)
-    if (markup.defs) defs.push(markup.defs)
-    bodies.push(`<g opacity="${element.opacity}">${markup.body}</g>`)
-  }
-  return `${defs.length ? `<defs>${defs.join('')}</defs>` : ''}${bodies.join('')}`
+  const body = serializeNodes(buildTree(document.elements), 0, defs, document.elements).join('')
+  const unique = [...new Set(defs)]
+  return `${unique.length ? `<defs>${unique.join('')}</defs>` : ''}${body}`
 }
 
 function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene: VectorElement[]): string[] {
