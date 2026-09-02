@@ -645,7 +645,7 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: 17rem;
+  width: 19rem;
   max-width: calc(100vw - 2 * var(--space-4));
 }
 .vector-expose-popover__title { margin: 0; color: var(--text-secondary); font-size: var(--text-xs); font-weight: 600; }
@@ -758,11 +758,13 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  width: 17rem;
+  width: 19rem;
   max-width: calc(100vw - 2 * var(--space-4));
 }
 .vector-popover__actions { display: flex; justify-content: flex-end; gap: var(--space-1); }
 .vector-paint-popover .vector-expose.icon-btn { opacity: 1; }
+/* The one action of the popover sits at its own width, not stretched across it. */
+.vector-paint-popover > .btn { align-self: flex-start; }
 @media (prefers-reduced-motion: reduce) {
   .vector-section__title svg,
   .vector-fold__head svg { transition: none; }

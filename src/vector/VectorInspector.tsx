@@ -459,10 +459,10 @@ function ShapeFields({ element, onUpdate, gesture }: {
   if (element.kind === 'polygon' && !element.network) {
     const { sides, innerRatio } = polygonProperties(element)
     return (
-      <div className="vector-field-grid">
+      <>
         <Exposable property="sides" min={MIN_SIDES} max={MAX_SIDES}><NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} /></Exposable>
         <Exposable property="innerRatio" min={0} max={1} step={0.01}><NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} /></Exposable>
-      </div>
+      </>
     )
   }
   if (element.kind === 'ellipse' && !element.network) {
@@ -470,10 +470,8 @@ function ShapeFields({ element, onUpdate, gesture }: {
     const apply = (patch: Partial<VectorElement>, label: string) => onUpdate(element.id, { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: arc.ratio, ...patch }, true, label)
     return (
       <>
-        <div className="vector-field-grid">
-          <Exposable property="arcStart" min={0} max={360}><NumberField label="Arc start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} /></Exposable>
-          <Exposable property="arcSweep" min={-360} max={360}><NumberField label="Arc sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} /></Exposable>
-        </div>
+        <Exposable property="arcStart" min={0} max={360}><NumberField label="Arc start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} /></Exposable>
+        <Exposable property="arcSweep" min={-360} max={360}><NumberField label="Arc sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} /></Exposable>
         <NumberField label="Inner radius" value={Math.round(arc.ratio * 100)} min={0} max={99} step={1} unit="%" variant="field" onChange={(value) => apply({ arcRatio: value / 100 }, 'Change ring')} {...gesture} />
         {isFullEllipse(arc) ? null : (
           <div className="vector-panel__actions">
@@ -497,10 +495,10 @@ function CornerFields({ element, onUpdate, gesture }: {
   return (
     <>
       {uniform ? (
-        <div className="vector-field-grid">
+        <>
           <Exposable property="cornerRadius" min={0} max={max}><NumberField label="Radius" value={radii[0]} min={0} max={max} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { cornerRadius: radius > 0 ? radius : undefined })} {...gesture} /></Exposable>
           <Exposable property="cornerSmoothing" min={0} max={1} step={0.01}><NumberField label="Smoothing" value={Math.round((element.cornerSmoothing ?? 0) * 100)} min={0} max={100} step={1} unit="%" variant="field" disabled={!radii.some(Boolean)} onChange={(value) => onUpdate(element.id, { cornerSmoothing: value > 0 ? value / 100 : undefined })} {...gesture} /></Exposable>
-        </div>
+        </>
       ) : (
         <div className="vector-field-grid">
           {(['Top left', 'Top right', 'Bottom right', 'Bottom left'] as const).map((label, index) => (
