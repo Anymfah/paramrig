@@ -31,6 +31,9 @@ export function useControllerGesture(props: GestureProps) {
     active,
     start(e: PointerEvent<HTMLElement>, native = false) {
       if (e.button!==0) return false
+      // A handle sitting on its own surface starts the gesture first and the press then bubbles:
+      // a second start would open a history entry that the single pointerup never closes.
+      if (active.current) return false
       if (!native) e.preventDefault()
       e.currentTarget.focus()
       e.currentTarget.setPointerCapture(e.pointerId)

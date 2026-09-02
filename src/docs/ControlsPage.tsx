@@ -14,7 +14,11 @@ import { Tooltip } from '@/ui/Tooltip'
 import { IconClose, IconCode } from '@/ui/icons'
 
 export function ControlsPage() {
-  const [session]=useState(()=>new RigSession({...controllerManifest,id:'controller-catalog'},loadDraft('controller-catalog')))
+  // The catalog exercises each controller on its own: the lab keeps the timeline, so no card here is secretly animated.
+  const [session]=useState(()=>{
+    const draft=loadDraft('controller-catalog')
+    return new RigSession({...controllerManifest,id:'controller-catalog',animation:controllerManifest.animation&&{...controllerManifest.animation,tracks:[]}},draft&&{...draft,tracks:[]})
+  })
   useSyncExternalStore(session.subscribe,()=>session.getRevision())
   const [query,setQuery]=useState(''),[category,setCategory]=useState('numbers')
   const [inspectingId,setInspectingId]=useState<string|null>(null)

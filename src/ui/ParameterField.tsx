@@ -21,6 +21,15 @@ import { IconChevron, IconChevronRight, IconChevronUp, IconCopy, IconGrip, IconP
 import { Tooltip } from './Tooltip'
 import type { GestureProps } from './controller-gesture'
 
+/** A list item's reset mark must compare against what the rig shipped in that slot, not the template the list clones for new items. */
+function withDefault(param:ParameterDef,defaultValue:ParamValue):ParameterDef {
+  if(param.kind==='group'&&defaultValue&&typeof defaultValue==='object'&&!Array.isArray(defaultValue)){
+    const defaults=objectValue(defaultValue)
+    return {...param,defaultValue:defaults,fields:param.fields.map(field=>field.id in defaults?withDefault(field,defaults[field.id]!):field)}
+  }
+  return {...param,defaultValue} as ParameterDef
+}
+
 export type ParameterFieldProps=GestureProps & {
   param:ParameterDef;value:ParamValue;onChange:(v:ParamValue)=>void
   onAction?:(id:string)=>void;onPreset?:(id:string,value:string)=>void
@@ -64,6 +73,7 @@ function ListController({param,value,onChange,onAction,onPreset,resolveNumber,pa
   const [drop,setDrop]=useState<{index:number;after:boolean}|null>(null)
   const dragging=useRef<number|null>(null)
   const full=value.length>=(param.maxItems??32)
+  const shipped=Array.isArray(param.defaultValue)?param.defaultValue:[]
   const move=(i:number,d:number)=>{const next=[...value];[next[i],next[i+d]]=[next[i+d]!,next[i]!];onChange(next);setOpen(i+d)}
   const reorder=(from:number,to:number)=>{if(from===to)return;const next=[...value];const [item]=next.splice(from,1);next.splice(to,0,item!);onChange(next);setOpen(to)}
   const duplicate=(i:number)=>{const next=[...value];next.splice(i+1,0,structuredClone(value[i]!));onChange(next);setOpen(i+1)}
@@ -81,7 +91,7 @@ function ListController({param,value,onChange,onAction,onPreset,resolveNumber,pa
         <Tooltip content={`Remove ${itemLabel.toLowerCase()}`}><IconButton label={`Remove item ${i+1}`} onClick={()=>{onChange(value.filter((_,j)=>i!==j));setOpen(null)}}><IconTrash/></IconButton></Tooltip>
       </div>
     </div>
-    {expanded?<div className="controller-list-item__body" id={bodyId}><ParameterField param={param.item} value={v} onChange={next=>onChange(value.map((old,j)=>i===j?next:old))} onAction={onAction} onPreset={onPreset} resolveNumber={resolveNumber} parameters={parameters} animated={animated} driven={driven} {...gesture}/></div>:null}
+    {expanded?<div className="controller-list-item__body" id={bodyId}><ParameterField param={i<shipped.length?withDefault(param.item,shipped[i]!):param.item} value={v} onChange={next=>onChange(value.map((old,j)=>i===j?next:old))} onAction={onAction} onPreset={onPreset} resolveNumber={resolveNumber} parameters={parameters} animated={animated} driven={driven} {...gesture}/></div>:null}
   </div>})}{!value.length?<p className="controller-list__empty">No items yet.</p>:null}<Button className="controller-list__add" size="sm" variant="quiet" disabled={full} onClick={()=>{onChange([...value,structuredClone(param.item.defaultValue)]);setOpen(value.length)}}>Add {param.item.label.toLowerCase()}</Button></fieldset>
 }
 
