@@ -14,6 +14,7 @@ import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
 import { createVectorDocument, documentThumbnail, getVectorDocument, saveVectorDocument } from '@/vector/document'
+import { resolveRigValues, rigDefaults } from '@/vector/rig'
 import { getProjectHandle, listRecentProjects, type RecentProject } from '@/vector/fileHandles'
 import { importProject } from '@/vector/project'
 
@@ -229,15 +230,18 @@ function SkeletonCard() {
 function RigThumb({ rig }: { rig: RigManifest }) {
   const id = rig.id
   if (rig.renderer === 'vector') {
-    const document = getVectorDocument(id)
-    return document ? (
+    const stored = getVectorDocument(id)
+    if (!stored) return null
+    // A parametered document is shown the way its controls rest, which is what it looks like new.
+    const document = stored.rig ? resolveRigValues(stored, rigDefaults(stored.rig)) : stored
+    return (
       <svg
         className="vector-thumb"
         viewBox={`0 0 ${document.width} ${document.height}`}
         aria-hidden="true"
         dangerouslySetInnerHTML={{ __html: documentThumbnail(document) }}
       />
-    ) : null
+    )
   }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
   if (id === 'tidal-planet') return <PlanetMark />

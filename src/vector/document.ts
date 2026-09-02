@@ -19,6 +19,7 @@ import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sa
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 import { backdropBlur } from '@/vector/filters'
 import { selectionBounds } from '@/vector/geometry'
+import { sanitizeRig } from '@/vector/rig'
 
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
@@ -106,21 +107,30 @@ export function saveVectorDocument(document: VectorDocument): StorageResult {
   return writeAll(documents)
 }
 
+/**
+ * The document as the rest of the workbench sees it. A document that exposes controls carries them
+ * here, so a `RigSession` built from this manifest works the way it does for every other rig.
+ */
 export function vectorManifest(document: VectorDocument): RigManifest {
   const count = document.elements.filter((element) => element.kind !== 'group').length
+  const rig = document.rig
+  const controls = rig?.parameters.length ?? 0
   return {
     id: document.id,
     name: document.name,
-    summary: `Vector · ${count} ${count === 1 ? 'layer' : 'layers'}`,
+    summary: controls > 0
+      ? `Vector · ${controls} ${controls === 1 ? 'control' : 'controls'}`
+      : `Vector · ${count} ${count === 1 ? 'layer' : 'layers'}`,
     description: '',
     renderer: 'vector',
     rendererLabel: 'Vector',
     collection: 'project',
     title: 'Projects/Vector',
     sourceFile: 'Local document',
-    tags: ['vector', 'svg', 'project'],
-    groups: [],
-    parameters: [],
+    tags: ['vector', 'svg', 'project', ...(controls > 0 ? ['rig'] : [])],
+    groups: rig?.groups ?? [],
+    parameters: rig?.parameters ?? [],
+    ...(rig?.inspectorCategories ? { inspectorCategories: rig.inspectorCategories } : {}),
   }
 }
 
@@ -443,6 +453,8 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     return [valid]
   })
   const styles = sanitizeStyles(source.styles)
+  const tree = syncInstances(syncTextPaths(syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? []))))
+  const rig = sanitizeRig(source.rig, new Set(tree.map((element) => element.id)))
   return {
     version: 1,
     id: source.id,
@@ -450,7 +462,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     background: typeof source.background === 'string' && /^#[0-9a-f]{6}$/i.test(source.background) ? source.background.toUpperCase() : DEFAULT_BACKGROUND,
     width: source.width,
     height: source.height,
-    elements: syncInstances(syncTextPaths(syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? [])))),
+    elements: tree,
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
@@ -460,6 +472,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     ...(sanitizeColorSpace(source.colorSpace) ? { colorSpace: sanitizeColorSpace(source.colorSpace) } : {}),
     ...(sanitizeColorList(source.swatches, MAX_SWATCHES) ? { swatches: sanitizeColorList(source.swatches, MAX_SWATCHES) } : {}),
     ...(sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) ? { recentColors: sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) } : {}),
+    ...(rig ? { rig } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : new Date(0).toISOString(),
   }

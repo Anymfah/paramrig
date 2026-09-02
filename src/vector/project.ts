@@ -16,7 +16,8 @@ export type VectorProject = {
 }
 
 export type ProjectImport =
-  | { ok: true; project: VectorProject }
+  /** `note` says what the file asked for and did not get, so the reader is told rather than left guessing. */
+  | { ok: true; project: VectorProject; note?: string }
   | { ok: false; error: string }
 
 export function exportProject(document: VectorDocument): VectorProject {
@@ -57,8 +58,10 @@ export function importProject(input: unknown): ProjectImport {
   if (!document) {
     return { ok: false, error: 'That project file is damaged and could not be read.' }
   }
+  const note = rigNote(source.document, document)
   return {
     ok: true,
+    ...(note ? { note } : {}),
     project: {
       format: PROJECT_FORMAT,
       formatVersion: source.formatVersion,
@@ -67,6 +70,25 @@ export function importProject(input: unknown): ProjectImport {
       document,
     },
   }
+}
+
+/**
+ * What the file's rig lost on the way in. A control the app cannot read, or a binding that names an
+ * object or a control that is not in the file, is dropped — and said so, rather than disappearing.
+ */
+export function rigNote(raw: unknown, document: VectorDocument): string | null {
+  const source = raw && typeof raw === 'object' ? (raw as { rig?: unknown }).rig : null
+  if (!source || typeof source !== 'object') return null
+  const asked = source as { parameters?: unknown; bindings?: unknown }
+  const wantedParameters = Array.isArray(asked.parameters) ? asked.parameters.length : 0
+  const wantedBindings = Array.isArray(asked.bindings) ? asked.bindings.length : 0
+  const gotParameters = document.rig?.parameters.length ?? 0
+  const gotBindings = document.rig?.bindings.length ?? 0
+  const lost: string[] = []
+  if (wantedParameters > gotParameters) lost.push(`${wantedParameters - gotParameters} ${wantedParameters - gotParameters === 1 ? 'control' : 'controls'}`)
+  if (wantedBindings > gotBindings) lost.push(`${wantedBindings - gotBindings} ${wantedBindings - gotBindings === 1 ? 'binding' : 'bindings'}`)
+  if (lost.length === 0) return null
+  return `${lost.join(' and ')} in that file could not be read and were left out.`
 }
 
 export function projectFileName(document: Pick<VectorDocument, 'name'>): string {

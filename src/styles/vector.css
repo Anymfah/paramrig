@@ -607,6 +607,104 @@
 .vector-row--action { justify-content: space-between; }
 .vector-row--action .vector-row__label { color: var(--text-muted); font-size: var(--text-xs); }
 
+/* A field of the Design tab, with the ◇ that turns it into a control. */
+.vector-exposable {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.vector-exposable__field { flex: 1; min-width: 0; }
+.vector-expose.icon-btn {
+  width: var(--hit-target);
+  height: var(--hit-target);
+  flex: none;
+  color: var(--text-muted);
+  opacity: 0;
+}
+.vector-expose.icon-btn svg { width: 12px; height: 12px; }
+.vector-exposable:hover .vector-expose,
+.vector-exposable:focus-within .vector-expose { opacity: 1; }
+.vector-expose--bound.icon-btn { opacity: 1; color: var(--accent); }
+.vector-expose--bound.icon-btn svg { fill: currentColor; }
+.vector-exposable[data-dropping] { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
+.vector-expose-popover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 17rem;
+  max-width: calc(100vw - 2 * var(--space-4));
+}
+.vector-expose-popover__title { margin: 0; color: var(--text-secondary); font-size: var(--text-xs); font-weight: 600; }
+.vector-expose-popover__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.vector-expose-popover__row > span { flex: none; width: 5.5rem; }
+.vector-expose-popover__row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding-inline: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.vector-expose-popover__row input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.vector-expose-popover__kind { color: var(--text-primary); font-size: var(--text-sm); width: auto; }
+
+/* The Controls tab: the document's own knobs, over the workbench inspector. */
+.vector-controls { display: flex; flex-direction: column; min-height: 0; }
+.vector-controls__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: 0 var(--space-2) 0 var(--space-4);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.vector-controls__head .icon-btn { width: var(--hit-target); height: var(--hit-target); margin-inline-start: auto; }
+.vector-controls__mode { display: flex; gap: 2px; }
+.vector-controls__mode button {
+  min-height: 28px;
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+.vector-controls__mode button:hover { color: var(--text-primary); background: var(--surface-inset); }
+.vector-controls__mode button[data-active] { color: var(--text-primary); background: var(--surface-overlay); }
+.vector-controls__mode button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.vector-controls__empty { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); padding: var(--space-3) var(--space-4); }
+.vector-controls__list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.vector-controls__list .vector-row { cursor: grab; }
+.vector-controls__list .icon-btn { width: var(--hit-target); height: var(--hit-target); flex: none; }
+/*
+ * The workbench inspector arrives whole. Its title bar and its own tab strip are redundant here —
+ * the editor already has three tabs above it, and Tune mode opens the workbench proper for the
+ * snapshots and the value history.
+ */
+.vector-controls .inspector { border: 0; min-height: 0; }
+.vector-controls .inspector__head,
+.vector-controls .inspector__tabs,
+.vector-controls .inspector__hint { display: none; }
+.vector-controls .inspector__body { padding-block-start: 0; }
+.vector-controls .section__head { min-height: 32px; }
+.vector-rig-preview { width: 100%; height: 100%; object-fit: contain; }
+
 .vector-empty {
   margin: 0;
   color: var(--text-muted);

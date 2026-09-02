@@ -6,6 +6,7 @@ import { ContourBloomPreview } from '@/renderers/svg/ContourBloomPreview'
 import { SurfaceStudiesPreview } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeSpecimenPreview } from '@/renderers/html/TypeSpecimenPreview'
 import { ControllerLabPreview } from '@/renderers/html/ControllerLabPreview'
+import { VectorRigPreview } from '@/renderers/vector/VectorRigPreview'
 import { RendererErrorBoundary } from '@/workspace/RendererErrorBoundary'
 import { StatusMessage } from '@/ui/StatusMessage'
 
@@ -43,7 +44,9 @@ export function RigPreview({ rigId, renderer, values, name, session }: RigPrevie
         </div>
       }
     >
-      {renderer === 'three' && session ? (
+      {renderer === 'vector' ? (
+        <VectorRigPreview documentId={rigId} values={session?.previewValues() ?? values} name={name} />
+      ) : renderer === 'three' && session ? (
         <Suspense fallback={<p className="status-msg">Starting the 3D view</p>}>
           <TidalPlanetPreview session={session} values={values} />
         </Suspense>

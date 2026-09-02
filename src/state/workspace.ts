@@ -1,6 +1,6 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { getRig } from '@/rigs/registry'
-import type { PanelPrefs } from '@/rigs/types'
+import type { PanelPrefs, ParameterDef } from '@/rigs/types'
 import { loadDraft, loadPrefs, loadTabs, saveDraft, savePrefs, saveTabs, defaultPrefs } from '@/state/persistence'
 import { RigSession } from '@/state/session'
 
@@ -25,11 +25,16 @@ function emit() {
   for (const listener of store.listeners) listener()
 }
 
+/**
+ * The session for a rig. A vector document can gain and lose controls while it is open, so a
+ * session whose controls no longer match the manifest is rebuilt from the draft rather than kept.
+ */
 export function ensureSession(rigId: string): RigSession | null {
-  const existing = store.sessions.get(rigId)
-  if (existing) return existing
   const manifest = getRig(rigId)
   if (!manifest) return null
+  const existing = store.sessions.get(rigId)
+  if (existing && sameParameters(existing.parameters, manifest.parameters)) return existing
+  if (existing) saveDraft(existing.toDraft())
   const session = new RigSession(manifest, loadDraft(rigId))
   session.subscribe(() => {
     if (session.isGesturing()) return
@@ -42,6 +47,10 @@ export function ensureSession(rigId: string): RigSession | null {
   }
   queueMicrotask(emit)
   return session
+}
+
+function sameParameters(a: ParameterDef[], b: ParameterDef[]): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b)
 }
 
 export function closeTab(rigId: string) {
@@ -75,10 +84,14 @@ export function useWorkspace() {
   return { tabs: store.tabs, prefs: store.prefs, version }
 }
 
+/**
+ * The session for a rig. It is asked for on every render rather than memoised on the id: a vector
+ * document gains and loses controls while it is open, and the session has to follow.
+ */
 export function useSession(rigId: string | undefined) {
-  const session = useMemo(() => (rigId ? ensureSession(rigId) : null), [rigId])
+  const session = rigId ? ensureSession(rigId) : null
   const revision = useSyncExternalStore(
-    (listener) => session?.subscribe(listener) ?? (() => undefined),
+    useCallback((listener: () => void) => session?.subscribe(listener) ?? (() => undefined), [session]),
     () => session?.getRevision() ?? 0,
     () => 0,
   )

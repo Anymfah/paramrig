@@ -1,5 +1,5 @@
 import { useNavColumn } from '@/shell/useLayout'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRig, listRigs } from '@/rigs/registry'
 import { RigNavigation } from '@/shell/RigNavigation'
@@ -14,12 +14,19 @@ import { Inspector } from '@/workspace/Inspector'
 import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
 import { VectorEditorPage } from '@/vector/VectorEditorPage'
+import { modeOf, readInspectorPrefs, withMode, writeInspectorPrefs, type VectorMode } from '@/vector/inspectorPrefs'
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
   const manifest = getRig(rigId)
   const { session, snapshot } = useSession(manifest?.id)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
+  const [mode, setModeState] = useState<VectorMode>(() => modeOf(readInspectorPrefs(), rigId))
+  useEffect(() => { setModeState(modeOf(readInspectorPrefs(), rigId)) }, [rigId])
+  const setMode = useCallback((next: VectorMode) => {
+    setModeState(next)
+    writeInspectorPrefs(withMode(readInspectorPrefs(), rigId, next))
+  }, [rigId])
   useEffect(() => { setMobilePanel('main') }, [rigId])
 
   useEffect(() => {
@@ -58,7 +65,10 @@ export function WorkspacePage() {
     return <UnknownRig />
   }
 
-  if (manifest.renderer === 'vector') return <VectorEditorPage manifest={manifest} />
+  // A drawing opens in the editor; a document that exposes controls opens the way it was left.
+  if (manifest.renderer === 'vector' && (mode === 'edit' || manifest.parameters.length === 0)) {
+    return <VectorEditorPage manifest={manifest} mode={mode} onMode={setMode} />
+  }
 
   if (!session || !snapshot) return null
 
@@ -87,6 +97,11 @@ export function WorkspacePage() {
     >
       <h1 className="visually-hidden">{manifest.name}</h1>
       <div className="workspace-toolbar">
+        {manifest.renderer === 'vector' ? (
+          <div className="workspace-toolbar__group">
+            <Button variant="quiet" size="sm" onClick={() => setMode('edit')}>Edit</Button>
+          </div>
+        ) : null}
         <div className="workspace-toolbar__group">
           <Tooltip content={session.canUndo() ? `Undo: ${session.undoLabel()} (⌘Z / Ctrl+Z)` : 'Nothing to undo'}>
             <IconButton label="Undo" onClick={() => session.undo()} disabled={!session.canUndo()}>

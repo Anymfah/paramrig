@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
@@ -77,6 +77,11 @@ import { connectNodes, deleteNodes, toggleNodeSmooth, worldNetwork } from '@/vec
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
 import { documentAssets } from '@/vector/assets'
+import { controlId, DEFAULT_RIG_GROUP, emptyRig, parameterForProperty, resolveRigValues, type VectorBinding, type VectorRig } from '@/vector/rig'
+import { ExposeProvider, type ExposeRequest } from '@/vector/VectorExpose'
+import { VectorControls } from '@/vector/VectorControls'
+import { ensureSession } from '@/state/workspace'
+import type { VectorMode } from '@/vector/inspectorPrefs'
 import type { AssetActions } from '@/vector/VectorAssets'
 import { DEFAULT_BRUSH_SETTINGS } from '@/vector/brushes'
 import type { VectorElement, VectorFont, VectorNetwork, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
@@ -84,7 +89,11 @@ import { useVectorDocument } from '@/vector/useVectorDocument'
 
 const ALIGN_KEYS: Record<string, AlignMode> = { KeyA: 'left', KeyH: 'centerX', KeyD: 'right', KeyW: 'top', KeyV: 'centerY', KeyS: 'bottom' }
 
-export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
+export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
+  manifest: RigManifest
+  mode?: VectorMode
+  onMode?: (mode: VectorMode) => void
+}) {
   const navigate = useNavigate()
   const editor = useVectorDocument(manifest.id)
   const [tool, setTool] = useState<VectorTool>('select')
@@ -176,8 +185,22 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   fileRef.current = file
 
   const document = editor.document
+  const rig = document?.rig ?? null
+  const session = rig ? ensureSession(manifest.id) : null
+  useSyncExternalStore(
+    useCallback((listener: () => void) => session?.subscribe(listener) ?? (() => undefined), [session]),
+    () => session?.getRevision() ?? 0,
+    () => 0,
+  )
+  const rigValues = session?.previewValues() ?? {}
+  /** What is on screen: the document as its controls say. Editing still writes to the raw one. */
+  const shown = document && rig ? resolveRigValues(document, rigValues) : document
   const selectedIds = editor.selectedIds
   const selectedElements = editor.selectedElements
+  /** What the inspector describes: the objects as they are drawn, so a driven field reads true. */
+  const shownSelection = shown === document
+    ? selectedElements
+    : selectedElements.map((element) => shown?.elements.find((item) => item.id === element.id) ?? element)
   const canUngroup = selectedElements.some((element) => element.kind === 'group')
   /** Tools that need one editable object under them, and say so by going quiet without it. */
   const nodeEditable = selectedIds.length === 1 && selectedElements[0] && selectedElements[0].kind !== 'group' && selectedElements[0].kind !== 'text' && !selectedElements[0].locked
@@ -958,6 +981,94 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }), true, `Delete style “${style.name}”`)
   }
 
+  /** Writes a change to the document's rig in one history entry. */
+  const editRig = (build: (rig: VectorRig) => VectorRig, label: string) => {
+    editor.editDocument((current) => ({ ...current, rig: build(current.rig ?? emptyRig()) }), true, label)
+  }
+
+  /** Turns a field of the Design tab into a control, and points it at that field. */
+  const exposeField = (request: ExposeRequest) => {
+    const element = document.elements.find((item) => item.id === request.elementId)
+    if (!element) return
+    const current = document.rig ?? emptyRig()
+    const id = controlId(request.label, new Set(current.parameters.map((parameter) => parameter.id)))
+    const parameter = parameterForProperty({
+      id,
+      label: request.label,
+      group: request.group,
+      property: request.property,
+      element,
+      ...(typeof request.min === 'number' ? { min: request.min } : {}),
+      ...(typeof request.max === 'number' ? { max: request.max } : {}),
+      ...(typeof request.step === 'number' ? { step: request.step } : {}),
+    })
+    if (!parameter) return
+    editRig((state) => ({
+      ...state,
+      groups: state.groups.some((group) => group.id === request.group)
+        ? state.groups
+        : [...state.groups, { id: request.group, label: request.newGroupLabel ?? request.group }],
+      parameters: [...state.parameters, parameter],
+      bindings: [
+        ...state.bindings.filter((binding) => !(binding.elementId === request.elementId && binding.property === request.property)),
+        { id: crypto.randomUUID(), elementId: request.elementId, property: request.property, parameterId: id },
+      ],
+    }), `Expose ${request.label}`)
+    setInspectorTab('controls')
+  }
+
+  const unbind = (binding: VectorBinding) => {
+    editRig((state) => ({ ...state, bindings: state.bindings.filter((item) => item.id !== binding.id) }), 'Unbind')
+  }
+
+  /** Points an existing control at a field, replacing whatever drove it before. */
+  const bindParameter = (parameterId: string, elementId: string, property: string) => {
+    editRig((state) => ({
+      ...state,
+      bindings: [
+        ...state.bindings.filter((binding) => !(binding.elementId === elementId && binding.property === property)),
+        { id: crypto.randomUUID(), elementId, property, parameterId },
+      ],
+    }), 'Bind control')
+  }
+
+  /** A control with nothing behind it, for a macro or an expression. */
+  const addControl = () => {
+    const current = document.rig ?? emptyRig()
+    const id = controlId('Control', new Set(current.parameters.map((parameter) => parameter.id)))
+    editRig((state) => ({
+      ...state,
+      parameters: [...state.parameters, {
+        kind: 'number',
+        id,
+        label: `Control ${state.parameters.length + 1}`,
+        group: state.groups[0]?.id ?? DEFAULT_RIG_GROUP.id,
+        min: 0,
+        max: 100,
+        step: 1,
+        defaultValue: 0,
+      }],
+    }), 'Add control')
+  }
+
+  const renameControl = (parameterId: string, label: string) => {
+    const trimmed = label.trim().slice(0, 80)
+    if (!trimmed) return
+    editRig((state) => ({ ...state, parameters: state.parameters.map((parameter) => parameter.id === parameterId ? { ...parameter, label: trimmed } : parameter) }), 'Rename control')
+  }
+
+  const moveControl = (parameterId: string, group: string) => {
+    editRig((state) => ({ ...state, parameters: state.parameters.map((parameter) => parameter.id === parameterId ? { ...parameter, group } : parameter) }), 'Move control')
+  }
+
+  const deleteControl = (parameterId: string) => {
+    editRig((state) => ({
+      ...state,
+      parameters: state.parameters.filter((parameter) => parameter.id !== parameterId),
+      bindings: state.bindings.filter((binding) => binding.parameterId !== parameterId),
+    }), 'Delete control')
+  }
+
   /** What the rail can do with the things this document reuses. */
   const assetActions: AssetActions = {
     onPlace: (asset) => { if (asset.sourceId) placeComponent(asset.sourceId) },
@@ -1336,12 +1447,37 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         />
       )}
       inspector={
+        <ExposeProvider value={{
+          elementId: single?.id ?? null,
+          elementName: single?.name ?? '',
+          groups: rig?.groups ?? [],
+          parameters: rig?.parameters ?? [],
+          bindings: rig?.bindings ?? [],
+          onExpose: exposeField,
+          onUnbind: unbind,
+          onGoToControl: () => setInspectorTab('controls'),
+          onDropParameter: bindParameter,
+        }}>
         <VectorInspector
-          document={document}
+          document={shown ?? document}
           tab={inspectorTab}
           onTab={setInspectorTab}
+          controls={
+            <VectorControls
+              session={session}
+              groups={rig?.groups ?? []}
+              parameters={rig?.parameters ?? []}
+              bindings={rig?.bindings ?? []}
+              mode={mode}
+              onMode={(next) => onMode?.(next)}
+              onAdd={addControl}
+              onRename={renameControl}
+              onMove={moveControl}
+              onDelete={deleteControl}
+            />
+          }
           tool={tool}
-          selectedElements={selectedElements}
+          selectedElements={shownSelection}
           selectedNodeIds={selectedNodeIds}
           onUpdateDocument={editor.updateDocument}
           onUpdate={editor.updateElement}
@@ -1372,6 +1508,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onImportFont={importFont}
           onBooleanGroup={booleanGroup}
         />
+        </ExposeProvider>
       }
     >
       <h1 className="visually-hidden">{document.name}</h1>
@@ -1466,7 +1603,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         <ContextMenuRoot>
         <ContextTarget className="vector-stage__menu" items={canvasMenuItems} label="Canvas actions" touchActions={false}>
         <VectorCanvas
-          document={document}
+          document={shown ?? document}
           tool={tool}
           zoom={zoom}
           pan={pan}

@@ -239,7 +239,7 @@ export function useProjectFile(document: VectorDocument | null): ProjectFile {
       thumbnail: documentThumbnail(opened),
       ...(picked ? { handle: picked } : {}),
     })
-    setMessage(storageError)
+    setMessage(storageError ?? result.note ?? null)
     setState(storageError ? 'error' : 'saved')
     return opened
   }, [])

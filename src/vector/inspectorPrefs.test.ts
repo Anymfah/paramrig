@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_PREFS, isOpen, parseInspectorPrefs, tabOf, withSection, withTab } from '@/vector/inspectorPrefs'
+import { EMPTY_PREFS, isOpen, modeOf, parseInspectorPrefs, tabOf, withMode, withSection, withTab } from '@/vector/inspectorPrefs'
 
 describe('what the inspector remembers', () => {
   it('opens a document it has never seen on Design', () => {
@@ -32,6 +32,13 @@ describe('what the inspector remembers', () => {
   it('reads back nothing it does not recognise', () => {
     expect(parseInspectorPrefs(null)).toEqual(EMPTY_PREFS)
     expect(parseInspectorPrefs('nonsense')).toEqual(EMPTY_PREFS)
-    expect(parseInspectorPrefs({ tabs: { a: 'design', b: 'nowhere' }, collapsed: ['fill', 7] })).toEqual({ tabs: { a: 'design' }, collapsed: ['fill'] })
+    expect(parseInspectorPrefs({ tabs: { a: 'design', b: 'nowhere' }, collapsed: ['fill', 7], modes: { a: 'tune', b: 'sideways' } }))
+      .toEqual({ tabs: { a: 'design' }, collapsed: ['fill'], modes: { a: 'tune' } })
+  })
+
+  it('opens a document the way it was left', () => {
+    expect(modeOf(EMPTY_PREFS, 'a')).toBe('edit')
+    expect(modeOf(withMode(EMPTY_PREFS, 'a', 'tune'), 'a')).toBe('tune')
+    expect(modeOf(withMode(EMPTY_PREFS, 'a', 'tune'), 'b')).toBe('edit')
   })
 })

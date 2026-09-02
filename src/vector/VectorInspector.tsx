@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { INSPECTOR_TABS, type InspectorTab } from '@/vector/inspectorPrefs'
 import { VectorEmpty, VectorSection } from '@/vector/VectorSection'
+import { Exposable } from '@/vector/VectorExpose'
 import { useSectionState } from '@/vector/useSectionState'
 
 import { createEffect } from '@/vector/effects'
@@ -14,7 +15,7 @@ import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import { SliderField } from '@/ui/SliderField'
-import { AdjustmentsPanel, BlendPanel, EffectList, MAX_EFFECTS_PER_ELEMENT } from '@/vector/VectorEffectsPanel'
+import { AdjustmentsPanel, BlendMode, EffectList, MAX_EFFECTS_PER_ELEMENT } from '@/vector/VectorEffectsPanel'
 import { BrushPanel } from '@/vector/VectorBrushPanel'
 import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
 import { linkedStyle } from '@/vector/styles'
@@ -343,12 +344,12 @@ export function VectorInspector({
                 {single && single.kind !== 'group' ? (
                   <>
                     <div className="vector-field-grid">
-                      <NumberField label="X" value={single.x} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => onUpdate(single.id, { x })} {...gesture} />
-                      <NumberField label="Y" value={single.y} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => onUpdate(single.id, { y })} {...gesture} />
-                      <NumberField label="W" value={single.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdate(single.id, { width })} {...gesture} />
-                      <NumberField label="H" value={single.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdate(single.id, { height })} {...gesture} />
+                      <Exposable property="x" min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE}><NumberField label="X" value={single.x} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(x) => onUpdate(single.id, { x })} {...gesture} /></Exposable>
+                      <Exposable property="y" min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE}><NumberField label="Y" value={single.y} min={-MAX_DOCUMENT_SIZE} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(y) => onUpdate(single.id, { y })} {...gesture} /></Exposable>
+                      <Exposable property="width" min={1} max={MAX_DOCUMENT_SIZE}><NumberField label="W" value={single.width} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(width) => onUpdate(single.id, { width })} {...gesture} /></Exposable>
+                      <Exposable property="height" min={1} max={MAX_DOCUMENT_SIZE}><NumberField label="H" value={single.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdate(single.id, { height })} {...gesture} /></Exposable>
                     </div>
-                    <NumberField label="Rotation" value={single.rotation} min={-360} max={360} step={1} unit="°" variant="field" onChange={(rotation) => onUpdate(single.id, { rotation })} {...gesture} />
+                    <Exposable property="rotation" min={-360} max={360}><NumberField label="Rotation" value={single.rotation} min={-360} max={360} step={1} unit="°" variant="field" onChange={(rotation) => onUpdate(single.id, { rotation })} {...gesture} /></Exposable>
                     <ShapeFields element={single} onUpdate={onUpdate} gesture={gesture} />
                   </>
                 ) : bounds ? (
@@ -459,8 +460,8 @@ function ShapeFields({ element, onUpdate, gesture }: {
     const { sides, innerRatio } = polygonProperties(element)
     return (
       <div className="vector-field-grid">
-        <NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} />
-        <NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} />
+        <Exposable property="sides" min={MIN_SIDES} max={MAX_SIDES}><NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} /></Exposable>
+        <Exposable property="innerRatio" min={0} max={1} step={0.01}><NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} /></Exposable>
       </div>
     )
   }
@@ -470,8 +471,8 @@ function ShapeFields({ element, onUpdate, gesture }: {
     return (
       <>
         <div className="vector-field-grid">
-          <NumberField label="Arc start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} />
-          <NumberField label="Arc sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} />
+          <Exposable property="arcStart" min={0} max={360}><NumberField label="Arc start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} /></Exposable>
+          <Exposable property="arcSweep" min={-360} max={360}><NumberField label="Arc sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} /></Exposable>
         </div>
         <NumberField label="Inner radius" value={Math.round(arc.ratio * 100)} min={0} max={99} step={1} unit="%" variant="field" onChange={(value) => apply({ arcRatio: value / 100 }, 'Change ring')} {...gesture} />
         {isFullEllipse(arc) ? null : (
@@ -497,8 +498,8 @@ function CornerFields({ element, onUpdate, gesture }: {
     <>
       {uniform ? (
         <div className="vector-field-grid">
-          <NumberField label="Radius" value={radii[0]} min={0} max={max} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { cornerRadius: radius > 0 ? radius : undefined })} {...gesture} />
-          <NumberField label="Smoothing" value={Math.round((element.cornerSmoothing ?? 0) * 100)} min={0} max={100} step={1} unit="%" variant="field" disabled={!radii.some(Boolean)} onChange={(value) => onUpdate(element.id, { cornerSmoothing: value > 0 ? value / 100 : undefined })} {...gesture} />
+          <Exposable property="cornerRadius" min={0} max={max}><NumberField label="Radius" value={radii[0]} min={0} max={max} step={1} unit="px" variant="field" onChange={(radius) => onUpdate(element.id, { cornerRadius: radius > 0 ? radius : undefined })} {...gesture} /></Exposable>
+          <Exposable property="cornerSmoothing" min={0} max={1} step={0.01}><NumberField label="Smoothing" value={Math.round((element.cornerSmoothing ?? 0) * 100)} min={0} max={100} step={1} unit="%" variant="field" disabled={!radii.some(Boolean)} onChange={(value) => onUpdate(element.id, { cornerSmoothing: value > 0 ? value / 100 : undefined })} {...gesture} /></Exposable>
         </div>
       ) : (
         <div className="vector-field-grid">
@@ -537,14 +538,15 @@ function LayerSection({ elements, leaves, onUpdate, onUpdateElements, gesture }:
   const maskable = single && single.parentId
   return (
     <VectorSection id="layer" title="Layer" meta={single ? `${kindLabel(single)} · ${Math.round(single.opacity * 100)}%` : `${Math.round(first.opacity * 100)}%`}>
-      <BlendPanel
-        mode={first.blendMode ?? 'normal'}
-        opacity={(single ?? first).opacity}
-        onChangeMode={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')}
-        onChangeOpacity={(opacity) => single ? onUpdate(single.id, { opacity }) : apply({ opacity })}
-        gesture={gesture}
-      />
-      <SwitchField label="Visible" checked={allVisible} mixed={elements.some((element) => element.visible) && !allVisible} onChange={(visible) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { visible } })))} />
+      <Exposable property="blendMode">
+        <BlendMode mode={first.blendMode ?? 'normal'} onChange={(blendMode) => apply({ blendMode: blendMode === 'normal' ? undefined : blendMode }, true, 'Change blend mode')} />
+      </Exposable>
+      <Exposable property="opacity" min={0} max={1} step={0.01}>
+        <SliderField label="Opacity" value={Math.round((single ?? first).opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => single ? onUpdate(single.id, { opacity: value / 100 }) : apply({ opacity: value / 100 })} {...gesture} />
+      </Exposable>
+      <Exposable property="visible">
+        <SwitchField label="Visible" checked={allVisible} mixed={elements.some((element) => element.visible) && !allVisible} onChange={(visible) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { visible } })))} />
+      </Exposable>
       <SwitchField label="Locked" checked={allLocked} mixed={elements.some((element) => element.locked) && !allLocked} onChange={(locked) => onUpdateElements(elements.map((element) => ({ id: element.id, patch: { locked } })))} />
       {maskable ? <SwitchField label="Mask" checked={!!single.mask} onChange={(mask) => onUpdate(single.id, { mask: mask || undefined }, true, mask ? 'Use as mask' : 'Remove mask')} /> : null}
     </VectorSection>
@@ -713,7 +715,7 @@ function StrokeDetail({ first, single, isPath, isRectangle, sides, setSide, mixe
         <span>Width · Align · Cap · Join · Dash · Arrows</span>
       </button>
       <div className="vector-fold__panel" id={panelId} inert={!open} aria-hidden={!open}>
-        <NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" mixed={mixedWidth} onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
+        <Exposable property="strokeWidth" min={0} max={100} step={0.5}><NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" mixed={mixedWidth} onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} /></Exposable>
         <SelectField label="Align" value={first.strokeAlign ?? 'center'} options={[{ value: 'inside', label: 'Inside' }, { value: 'center', label: 'Center' }, { value: 'outside', label: 'Outside' }]} onChange={(value) => apply({ strokeAlign: value === 'center' ? undefined : value as VectorElement['strokeAlign'] })} />
         <SelectField label="Cap" value={first.strokeCap ?? 'butt'} options={[{ value: 'butt', label: 'Butt' }, { value: 'round', label: 'Round' }, { value: 'square', label: 'Square' }]} onChange={(value) => apply({ strokeCap: value === 'butt' ? undefined : value as VectorElement['strokeCap'] })} />
         <SelectField label="Join" value={first.strokeJoin ?? 'miter'} options={[{ value: 'miter', label: 'Miter' }, { value: 'round', label: 'Round' }, { value: 'bevel', label: 'Bevel' }]} onChange={(value) => apply({ strokeJoin: value === 'miter' ? undefined : value as VectorElement['strokeJoin'] })} />

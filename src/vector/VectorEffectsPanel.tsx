@@ -154,24 +154,15 @@ function EffectRow({ effect, first, last, onChange, onRemove, onMove, gesture, p
   )
 }
 
-/** How the selection mixes with what is under it, and how much of it shows. */
-export function BlendPanel({ mode, opacity, onChangeMode, onChangeOpacity, gesture }: {
-  mode: VectorBlendMode
-  opacity: number
-  onChangeMode: (mode: VectorBlendMode) => void
-  onChangeOpacity: (opacity: number) => void
-  gesture: Gesture
-}) {
+/** How the selection mixes with what is under it. */
+export function BlendMode({ mode, onChange }: { mode: VectorBlendMode; onChange: (mode: VectorBlendMode) => void }) {
   return (
-    <>
-      <SelectField
-        label="Mode"
-        value={mode}
-        options={BLEND_MODES.map((value) => ({ value, label: BLEND_LABELS[value] }))}
-        onChange={(value) => onChangeMode(value as VectorBlendMode)}
-      />
-      <SliderField label="Opacity" value={Math.round(opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => onChangeOpacity(value / 100)} {...gesture} />
-    </>
+    <SelectField
+      label="Mode"
+      value={mode}
+      options={BLEND_MODES.map((value) => ({ value, label: BLEND_LABELS[value] }))}
+      onChange={(value) => onChange(value as VectorBlendMode)}
+    />
   )
 }
 

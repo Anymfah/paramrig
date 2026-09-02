@@ -352,6 +352,11 @@ export type VectorDocument = {
   /** Colours pinned to this document, and the last ones used. */
   swatches?: string[]
   recentColors?: string[]
+  /**
+   * The controls this document exposes, and where they write. A document without one is a drawing;
+   * a document with one is a rig, and opens in the workbench like any other.
+   */
+  rig?: import('./rig').VectorRig
   createdAt: string
   updatedAt: string
 }
