@@ -972,7 +972,13 @@ function StylesPanel({ styles, elements, onRename, onDelete }: {
           const usage = styleUsage(elements, style)
           return (
             <li key={style.id} className="vector-styles__row">
-              <span className="vector-styles__chip" style={{ background: summaryColor(style.paints) }} aria-hidden="true" />
+              <span
+                className="vector-styles__chip"
+                data-kind={style.kind}
+                // An effect style has no paint to show, so it gets a plain chip rather than an empty one.
+                style={{ background: style.kind === 'effect' ? 'var(--vector-guide)' : summaryColor(style.paints) }}
+                aria-hidden="true"
+              />
               <input
                 className="vector-styles__name"
                 defaultValue={style.name}
