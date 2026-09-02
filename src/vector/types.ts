@@ -66,7 +66,45 @@ export type VectorTextAlign = 'left' | 'center' | 'right'
 /** `auto` grows the box with the content; `fixed` wraps the content into the box width. */
 export type VectorTextSizing = 'auto' | 'fixed'
 
-export type VectorStyleKind = 'fill' | 'stroke'
+export type VectorEffectKind = 'dropShadow' | 'innerShadow' | 'layerBlur' | 'backgroundBlur'
+
+/**
+ * One effect layer, applied bottom of the list first. Shadows use offset, blur, spread and a
+ * colour; the blurs only use `blur`. `backgroundBlur` frosts what shows through the element, so
+ * it only says anything on a frame or under a see-through fill.
+ */
+export type VectorEffect = {
+  id: string
+  kind: VectorEffectKind
+  visible: boolean
+  /** Shadows: how far the shadow is pushed, in pixels. */
+  dx?: number
+  dy?: number
+  /** Blur radius in pixels, for both the shadows and the two blurs. */
+  blur: number
+  /** Shadows: how much the shape is fattened before it is blurred. */
+  spread?: number
+  color?: string
+  /** Shadow colour opacity, 0 to 1. */
+  opacity?: number
+}
+
+export type VectorBlendMode =
+  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten'
+  | 'colorDodge' | 'colorBurn' | 'hardLight' | 'softLight'
+  | 'difference' | 'exclusion' | 'hue' | 'saturation' | 'color' | 'luminosity'
+
+/** Picture corrections, each from −1 to 1 with 0 leaving the picture alone. */
+export type VectorImageAdjustments = {
+  exposure?: number
+  contrast?: number
+  saturation?: number
+  temperature?: number
+  highlights?: number
+  shadows?: number
+}
+
+export type VectorStyleKind = 'fill' | 'stroke' | 'effect'
 
 /** A named paint, stored in the document and applied to elements by reference. */
 export type VectorStyle = {
@@ -74,6 +112,8 @@ export type VectorStyle = {
   name: string
   kind: VectorStyleKind
   paints: VectorPaint[]
+  /** Effect styles carry effects instead of paints. */
+  effects?: VectorEffect[]
   /** Stroke styles also carry the contour properties. */
   strokeWidth?: number
   strokeAlign?: VectorStrokeAlign
@@ -153,9 +193,16 @@ export type VectorElement = {
   /** Natural pixel size of the picture, so its shape is known without decoding it. */
   imageWidth?: number
   imageHeight?: number
+  /** Effects, applied in order: shadows, then blurs. */
+  effects?: VectorEffect[]
+  /** How this element mixes with what is under it. Absent means `normal`. */
+  blendMode?: VectorBlendMode
+  /** Image elements and image fills: the corrections applied to the picture. */
+  adjustments?: VectorImageAdjustments
   /** Named style this element's fill follows; its paints are kept in step with the style. */
   fillStyleId?: string
   strokeStyleId?: string
+  effectStyleId?: string
   /** Editable geometry as a graph; primitives without one use their implicit outline. */
   network?: VectorNetwork
   /** Face keys whose fill is switched off with the paint bucket. */

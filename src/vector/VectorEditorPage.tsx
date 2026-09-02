@@ -58,7 +58,7 @@ import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, lea
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
-import type { VectorElement, VectorPaint, VectorTool } from '@/vector/types'
+import type { VectorElement, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 type SelectionTool = Extract<VectorTool, 'select' | 'transform'>
@@ -699,9 +699,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     editor.updateDocument({ recentColors: pushRecentColor(document.recentColors, hex) }, false)
   }
 
-  const createStyle = (kind: 'fill' | 'stroke', source: VectorElement) => {
+  const createStyle = (kind: VectorStyleKind, source: VectorElement) => {
     const existing = document.styles ?? []
-    const base = kind === 'fill' ? 'Fill style' : 'Stroke style'
+    const base = kind === 'fill' ? 'Fill style' : kind === 'stroke' ? 'Stroke style' : 'Effect style'
     let name = `${base} ${existing.filter((style) => style.kind === kind).length + 1}`
     while (existing.some((style) => style.name === name)) name = `${name}'`
     const style = styleFromElement(source, kind, name, crypto.randomUUID())
@@ -713,7 +713,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }), true, `Create style “${style.name}”`)
   }
 
-  const linkStyle = (kind: 'fill' | 'stroke', styleId: string | null) => {
+  const linkStyle = (kind: VectorStyleKind, styleId: string | null) => {
     const style = styleId ? (document.styles ?? []).find((item) => item.id === styleId) : null
     if (styleId && !style) return
     const targets = leafElements(document.elements, selectedIds)

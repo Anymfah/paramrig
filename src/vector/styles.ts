@@ -1,4 +1,5 @@
 import { sanitizePaints, summaryColor } from '@/vector/paints'
+import { sanitizeEffects } from '@/vector/effects'
 import type { VectorElement, VectorPaint, VectorStyle, VectorStyleKind } from '@/vector/types'
 
 export const MAX_STYLES = 60
@@ -8,12 +9,16 @@ export const MAX_RECENT_COLORS = 12
 /** Element properties a stroke style carries beyond its paints. */
 const STROKE_KEYS = ['strokeWidth', 'strokeAlign', 'strokeCap', 'strokeJoin', 'strokeDash'] as const
 
-export function styleIdKey(kind: VectorStyleKind): 'fillStyleId' | 'strokeStyleId' {
-  return kind === 'fill' ? 'fillStyleId' : 'strokeStyleId'
+export function styleIdKey(kind: VectorStyleKind): 'fillStyleId' | 'strokeStyleId' | 'effectStyleId' {
+  if (kind === 'fill') return 'fillStyleId'
+  return kind === 'stroke' ? 'strokeStyleId' : 'effectStyleId'
 }
 
 /** Builds a style from what an element currently paints. */
 export function styleFromElement(element: VectorElement, kind: VectorStyleKind, name: string, id: string): VectorStyle {
+  if (kind === 'effect') {
+    return { id, kind, name: name.trim().slice(0, 60) || 'Style', paints: [], effects: structuredClone(element.effects ?? []) }
+  }
   const paints = kind === 'fill'
     ? (element.fills ?? (element.fill === 'none' ? [] : [{ id: `${id}-0`, type: 'solid' as const, color: element.fill, opacity: 1, visible: true }]))
     : (element.strokes ?? (element.stroke === 'none' ? [] : [{ id: `${id}-0`, type: 'solid' as const, color: element.stroke, opacity: 1, visible: true }]))
@@ -29,6 +34,7 @@ export function styleFromElement(element: VectorElement, kind: VectorStyleKind, 
 
 /** Patch that paints an element with a style and records the link. */
 export function applyStylePatch(style: VectorStyle): Partial<VectorElement> {
+  if (style.kind === 'effect') return { effects: structuredClone(style.effects ?? []), effectStyleId: style.id }
   const paints = structuredClone(style.paints)
   const summary = summaryColor(paints)
   if (style.kind === 'fill') {
@@ -67,15 +73,18 @@ export function styleUsage(elements: VectorElement[], style: VectorStyle): numbe
 export function pruneStyleLinks(elements: VectorElement[], styles: VectorStyle[]): VectorElement[] {
   const fills = new Set(styles.filter((style) => style.kind === 'fill').map((style) => style.id))
   const strokes = new Set(styles.filter((style) => style.kind === 'stroke').map((style) => style.id))
+  const effects = new Set(styles.filter((style) => style.kind === 'effect').map((style) => style.id))
   let changed = false
   const next = elements.map((element) => {
     const dropFill = element.fillStyleId && !fills.has(element.fillStyleId)
     const dropStroke = element.strokeStyleId && !strokes.has(element.strokeStyleId)
-    if (!dropFill && !dropStroke) return element
+    const dropEffect = element.effectStyleId && !effects.has(element.effectStyleId)
+    if (!dropFill && !dropStroke && !dropEffect) return element
     changed = true
     const copy = { ...element }
     if (dropFill) delete copy.fillStyleId
     if (dropStroke) delete copy.strokeStyleId
+    if (dropEffect) delete copy.effectStyleId
     return copy
   })
   return changed ? next : elements
@@ -119,7 +128,13 @@ export function sanitizeStyles(value: unknown): VectorStyle[] | undefined {
     const source = candidate as Partial<VectorStyle>
     if (typeof source.id !== 'string' || !source.id || seen.has(source.id)) return []
     if (typeof source.name !== 'string' || !source.name.trim()) return []
-    const kind: VectorStyleKind = source.kind === 'stroke' ? 'stroke' : 'fill'
+    const kind: VectorStyleKind = source.kind === 'stroke' ? 'stroke' : source.kind === 'effect' ? 'effect' : 'fill'
+    if (kind === 'effect') {
+      const effects = sanitizeEffects(source.effects)
+      if (!effects) return []
+      seen.add(source.id)
+      return [{ id: source.id, kind, name: source.name.trim().slice(0, 60), paints: [], effects }]
+    }
     const paints = sanitizePaints(source.paints) as VectorPaint[] | undefined
     if (!paints) return []
     seen.add(source.id)

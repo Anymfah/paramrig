@@ -5,6 +5,7 @@ import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPres
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
+import { sanitizeAdjustments, sanitizeBlendMode, sanitizeEffects } from '@/vector/effects'
 import { sanitizeCrop } from '@/vector/crop'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
@@ -419,6 +420,9 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
   const network = source.kind === 'group' || source.kind === 'text' || source.kind === 'frame' || source.kind === 'image' ? null : sanitizeNetwork(source.network)
   if (source.kind === 'path' && !network) return null
+  const effects = sanitizeEffects(source.effects)
+  const blendMode = sanitizeBlendMode(source.blendMode)
+  const adjustments = sanitizeAdjustments(source.adjustments)
   const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
     id: source.id,
@@ -449,6 +453,10 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(cornerRadius !== undefined ? { cornerRadius } : {}),
     ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
+    ...(effects ? { effects } : {}),
+    ...(blendMode ? { blendMode } : {}),
+    ...(source.kind === 'image' && adjustments ? { adjustments } : {}),
+    ...(typeof source.effectStyleId === 'string' && source.effectStyleId ? { effectStyleId: source.effectStyleId } : {}),
     ...(typeof source.fillStyleId === 'string' && source.fillStyleId ? { fillStyleId: source.fillStyleId } : {}),
     ...(typeof source.strokeStyleId === 'string' && source.strokeStyleId ? { strokeStyleId: source.strokeStyleId } : {}),
     ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
