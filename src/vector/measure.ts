@@ -3,8 +3,10 @@ import type { VectorPoint } from '@/vector/types'
 /** A measurement laid on the canvas: two points, and nothing written to the document. */
 export type Measurement = { id: string; from: VectorPoint; to: VectorPoint }
 
-/** Zoom steps the zoom tool walks through. */
-export const ZOOM_LEVELS = [0.1, 0.25, 0.5, 0.8, 1, 1.5, 2, 3, 4, 6, 8] as const
+/** How far in and out the canvas goes, and the steps the buttons and the zoom tool walk. */
+export const MIN_ZOOM = 0.1
+export const MAX_ZOOM = 16
+export const ZOOM_LEVELS = [0.1, 0.25, 0.5, 0.8, 1, 1.5, 2, 3, 4, 6, 8, 12, 16] as const
 
 export function nextZoom(current: number, direction: -1 | 1): number {
   if (direction > 0) return ZOOM_LEVELS.find((level) => level > current + 0.001) ?? ZOOM_LEVELS[ZOOM_LEVELS.length - 1]!
@@ -34,7 +36,7 @@ export function zoomToBox(
   page: { width: number; height: number },
   padding = 24,
 ): { zoom: number; pan: VectorPoint } {
-  const zoom = Math.min(8, Math.max(0.1, Math.min(
+  const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.min(
     (viewport.width - padding * 2) / Math.max(1, box.width),
     (viewport.height - padding * 2) / Math.max(1, box.height),
   )))

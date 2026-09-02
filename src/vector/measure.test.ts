@@ -18,7 +18,8 @@ describe('stepping the zoom', () => {
   it('walks up and down the levels and stops at the ends', () => {
     expect(nextZoom(1, 1)).toBe(1.5)
     expect(nextZoom(1, -1)).toBe(0.8)
-    expect(nextZoom(8, 1)).toBe(8)
+    expect(nextZoom(16, 1)).toBe(16)
+    expect(nextZoom(8, 1)).toBe(12)
     expect(nextZoom(0.1, -1)).toBe(0.1)
     expect(nextZoom(0.9, 1)).toBe(1)
   })
@@ -38,7 +39,7 @@ describe('zooming to a box', () => {
   })
 
   it('stays inside what the canvas can show', () => {
-    expect(zoomToBox({ x: 0, y: 0, width: 1, height: 1 }, viewport, page).zoom).toBe(8)
+    expect(zoomToBox({ x: 0, y: 0, width: 1, height: 1 }, viewport, page).zoom).toBe(16)
     expect(zoomToBox({ x: 0, y: 0, width: 100000, height: 100000 }, viewport, page).zoom).toBe(0.1)
   })
 })

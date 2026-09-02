@@ -13,7 +13,7 @@ import { fillsOf, fillsPatch } from '@/vector/paints'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
 import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
-import { measurementLabel, nextZoom, zoomAround, zoomToBox, type Measurement } from '@/vector/measure'
+import { MAX_ZOOM, MIN_ZOOM, measurementLabel, nextZoom, zoomAround, zoomToBox, type Measurement } from '@/vector/measure'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
@@ -26,6 +26,7 @@ import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, pe
 import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import type { FilterPrimitive } from '@/vector/filters'
 import { renderStats } from '@/vector/render'
+import { handleRadii } from '@/vector/hitPriority'
 import { faceCacheStats } from '@/vector/planar'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
@@ -218,10 +219,10 @@ export function VectorCanvas({
   const [metaDown, setMetaDown] = useState(false)
   const [bending, setBending] = useState(false)
   const [rotateArc, setRotateArc] = useState<{ center: Point; from: number; to: number; radius: number } | null>(null)
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
-  const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
   const [snapMatches, setSnapMatches] = useState<SnapMatch[]>([])
   const [hud, setHud] = useState<VectorHud | null>(null)
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [selectedGuideId, setSelectedGuideState] = useState<string | null>(null)
   const [selectedSegmentId, setSelectedSegmentState] = useState<string | null>(null)
@@ -322,15 +323,15 @@ export function VectorCanvas({
         const target = bounds ?? { x: 0, y: 0, width: doc.width, height: doc.height }
         const width = Math.max(1, target.width)
         const height = Math.max(1, target.height)
-        const nextZoom = clamp(Math.min((size.clientWidth - padding * 2) / width, (size.clientHeight - padding * 2) / height), 0.1, 8)
+        const nextZoom = clamp(Math.min((size.clientWidth - padding * 2) / width, (size.clientHeight - padding * 2) / height), MIN_ZOOM, MAX_ZOOM)
         const center = { x: target.x + width / 2, y: target.y + height / 2 }
         onZoomChange(nextZoom)
         onPanChange({ x: -(center.x - doc.width / 2) * nextZoom, y: -(center.y - doc.height / 2) * nextZoom })
       },
       zoomTo: (nextZoom) => {
         const current = camera.current
-        const ratio = clamp(nextZoom, 0.1, 8) / current.zoom
-        onZoomChange(clamp(nextZoom, 0.1, 8))
+        const ratio = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM) / current.zoom
+        onZoomChange(clamp(nextZoom, MIN_ZOOM, MAX_ZOOM))
         onPanChange({ x: current.pan.x * ratio, y: current.pan.y * ratio })
       },
       pivot: () => pivotRef.current,
@@ -388,7 +389,7 @@ export function VectorCanvas({
       if (event.ctrlKey || event.metaKey) {
         const rect = viewport.getBoundingClientRect()
         const anchor = { x: event.clientX - rect.left - rect.width / 2, y: event.clientY - rect.top - rect.height / 2 }
-        const nextZoom = clamp(current.zoom * Math.exp(-event.deltaY * scale * 0.002), 0.1, 8)
+        const nextZoom = clamp(current.zoom * Math.exp(-event.deltaY * scale * 0.002), MIN_ZOOM, MAX_ZOOM)
         const ratio = nextZoom / current.zoom
         onPanChange({
           x: anchor.x - (anchor.x - current.pan.x) * ratio,
@@ -2055,8 +2056,6 @@ export function VectorCanvas({
               selectedIds={selectedNodeIds}
               selectedSegmentId={selectedSegmentId}
               interactive={tool === 'node'}
-              hoveredNodeId={hoveredNode}
-              hoveredSegmentId={hoveredSegment}
               onHoverNode={setHoveredNode}
               onHoverSegment={setHoveredSegment}
               onNodePointerDown={onNodePointerDown}
@@ -2482,7 +2481,7 @@ function ShapeHandles({ element, zoom, coarse, onStart }: {
   coarse: boolean
   onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, handle: ShapeHandle) => void
 }) {
-  const hit = (coarse ? 22 : 16) / zoom
+  const { hit } = handleRadii(zoom, coarse)
   const glyph = 3 / zoom
   const spots: Array<{ handle: ShapeHandle; at: Point; label: string }> = []
   if (element.kind === 'polygon') {
@@ -2587,7 +2586,7 @@ function CornerHandles({ element, zoom, coarse, onStart }: {
   coarse: boolean
   onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, corner: CornerName) => void
 }) {
-  const hit = (coarse ? 22 : 16) / zoom
+  const { hit } = handleRadii(zoom, coarse)
   return (
     <g className="vector-corner-handles" aria-hidden="true">
       {CORNERS.map((corner) => {
@@ -2616,7 +2615,7 @@ function GradientOverlay({ element, index, paint, zoom, coarse, dropping, onStar
   onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number, handle: GradientHandle, stop: number) => void
   onAddStop: (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number) => void
 }) {
-  const hit = (coarse ? 22 : 16) / zoom
+  const { hit } = handleRadii(zoom, coarse)
   const at = (normalized: Point) => worldFromNormalized(element, normalized)
   const stops = paint.stops ?? []
   if (paint.type === 'radial') {
@@ -2806,15 +2805,14 @@ function GuideLines({ guides, draft, selectedId, interactive, onPointerDown }: {
 }
 
 /** Node-edit overlay: every segment is selectable, every node draggable, handles on selected nodes. */
-function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, hoveredNodeId, hoveredSegmentId, onHoverNode, onHoverSegment, onNodePointerDown, onSegmentPointerDown }: {
+function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, onHoverNode, onHoverSegment, onNodePointerDown, onSegmentPointerDown }: {
   element: VectorElement
   world: AbsNetwork
   zoom: number
   selectedIds: string[]
   selectedSegmentId: string | null
   interactive: boolean
-  hoveredNodeId: string | null
-  hoveredSegmentId: string | null
+  /** Hovering only feeds the little read-out; what the hover looks like is CSS on the hit layers. */
   onHoverNode: (id: string | null) => void
   onHoverSegment: (id: string | null) => void
   onNodePointerDown: (nodeId: string, handle: HandleRef | null, event: ReactPointerEvent<SVGElement>) => void
@@ -2844,7 +2842,7 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
         const straight = !segment.ah && !segment.bh
         const d = straight ? `M ${cubic[0].x} ${cubic[0].y} L ${cubic[3].x} ${cubic[3].y}` : `M ${cubic[0].x} ${cubic[0].y} C ${cubic[1].x} ${cubic[1].y} ${cubic[2].x} ${cubic[2].y} ${cubic[3].x} ${cubic[3].y}`
         return (
-          <g key={segment.id} data-selected-segment={selectedSegmentId === segment.id || undefined} data-hovered={hoveredSegmentId === segment.id || undefined}>
+          <g key={segment.id} data-selected-segment={selectedSegmentId === segment.id || undefined}>
             <path className="vector-nodes__outline" d={d} />
             {interactive ? (
               <path
@@ -2870,7 +2868,7 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
         const incident = world.segments.filter((segment) => segment.a === node.id || segment.b === node.id)
         const smooth = incident.some((segment) => (segment.a === node.id && segment.ah) || (segment.b === node.id && segment.bh))
         return (
-          <g key={node.id} data-hovered={hoveredNodeId === node.id || undefined}>
+          <g key={node.id}>
             {interactive ? (
               <circle
                 className="vector-nodes__hit"
@@ -2884,8 +2882,8 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
               />
             ) : null}
             {smooth
-              ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} data-hovered={hoveredNodeId === node.id || undefined} cx={node.point.x} cy={node.point.y} r={hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius} />
-              : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} data-hovered={hoveredNodeId === node.id || undefined} x={node.point.x - (hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius)} y={node.point.y - (hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius)} width={(hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius) * 2} height={(hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius) * 2} rx={0.75 / zoom} />}
+              ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} cx={node.point.x} cy={node.point.y} r={pointRadius} />
+              : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} x={node.point.x - pointRadius} y={node.point.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
           </g>
         )
       })}
@@ -3062,8 +3060,7 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
     if (point.handle === 'e' || point.handle === 'w') return bounds.height * zoom >= 40
     return true
   })
-  const resizeHitRadius = 16 / zoom
-  const handleRadius = 4 / zoom
+  const { hit: resizeHitRadius, glyph: handleRadius } = handleRadii(zoom, false)
   return (
     <>
       {visiblePoints.map((item) => (

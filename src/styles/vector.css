@@ -58,6 +58,20 @@
 .vector-toolbar .workspace-toolbar__group + .workspace-toolbar__group { margin-inline-start: 0; }
 .vector-toolbar__tools { margin-inline-start: var(--space-4) !important; }
 .vector-toolbar__end { margin-inline-start: auto !important; }
+/* The tool row is the part that gives way when the window is narrow: it scrolls on its own
+   instead of pushing the zoom and the document name off the end of the bar. */
+.vector-toolbar > .workspace-toolbar__group { flex: 0 0 auto; }
+.vector-toolbar > .vector-toolbar__tools {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.vector-toolbar__tools::-webkit-scrollbar { display: none; }
+/* The buttons keep their size; it is the row that scrolls. */
+.vector-toolbar__tools > * { flex: 0 0 auto; }
 .vector-toolbar__zoom { display: flex; align-items: center; gap: var(--space-1); }
 .vector-tool[aria-pressed='true'] {
   color: var(--text-primary);
@@ -1567,14 +1581,18 @@
   -webkit-user-select: none;
   user-select: none;
 }
-.vector-nodes g[data-hovered] .vector-nodes__outline {
+/* Hover lives in CSS, on the hit layers themselves: no state, so no re-render. */
+.vector-nodes g:has(.vector-nodes__segment-hit:hover) .vector-nodes__outline {
   stroke: var(--vector-selection);
   stroke-width: 2.5px;
 }
-.vector-nodes__point[data-hovered] {
+.vector-nodes__hit:hover ~ .vector-nodes__point,
+.vector-nodes__control-hit:hover ~ .vector-nodes__control {
   fill: var(--vector-selection);
   stroke: var(--vector-handle-fill);
+  stroke-width: 2.25;
 }
+.vector-selection__resize-hit:hover ~ .vector-selection__handle { stroke-width: 2.25; }
 .vector-tip {
   position: absolute;
   z-index: 4;
