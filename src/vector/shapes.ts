@@ -174,7 +174,7 @@ function round2(point: VectorPoint): VectorPoint {
 export type ShapeHandle = 'polygon-sides' | 'polygon-ratio' | 'arc-start' | 'arc-end' | 'arc-ratio'
 
 /** Local (unrotated) coordinates of a world point, relative to the element's box. */
-function localPoint(element: VectorElement, point: Point): Point {
+export function localPoint(element: VectorElement, point: Point): Point {
   const center = elementCenter(element)
   return element.rotation ? rotatePoint(point, center, -element.rotation) : point
 }

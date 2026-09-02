@@ -1605,3 +1605,40 @@
 .vector-shape-handle__hit:hover + .vector-shape-handle { fill: var(--vector-selection); }
 .vector-canvas[data-tool='line'] .vector-artboard,
 .vector-canvas[data-tool='polygon'] .vector-artboard { cursor: crosshair; }
+
+/* Direct manipulation: corner radius, gradient on the shape, image placement. */
+.vector-corner-handle__hit { fill: transparent; cursor: nwse-resize; }
+.vector-corner-handle {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-corner-handle__hit:hover + .vector-corner-handle { fill: var(--vector-selection); }
+.vector-gradient__line {
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-gradient__ramp { stroke: transparent; cursor: copy; }
+.vector-gradient__hit { fill: transparent; cursor: grab; }
+.vector-gradient__end,
+.vector-gradient__stop {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.vector-gradient[data-dropping] .vector-gradient__line { opacity: 0.4; }
+.vector-gradient[data-dropping] .vector-gradient__stop { stroke: var(--vector-snap); }
+.vector-image-place {
+  fill: transparent;
+  stroke: var(--vector-selection);
+  stroke-width: 1px;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  cursor: move;
+}

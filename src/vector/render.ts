@@ -4,13 +4,14 @@ import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNet
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
 import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } from '@/vector/planar'
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
+import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
-import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
+import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
 
 export type RenderDef =
   | { type: 'linearGradient'; id: string; x1: number; y1: number; x2: number; y2: number; stops: VectorGradientStop[] }
-  | { type: 'radialGradient'; id: string; stops: VectorGradientStop[] }
-  | { type: 'pattern'; id: string; image: string; mode: 'fill' | 'fit' | 'tile'; x: number; y: number; width: number; height: number }
+  | { type: 'radialGradient'; id: string; cx: number; cy: number; r: number; stops: VectorGradientStop[] }
+  | { type: 'pattern'; id: string; image: string; mode: 'fill' | 'fit' | 'tile'; x: number; y: number; width: number; height: number; offset?: VectorPoint; scale?: number }
   | { type: 'clipPath'; id: string; d: string }
   | { type: 'mask'; id: string; d: string; x: number; y: number; width: number; height: number }
   | { type: 'marker'; id: string; shape: Exclude<VectorArrowhead, 'none'>; color: string; end: boolean }
@@ -266,19 +267,22 @@ function paintReference(paint: VectorPaint, id: string, bounds: { x: number; y: 
   if (paint.type === 'solid') return paint.color && paint.color !== 'none' ? paint.color : null
   if (paint.type === 'linear') {
     if (!paint.stops || paint.stops.length < 2) return null
-    const radians = ((paint.angle ?? 0) * Math.PI) / 180
-    const dx = Math.cos(radians) / 2
-    const dy = Math.sin(radians) / 2
-    defs.push({ type: 'linearGradient', id, x1: round(0.5 - dx), y1: round(0.5 - dy), x2: round(0.5 + dx), y2: round(0.5 + dy), stops: paint.stops })
+    const line = gradientLine(paint)
+    defs.push({ type: 'linearGradient', id, x1: round(line.from.x), y1: round(line.from.y), x2: round(line.to.x), y2: round(line.to.y), stops: paint.stops })
     return `url(#${id})`
   }
   if (paint.type === 'radial') {
     if (!paint.stops || paint.stops.length < 2) return null
-    defs.push({ type: 'radialGradient', id, stops: paint.stops })
+    const circle = gradientCircle(paint)
+    defs.push({ type: 'radialGradient', id, cx: round(circle.center.x), cy: round(circle.center.y), r: round(circle.radius), stops: paint.stops })
     return `url(#${id})`
   }
   if (!paint.image) return null
-  defs.push({ type: 'pattern', id, image: paint.image, mode: paint.imageMode ?? 'fill', ...bounds })
+  defs.push({
+    type: 'pattern', id, image: paint.image, mode: paint.imageMode ?? 'fill', ...bounds,
+    ...(paint.imageOffset ? { offset: paint.imageOffset } : {}),
+    ...(paint.imageScale ? { scale: paint.imageScale } : {}),
+  })
   return `url(#${id})`
 }
 
@@ -314,13 +318,10 @@ export function defsToSvg(defs: RenderDef[]): string {
       case 'linearGradient':
         return `<linearGradient id="${def.id}" x1="${def.x1}" y1="${def.y1}" x2="${def.x2}" y2="${def.y2}">${stopsToSvg(def.stops)}</linearGradient>`
       case 'radialGradient':
-        return `<radialGradient id="${def.id}">${stopsToSvg(def.stops)}</radialGradient>`
+        return `<radialGradient id="${def.id}" cx="${def.cx}" cy="${def.cy}" r="${def.r}">${stopsToSvg(def.stops)}</radialGradient>`
       case 'pattern': {
-        const aspect = def.mode === 'fit' ? 'xMidYMid meet' : def.mode === 'fill' ? 'xMidYMid slice' : 'none'
-        const tile = def.mode === 'tile'
-        const size = tile ? Math.max(1, Math.min(def.width, def.height) / 2) : def.width
-        const height = tile ? size : def.height
-        return `<pattern id="${def.id}" patternUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(size)}" height="${round(height)}"><image href="${def.image}" x="0" y="0" width="${round(size)}" height="${round(height)}" preserveAspectRatio="${aspect}"/></pattern>`
+        const placed = patternPlacement(def)
+        return `<pattern id="${def.id}" patternUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(placed.tileWidth)}" height="${round(placed.tileHeight)}"><image href="${def.image}" x="${round(placed.x)}" y="${round(placed.y)}" width="${round(placed.width)}" height="${round(placed.height)}" preserveAspectRatio="${placed.aspect}"/></pattern>`
       }
       case 'clipPath':
         return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
@@ -332,6 +333,24 @@ export function defsToSvg(defs: RenderDef[]): string {
       }
     }
   }).join('')
+}
+
+/** Where the picture sits inside its pattern tile, once offset and scale are applied. */
+export function patternPlacement(def: Extract<RenderDef, { type: 'pattern' }>) {
+  const tile = def.mode === 'tile'
+  const tileWidth = tile ? Math.max(1, Math.min(def.width, def.height) / 2) : def.width
+  const tileHeight = tile ? tileWidth : def.height
+  const scale = def.mode === 'fill' && def.scale ? def.scale : 1
+  const offset = def.mode === 'fill' && def.offset ? def.offset : { x: 0, y: 0 }
+  return {
+    aspect: def.mode === 'fit' ? 'xMidYMid meet' : def.mode === 'fill' ? 'xMidYMid slice' : 'none',
+    tileWidth,
+    tileHeight,
+    x: offset.x * tileWidth,
+    y: offset.y * tileHeight,
+    width: tileWidth * scale,
+    height: tileHeight * scale,
+  }
 }
 
 function stopsToSvg(stops: VectorGradientStop[]): string {

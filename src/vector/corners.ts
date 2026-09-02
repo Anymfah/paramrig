@@ -1,3 +1,4 @@
+import { rotatePoint } from '@/vector/directTransform'
 import type { RunPoint } from '@/vector/network'
 import type { VectorElement, VectorPoint } from '@/vector/types'
 
@@ -73,4 +74,49 @@ function unit(to: VectorPoint, from: VectorPoint): VectorPoint {
   const dy = to.y - from.y
   const length = Math.hypot(dx, dy) || 1
   return { x: dx / length, y: dy / length }
+}
+
+export const CORNERS = ['nw', 'ne', 'se', 'sw'] as const
+export type CornerName = (typeof CORNERS)[number]
+
+/** Smallest inset a corner handle keeps from the corner, so it stays grabbable at radius zero. */
+const MIN_INSET = 10
+
+type CornerBox = Pick<VectorElement, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'cornerRadius'>
+
+/** The largest radius a box can carry before its corners meet. */
+export function maxCornerRadius(box: Pick<VectorElement, 'width' | 'height'>): number {
+  return Math.max(0, Math.min(box.width, box.height) / 2)
+}
+
+/** Where a corner handle sits in world space: inset along both edges by the radius it shows. */
+export function cornerHandlePoint(box: CornerBox, corner: CornerName, zoom: number): VectorPoint {
+  const radii = cornerRadii(box)
+  const radius = radii[CORNERS.indexOf(corner)]!
+  const inset = Math.min(maxCornerRadius(box), Math.max(radius, MIN_INSET / zoom))
+  const local = {
+    x: corner === 'nw' || corner === 'sw' ? box.x + inset : box.x + box.width - inset,
+    y: corner === 'nw' || corner === 'ne' ? box.y + inset : box.y + box.height - inset,
+  }
+  if (!box.rotation) return local
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  return rotatePoint(local, center, box.rotation)
+}
+
+/** The radius a drag to `point` asks for: how far in it went, averaged over the two edges. */
+export function cornerRadiusAt(box: CornerBox, corner: CornerName, point: VectorPoint): number {
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const local = box.rotation ? rotatePoint(point, center, -box.rotation) : point
+  const dx = corner === 'nw' || corner === 'sw' ? local.x - box.x : box.x + box.width - local.x
+  const dy = corner === 'nw' || corner === 'ne' ? local.y - box.y : box.y + box.height - local.y
+  return Math.min(maxCornerRadius(box), Math.max(0, (dx + dy) / 2))
+}
+
+/** Patch that sets one corner, or all four when the drag is not asking for just one. */
+export function cornerRadiusPatch(box: CornerBox, corner: CornerName, radius: number, alone: boolean): Pick<VectorElement, 'cornerRadius'> {
+  const rounded = Math.round(Math.min(maxCornerRadius(box), Math.max(0, radius)) * 100) / 100
+  if (!alone) return { cornerRadius: rounded > 0 ? rounded : undefined }
+  const radii = cornerRadii(box)
+  radii[CORNERS.indexOf(corner)] = rounded
+  return { cornerRadius: radii.some(Boolean) ? radii : undefined }
 }

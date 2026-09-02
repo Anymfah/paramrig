@@ -47,8 +47,17 @@ export type VectorPaint = {
   stops?: VectorGradientStop[]
   /** Linear gradient direction in degrees, 0 = left to right, 90 = top to bottom. */
   angle?: number
+  /** Linear gradient ends in normalised box coordinates; `angle` is the fallback. */
+  from?: VectorPoint
+  to?: VectorPoint
+  /** Radial gradient centre and radius in normalised box coordinates. */
+  center?: VectorPoint
+  radius?: number
   image?: string
   imageMode?: 'fill' | 'fit' | 'tile'
+  /** Where the picture sits inside the box, in fractions of the box, and how big it is drawn. */
+  imageOffset?: VectorPoint
+  imageScale?: number
 }
 
 export type VectorTextAlign = 'left' | 'center' | 'right'

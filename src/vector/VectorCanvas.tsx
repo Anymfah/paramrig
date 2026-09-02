@@ -6,7 +6,10 @@ import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks,
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
-import { anglePoint, arcProperties, isFullEllipse, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type ShapeHandle } from '@/vector/shapes'
+import { anglePoint, arcProperties, isFullEllipse, localPoint, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type ShapeHandle } from '@/vector/shapes'
+import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, CORNERS, type CornerName } from '@/vector/corners'
+import { addStop, dropStop, gradientCircle, gradientLine, linearPatch, moveStop, pointAt, projectOnLine, radialPatch, STOP_DROP_PX } from '@/vector/gradient'
+import { fillsOf, fillsPatch } from '@/vector/paints'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
 import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
@@ -18,11 +21,11 @@ import {
 } from '@/vector/network'
 import { pencilNodes } from '@/vector/pencil'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
-import { layerAttributes, markerShape, outlinePathData, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
+import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
 import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorGuide, VectorTool } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorGuide, VectorPaint, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
 type Corner = Extract<DirectResizeHandle, 'nw' | 'ne' | 'se' | 'sw'>
@@ -75,6 +78,9 @@ type Interaction =
   | { kind: 'lasso'; pointerId: number; points: Point[]; additive: boolean }
   | { kind: 'crop'; pointerId: number; start: Point; element: VectorElement; box: Bounds; crop: Crop; handle: DirectResizeHandle | null }
   | { kind: 'shape'; pointerId: number; start: Point; element: VectorElement; handle: ShapeHandle }
+  | { kind: 'corner'; pointerId: number; element: VectorElement; corner: CornerName; alone: boolean }
+  | { kind: 'gradient'; pointerId: number; element: VectorElement; index: number; handle: GradientHandle; stop: number }
+  | { kind: 'image-place'; pointerId: number; start: Point; element: VectorElement; index: number; paint: VectorPaint }
   | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
@@ -172,6 +178,7 @@ export function VectorCanvas({
   const samplingRef = useRef(sampling)
   samplingRef.current = sampling
   const croppingRef = useRef(false)
+  const placingRef = useRef(false)
   const [draftBounds, setDraftBounds] = useState<Bounds | null>(null)
   const [marqueeBounds, setMarqueeBounds] = useState<Bounds | null>(null)
   const [panning, setPanning] = useState(false)
@@ -201,6 +208,8 @@ export function VectorCanvas({
   const [textEditId, setTextEditId] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
   const [cropId, setCropId] = useState<string | null>(null)
+  const [imagePlaceId, setImagePlaceId] = useState<string | null>(null)
+  const [droppingStop, setDroppingStop] = useState(false)
   const textDraft = useRef('')
   const editText = useRef<(element: VectorElement) => void>(() => undefined)
   const addImages = useRef<(files: File[], at: Point) => Promise<void>>(async () => undefined)
@@ -396,6 +405,7 @@ export function VectorCanvas({
     setDraftGuide(null)
     setPencilPoints(null)
     setLassoPoints(null)
+    setDroppingStop(false)
     clearOverlays()
   }, [clearOverlays])
 
@@ -520,6 +530,10 @@ export function VectorCanvas({
         }
         if (croppingRef.current) {
           setCropId(null)
+          return
+        }
+        if (placingRef.current) {
+          setImagePlaceId(null)
           return
         }
         if (active) {
@@ -711,6 +725,57 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  const startCorner = (event: ReactPointerEvent<SVGElement>, element: VectorElement, corner: CornerName) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart('Round the corners')
+    interaction.current = { kind: 'corner', pointerId: event.pointerId, element: structuredClone(element), corner, alone: event.altKey }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  const startGradient = (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number, handle: GradientHandle, stop: number) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart('Edit gradient')
+    interaction.current = { kind: 'gradient', pointerId: event.pointerId, element: structuredClone(element), index, handle, stop }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  const startImagePlace = (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number, paint: VectorPaint) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart('Place the image')
+    interaction.current = { kind: 'image-place', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(element), index, paint: structuredClone(paint) }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  /** Pressing the ramp drops a stop where the pointer is and drags it from there. */
+  const addGradientStop = (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    const paint = fillsOf(element)[index]
+    if (!paint?.stops) return
+    const line = gradientLine(paint)
+    const hit = projectOnLine(line.from, line.to, normalizedPoint(element, point(event.nativeEvent)))
+    const added = addStop(paint.stops, hit.t)
+    if (added.index < 0) return
+    onGestureStart('Add a gradient stop')
+    patchFill(element, index, { stops: added.stops })
+    // The drag that follows works from the ramp as it now stands, new stop included.
+    const withStop: VectorElement = {
+      ...structuredClone(element),
+      ...fillsPatch(fillsOf(element).map((item, position) => position === index ? { ...item, stops: added.stops } : item)),
+    }
+    interaction.current = { kind: 'gradient', pointerId: event.pointerId, element: withStop, index, handle: 'stop', stop: added.index }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  /** Rewrites one paint of an element's fill list. */
+  const patchFill = (element: VectorElement, index: number, patch: Partial<VectorPaint>) => {
+    const paints = fillsOf(element).map((paint, position) => position === index ? { ...paint, ...patch } : paint)
+    onUpdate(element.id, fillsPatch(paints), false)
+  }
+
   const startShapeHandle = (event: ReactPointerEvent<SVGElement>, element: VectorElement, handle: ShapeHandle) => {
     if (event.button !== 0) return
     event.stopPropagation()
@@ -880,6 +945,15 @@ export function VectorCanvas({
         onGestureCancel()
         if (active.toggleOnClick) onSelectNodes(selectedNodeIds.filter((id) => id !== active.toggleOnClick))
       }
+    } else if (active.kind === 'gradient') {
+      if (droppingStop && active.handle === 'stop') {
+        const paint = fillsOf(active.element)[active.index]
+        const current = documentRef.current.elements.find((item) => item.id === active.element.id)
+        const stops = current ? fillsOf(current)[active.index]?.stops : paint?.stops
+        if (stops) patchFill(active.element, active.index, { stops: dropStop(stops, active.stop) })
+      }
+      setDroppingStop(false)
+      onGestureEnd()
     } else if (active.kind === 'segment-move') {
       if (active.moved) onGestureEnd()
       else onGestureCancel()
@@ -1035,6 +1109,10 @@ export function VectorCanvas({
     }
     if (resolvedElement.kind === 'image') {
       setCropId(resolvedElement.id)
+      return
+    }
+    if (fillsOf(resolvedElement).some((paint) => paint.visible && paint.type === 'image' && paint.image)) {
+      setImagePlaceId(resolvedElement.id)
       return
     }
     onToolChange('node')
@@ -1324,6 +1402,49 @@ export function VectorCanvas({
       onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
       setSnapMatches(snapped.matches)
       showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)} · Δ ${round(delta.x)}, ${round(delta.y)}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'corner') {
+      const radius = cornerRadiusAt(active.element, active.corner, at)
+      onUpdate(active.element.id, cornerRadiusPatch(active.element, active.corner, radius, active.alone), false)
+      showHud(`${round(radius)} px${active.alone ? ' · one corner' : ''}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'gradient') {
+      const paint = fillsOf(active.element)[active.index]
+      if (!paint) return
+      const local = normalizedPoint(active.element, at)
+      if (paint.type === 'radial') {
+        const circle = gradientCircle(paint)
+        if (active.handle === 'center') patchFill(active.element, active.index, radialPatch(local, circle.radius))
+        else patchFill(active.element, active.index, radialPatch(circle.center, Math.hypot(local.x - circle.center.x, local.y - circle.center.y)))
+        showHud(active.handle === 'center' ? 'Gradient centre' : `${Math.round(gradientCircle(paint).radius * 100)}%`, event.nativeEvent)
+        return
+      }
+      const line = gradientLine(paint)
+      if (active.handle === 'from') patchFill(active.element, active.index, linearPatch(local, line.to))
+      else if (active.handle === 'to') patchFill(active.element, active.index, linearPatch(line.from, local))
+      else {
+        const hit = projectOnLine(line.from, line.to, local)
+        const stops = paint.stops ?? []
+        const away = hit.distance * Math.min(active.element.width, active.element.height) * zoom > STOP_DROP_PX
+        setDroppingStop(away && stops.length > 2)
+        const moved = moveStop(stops, active.stop, hit.t)
+        active.stop = moved.index
+        patchFill(active.element, active.index, { stops: moved.stops })
+        showHud(away && stops.length > 2 ? 'Release to remove' : `${Math.round(Math.min(1, Math.max(0, hit.t)) * 100)}%`, event.nativeEvent)
+      }
+      return
+    }
+    if (active.kind === 'image-place') {
+      const offset = active.paint.imageOffset ?? { x: 0, y: 0 }
+      patchFill(active.element, active.index, {
+        imageOffset: {
+          x: offset.x + (at.x - active.start.x) / Math.max(1, active.element.width),
+          y: offset.y + (at.y - active.start.y) / Math.max(1, active.element.height),
+        },
+      })
+      showHud('Place the image', event.nativeEvent)
       return
     }
     if (active.kind === 'shape') {
@@ -1629,6 +1750,37 @@ export function VectorCanvas({
     return null
   })()
 
+  /** The rounded box whose corners can be pulled: a plain rectangle, selected on its own. */
+  const cornerTarget = showHandles && !cropping && selectedElements.length === 1 && selected && selected.kind === 'rectangle' && !selected.network && !selected.locked ? selected : null
+
+  /** The gradient being shown on the canvas: the topmost visible fill of a lone selection. */
+  const gradientTarget = (() => {
+    if (!showHandles || cropping || selectedElements.length !== 1 || !selected || selected.locked) return null
+    const paints = fillsOf(selected)
+    for (let index = paints.length - 1; index >= 0; index -= 1) {
+      const paint = paints[index]!
+      if (!paint.visible || paint.opacity <= 0) continue
+      if (paint.type === 'linear' || paint.type === 'radial') return { element: selected, index, paint }
+      return null
+    }
+    return null
+  })()
+
+  /** The image fill being placed, once "Edit image" has been opened on it. */
+  const imagePlacing = (() => {
+    if (!imagePlaceId) return null
+    const element = elements.find((item) => item.id === imagePlaceId && !item.locked)
+    if (!element) return null
+    const paints = fillsOf(element)
+    for (let index = paints.length - 1; index >= 0; index -= 1) {
+      const paint = paints[index]!
+      if (paint.visible && paint.type === 'image' && paint.image) return { element, index, paint }
+    }
+    return null
+  })()
+
+  placingRef.current = !!imagePlacing
+
   /** The primitive whose live shape can be pulled about: only one, only while it is still a primitive. */
   const shapeTarget = showHandles && !cropping && selectedElements.length === 1 && selected && !selected.network && !selected.locked
     && (selected.kind === 'polygon' || selected.kind === 'ellipse') ? selected : null
@@ -1817,8 +1969,32 @@ export function VectorCanvas({
               onRotate={(event) => startRotate(event, null, selectedLeaves)}
             />
           ) : null}
-          {/* Above the box handles: a shape handle sits on the same spot and must win the click. */}
+          {/* Above the box handles: these sit on the same spots and must win the click. */}
           {shapeTarget ? <ShapeHandles element={shapeTarget} zoom={zoom} coarse={coarse} onStart={startShapeHandle} /> : null}
+          {cornerTarget ? <CornerHandles element={cornerTarget} zoom={zoom} coarse={coarse} onStart={startCorner} /> : null}
+          {gradientTarget ? (
+            <GradientOverlay
+              element={gradientTarget.element}
+              index={gradientTarget.index}
+              paint={gradientTarget.paint}
+              zoom={zoom}
+              coarse={coarse}
+              dropping={droppingStop}
+              onStart={startGradient}
+              onAddStop={addGradientStop}
+            />
+          ) : null}
+          {imagePlacing ? (
+            <rect
+              className="vector-image-place"
+              x={imagePlacing.element.x}
+              y={imagePlacing.element.y}
+              width={imagePlacing.element.width}
+              height={imagePlacing.element.height}
+              transform={`rotate(${imagePlacing.element.rotation} ${elementCenter(imagePlacing.element).x} ${elementCenter(imagePlacing.element).y})`}
+              onPointerDown={(event) => startImagePlace(event, imagePlacing.element, imagePlacing.index, imagePlacing.paint)}
+            />
+          ) : null}
           {tool === 'select' && selectedElements.length > 1 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} thin />) : null}
           {penTarget ? worldNetwork(penTarget).nodes.map((node) => (
             <circle key={node.id} className="vector-pen__endpoint" cx={node.point.x} cy={node.point.y} r={4 / zoom} />
@@ -2217,6 +2393,110 @@ function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>
   )
 }
 
+type GradientHandle = 'from' | 'to' | 'center' | 'radius' | 'stop'
+
+/** Corner rounding pulled straight on the shape: one disc per corner, ⌥ for a single one. */
+function CornerHandles({ element, zoom, coarse, onStart }: {
+  element: VectorElement
+  zoom: number
+  coarse: boolean
+  onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, corner: CornerName) => void
+}) {
+  const hit = (coarse ? 22 : 16) / zoom
+  return (
+    <g className="vector-corner-handles" aria-hidden="true">
+      {CORNERS.map((corner) => {
+        const at = cornerHandlePoint(element, corner, zoom)
+        return (
+          <g key={corner}>
+            <circle className="vector-corner-handle__hit" data-vector-corner={corner} cx={at.x} cy={at.y} r={hit / 2} onPointerDown={(event) => onStart(event, element, corner)}>
+              <title>Corner radius</title>
+            </circle>
+            <circle className="vector-corner-handle" cx={at.x} cy={at.y} r={3 / zoom} />
+          </g>
+        )
+      })}
+    </g>
+  )
+}
+
+/** The gradient itself, laid over the shape: ends, stops, and the ramp between them. */
+function GradientOverlay({ element, index, paint, zoom, coarse, dropping, onStart, onAddStop }: {
+  element: VectorElement
+  index: number
+  paint: VectorPaint
+  zoom: number
+  coarse: boolean
+  dropping: boolean
+  onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number, handle: GradientHandle, stop: number) => void
+  onAddStop: (event: ReactPointerEvent<SVGElement>, element: VectorElement, index: number) => void
+}) {
+  const hit = (coarse ? 22 : 16) / zoom
+  const at = (normalized: Point) => worldFromNormalized(element, normalized)
+  const stops = paint.stops ?? []
+  if (paint.type === 'radial') {
+    const circle = gradientCircle(paint)
+    const center = at(circle.center)
+    const edge = at({ x: circle.center.x + circle.radius, y: circle.center.y })
+    return (
+      <g className="vector-gradient" aria-hidden="true">
+        <line className="vector-gradient__line" x1={center.x} y1={center.y} x2={edge.x} y2={edge.y} />
+        {[{ point: center, handle: 'center' as const }, { point: edge, handle: 'radius' as const }].map((item) => (
+          <g key={item.handle}>
+            <circle className="vector-gradient__hit" data-vector-gradient={item.handle} cx={item.point.x} cy={item.point.y} r={hit / 2} onPointerDown={(event) => onStart(event, element, index, item.handle, -1)} />
+            <circle className="vector-gradient__end" cx={item.point.x} cy={item.point.y} r={4 / zoom} />
+          </g>
+        ))}
+      </g>
+    )
+  }
+  const line = gradientLine(paint)
+  const from = at(line.from)
+  const to = at(line.to)
+  return (
+    <g className="vector-gradient" data-dropping={dropping || undefined} aria-hidden="true">
+      {/* The ramp itself is a target: pressing it drops a stop there and drags it straight away. */}
+      <line
+        className="vector-gradient__ramp"
+        data-vector-gradient="ramp"
+        x1={from.x}
+        y1={from.y}
+        x2={to.x}
+        y2={to.y}
+        strokeWidth={hit / 2}
+        onPointerDown={(event) => onAddStop(event, element, index)}
+      />
+      <line className="vector-gradient__line" x1={from.x} y1={from.y} x2={to.x} y2={to.y} />
+      {stops.map((stop, position) => {
+        const spot = at(pointAt(line.from, line.to, stop.t))
+        return (
+          <g key={position}>
+            <circle className="vector-gradient__hit" data-vector-gradient={`stop-${position}`} cx={spot.x} cy={spot.y} r={hit / 2} onPointerDown={(event) => onStart(event, element, index, 'stop', position)} />
+            <circle className="vector-gradient__stop" cx={spot.x} cy={spot.y} r={4 / zoom} style={{ fill: stop.color }} />
+          </g>
+        )
+      })}
+      {[{ point: from, handle: 'from' as const }, { point: to, handle: 'to' as const }].map((item) => (
+        <g key={item.handle}>
+          <circle className="vector-gradient__hit" data-vector-gradient={item.handle} cx={item.point.x} cy={item.point.y} r={hit / 2} onPointerDown={(event) => onStart(event, element, index, item.handle, -1)} />
+          <rect className="vector-gradient__end" x={item.point.x - 4 / zoom} y={item.point.y - 4 / zoom} width={8 / zoom} height={8 / zoom} />
+        </g>
+      ))}
+    </g>
+  )
+}
+
+/** A world point as a fraction of an element's box, rotation undone. */
+function normalizedPoint(element: VectorElement, at: Point): Point {
+  const local = localPoint(element, at)
+  return { x: (local.x - element.x) / Math.max(1e-6, element.width), y: (local.y - element.y) / Math.max(1e-6, element.height) }
+}
+
+/** The reverse: a fraction of the box back to a world point, rotation applied. */
+function worldFromNormalized(element: VectorElement, normalized: Point): Point {
+  return shapePoint(element, normalized)
+}
+
 /** Whether an element's box, generously padded for rotation and stroke, meets the visible area. */
 function withinView(element: VectorElement, view: Bounds | null): boolean {
   if (!view) return true
@@ -2235,12 +2515,14 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
           case 'linearGradient':
             return <linearGradient key={def.id} id={def.id} x1={def.x1} y1={def.y1} x2={def.x2} y2={def.y2}>{def.stops.map((stop, index) => <stop key={index} offset={`${stop.t * 100}%`} stopColor={stop.color} />)}</linearGradient>
           case 'radialGradient':
-            return <radialGradient key={def.id} id={def.id}>{def.stops.map((stop, index) => <stop key={index} offset={`${stop.t * 100}%`} stopColor={stop.color} />)}</radialGradient>
+            return <radialGradient key={def.id} id={def.id} cx={def.cx} cy={def.cy} r={def.r}>{def.stops.map((stop, index) => <stop key={index} offset={`${stop.t * 100}%`} stopColor={stop.color} />)}</radialGradient>
           case 'pattern': {
-            const tile = def.mode === 'tile'
-            const size = tile ? Math.max(1, Math.min(def.width, def.height) / 2) : def.width
-            const height = tile ? size : def.height
-            return <pattern key={def.id} id={def.id} patternUnits="userSpaceOnUse" x={def.x} y={def.y} width={size} height={height}><image href={def.image} x={0} y={0} width={size} height={height} preserveAspectRatio={def.mode === 'fit' ? 'xMidYMid meet' : def.mode === 'fill' ? 'xMidYMid slice' : 'none'} /></pattern>
+            const placed = patternPlacement(def)
+            return (
+              <pattern key={def.id} id={def.id} patternUnits="userSpaceOnUse" x={def.x} y={def.y} width={placed.tileWidth} height={placed.tileHeight}>
+                <image href={def.image} x={placed.x} y={placed.y} width={placed.width} height={placed.height} preserveAspectRatio={placed.aspect} />
+              </pattern>
+            )
           }
           case 'clipPath':
             return <clipPath key={def.id} id={def.id}><path d={def.d} clipRule="evenodd" /></clipPath>

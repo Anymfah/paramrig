@@ -1,3 +1,4 @@
+import { sanitizePoint } from '@/vector/gradient'
 import type { VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
 
 export const MAX_PAINTS = 8
@@ -69,6 +70,11 @@ export function sanitizePaints(value: unknown): VectorPaint[] | undefined {
       if (typeof source.image !== 'string' || !source.image.startsWith('data:image/') || source.image.length > MAX_IMAGE_BYTES * 1.4) continue
       paint.image = source.image
       paint.imageMode = source.imageMode === 'fit' || source.imageMode === 'tile' ? source.imageMode : 'fill'
+      const offset = sanitizePoint(source.imageOffset)
+      if (offset) paint.imageOffset = offset
+      if (typeof source.imageScale === 'number' && Number.isFinite(source.imageScale) && source.imageScale > 0) {
+        paint.imageScale = Math.min(20, Math.max(0.05, source.imageScale))
+      }
     } else {
       const stops = Array.isArray(source.stops) ? source.stops.flatMap((stop) => {
         if (!stop || typeof stop !== 'object') return []
@@ -78,7 +84,19 @@ export function sanitizePaints(value: unknown): VectorPaint[] | undefined {
       }).sort((a, b) => a.t - b.t).slice(0, 8) : []
       if (stops.length < 2) continue
       paint.stops = stops
-      if (type === 'linear') paint.angle = typeof source.angle === 'number' && Number.isFinite(source.angle) ? ((source.angle % 360) + 360) % 360 : 0
+      if (type === 'linear') {
+        paint.angle = typeof source.angle === 'number' && Number.isFinite(source.angle) ? ((source.angle % 360) + 360) % 360 : 0
+        const from = sanitizePoint(source.from)
+        const to = sanitizePoint(source.to)
+        if (from && to) {
+          paint.from = from
+          paint.to = to
+        }
+      } else {
+        const center = sanitizePoint(source.center)
+        if (center) paint.center = center
+        if (typeof source.radius === 'number' && Number.isFinite(source.radius) && source.radius > 0) paint.radius = Math.min(4, source.radius)
+      }
     }
     paints.push(paint)
   }
