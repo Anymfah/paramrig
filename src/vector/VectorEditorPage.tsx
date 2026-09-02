@@ -38,6 +38,8 @@ import { countedLabel } from '@/vector/history'
 import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
+import { VectorTraceDialog } from '@/vector/VectorTraceDialog'
+import { tracedElements } from '@/vector/traceImage'
 import { brushFromElement } from '@/vector/brushes'
 import { patternFromElement } from '@/vector/patterns'
 import { summaryColor } from '@/vector/paints'
@@ -114,6 +116,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [shapeTool, setShapeTool] = useState<ShapeTool>('rectangle')
   /** The mesh knot the canvas has selected, so the inspector can offer its colour. */
   const [meshPoint, setMeshPoint] = useState<number | null>(null)
+  const [traceOpen, setTraceOpen] = useState(false)
   const [transformOpen, setTransformOpen] = useState(false)
   const [rotateCopiesOpen, setRotateCopiesOpen] = useState(false)
   /** ⌘⇧T reopens the dialog on the values it was last applied with. */
@@ -761,6 +764,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     )
   }
 
+  /** The picture "Trace image" would work on: a single image, unlocked. */
+  const traceable = selectedElements.length === 1 && selectedElements[0]?.kind === 'image' && !selectedElements[0].locked
+    ? selectedElements[0]
+    : null
+
   /** A text and an outline selected together are what "Attach to path" needs. */
   const attachable = (() => {
     if (selectedElements.length !== 2) return null
@@ -967,6 +975,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'trace-image', label: 'Trace image…', section: 'Object', disabled: !traceable, run: () => setTraceOpen(true) },
     { id: 'define-pattern', label: 'Define pattern from selection', section: 'Object', disabled: selectedIds.length < 2, run: () => {
       const doc = editor.document
       if (!doc || selectedIds.length < 2) return
@@ -1305,6 +1314,25 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       </div>
       <p className="visually-hidden" role="status" aria-live="polite" data-vector-announce>{announcement}</p>
       <VectorCommandPalette commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <VectorTraceDialog
+        image={traceable}
+        open={traceOpen && !!traceable}
+        onClose={() => setTraceOpen(false)}
+        onTrace={(layers, size, options) => {
+          if (!traceable) return
+          const traced = tracedElements(layers, traceable, size, options.smoothing)
+          if (traced.length === 0) return
+          // The picture stays, hidden under its own drawing: undo is one step, and it can come back.
+          editor.editDocument((state) => ({
+            ...state,
+            elements: [
+              ...state.elements.map((element) => element.id === traceable.id ? { ...element, visible: false } : element),
+              ...traced,
+            ],
+          }), true, countedLabel('Trace', traced.length, 'path'))
+          editor.setSelectedIds(traced.map((element) => element.id))
+        }}
+      />
       <VectorTransformDialog
         count={selectedIds.length}
         open={transformOpen && selectedIds.length > 0}

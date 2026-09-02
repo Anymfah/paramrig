@@ -84,6 +84,16 @@ export type VectorPaint = {
   imageScale?: number
 }
 
+/** How an image is turned into paths: one silhouette, or a stack of luminance bands. */
+export type VectorTraceOptions = {
+  mode: 'silhouette' | 'colors'
+  colors: number
+  threshold: number
+  smoothing: number
+  /** Loops smaller than this, in picture pixels, are dropped as noise. */
+  minArea: number
+}
+
 export type VectorFontSource = 'system' | 'google' | 'file'
 
 /**
