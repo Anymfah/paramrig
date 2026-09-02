@@ -68,7 +68,7 @@ export default run('chantier-d', async ({ page, check, helpers, shot }) => {
     await page.click('[data-action="export"]')
   })
   check('the export flattens it to a filled path and says so',
-    !!exported && exported.text.includes('Variable-width strokes are flattened') && !exported.text.includes('stroke-width="8"'),
+    !!exported && exported.text.includes('flattened to filled paths') && !exported.text.includes('stroke-width="8"'),
     exported ? exported.text.split('\n').find((line) => line.includes('flattened')) ?? 'no note' : 'no download')
   await page.keyboard.press('Escape')
   await page.waitForTimeout(200)
