@@ -8,6 +8,8 @@ import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
+import { envelopePath } from '@/vector/strokeProfile'
+import { resolveSelfIntersections } from '@/vector/booleans'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
 
 export type RenderDef =
@@ -122,6 +124,20 @@ export function outlinePathData(element: VectorElement): string {
   return localGeometry(element).strokeRuns.map(runPathData).join(' ')
 }
 
+/** Envelopes are expensive enough to keep: the key is the geometry and the profile together. */
+const outlineCache = createLruCache<string>(120)
+
+function profileOutline(runs: Run[], element: VectorElement): string {
+  const cap = element.strokeCap ?? 'butt'
+  const key = JSON.stringify([runs, element.strokeWidth, element.strokeProfile, cap])
+  const cached = outlineCache.get(key)
+  if (cached !== undefined) return cached
+  const raw = runs.map((run) => envelopePath(run, element.strokeWidth, element.strokeProfile, cap)).filter(Boolean).join(' ')
+  const cleaned = raw ? resolveSelfIntersections(raw) : ''
+  outlineCache.set(key, cleaned)
+  return cleaned
+}
+
 const MODEL_CACHE_SIZE = 240
 const modelCache = createLruCache<RenderModel>(MODEL_CACHE_SIZE)
 
@@ -189,7 +205,19 @@ function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
   }
 
   const strokes = strokesOf(element)
-  if (element.strokeWidth > 0 && strokes.length && d) {
+  // A profiled stroke is not a stroke at all once it is drawn: it is the shape the pen would
+  // sweep, filled with the stroke's own paint. It replaces the stroke layers entirely.
+  const profileD = element.strokeProfile && element.strokeWidth > 0 && strokes.length
+    ? profileOutline(geometry.strokeRuns, element)
+    : ''
+  if (profileD) {
+    strokes.forEach((paint, index) => {
+      if (!paint.visible || paint.opacity <= 0) return
+      const reference = paintReference(paint, `${key}-profile-${index}`, bounds, defs)
+      if (!reference) return
+      layers.push({ kind: 'fill', d: profileD, paint: reference, opacity: paint.opacity })
+    })
+  } else if (element.strokeWidth > 0 && strokes.length && d) {
     const align = element.strokeAlign ?? 'center'
     const width = align === 'center' || !fillD ? element.strokeWidth : element.strokeWidth * 2
     let clipPath: string | undefined

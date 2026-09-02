@@ -7,6 +7,7 @@ import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
 import { sanitizeAdjustments, sanitizeBlendMode, sanitizeEffects } from '@/vector/effects'
 import { sanitizeCrop } from '@/vector/crop'
+import { sanitizeStrokeProfile } from '@/vector/strokeProfile'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
@@ -215,7 +216,11 @@ export function serializeVectorMarkup(
   const paint = background
     ? `  <rect x="${round(viewBox.x)}" y="${round(viewBox.y)}" width="${width}" height="${height}" fill="${escapeXml(background)}"/>\n`
     : ''
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${round(viewBox.x)} ${round(viewBox.y)} ${width} ${height}" width="${width}" height="${height}">\n${defsMarkup}${paint}${body}${body ? '\n' : ''}</svg>\n`
+  // A profiled stroke has no SVG equivalent: it leaves as the shape it sweeps, and the file says so.
+  const flattened = elements.some((element) => element.strokeProfile)
+    ? '  <!-- Variable-width strokes are flattened to filled paths: SVG has no equivalent. -->\n'
+    : ''
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${round(viewBox.x)} ${round(viewBox.y)} ${width} ${height}" width="${width}" height="${height}">\n${flattened}${defsMarkup}${paint}${body}${body ? '\n' : ''}</svg>\n`
 }
 
 /** Markup for one element's paint layers plus the defs it needs; used by exports and thumbnails. */
@@ -292,7 +297,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
     }
     // Only a plain box or a whole ellipse takes the short export path.
     const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
-    const simple = !element.effects?.length && !element.blendMode && element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'polygon' && !sliced && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+    const simple = !element.effects?.length && !element.blendMode && !element.strokeProfile && element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'polygon' && !sliced && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
@@ -471,6 +476,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const cornerRadius = source.kind === 'rectangle' && !source.network ? sanitizeCornerRadius(source.cornerRadius) : undefined
   const network = source.kind === 'group' || source.kind === 'text' || source.kind === 'frame' || source.kind === 'image' ? null : sanitizeNetwork(source.network)
   if (source.kind === 'path' && !network) return null
+  const strokeProfile = sanitizeStrokeProfile(source.strokeProfile)
   const effects = sanitizeEffects(source.effects)
   const blendMode = sanitizeBlendMode(source.blendMode)
   const adjustments = sanitizeAdjustments(source.adjustments)
@@ -504,6 +510,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(cornerRadius !== undefined ? { cornerRadius } : {}),
     ...(typeof source.cornerSmoothing === 'number' && Number.isFinite(source.cornerSmoothing) && source.cornerSmoothing > 0 ? { cornerSmoothing: Math.min(1, source.cornerSmoothing) } : {}),
     ...(typeof source.parentId === 'string' && source.parentId ? { parentId: source.parentId } : {}),
+    ...(strokeProfile ? { strokeProfile } : {}),
     ...(effects ? { effects } : {}),
     ...(blendMode ? { blendMode } : {}),
     ...(source.kind === 'image' && adjustments ? { adjustments } : {}),

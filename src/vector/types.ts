@@ -125,6 +125,9 @@ export type VectorStyle = {
 export type VectorStrokeAlign = 'center' | 'inside' | 'outside'
 export type VectorStrokeCap = 'butt' | 'round' | 'square'
 export type VectorStrokeJoin = 'miter' | 'round' | 'bevel'
+/** Width along a stroke: `t` runs 0 to 1 over the whole chain, `width` multiplies `strokeWidth`. */
+export type VectorStrokeProfile = Array<{ t: number; width: number }>
+
 export type VectorArrowhead = 'none' | 'arrow' | 'triangle' | 'circle' | 'square' | 'bar'
 export type VectorStrokeSides = { top: boolean; right: boolean; bottom: boolean; left: boolean }
 
@@ -151,6 +154,8 @@ export type VectorElement = {
   strokeJoin?: VectorStrokeJoin
   /** Dash and gap lengths; absent means solid. */
   strokeDash?: [number, number]
+  /** Width along the stroke, at least two points. Absent means an even width. */
+  strokeProfile?: VectorStrokeProfile
   strokeArrowStart?: VectorArrowhead
   strokeArrowEnd?: VectorArrowhead
   /** Rectangles only: which sides carry the stroke. Absent means all. */

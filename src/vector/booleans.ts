@@ -90,6 +90,29 @@ function toResult(world: ReturnType<typeof fromPaperItem>): GeometryResult | nul
   return normalizeWorld(world)
 }
 
+/**
+ * Cleans a path that crosses itself, which is what a profiled stroke's envelope does wherever the
+ * chain turns sharply. Resolving the crossings and re-orienting the result turns the overlaps into
+ * one filled shape, instead of the holes the even-odd rule would punch there.
+ */
+export function resolveSelfIntersections(data: string): string {
+  if (!data) return data
+  setup()
+  const item = new paper.CompoundPath({ pathData: data, insert: false })
+  try {
+    // `resolveCrossings` exists on every path item at runtime; the shipped typings miss it.
+    const resolved = (item as unknown as { resolveCrossings: () => paper.PathItem }).resolveCrossings()
+    const oriented = resolved.reorient(true, true) ?? resolved
+    const cleaned = oriented.pathData
+    return cleaned || data
+  } catch {
+    // paper gives up on some degenerate input; the raw envelope still paints, just less cleanly.
+    return data
+  } finally {
+    item.remove()
+  }
+}
+
 /** Applies a boolean operation to elements in paint order (the bottom element is the base). */
 export function booleanOperation(operation: BooleanOperation, elements: VectorElement[]): GeometryResult | null {
   if (elements.length < 2) return null

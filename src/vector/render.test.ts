@@ -225,3 +225,43 @@ describe('shape primitives in the export', () => {
     expect(svg).toContain('<ellipse')
   })
 })
+
+describe('a stroke with a width profile', () => {
+  const path = {
+    ...createVectorElement('path', { x: 0, y: 0, width: 100, height: 0 }),
+    id: 'p1',
+    stroke: '#112233',
+    strokeWidth: 10,
+    network: {
+      nodes: [{ id: 'a', x: 0, y: 0.5 }, { id: 'b', x: 1, y: 0.5 }],
+      segments: [{ id: 's', a: 'a', b: 'b' }],
+    },
+  }
+
+  it('paints as a fill in the stroke colour, not as a stroke', () => {
+    const model = renderModel({ ...path, strokeProfile: [{ t: 0, width: 0 }, { t: 1, width: 1 }] }, 'profile')
+    const stroked = renderModel(path, 'plain')
+
+    expect(model.layers.every((layer) => layer.kind === 'fill')).toBe(true)
+    expect(model.layers[0]!.paint).toBe('#112233')
+    expect(stroked.layers.some((layer) => layer.kind === 'stroke')).toBe(true)
+  })
+
+  it('narrows where the profile narrows', () => {
+    // The outline starts at the tapered end, on the line itself, rather than half a width off it.
+    const tapered = renderModel({ ...path, strokeProfile: [{ t: 0, width: 0 }, { t: 1, width: 1 }] }, 'profile2')
+    const even = renderModel({ ...path, strokeProfile: [{ t: 0, width: 1 }, { t: 1, width: 1.0001 }] }, 'profile2b')
+    const startOf = (model: { layers: Array<{ d: string }> }) => model.layers[0]!.d.match(/^M(-?[\d.]+),(-?[\d.]+)/)!.slice(1).map(Number)
+
+    expect(startOf(tapered)[1]).toBeCloseTo(0.5, 1)
+    expect(Math.abs(startOf(even)[1]! - 0.5)).toBeCloseTo(5, 1)
+  })
+
+  it('exports as a filled path', () => {
+    const model = renderModel({ ...path, strokeProfile: [{ t: 0, width: 0.2 }, { t: 1, width: 1 }] }, 'profile3')
+    const markup = layersToSvg(model, path.id)
+
+    expect(markup).toContain('fill="#112233"')
+    expect(markup).not.toContain('stroke-width')
+  })
+})
