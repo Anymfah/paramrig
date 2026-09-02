@@ -308,6 +308,43 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   cursor: text;
 }
 .number-value[data-scrubbing] .number-value__input { cursor: ew-resize; user-select: none; }
+
+/*
+ * A measured field is its own track. At rest the level is a filet on the bottom edge; the
+ * full gauge only comes up under the pointer, so a column of them stays quiet to read.
+ * The box is the drag target, so the 32px rule holds without a thumb to enlarge.
+ */
+.number-value[data-bar] { position: relative; overflow: clip; }
+.number-value[data-bar] > * { position: relative; z-index: 1; }
+.number-value[data-bar]::before,
+.number-value[data-bar]::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  width: calc(var(--p, 0) * 100%);
+  z-index: 0;
+  pointer-events: none;
+}
+.number-value[data-bar]::before {
+  inset-block: 0;
+  background: var(--accent-subtle);
+  opacity: 0;
+  transition: opacity var(--duration-instant) var(--ease-out);
+}
+.number-value[data-bar]::after {
+  inset-block-end: 0;
+  height: 2px;
+  background: var(--text-muted);
+  transition: background-color var(--duration-instant) var(--ease-out);
+}
+.number-value[data-bar]:hover::before,
+.number-value[data-bar][data-scrubbing]::before,
+.number-value[data-bar]:has(:focus-visible)::before { opacity: 1; }
+.number-value[data-bar]:hover::after,
+.number-value[data-bar][data-scrubbing]::after,
+.number-value[data-bar]:has(:focus-visible)::after { background: var(--text-primary); }
+.number-value[data-bar][data-driven]::after { background: var(--text-secondary); }
+.number-value[data-bar][data-driven]::before { opacity: 0; }
 .number-value__unit {
   color: var(--text-muted);
   font-size: var(--text-xs);
@@ -1262,11 +1299,11 @@ a.menu__item:visited { color: var(--text-primary); }
   pointer-events: none;
   max-width: 280px;
   padding: var(--space-2) var(--space-3);
-  background: var(--surface-overlay);
+  background: var(--chip-bg);
   color: var(--text-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--elevation-overlay);
+  border: 1px solid var(--chip-border);
+  border-radius: var(--chip-radius);
+  box-shadow: var(--chip-shadow);
   font-size: var(--text-sm);
   line-height: 1.4;
   text-wrap: balance;

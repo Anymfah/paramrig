@@ -6,7 +6,7 @@
   --vector-snap: #e0968f;
   --vector-guide: #6fb8a6;
   --vector-guide-hover: #9ad6c6;
-  --vector-hud-bg: color-mix(in srgb, var(--surface-overlay) 96%, transparent);
+  --vector-hud-bg: var(--chip-bg);
   --vector-grid: color-mix(in srgb, var(--text-muted) 22%, transparent);
   --vector-layout-grid: color-mix(in srgb, var(--vector-guide) 26%, transparent);
   /* The tone the overlays are outlined against: the opposite of their own ink. */
@@ -720,22 +720,29 @@
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
-.vector-hud {
+/*
+ * The one floating surface of the canvas. The readout, the node tip and the selection bar all sit
+ * on it, so nothing on the canvas ever looks like a second kind of small box.
+ */
+.vector-chip {
   position: absolute;
   z-index: 4;
-  transform: translate(14px, 14px);
-  padding: 2px var(--space-2);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xs);
-  background: var(--vector-hud-bg);
+  border: 1px solid var(--chip-border);
+  border-radius: var(--chip-radius);
+  background: var(--chip-bg);
   color: var(--text-primary);
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
-  line-height: 1.6;
   white-space: nowrap;
-  box-shadow: var(--elevation-overlay);
-  pointer-events: none;
+  box-shadow: var(--chip-shadow);
+  -webkit-user-select: none;
   user-select: none;
+}
+.vector-hud {
+  transform: translate(14px, 14px);
+  padding: 2px var(--space-2);
+  line-height: 1.6;
+  pointer-events: none;
 }
 .vector-rulers[data-interactive] .vector-ruler { pointer-events: auto; }
 .vector-rulers[data-interactive] .vector-ruler--x { cursor: row-resize; }
@@ -758,7 +765,6 @@
   .vector-pen__close,
   .vector-hover,
   .vector-group-frame { stroke: Highlight; }
-  .vector-hud { border-color: CanvasText; }
 }
 
 @media (pointer: coarse) {
@@ -1650,19 +1656,63 @@
 }
 .vector-selection__resize-hit:hover ~ .vector-selection__handle { stroke-width: 2.25; }
 .vector-tip {
-  position: absolute;
-  z-index: 4;
   padding: 2px var(--space-2);
-  border-radius: var(--radius-xs);
-  background: var(--vector-hud-bg);
-  box-shadow: 0 0 0 1px var(--border-hairline);
   color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
   pointer-events: none;
-  -webkit-user-select: none;
-  user-select: none;
+}
+
+/*
+ * What you do to what you have, over the thing itself. It stands above the selection box, or under
+ * it when the top of the box has left the canvas, and steps aside for the whole of any gesture.
+ */
+.vector-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 36px;
+  padding-inline: var(--space-1);
+  z-index: 5;
+  animation: vector-bar-in var(--duration-instant) var(--ease-out) both;
+}
+.vector-selection-bar[data-placement='above'] { transform: translate(-50%, -100%); }
+.vector-selection-bar[data-placement='below'] { transform: translate(-50%, 0); }
+@keyframes vector-bar-in { from { opacity: 0; } }
+.vector-selection-bar .icon-btn,
+.vector-selection-bar__more {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+}
+.vector-selection-bar__more {
+  width: auto;
+  min-width: 32px;
+  padding-inline: var(--space-1);
+  display: inline-flex;
+  gap: 1px;
+}
+.vector-selection-bar__more svg:last-child { width: 10px; height: 10px; }
+.vector-selection-bar .icon-btn:hover,
+.vector-selection-bar__more:hover:not(:disabled) { color: var(--text-primary); background: var(--accent-subtle); }
+.vector-selection-bar .icon-btn:focus-visible,
+.vector-selection-bar__more:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.vector-selection-bar .icon-btn[aria-pressed='true'] { color: var(--text-primary); background: var(--surface-overlay); }
+.vector-selection-bar__more:disabled { color: var(--text-muted); opacity: 0.5; cursor: not-allowed; }
+.vector-selection-bar__menu { min-width: 12rem; }
+@media (pointer: coarse) {
+  .vector-selection-bar { height: 44px; }
+  .vector-selection-bar .icon-btn,
+  .vector-selection-bar__more { width: 40px; height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vector-selection-bar { animation: none; }
+}
+@media (forced-colors: active) {
+  .vector-chip { border-color: CanvasText; }
 }
 .vector-stage:fullscreen { background: var(--surface-preview); }
 

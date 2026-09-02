@@ -70,9 +70,11 @@ import { booleanLabel, BOOLEAN_OPERATIONS, maskPatch } from '@/vector/booleanGro
 import type { BooleanOperation } from '@/vector/booleans'
 import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, leafElements, transformLeaves } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
+import { VectorSelectionBar } from '@/vector/VectorSelectionBar'
+import { connectNodes, deleteNodes, toggleNodeSmooth, worldNetwork } from '@/vector/network'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
-import type { VectorElement, VectorFont, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
+import type { VectorElement, VectorFont, VectorNetwork, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 const ALIGN_KEYS: Record<string, AlignMode> = { KeyA: 'left', KeyH: 'centerX', KeyD: 'right', KeyW: 'top', KeyV: 'centerY', KeyS: 'bottom' }
@@ -988,6 +990,49 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const hasSelection = selectedIds.length > 0
   const paintReference = selectedElements.find((element) => element.kind !== 'group') ?? null
 
+  /** Gives every selected node handles, or takes them away, in one history entry. */
+  const shapeNodes = (mode: 'smooth' | 'corner') => {
+    const target = tool === 'node' && single && single.kind !== 'group' && single.kind !== 'text' && !single.locked ? single : null
+    if (!target || selectedNodeIds.length === 0) return
+    let current = target
+    for (const id of selectedNodeIds) {
+      const world = worldNetwork(current)
+      const node = world.nodes.find((item) => item.id === id)
+      if (!node) continue
+      const smooth = world.segments.some((segment) => (segment.a === id && segment.ah) || (segment.b === id && segment.bh))
+      if (smooth === (mode === 'smooth')) continue
+      current = { ...current, ...toggleNodeSmooth(current, world, id), kind: 'path' }
+    }
+    if (current === target) return
+    editor.updateElement(target.id, { ...current, kind: 'path' }, true, countedLabel(mode === 'smooth' ? 'Smooth' : 'Corner', selectedNodeIds.length, 'node'))
+  }
+
+  /** The one object whose nodes are open for editing, and the actions the node bar offers on them. */
+  const nodeTarget = tool === 'node' && single && single.kind !== 'group' && single.kind !== 'text' && !single.locked ? single : null
+  const nodeWorld = nodeTarget ? worldNetwork(nodeTarget) : null
+  const applyNodeEdit = (edit: { network: VectorNetwork; x: number; y: number; width: number; height: number } | null, label: string, selection?: string[]) => {
+    if (!nodeTarget || !edit) return
+    editor.updateElement(nodeTarget.id, { ...edit, kind: 'path' }, true, label)
+    if (selection) setSelectedNodeIds(selection)
+  }
+  const nodePair = selectedNodeIds.length === 2 ? selectedNodeIds : null
+  const nodeActions = {
+    canConnect: !!nodeWorld && !!nodePair && !nodeWorld.segments.some((segment) => (segment.a === nodePair[0] && segment.b === nodePair[1]) || (segment.a === nodePair[1] && segment.b === nodePair[0])),
+    canShape: !!nodeTarget && selectedNodeIds.length > 0,
+    canDelete: !!nodeTarget && selectedNodeIds.length > 0,
+    onConnect: () => {
+      if (!nodeTarget || !nodeWorld || !nodePair) return
+      applyNodeEdit(connectNodes(nodeTarget, nodeWorld, nodePair[0]!, nodePair[1]!), 'Connect nodes', [])
+    },
+    onScissors: () => chooseTool('scissors'),
+    onSmooth: () => shapeNodes('smooth'),
+    onCorner: () => shapeNodes('corner'),
+    onDeleteNodes: () => {
+      if (!nodeTarget || !nodeWorld) return
+      applyNodeEdit(deleteNodes(nodeTarget, nodeWorld, selectedNodeIds), countedLabel('Delete', selectedNodeIds.length, 'node'), [])
+    },
+  }
+
   const commands: VectorCommand[] = [
     { id: 'undo', label: 'Undo', section: 'Edit', shortcut: SHORTCUTS.undo, disabled: !editor.canUndo, run: editor.undo },
     { id: 'redo', label: 'Redo', section: 'Edit', shortcut: SHORTCUTS.redo, disabled: !editor.canRedo, run: editor.redo },
@@ -1134,6 +1179,26 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     ...menuItem('rename', <IconPencil />),
     ...menuItem('lock', allLocked ? <IconUnlock /> : <IconLock />),
     ...menuItem('hide', <IconEyeOff />, false),
+  ]
+
+  /** What the bar's ⋯ holds: the canvas menu minus the eight actions already on the bar. */
+  const barMenuItems: ContextMenuItem[] = [
+    ...menuItem('copy'),
+    ...menuItem('paste', undefined, false),
+    ...menuItem('duplicate', undefined, false),
+    ...menuItem('bring-forward'),
+    ...menuItem('send-backward', undefined, false),
+    ...menuItem('bring-to-front', undefined, false),
+    ...menuItem('send-to-back', undefined, false),
+    ...menuItem('combine'),
+    ...menuItem('flatten', undefined, false),
+    ...menuItem('outline-stroke', undefined, false),
+    ...menuItem('mask', undefined, false),
+    ...menuItem(single?.kind === 'text' ? 'edit-text' : 'edit-nodes', undefined, false),
+    ...menuItem('same-fill'),
+    ...menuItem('same-stroke', undefined, false),
+    ...menuItem('same-stroke-width', undefined, false),
+    ...menuItem('rename'),
   ]
 
   const selectFromLayers = (id: string, mode: 'replace' | 'toggle' | 'range') => {
@@ -1361,6 +1426,27 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onSample={finishCanvasPick}
           onMeshPointChange={setMeshPoint}
           onPlaceComponent={placeComponent}
+          overlay={(anchor) => anchor && (anchor.mode === 'nodes' ? !!nodeTarget : selectedIds.length > 0) ? (
+            <VectorSelectionBar
+              anchor={anchor}
+              actions={{
+                canUngroup,
+                canCombine: selectedElements.filter((element) => element.kind !== 'group').length > 1,
+                locked: allLocked,
+                hidden: selectedElements.length > 0 && selectedElements.every((element) => !element.visible),
+                onGroup: group,
+                onUngroup: ungroup,
+                onBoolean: (operation) => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
+                onFlip: (axis) => transformSelection((center) => flipAffine(axis, center), axis === 'x' ? 'Flip horizontal' : 'Flip vertical'),
+                onRotate90: () => transformSelection((center) => rotationAffine(90, center), 'Rotate 90°'),
+                onLock: toggleLock,
+                onHide: () => editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible: !selectedElements.every((item) => item.visible) } }))),
+                onDelete: () => editor.removeElements(selectedIds),
+                more: barMenuItems,
+              }}
+              nodeActions={nodeActions}
+            />
+          ) : null}
         />
         </ContextTarget>
         </ContextMenuRoot>

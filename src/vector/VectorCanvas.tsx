@@ -1,4 +1,4 @@
-import { createElement, Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { createElement, Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
@@ -15,6 +15,8 @@ import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
 import { MAX_ZOOM, MIN_ZOOM, measurementLabel, nextZoom, zoomAround, zoomToBox, type Measurement } from '@/vector/measure'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
+import { VectorChip } from '@/vector/VectorChip'
+import { selectionAnchorFor, type SelectionAnchor } from '@/vector/selectionAnchor'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
   cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, smoothSegments, toggleNodeSmooth,
@@ -145,6 +147,11 @@ type VectorCanvasProps = {
   onGestureStart: (label?: string) => void
   onGestureEnd: (label?: string) => void
   onGestureCancel: () => void
+  /**
+   * Draws whatever should float over the selection. The canvas works out where that is — and when
+   * it should not be there at all, which is during any gesture — and hands the point over.
+   */
+  overlay?: (anchor: SelectionAnchor | null) => ReactNode
 }
 
 /** What a modal G / R / S transform is called in the history. */
@@ -189,6 +196,7 @@ export function VectorCanvas({
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
+  overlay,
 }: VectorCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const instanceId = useId().replace(/:/g, '')
@@ -260,6 +268,8 @@ export function VectorCanvas({
   const [coarse, setCoarse] = useState(false)
   const [textEditId, setTextEditId] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
+  /** True from the moment a pointer goes down on the canvas until it comes up: the chips stand back. */
+  const [busy, setBusy] = useState(false)
   const [cropId, setCropId] = useState<string | null>(null)
   const [imagePlaceId, setImagePlaceId] = useState<string | null>(null)
   const [droppingStop, setDroppingStop] = useState(false)
@@ -2006,6 +2016,17 @@ export function VectorCanvas({
   }
   const editingWorld = editing ? worldNetwork(editing) : null
   const nodeBox = editing && editingWorld && selectedNodeIds.length > 1 ? nodeBoundsOf(editingWorld, selectedNodeIds) : null
+  const selectionAnchor = selectionAnchorFor({
+    tool,
+    busy: busy || panning || !!transformStatus || !!textEditId || !!cropId || dropping,
+    bounds: tool === 'node'
+      ? (editing ? nodeBox ?? nodeBoundsOf(editingWorld!, selectedNodeIds) ?? selectionBounds([editing]) : null)
+      : (selectedLeaves.length ? selectionBounds(selectedLeaves) : null),
+    viewport: viewportSize,
+    zoom,
+    pan,
+    page: { width: document.width, height: document.height },
+  })
 
   // Cropping owns the overlay: the ordinary resize handles would sit on top of the crop ones.
   const showHandles = (tool === 'select' || tool === 'scale') && selectedLeaves.length > 0 && !editing && !cropping
@@ -2121,6 +2142,7 @@ export function VectorCanvas({
       data-rulers={viewOptions.rulers || undefined}
       style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background, '--zoom': String(zoom) } as CSSProperties}
       onPointerDownCapture={(event) => {
+        if (!(event.target instanceof Element) || !event.target.closest('.vector-chip')) setBusy(true)
         if (event.button !== 1 && !(event.button === 0 && (spaceHeld.current || tool === 'hand'))) return
         event.preventDefault()
         event.stopPropagation()
@@ -2133,6 +2155,8 @@ export function VectorCanvas({
         if (!active || active.pointerId !== event.pointerId) return
         onPanChange({ x: active.origin.x + event.clientX - active.x, y: active.origin.y + event.clientY - active.y })
       }}
+      onPointerUpCapture={() => setBusy(false)}
+      onPointerCancelCapture={() => setBusy(false)}
       onPointerUp={(event) => {
         if (panDrag.current?.pointerId !== event.pointerId) return
         panDrag.current = null
@@ -2140,7 +2164,7 @@ export function VectorCanvas({
         try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* already released */ }
       }}
       onPointerCancel={() => { panDrag.current = null; setPanning(false) }}
-      onLostPointerCapture={() => { panDrag.current = null; setPanning(false) }}
+      onLostPointerCapture={() => { panDrag.current = null; setPanning(false); setBusy(false) }}
       onPointerLeave={() => { setHoveredId(null); if (tool === 'pen') setPenCursor(null) }}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes('application/x-paramrig-component')) {
@@ -2385,8 +2409,9 @@ export function VectorCanvas({
           onCancel={() => closeTextEditor(true)}
         />
       ) : null}
-      {nodeTip ? <div className="vector-tip" style={{ left: nodeTip.x, top: nodeTip.y }}>{nodeTip.label}</div> : null}
-      {hud ? <div className="vector-hud" role="status" aria-live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</div> : null}
+      {nodeTip ? <VectorChip className="vector-tip" style={{ left: nodeTip.x, top: nodeTip.y }}>{nodeTip.label}</VectorChip> : null}
+      {hud ? <VectorChip className="vector-hud" role="status" live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</VectorChip> : null}
+      {overlay?.(selectionAnchor) ?? null}
       {viewOptions.minimap ? (
         <Minimap
           document={document}

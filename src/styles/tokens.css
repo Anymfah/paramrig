@@ -104,6 +104,12 @@
   --tracking-display: -0.025em;
   --tracking-label: 0.08em;
 
+  /* The small floating box: tooltips, the canvas readout, the selection bar. One look, one place. */
+  --chip-bg: color-mix(in srgb, var(--surface-overlay) 96%, transparent);
+  --chip-border: var(--border-default);
+  --chip-radius: 6px;
+  --chip-shadow: var(--elevation-overlay);
+
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
