@@ -301,7 +301,7 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
                 else if (event.key === 'ArrowUp') onFocusRow(-1, event)
                 else if (event.key === 'ArrowLeft' && isContainer(element) && !row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
                 else if (event.key === 'ArrowRight' && isContainer(element) && row.collapsed) { event.preventDefault(); onToggleCollapsed(element.id) }
-                else if (event.key === 'F2') { event.preventDefault(); startRename() }
+                else if (event.key === 'F2' || event.key === 'Enter') { event.preventDefault(); startRename() }
                 else if ((event.key === 'Backspace' || event.key === 'Delete')) { event.preventDefault(); onRemove(selected ? selectedIds : [element.id]) }
               }}
             >

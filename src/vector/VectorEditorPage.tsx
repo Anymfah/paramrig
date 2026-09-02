@@ -4,6 +4,8 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { useRovingFocus } from '@/ui/useRovingFocus'
+import { nodeAnnouncement, selectionAnnouncement, toolAnnouncement } from '@/vector/announce'
 import { MAX_ZOOM, MIN_ZOOM, nextZoom } from '@/vector/measure'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
@@ -98,6 +100,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   /** The navigation tool the menu offers first: whichever was used last. */
+  const toolbarRef = useRef<HTMLDivElement>(null)
+  useRovingFocus(toolbarRef)
+  /** Read out to a screen reader: the selection, the nodes, the tool, the last history entry. */
+  const [announcement, setAnnouncement] = useState('')
   const [viewTool, setViewTool] = useState<ViewTool>('hand')
   /** Same idea for the shapes: the toolbar shows the last one drawn. */
   const [shapeTool, setShapeTool] = useState<ShapeTool>('rectangle')
@@ -545,6 +551,27 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         }
         return
       }
+      if (event.altKey && ['arrowleft', 'arrowright', 'arrowup', 'arrowdown'].includes(key) && current.selectedElements.length > 0) {
+        event.preventDefault()
+        const step = event.shiftKey ? 10 : 1
+        if (meta) {
+          // ⌥⌘ left and right turn the selection: a degree, or fifteen with ⇧.
+          const turn = (key === 'arrowright' ? 1 : key === 'arrowleft' ? -1 : 0) * (event.shiftKey ? 15 : 1)
+          if (turn) applyNumericTransform({ ...IDENTITY_TRANSFORM, rotation: turn })
+          return
+        }
+        // ⌥ resizes instead of moving.
+        const box = selectionBounds(leafElements(current.document?.elements ?? [], current.selectedIds))
+        if (box.width <= 0 || box.height <= 0) return
+        const dx = key === 'arrowleft' ? -step : key === 'arrowright' ? step : 0
+        const dy = key === 'arrowup' ? -step : key === 'arrowdown' ? step : 0
+        applyNumericTransform({
+          ...IDENTITY_TRANSFORM,
+          scaleX: (Math.max(1, box.width + dx) / box.width) * 100,
+          scaleY: (Math.max(1, box.height + dy) / box.height) * 100,
+        })
+        return
+      }
       if (meta) return
       if (key === 'tab') {
         // Only the canvas walks objects with Tab; everywhere else it still moves focus.
@@ -631,6 +658,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         const dx = key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0
         const dy = key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0
         const leaves = transformLeaves(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
+        if (leaves.length === 0) return
         current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })), true, countedLabel('Move', leaves.length))
       } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node' && tool !== 'bucket') {
         event.preventDefault()
@@ -644,7 +672,31 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
+  }, [tool, chooseTool, applyNumericTransform, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
+
+  /**
+   * One live region for the canvas, 300ms behind the action so a run of small changes is spoken
+   * once. What it says is whatever changed last: the selection, the nodes, the tool, or the entry
+   * that just went into the history.
+   */
+  const spoken = useRef({ tool, ids: '', nodes: 0, depth: 0, ready: false })
+  const pendingAnnounce = useRef(0)
+  useEffect(() => {
+    const ids = selectedIds.join(',')
+    const depth = editor.historyDepth
+    const previous = spoken.current
+    const label = editor.historySteps[editor.historySteps.length - 1]?.label
+    let message = ''
+    if (!previous.ready) message = ''
+    else if (previous.tool !== tool) message = toolAnnouncement(tool)
+    else if (previous.depth < depth && label) message = label
+    else if (previous.nodes !== selectedNodeIds.length && selectedNodeIds.length > 0) message = nodeAnnouncement(selectedNodeIds.length)
+    else if (previous.ids !== ids) message = selectionAnnouncement(document?.elements ?? [], selectedIds)
+    spoken.current = { tool, ids, nodes: selectedNodeIds.length, depth, ready: true }
+    if (!message) return
+    window.clearTimeout(pendingAnnounce.current)
+    pendingAnnounce.current = window.setTimeout(() => setAnnouncement(message), 300)
+  }, [tool, selectedIds, selectedNodeIds, editor.historyDepth, editor.historySteps, document])
 
   if (!document) {
     return (
@@ -992,7 +1044,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       }
     >
       <h1 className="visually-hidden">{document.name}</h1>
-      <div className="workspace-toolbar vector-toolbar" role="toolbar" aria-label="Vector tools">
+      <div ref={toolbarRef} className="workspace-toolbar vector-toolbar" role="toolbar" aria-label="Vector tools">
         <div className="workspace-toolbar__group">
           <VectorFileMenu
             file={file}
@@ -1147,6 +1199,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         </ContextTarget>
         </ContextMenuRoot>
       </div>
+      <p className="visually-hidden" role="status" aria-live="polite" data-vector-announce>{announcement}</p>
       <VectorCommandPalette commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <VectorTransformDialog
         count={selectedIds.length}

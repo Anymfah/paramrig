@@ -22,6 +22,21 @@
   --vector-guide: #2a8f78;
   --vector-guide-hover: #1d6f5c;
 }
+/*
+ * On the canvas the selection is not drawn against the chrome but against the artboard, and the
+ * artboard is whatever colour the document says — white as often as near-black. The light theme's
+ * carbon accent disappears on a dark page, so the canvas keeps a mid-tone that reads on both.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .vector-canvas {
+    --vector-selection: #1f8a72;
+    --vector-selection-fill: color-mix(in srgb, #1f8a72 14%, transparent);
+  }
+}
+:root[data-theme='light'] .vector-canvas {
+  --vector-selection: #1f8a72;
+  --vector-selection-fill: color-mix(in srgb, #1f8a72 14%, transparent);
+}
 
 .library-titlebar {
   display: flex;
@@ -1747,3 +1762,24 @@
 .vector-effect[data-hidden] { opacity: 0.55; }
 .vector-effect__head { display: flex; align-items: center; gap: var(--space-1); }
 .vector-effect__head .control { flex: 1 1 auto; min-width: 0; }
+
+/* Nothing in the editor moves for its own sake when the system asks for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .vector-canvas *,
+  .vector-inspector *,
+  .vector-layers *,
+  .vector-toolbar *,
+  .vector-modal,
+  .vector-modal__panel {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+@media (forced-colors: active) {
+  .vector-effect,
+  .vector-transform__field input,
+  .vector-ruler text { forced-color-adjust: none; color: CanvasText; }
+  .vector-ruler text { fill: CanvasText; stroke: Canvas; }
+  .vector-zoom-box { fill: transparent; }
+}
