@@ -1989,7 +1989,7 @@ export function VectorCanvas({
       data-outlines={viewOptions.outlines === 'off' ? undefined : viewOptions.outlines}
       data-pixel-preview={viewOptions.pixelPreview === 'off' ? undefined : viewOptions.pixelPreview}
       data-rulers={viewOptions.rulers || undefined}
-      style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background } as CSSProperties}
+      style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background, '--zoom': String(zoom) } as CSSProperties}
       onPointerDownCapture={(event) => {
         if (event.button !== 1 && !(event.button === 0 && (spaceHeld.current || tool === 'hand'))) return
         event.preventDefault()

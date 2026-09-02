@@ -9,6 +9,8 @@
   --vector-hud-bg: color-mix(in srgb, var(--surface-overlay) 96%, transparent);
   --vector-grid: color-mix(in srgb, var(--text-muted) 22%, transparent);
   --vector-layout-grid: color-mix(in srgb, var(--vector-guide) 26%, transparent);
+  /* The tone the overlays are outlined against: the opposite of their own ink. */
+  --vector-halo: rgb(9 11 9 / 0.85);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
@@ -37,6 +39,10 @@
   --vector-selection: #1f8a72;
   --vector-selection-fill: color-mix(in srgb, #1f8a72 14%, transparent);
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) { --vector-halo: rgb(247 250 249 / 0.92); }
+}
+:root[data-theme='light'] { --vector-halo: rgb(247 250 249 / 0.92); }
 
 .library-titlebar {
   display: flex;
@@ -1782,4 +1788,54 @@
   .vector-ruler text { forced-color-adjust: none; color: CanvasText; }
   .vector-ruler text { fill: CanvasText; stroke: Canvas; }
   .vector-zoom-box { fill: transparent; }
+}
+
+
+/*
+ * A two-tone edge on everything the editor draws over the artwork.
+ *
+ * The artboard is whatever colour the document says, and so is what the user paints on it: a
+ * single ink can always meet a background it disappears into. The thin lines — selection boxes,
+ * guides, snap lines, outlines, rulers — therefore carry a halo in the opposite tone, so one of
+ * the two edges always reads. It rides on the elements that only paint, never on the transparent
+ * hit layers, so nothing about the click behaviour changes, and its radius is divided by the zoom
+ * like every other screen-space measurement here: one pixel wide at 10% and at 1600%.
+ *
+ * The filled glyphs — handles, nodes, curve points, gradient stops — are left out on purpose.
+ * They are already two-tone by construction, a surface fill inside an ink stroke, so whichever of
+ * the two a background swallows, the other one shows. They are also the numerous ones: a filter
+ * each cost 4ms a frame on a path with 37 nodes, against nothing measurable for the lines.
+ */
+.vector-canvas { --vector-halo-radius: calc(1px / var(--zoom, 1)); }
+.vector-selection > rect,
+.vector-multi-selection > rect,
+.vector-node-box > rect,
+.vector-marquee,
+.vector-lasso,
+.vector-hover,
+.vector-group-frame,
+.vector-draft,
+.vector-axis-guide,
+.vector-smart-guide,
+.vector-guide__line,
+.vector-nodes__outline,
+.vector-nodes__control-line,
+.vector-pen__path,
+.vector-pencil__path,
+.vector-gradient__line,
+.vector-crop__frame,
+.vector-mask-outline,
+.vector-pivot__ring,
+.vector-pivot__arm,
+.vector-measure line,
+.vector-ruler line,
+.vector-zoom-box,
+.vector-rotation__arc {
+  filter:
+    drop-shadow(0 0 var(--vector-halo-radius) var(--vector-halo))
+    drop-shadow(0 0 var(--vector-halo-radius) var(--vector-halo));
+}
+/* The halo is the one filter that stays on during a drag: the snap lines are read while moving. */
+@media (forced-colors: active) {
+  .vector-canvas { --vector-halo: Canvas; }
 }
