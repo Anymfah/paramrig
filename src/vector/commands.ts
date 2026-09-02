@@ -45,6 +45,8 @@ export const SHORTCUTS = {
   saveAs: '⇧⌘S',
   open: '⌘O',
   palette: '⌘/',
+  panels: '⌘\\',
+  fullscreen: '⇧⌘F',
   opacity: '1 … 0',
   zoomReset: '⇧0',
   zoomFit: '⇧1',

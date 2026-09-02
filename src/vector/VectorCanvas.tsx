@@ -12,7 +12,7 @@ import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
-  bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
+  cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
   transformNodes, worldNetwork, type AbsNetwork, type AbsSegment,
 } from '@/vector/network'
 import { pencilNodes } from '@/vector/pencil'
@@ -157,6 +157,7 @@ export function VectorCanvas({
   const camera = useRef({ pan, zoom })
   const spaceHeld = useRef(false)
   const latestPointer = useRef<Point | null>(null)
+  const pointerClient = useRef<Point | null>(null)
   const documentRef = useRef(document)
   const toolRef = useRef(tool)
   const viewRef = useRef(viewOptions)
@@ -183,6 +184,11 @@ export function VectorCanvas({
   const [lassoPoints, setLassoPoints] = useState<Point[] | null>(null)
   const [pivot, setPivot] = useState<Point | null>(null)
   const [altDown, setAltDown] = useState(false)
+  const [metaDown, setMetaDown] = useState(false)
+  const [bending, setBending] = useState(false)
+  const [rotateArc, setRotateArc] = useState<{ center: Point; from: number; to: number; radius: number } | null>(null)
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [hoveredSegment, setHoveredSegment] = useState<string | null>(null)
   const [snapMatches, setSnapMatches] = useState<SnapMatch[]>([])
   const [hud, setHud] = useState<VectorHud | null>(null)
   const [hoveredId, setHoveredId] = useState<string | null>(null)
@@ -372,6 +378,11 @@ export function VectorCanvas({
     }
   }, [])
 
+  const clearOverlays = useCallback(() => {
+    setBending(false)
+    setRotateArc(null)
+  }, [])
+
   const clearInteraction = useCallback(() => {
     interaction.current = null
     setDraftBounds(null)
@@ -383,7 +394,8 @@ export function VectorCanvas({
     setDraftGuide(null)
     setPencilPoints(null)
     setLassoPoints(null)
-  }, [])
+    clearOverlays()
+  }, [clearOverlays])
 
   const cancelInteraction = useCallback(() => {
     const active = interaction.current
@@ -463,6 +475,7 @@ export function VectorCanvas({
         setSpaceDown(true)
       }
       if (event.key === 'Alt') setAltDown(true)
+      if (event.key === 'Meta' || event.key === 'Control') setMetaDown(true)
       if (editable || event.metaKey || event.ctrlKey) return
       const active = interaction.current
       const key = event.key.toLowerCase()
@@ -595,6 +608,7 @@ export function VectorCanvas({
     }
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === 'Alt') setAltDown(false)
+      if (event.key === 'Meta' || event.key === 'Control') setMetaDown(false)
       if (event.code !== 'Space') return
       spaceHeld.current = false
       setSpaceDown(false)
@@ -602,6 +616,7 @@ export function VectorCanvas({
     const onPointerMove = (event: PointerEvent) => {
       const current = point(event)
       latestPointer.current = current
+      pointerClient.current = localClient(event)
       const active = interaction.current
       if (active?.kind !== 'modal') return
       event.preventDefault()
@@ -638,6 +653,7 @@ export function VectorCanvas({
       spaceHeld.current = false
       setSpaceDown(false)
       setAltDown(false)
+      setMetaDown(false)
       finishModal('cancel')
       if (penDraftRef.current) commitPen()
     }
@@ -655,7 +671,7 @@ export function VectorCanvas({
       window.removeEventListener('pointerdown', onPointerDown, true)
       window.removeEventListener('blur', onBlur)
     }
-  }, [point, cancelInteraction, commitPen, showHud])
+  }, [point, localClient, cancelInteraction, commitPen, showHud])
 
   const beginMove = (event: ReactPointerEvent<Element>, ids: string[], toggleOnClick: string | null = null) => {
     const doc = documentRef.current
@@ -1314,6 +1330,10 @@ export function VectorCanvas({
         const patch = transformElement('rotate', null, active.single, active.start, at)
         if (event.shiftKey && typeof patch.rotation === 'number') patch.rotation = snapAngle(patch.rotation)
         onUpdate(active.single.id, patch, false)
+        const center = elementCenter(active.single)
+        const turned = ((patch.rotation ?? 0) - active.single.rotation) * Math.PI / 180
+        const from = Math.atan2(active.start.y - center.y, active.start.x - center.x)
+        setRotateArc({ center, from, to: from + turned, radius: Math.max(24 / zoom, Math.hypot(at.x - center.x, at.y - center.y) * 0.55) })
         showHud(`${round(patch.rotation ?? 0)}°`, event.nativeEvent)
       } else {
         let current = at
@@ -1326,8 +1346,10 @@ export function VectorCanvas({
         }
         const updates = transformElements('rotate', null, active.elements, active.start, current, active.center)
         onUpdateElements(updates, false)
-        const delta = Math.atan2(current.y - active.center.y, current.x - active.center.x) - Math.atan2(active.start.y - active.center.y, active.start.x - active.center.x)
-        showHud(`${round(normalizeDegrees(delta * 180 / Math.PI))}°`, event.nativeEvent)
+        const from = Math.atan2(active.start.y - active.center.y, active.start.x - active.center.x)
+        const to = Math.atan2(current.y - active.center.y, current.x - active.center.x)
+        setRotateArc({ center: active.center, from, to, radius: Math.max(24 / zoom, Math.hypot(current.x - active.center.x, current.y - active.center.y) * 0.55) })
+        showHud(`${round(normalizeDegrees((to - from) * 180 / Math.PI))}°`, event.nativeEvent)
       }
     }
   }
@@ -1482,6 +1504,7 @@ export function VectorCanvas({
       onGestureStart('Bend segment')
       onSelectNodes([])
       setSelectedSegment(segmentId)
+      setBending(true)
       interaction.current = { kind: 'bend', pointerId: event.pointerId, element: structuredClone(editing), world, segmentId, t: hit.t }
       setDirectCursor('move')
       svgRef.current?.setPointerCapture(event.pointerId)
@@ -1548,6 +1571,22 @@ export function VectorCanvas({
     }
   }, [viewportSize.width, viewportSize.height, zoom, pan.x, pan.y, document.width, document.height])
 
+  /** A light label for whatever the pointer is over in node mode: node number, or segment length. */
+  const nodeTip = (() => {
+    if (tool !== 'node' || !editing || !editingWorld || interaction.current || !pointerClient.current) return null
+    if (hoveredNode) {
+      const index = editingWorld.nodes.findIndex((node) => node.id === hoveredNode)
+      if (index < 0) return null
+      return { label: `Node ${index + 1}`, x: pointerClient.current.x + 14, y: pointerClient.current.y + 14 }
+    }
+    if (hoveredSegment) {
+      const segment = editingWorld.segments.find((item) => item.id === hoveredSegment)
+      if (!segment) return null
+      return { label: `${round(cubicLength(segmentCubic(editingWorld, segment)))} px`, x: pointerClient.current.x + 14, y: pointerClient.current.y + 14 }
+    }
+    return null
+  })()
+
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
   const penTarget = tool === 'pen' && !penDraft && selected && !isContainer(selected) && selected.kind !== 'text' && !selected.locked ? selected : null
 
@@ -1564,6 +1603,9 @@ export function VectorCanvas({
       data-direct={directCursor ? true : undefined}
       data-editing={editing ? true : undefined}
       data-pen-active={penDraft ? true : undefined}
+      data-pen-close={penCloseHint || undefined}
+      data-meta={metaDown || undefined}
+      data-bending={bending || undefined}
       data-outlines={viewOptions.outlines === 'off' ? undefined : viewOptions.outlines}
       data-pixel-preview={viewOptions.pixelPreview === 'off' ? undefined : viewOptions.pixelPreview}
       data-rulers={viewOptions.rulers || undefined}
@@ -1655,6 +1697,7 @@ export function VectorCanvas({
               onHover={setHoveredId}
             />
           </g>
+          {rotateArc ? <RotationArc arc={rotateArc} zoom={zoom} /> : null}
           {cropping ? <CropFrame element={cropping} zoom={zoom} coarse={coarse} onStart={startCrop} /> : null}
           {enteredGroup ? <GroupFrame element={enteredGroup} /> : null}
           {hoverOutline && !selectedIds.includes(hoverOutline.id) ? <HoverOutline element={hoverOutline} leaves={leafElements(elements, [hoverOutline.id])} /> : null}
@@ -1677,6 +1720,10 @@ export function VectorCanvas({
               selectedIds={selectedNodeIds}
               selectedSegmentId={selectedSegmentId}
               interactive={tool === 'node'}
+              hoveredNodeId={hoveredNode}
+              hoveredSegmentId={hoveredSegment}
+              onHoverNode={setHoveredNode}
+              onHoverSegment={setHoveredSegment}
               onNodePointerDown={onNodePointerDown}
               onSegmentPointerDown={onSegmentPointerDown}
             />
@@ -1771,6 +1818,7 @@ export function VectorCanvas({
           onCancel={() => closeTextEditor(true)}
         />
       ) : null}
+      {nodeTip ? <div className="vector-tip" style={{ left: nodeTip.x, top: nodeTip.y }}>{nodeTip.label}</div> : null}
       {hud ? <div className="vector-hud" role="status" aria-live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</div> : null}
       {viewOptions.minimap ? (
         <Minimap
@@ -2030,6 +2078,26 @@ function FrameLabel({ element, zoom, onPointerDown }: {
   )
 }
 
+/** The turn a rotation has made so far: an arc from where it started, with the angle beside it. */
+function RotationArc({ arc, zoom }: { arc: { center: Point; from: number; to: number; radius: number }; zoom: number }) {
+  const delta = arc.to - arc.from
+  const at = (angle: number) => ({ x: arc.center.x + Math.cos(angle) * arc.radius, y: arc.center.y + Math.sin(angle) * arc.radius })
+  const start = at(arc.from)
+  const end = at(arc.to)
+  const large = Math.abs(delta) > Math.PI ? 1 : 0
+  const sweep = delta > 0 ? 1 : 0
+  const label = at(arc.from + delta / 2)
+  const degrees = normalizeDegrees((delta * 180) / Math.PI)
+  return (
+    <g className="vector-rotation" aria-hidden="true">
+      <line className="vector-rotation__ray" x1={arc.center.x} y1={arc.center.y} x2={start.x} y2={start.y} />
+      <line className="vector-rotation__ray" x1={arc.center.x} y1={arc.center.y} x2={end.x} y2={end.y} />
+      <path className="vector-rotation__arc" d={`M ${start.x} ${start.y} A ${arc.radius} ${arc.radius} 0 ${large} ${sweep} ${end.x} ${end.y}`} />
+      <text className="vector-rotation__value" x={label.x} y={label.y} fontSize={11 / zoom} dy={-6 / zoom}>{round(degrees)}°</text>
+    </g>
+  )
+}
+
 /** Clip shape of a frame: its box, turned with it. */
 function FrameClip({ id, element }: { id: string; element: VectorElement }) {
   const model = renderModel(element, 'canvas')
@@ -2161,13 +2229,17 @@ function GuideLines({ guides, draft, selectedId, interactive, onPointerDown }: {
 }
 
 /** Node-edit overlay: every segment is selectable, every node draggable, handles on selected nodes. */
-function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, onNodePointerDown, onSegmentPointerDown }: {
+function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, interactive, hoveredNodeId, hoveredSegmentId, onHoverNode, onHoverSegment, onNodePointerDown, onSegmentPointerDown }: {
   element: VectorElement
   world: AbsNetwork
   zoom: number
   selectedIds: string[]
   selectedSegmentId: string | null
   interactive: boolean
+  hoveredNodeId: string | null
+  hoveredSegmentId: string | null
+  onHoverNode: (id: string | null) => void
+  onHoverSegment: (id: string | null) => void
   onNodePointerDown: (nodeId: string, handle: HandleRef | null, event: ReactPointerEvent<SVGElement>) => void
   onSegmentPointerDown: (segmentId: string, event: ReactPointerEvent<SVGElement>) => void
 }) {
@@ -2195,9 +2267,18 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
         const straight = !segment.ah && !segment.bh
         const d = straight ? `M ${cubic[0].x} ${cubic[0].y} L ${cubic[3].x} ${cubic[3].y}` : `M ${cubic[0].x} ${cubic[0].y} C ${cubic[1].x} ${cubic[1].y} ${cubic[2].x} ${cubic[2].y} ${cubic[3].x} ${cubic[3].y}`
         return (
-          <g key={segment.id} data-selected-segment={selectedSegmentId === segment.id || undefined}>
+          <g key={segment.id} data-selected-segment={selectedSegmentId === segment.id || undefined} data-hovered={hoveredSegmentId === segment.id || undefined}>
             <path className="vector-nodes__outline" d={d} />
-            {interactive ? <path className="vector-nodes__segment-hit" data-vector-segment={segment.id} d={d} onPointerDown={(event) => onSegmentPointerDown(segment.id, event)} /> : null}
+            {interactive ? (
+              <path
+                className="vector-nodes__segment-hit"
+                data-vector-segment={segment.id}
+                d={d}
+                onPointerEnter={() => onHoverSegment(segment.id)}
+                onPointerLeave={() => onHoverSegment(null)}
+                onPointerDown={(event) => onSegmentPointerDown(segment.id, event)}
+              />
+            ) : null}
           </g>
         )
       })}
@@ -2212,11 +2293,22 @@ function VectorNodes({ element, world, zoom, selectedIds, selectedSegmentId, int
         const incident = world.segments.filter((segment) => segment.a === node.id || segment.b === node.id)
         const smooth = incident.some((segment) => (segment.a === node.id && segment.ah) || (segment.b === node.id && segment.bh))
         return (
-          <g key={node.id}>
-            {interactive ? <circle className="vector-nodes__hit" data-vector-node={node.id} cx={node.point.x} cy={node.point.y} r={hitRadius} onPointerDown={(event) => onNodePointerDown(node.id, null, event)} /> : null}
+          <g key={node.id} data-hovered={hoveredNodeId === node.id || undefined}>
+            {interactive ? (
+              <circle
+                className="vector-nodes__hit"
+                data-vector-node={node.id}
+                cx={node.point.x}
+                cy={node.point.y}
+                r={hitRadius}
+                onPointerEnter={() => onHoverNode(node.id)}
+                onPointerLeave={() => onHoverNode(null)}
+                onPointerDown={(event) => onNodePointerDown(node.id, null, event)}
+              />
+            ) : null}
             {smooth
-              ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} cx={node.point.x} cy={node.point.y} r={pointRadius} />
-              : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} x={node.point.x - pointRadius} y={node.point.y - pointRadius} width={pointRadius * 2} height={pointRadius * 2} rx={0.75 / zoom} />}
+              ? <circle className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} data-hovered={hoveredNodeId === node.id || undefined} cx={node.point.x} cy={node.point.y} r={hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius} />
+              : <rect className="vector-nodes__point" data-selected={selectedSet.has(node.id) || undefined} data-hovered={hoveredNodeId === node.id || undefined} x={node.point.x - (hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius)} y={node.point.y - (hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius)} width={(hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius) * 2} height={(hoveredNodeId === node.id ? pointRadius * 1.5 : pointRadius) * 2} rx={0.75 / zoom} />}
           </g>
         )
       })}
@@ -2565,6 +2657,18 @@ function constrainAngle(origin: Point, point: Point): Point {
   const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
   const length = Math.hypot(dx, dy) * Math.cos(angle - snapped)
   return { x: round(origin.x + Math.cos(snapped) * length), y: round(origin.y + Math.sin(snapped) * length) }
+}
+
+/** Length of a cubic, sampled finely enough to read out. */
+function cubicLength(cubic: [Point, Point, Point, Point]): number {
+  let total = 0
+  let previous = cubic[0]
+  for (let step = 1; step <= 24; step += 1) {
+    const point = cubicAt(cubic, step / 24)
+    total += Math.hypot(point.x - previous.x, point.y - previous.y)
+    previous = point
+  }
+  return total
 }
 
 function normalizeDegrees(value: number): number {

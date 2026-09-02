@@ -22,6 +22,7 @@ import { outlineText } from '@/vector/textOutline'
 import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
 import { isFullCrop, resetCropBox } from '@/vector/crop'
+import { withShortcut } from '@/vector/commands'
 import { countedLabel, historyRows, type HistoryStep } from '@/vector/history'
 import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
@@ -303,7 +304,7 @@ export function VectorInspector({
               </div>
               <form className="vector-version-form" onSubmit={(event) => { event.preventDefault(); onSaveVersion(versionName); setVersionName('') }}>
                 <input className="vector-version-form__input" aria-label="Version name" placeholder="Version name" value={versionName} maxLength={80} onChange={(event) => setVersionName(event.currentTarget.value)} />
-                <Button variant="quiet" size="sm" type="submit">Save version</Button>
+                <Tooltip content="Keep a named copy of every object and guide"><Button variant="quiet" size="sm" type="submit">Save version</Button></Tooltip>
               </form>
               <ol className="vector-history" aria-label="History steps">
                 {historyRows(historySteps, historyIndex, document.versions ?? []).map((row) => (
@@ -412,21 +413,21 @@ export function VectorInspector({
                   <span className="vector-panel__meta">{combinable.length} shapes</span>
                 </div>
                 <div className="vector-panel__actions">
-                  <Button variant="quiet" size="sm" onClick={() => runBoolean('unite')}>Union</Button>
-                  <Button variant="quiet" size="sm" onClick={() => runBoolean('subtract')}>Subtract</Button>
-                  <Button variant="quiet" size="sm" onClick={() => runBoolean('intersect')}>Intersect</Button>
-                  <Button variant="quiet" size="sm" onClick={() => runBoolean('exclude')}>Exclude</Button>
+                  <Tooltip content="Merge the shapes into one"><Button variant="quiet" size="sm" onClick={() => runBoolean('unite')}>Union</Button></Tooltip>
+                  <Tooltip content="Cut the shapes above out of the bottom one"><Button variant="quiet" size="sm" onClick={() => runBoolean('subtract')}>Subtract</Button></Tooltip>
+                  <Tooltip content="Keep only what the shapes have in common"><Button variant="quiet" size="sm" onClick={() => runBoolean('intersect')}>Intersect</Button></Tooltip>
+                  <Tooltip content="Keep everything but the overlap"><Button variant="quiet" size="sm" onClick={() => runBoolean('exclude')}>Exclude</Button></Tooltip>
                 </div>
                 <div className="vector-panel__actions">
-                  <Button variant="quiet" size="sm" data-action="combine" onClick={combine}>Combine · ⌘E</Button>
-                  <Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button>
+                  <Tooltip content={withShortcut('Keep every sub-path in one object', 'combine')}><Button variant="quiet" size="sm" data-action="combine" onClick={combine}>Combine</Button></Tooltip>
+                  <Tooltip content="Unite the shapes into a single outline"><Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button></Tooltip>
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
               </section>
             ) : single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' && (single.strokeWidth > 0 || single.network) ? (
               <section className="vector-panel" aria-label="Geometry operations">
                 <div className="vector-panel__actions">
-                  {single.strokeWidth > 0 && single.stroke !== 'none' ? <Button variant="quiet" size="sm" data-action="outline-stroke" onClick={outline}>Outline stroke</Button> : null}
+                  {single.strokeWidth > 0 && single.stroke !== 'none' ? <Tooltip content="Turn the stroke into a filled shape"><Button variant="quiet" size="sm" data-action="outline-stroke" onClick={outline}>Outline stroke</Button></Tooltip> : null}
                   {single.network ? <Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button> : null}
                 </div>
               </section>
@@ -741,12 +742,12 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
       )}
       {tool === 'node' && canConnect ? (
         <div className="vector-panel__actions">
-          <Button variant="quiet" size="sm" data-action="join" onClick={() => applyEdit(connectNodes(element, world, pair![0]!, pair![1]!), [])}>Connect · ⌘J</Button>
+          <Tooltip content={withShortcut('Join the two selected nodes', 'join')}><Button variant="quiet" size="sm" data-action="join" onClick={() => applyEdit(connectNodes(element, world, pair![0]!, pair![1]!), [])}>Connect</Button></Tooltip>
         </div>
       ) : null}
       {groups.length > 1 && tool !== 'node' ? (
         <div className="vector-panel__actions">
-          <Button variant="quiet" size="sm" onClick={separate}>Separate parts</Button>
+          <Tooltip content="Split each disconnected part into its own object"><Button variant="quiet" size="sm" onClick={separate}>Separate parts</Button></Tooltip>
         </div>
       ) : null}
     </section>
@@ -782,7 +783,7 @@ function ImagePanel({ element, onUpdate, onCrop }: {
         onChange={(value) => onUpdate(element.id, { imageRendering: value === 'pixelated' ? 'pixelated' : undefined })}
       />
       <div className="vector-panel__actions">
-        <Button variant="quiet" size="sm" data-action="crop-image" onClick={() => onCrop?.(element.id)}>Crop</Button>
+        <Tooltip content="Crop the picture · double-click it on the canvas"><Button variant="quiet" size="sm" data-action="crop-image" onClick={() => onCrop?.(element.id)}>Crop</Button></Tooltip>
         {cropped ? (
           <Button
             variant="quiet"

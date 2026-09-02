@@ -4,8 +4,9 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -94,6 +95,33 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const elementClipboard = useRef<VectorElement[]>([])
   const opacityBuffer = useRef<OpacityBuffer | null>(null)
   const [sampler, setSampler] = useState<{ sample: CanvasSample; apply: (hex: string) => void } | null>(null)
+  const restorePanels = useRef<{ nav: boolean; inspector: boolean } | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+
+  /** ⌘\ clears the panels away from the canvas, and puts them back as they were. */
+  const togglePanels = useCallback(() => {
+    const prefs = readPrefs()
+    if (restorePanels.current) {
+      updatePrefs({ navCollapsed: restorePanels.current.nav, inspectorCollapsed: restorePanels.current.inspector })
+      restorePanels.current = null
+      return
+    }
+    restorePanels.current = { nav: prefs.navCollapsed, inspector: prefs.inspectorCollapsed }
+    updatePrefs({ navCollapsed: true, inspectorCollapsed: true })
+  }, [])
+
+  const toggleFullscreen = useCallback(() => {
+    const stage = window.document.getElementById('main')
+    if (!stage) return
+    if (window.document.fullscreenElement) void window.document.exitFullscreen()
+    else void stage.requestFullscreen?.().catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    const onChange = () => setFullscreen(!!window.document.fullscreenElement)
+    window.document.addEventListener('fullscreenchange', onChange)
+    return () => window.document.removeEventListener('fullscreenchange', onChange)
+  }, [])
   const lastLayerClick = useRef<string | null>(null)
   const editorRef = useRef(editor)
   editorRef.current = editor
@@ -354,6 +382,16 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         pasteToReplace()
         return
       }
+      if (meta && (key === '\\' || event.code === 'Backslash')) {
+        event.preventDefault()
+        togglePanels()
+        return
+      }
+      if (meta && event.shiftKey && key === 'f') {
+        event.preventDefault()
+        toggleFullscreen()
+        return
+      }
       if (meta && key === '/') {
         event.preventDefault()
         setPaletteOpen((open) => !open)
@@ -494,7 +532,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity])
+  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen])
 
   if (!document) {
     return (
@@ -676,6 +714,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     { id: 'save-as', label: 'Save as…', section: 'File', shortcut: SHORTCUTS.saveAs, run: () => void file.saveAs() },
     { id: 'import-svg', label: 'Import SVG…', section: 'File', run: () => importInput.current?.click() },
     { id: 'export', label: 'Export…', section: 'File', run: () => void runExport(exportSettings) },
+    { id: 'panels', label: restorePanels.current ? 'Show panels' : 'Hide panels', section: 'View', shortcut: SHORTCUTS.panels, run: togglePanels },
+    { id: 'fullscreen', label: fullscreen ? 'Leave full screen' : 'Full screen canvas', section: 'View', shortcut: SHORTCUTS.fullscreen, run: toggleFullscreen },
     { id: 'zoom-reset', label: 'Zoom to 100%', section: 'View', shortcut: SHORTCUTS.zoomReset, run: () => controller.current?.zoomTo(1) },
     { id: 'zoom-fit', label: 'Fit page', section: 'View', shortcut: SHORTCUTS.zoomFit, run: () => controller.current?.fit(null) },
     { id: 'zoom-selection', label: 'Fit selection', section: 'View', shortcut: SHORTCUTS.zoomSelection, disabled: !hasSelection, run: () => controller.current?.fit(selectionBounds(leafElements(document.elements, selectedIds)), 96) },
@@ -852,6 +892,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
               <IconButton label="Zoom in" disabled={zoom >= 8} onClick={() => setZoom((value) => steppedZoom(value, 1))}><IconPlus /></IconButton>
             </Tooltip>
           </div>
+          <Tooltip content={withShortcut(fullscreen ? 'Leave full screen' : 'Full screen', 'fullscreen')}>
+            <IconButton label={fullscreen ? 'Leave full screen' : 'Full screen canvas'} aria-pressed={fullscreen} onClick={toggleFullscreen}><IconExpand /></IconButton>
+          </Tooltip>
           <Tooltip content={withShortcut('Commands', 'palette')}>
             <IconButton label="Commands" onClick={() => setPaletteOpen(true)}><IconCommand /></IconButton>
           </Tooltip>

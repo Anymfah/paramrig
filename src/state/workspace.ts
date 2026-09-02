@@ -52,6 +52,11 @@ export function closeTab(rigId: string) {
   emit()
 }
 
+/** Current panel preferences, for callers that need to read them outside a render. */
+export function readPrefs(): PanelPrefs {
+  return store.prefs
+}
+
 export function updatePrefs(patch: Partial<PanelPrefs>) {
   store.prefs = { ...store.prefs, ...patch, version: 1 }
   savePrefs(store.prefs)
