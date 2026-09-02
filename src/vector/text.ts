@@ -68,11 +68,25 @@ export function faceOf(family: string): TextFace {
   return TEXT_FACES.find((face) => face.value === family) ?? TEXT_FACES[0]!
 }
 
+/**
+ * The CSS stack for a family. A family the app does not ship is one the document brought — a
+ * Google family or an imported file — so it is named directly, with a fallback behind it.
+ */
 export function fontStack(family: string): string {
-  return faceOf(family).stack
+  const face = TEXT_FACES.find((item) => item.value === family)
+  if (face) return face.stack
+  return `'${family.replace(/'/g, '')}', ui-sans-serif, sans-serif`
 }
 
-export function canOutline(family: string): boolean {
+/**
+ * Whether a family's glyph outlines can be read.
+ *
+ * The shipped face can, and so can an imported TrueType or OpenType file. A woff2 cannot: it is
+ * compressed with Brotli in a way opentype.js does not undo, and every Google Fonts file is one.
+ */
+export function canOutline(family: string, fonts: Array<{ family: string; source: string; format?: string }> = []): boolean {
+  const carried = fonts.find((font) => font.family === family)
+  if (carried) return carried.source === 'file' && carried.format !== 'woff2'
   return !!faceOf(family).outlineUrl
 }
 

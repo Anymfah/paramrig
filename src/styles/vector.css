@@ -448,6 +448,15 @@
   gap: var(--space-2);
 }
 .vector-field-grid .number-value { width: 100%; }
+/*
+ * A select keeps a comfortable width of its own, and the label beside it wants 5.5rem: together
+ * they do not fit half an inspector column. In a two-column row the label goes above instead.
+ */
+.vector-field-grid .control--select {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 4px;
+}
+.vector-field-grid .select-trigger { min-width: 0; }
 .vector-layers { user-select: none; }
 .vector-layers__list {
   display: flex;
@@ -1867,3 +1876,52 @@
 }
 .vector-brush__preview path { fill: var(--text-primary); }
 .vector-brush__actions { display: flex; justify-content: flex-start; margin-top: var(--space-2); }
+
+/* The font list: the app's faces, the document's own, and the Google families. */
+.vector-font { display: flex; align-items: center; gap: var(--space-2); }
+.vector-font__trigger {
+  flex: 1;
+  min-width: 0;
+  padding: 6px var(--space-2);
+  text-align: left;
+  color: var(--text-primary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vector-font__trigger:hover { border-color: var(--border-strong); }
+.vector-font__trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vector-font__popover { width: min(22rem, 90vw); display: flex; flex-direction: column; gap: var(--space-2); }
+.vector-font__list { overflow-y: auto; overscroll-behavior: contain; }
+.vector-font__row { display: flex; align-items: center; }
+.vector-font__heading {
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--ink-3, var(--text-muted));
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.vector-font__option {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.vector-font__option:hover { background: var(--surface-overlay); }
+.vector-font__option:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.vector-font__option[data-selected] { background: var(--surface-overlay); }
+.vector-font__name { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vector-font__note { flex: none; font-size: var(--text-xs); color: var(--text-muted); }
+.vector-font__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.vector-font__hint { font-size: var(--text-xs); color: var(--text-muted); }

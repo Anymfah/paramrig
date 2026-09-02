@@ -10,6 +10,7 @@ import { sanitizeCrop } from '@/vector/crop'
 import { sanitizeStrokeProfile } from '@/vector/strokeProfile'
 import { sanitizeBrushes, sanitizeBrushSettings } from '@/vector/brushes'
 import { sanitizeTextPath, syncTextPaths } from '@/vector/textPath'
+import { sanitizeFonts } from '@/vector/fonts'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
@@ -390,9 +391,12 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
   if (source.version !== 1 || typeof source.id !== 'string' || typeof source.name !== 'string') return null
   if (!finiteIn(source.width, 1, MAX_DOCUMENT_SIZE) || !finiteIn(source.height, 1, MAX_DOCUMENT_SIZE)) return null
   if (!Array.isArray(source.elements)) return null
+  const fonts = sanitizeFonts(source.fonts)
+  // A text may name a font the document brought with it, not only the ones the app ships.
+  const families = new Set((fonts ?? []).map((font) => font.family))
   const seen = new Set<string>()
   const elements = source.elements.flatMap((element) => {
-    const valid = sanitizeElement(element)
+    const valid = sanitizeElement(element, families)
     if (!valid || seen.has(valid.id)) return []
     seen.add(valid.id)
     return [valid]
@@ -411,6 +415,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
     ...(styles ? { styles } : {}),
     ...(sanitizeBrushes(source.brushes) ? { brushes: sanitizeBrushes(source.brushes) } : {}),
+    ...(fonts ? { fonts } : {}),
     ...(sanitizeColorList(source.swatches, MAX_SWATCHES) ? { swatches: sanitizeColorList(source.swatches, MAX_SWATCHES) } : {}),
     ...(sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) ? { recentColors: sanitizeColorList(source.recentColors, MAX_RECENT_COLORS) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
@@ -460,7 +465,7 @@ export function sanitizePaint(value: unknown): string | null {
   return null
 }
 
-function sanitizeElement(value: unknown): VectorElement | null {
+function sanitizeElement(value: unknown, families: Set<string> = new Set()): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
   const KINDS: VectorElementKind[] = ['rectangle', 'ellipse', 'path', 'group', 'text', 'frame', 'image', 'polygon', 'boolean']
@@ -522,7 +527,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(typeof source.effectStyleId === 'string' && source.effectStyleId ? { effectStyleId: source.effectStyleId } : {}),
     ...(typeof source.fillStyleId === 'string' && source.fillStyleId ? { fillStyleId: source.fillStyleId } : {}),
     ...(typeof source.strokeStyleId === 'string' && source.strokeStyleId ? { strokeStyleId: source.strokeStyleId } : {}),
-    ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
+    ...(source.kind === 'text' ? sanitizeTextProperties(source, families) : {}),
     ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
     ...(source.kind === 'image' ? sanitizeImageProperties(source) : {}),
     ...(source.kind === 'polygon' && !source.network ? polygonProperties(source) : {}),
@@ -532,8 +537,8 @@ function sanitizeElement(value: unknown): VectorElement | null {
   }
 }
 
-function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorElement> {
-  const known = TEXT_FACES.some((face) => face.value === source.fontFamily)
+function sanitizeTextProperties(source: Partial<VectorElement>, families: Set<string>): Partial<VectorElement> {
+  const known = TEXT_FACES.some((face) => face.value === source.fontFamily) || (!!source.fontFamily && families.has(source.fontFamily))
   const number = (value: unknown, min: number, max: number, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback
   return {

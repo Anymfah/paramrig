@@ -62,6 +62,21 @@ export type VectorPaint = {
   imageScale?: number
 }
 
+export type VectorFontSource = 'system' | 'google' | 'file'
+
+/**
+ * A font the document knows about. A file carries its own bytes so it travels with the document;
+ * a Google family is fetched on demand and embedded only when the file is exported.
+ */
+export type VectorFont = {
+  family: string
+  source: VectorFontSource
+  weights: number[]
+  /** Base64 of the font file, for an imported one. */
+  data?: string
+  format?: 'woff2' | 'ttf' | 'otf'
+}
+
 export type VectorTextAlign = 'left' | 'center' | 'right'
 
 /**
@@ -292,6 +307,8 @@ export type VectorDocument = {
   styles?: VectorStyle[]
   /** Brushes this document defines, on top of the ones that ship. */
   brushes?: VectorBrush[]
+  /** Fonts this document uses beyond the ones the app offers. */
+  fonts?: VectorFont[]
   /** Colours pinned to this document, and the last ones used. */
   swatches?: string[]
   recentColors?: string[]

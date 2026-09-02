@@ -1,8 +1,10 @@
 import { serializeVectorMarkup } from '@/vector/document'
 import { boundsWithEffects } from '@/vector/effects'
+import { fontFaceRule } from '@/vector/fonts'
+import { fontData } from '@/vector/fontLoader'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { descendantIds } from '@/vector/tree'
-import type { VectorDocument, VectorElement } from '@/vector/types'
+import type { VectorDocument, VectorElement, VectorFont } from '@/vector/types'
 
 export type ExportTargetKind = 'document' | 'frame' | 'selection'
 
@@ -75,18 +77,29 @@ export function rasterSize(bounds: Bounds, scale: number): { width: number; heig
   }
 }
 
-/** Inlines the shipped face so text keeps its shape once the SVG is rasterised or reopened. */
-export async function embedFonts(markup: string): Promise<string> {
-  if (!markup.includes('<text ') || !markup.includes('Public Sans')) return markup
-  try {
-    const response = await fetch('/fonts/PublicSans.woff2')
-    if (!response.ok) return markup
-    const buffer = await response.arrayBuffer()
-    const style = `<style>@font-face{font-family:'Public Sans';src:url(data:font/woff2;base64,${toBase64(buffer)}) format('woff2');font-weight:100 900;font-style:normal;}</style>`
-    return markup.replace(/(<svg[^>]*>)/, `$1\n  ${style}`)
-  } catch {
-    return markup
+/**
+ * Inlines the faces the markup actually uses, so text keeps its shape once the SVG is rasterised
+ * or reopened somewhere that has never heard of the font. The shipped face comes from the app; a
+ * document font comes from its own bytes, or from Google, fetched once and cached for the session.
+ */
+export async function embedFonts(markup: string, fonts: VectorFont[] = []): Promise<string> {
+  if (!markup.includes('<text ')) return markup
+  const rules: string[] = []
+  if (markup.includes('Public Sans')) {
+    try {
+      const response = await fetch('/fonts/PublicSans.woff2')
+      if (response.ok) rules.push(fontFaceRule('Public Sans', toBase64(await response.arrayBuffer()), 'woff2', [100, 900]))
+    } catch {
+      // The shipped face is unreachable; the file falls back to whatever the reader has.
+    }
   }
+  for (const font of fonts) {
+    if (!markup.includes(`'${font.family}'`) && !markup.includes(font.family)) continue
+    const data = await fontData(font, font.weights[0] ?? 400)
+    if (data) rules.push(fontFaceRule(font.family, data, font.format ?? 'woff2', font.weights))
+  }
+  if (rules.length === 0) return markup
+  return markup.replace(/(<svg[^>]*>)/, `$1\n  <style>${rules.join('')}</style>`)
 }
 
 /** Draws an SVG string into a canvas and returns the PNG bytes. */

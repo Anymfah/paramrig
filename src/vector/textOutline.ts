@@ -3,7 +3,8 @@ import { networkFromRuns, normalizeWorld, worldNetwork, type Run } from '@/vecto
 import { computeFaces, holeFaceKeys } from '@/vector/planar'
 import { canvasMeasure, faceOf, layoutText, textProperties } from '@/vector/text'
 import { pathLength, placeOnPath, runFromPathData } from '@/vector/textPath'
-import type { VectorElement, VectorNetwork, VectorPoint } from '@/vector/types'
+import type { VectorElement, VectorFont, VectorNetwork, VectorPoint } from '@/vector/types'
+import { fontBytes } from '@/vector/fontLoader'
 
 type OutlineResult = { x: number; y: number; width: number; height: number; network: VectorNetwork; regionsOff?: string[] }
 
@@ -19,14 +20,30 @@ type LoadedFont = {
   getAdvanceWidth: (text: string, size: number, options?: Record<string, unknown>) => number
 }
 
-const fonts = new Map<string, Promise<LoadedFont | null>>()
+const shipped = new Map<string, Promise<LoadedFont | null>>()
 
-/** Loads the font file the app ships for a family, or null when it has none. */
-export async function loadOutlineFont(family: string): Promise<LoadedFont | null> {
+/**
+ * The glyph source for a family: the file the app ships, the file the document carries, or the
+ * one Google serves. A system family has none of those, and "Outline text" stays out of reach.
+ */
+export async function loadOutlineFont(family: string, fonts: VectorFont[] = []): Promise<LoadedFont | null> {
+  const carried = fonts.find((font) => font.family === family)
+  if (carried) {
+    // opentype.js reads TrueType and OpenType, not the Brotli-compressed woff2 Google serves.
+    if (carried.source !== 'file' || carried.format === 'woff2') return null
+    const bytes = await fontBytes(carried, carried.weights[0] ?? 400)
+    if (!bytes) return null
+    try {
+      const opentype = await import('opentype.js')
+      return opentype.parse(bytes) as unknown as LoadedFont
+    } catch {
+      return null
+    }
+  }
   const url = faceOf(family).outlineUrl
   if (!url) return null
-  if (!fonts.has(url)) {
-    fonts.set(url, (async () => {
+  if (!shipped.has(url)) {
+    shipped.set(url, (async () => {
       try {
         const [opentype, response] = await Promise.all([import('opentype.js'), fetch(url)])
         if (!response.ok) return null
@@ -36,21 +53,21 @@ export async function loadOutlineFont(family: string): Promise<LoadedFont | null
       }
     })())
   }
-  return fonts.get(url)!
+  return shipped.get(url)!
 }
 
 /** Forgets loaded fonts, for tests. */
 export function resetOutlineFonts(): void {
-  fonts.clear()
+  shipped.clear()
 }
 
 /**
  * Converts a text element into path geometry by reading the shipped font's glyphs.
  * Returns null when the family has no file the app can read.
  */
-export async function outlineText(element: VectorElement): Promise<OutlineResult | null> {
+export async function outlineText(element: VectorElement, fonts: VectorFont[] = []): Promise<OutlineResult | null> {
   const properties = textProperties(element)
-  const font = await loadOutlineFont(properties.fontFamily)
+  const font = await loadOutlineFont(properties.fontFamily, fonts)
   if (!font) return null
   const layout = layoutText(properties, element.width, canvasMeasure)
   const runs: Run[] = []

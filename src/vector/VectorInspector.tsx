@@ -20,7 +20,7 @@ import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorElement } from '@/vector/document'
 import { FRAME_CUSTOM, FRAME_PRESETS, framePresetBounds, matchFramePreset } from '@/vector/frames'
-import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_FACES, TEXT_WEIGHTS } from '@/vector/text'
+import { canOutline, canvasMeasure, resizeTextPatch, textProperties, TEXT_WEIGHTS } from '@/vector/text'
 import { outlineText } from '@/vector/textOutline'
 import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
@@ -33,7 +33,8 @@ import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { scaleElementsToBounds } from '@/vector/transform'
 import { leafElements } from '@/vector/tree'
-import type { VectorBrush, VectorDocument, VectorElement, VectorFontFeatures, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
+import { VectorFontPicker } from '@/vector/VectorFontPicker'
+import type { VectorBrush, VectorDocument, VectorElement, VectorFont, VectorFontFeatures, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
 
 import type { DocumentPatch } from '@/vector/useVectorDocument'
 
@@ -77,6 +78,9 @@ type VectorInspectorProps = {
   onBooleanGroup?: (operation: BooleanOperation, ids: string[]) => void
   /** Turns a selected path into a brush the document keeps. */
   onDefineBrush?: (element: VectorElement) => void
+  /** Applies a font to the selection, loading and registering it with the document when needed. */
+  onPickFont?: (family: string, source: VectorFont['source'] | 'app') => void
+  onImportFont?: (font: VectorFont) => void
 }
 
 export function VectorInspector({
@@ -112,6 +116,8 @@ export function VectorInspector({
   onCropImage,
   onBooleanGroup,
   onDefineBrush,
+  onPickFont,
+  onImportFont,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -191,7 +197,7 @@ export function VectorInspector({
   const outlineTextElement = async () => {
     const target = single
     if (!target || target.kind !== 'text') return
-    const geometry = await outlineText(target)
+    const geometry = await outlineText(target, document.fonts ?? [])
     if (!geometry) return
     onUpdate(target.id, {
       ...geometry,
@@ -446,7 +452,15 @@ export function VectorInspector({
               <FramePanel element={single} onUpdate={onUpdate} onUpdateElements={onUpdateElements} elements={document.elements} />
             ) : null}
             {single && single.kind === 'text' ? (
-              <TextPanel element={single} onUpdate={onUpdate} onOutline={outlineTextElement} gesture={gesture} />
+              <TextPanel
+                element={single}
+                fonts={document.fonts ?? []}
+                onUpdate={onUpdate}
+                onOutline={outlineTextElement}
+                onPickFont={onPickFont}
+                onImportFont={onImportFont}
+                gesture={gesture}
+              />
             ) : null}
             {single && single.kind !== 'group' && single.kind !== 'text' && single.kind !== 'frame' && single.kind !== 'image' ? (
               <PathPanel element={single} tool={tool} selectedNodeIds={selectedNodeIds} onUpdate={onUpdate} onEditElements={onEditElements} onSelectIds={onSelectIds} onSelectNodes={onSelectNodes} gesture={gesture} />
@@ -1066,6 +1080,14 @@ function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }:
   )
 }
 
+/** Why a text cannot be outlined, in the words of what the user picked. */
+function outlineReason(family: string, fonts: VectorFont[]): string {
+  const carried = fonts.find((font) => font.family === family)
+  if (carried?.source === 'google') return `${family} arrives as a woff2, which cannot be read for outlines. Import the .ttf or .otf to outline it.`
+  if (carried?.format === 'woff2') return `${family} was imported as a woff2, which cannot be read for outlines. Import the .ttf or .otf instead.`
+  return `${family} is a system font: its glyph outlines are not available to read`
+}
+
 /** The features an element asks for once one of the switches moves. */
 function features(element: VectorElement, patch: VectorFontFeatures): VectorFontFeatures | undefined {
   const next = { kern: true, ...element.fontFeatures, ...patch }
@@ -1073,26 +1095,29 @@ function features(element: VectorElement, patch: VectorFontFeatures): VectorFont
   return entries.length ? Object.fromEntries(entries) as VectorFontFeatures : undefined
 }
 
-function TextPanel({ element, onUpdate, onOutline, gesture }: {
+function TextPanel({ element, fonts, onUpdate, onOutline, onPickFont, onImportFont, gesture }: {
   element: VectorElement
+  fonts: VectorFont[]
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onOutline: () => Promise<void>
+  onPickFont?: (family: string, source: VectorFont['source'] | 'app') => void
+  onImportFont?: (font: VectorFont) => void
   gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
   const properties = textProperties(element)
   const apply = (patch: Partial<VectorElement>, record?: boolean) => onUpdate(element.id, resizeTextPatch(element, patch, canvasMeasure), record, 'Change text style')
-  const outlineable = canOutline(properties.fontFamily)
+  const outlineable = canOutline(properties.fontFamily, fonts)
   return (
     <section className="vector-panel" aria-label="Text">
       <div className="vector-panel__row">
         <h2 className="vector-panel__title">Text</h2>
         <span className="vector-panel__meta">{properties.text.split('\n').length} {properties.text.split('\n').length === 1 ? 'line' : 'lines'}</span>
       </div>
-      <SelectField
-        label="Font"
+      <VectorFontPicker
         value={properties.fontFamily}
-        options={TEXT_FACES.map((face) => ({ value: face.value, label: face.label }))}
-        onChange={(fontFamily) => apply({ fontFamily })}
+        fonts={fonts}
+        onPick={(fontFamily, source) => onPickFont?.(fontFamily, source)}
+        onImport={(font) => onImportFont?.(font)}
       />
       <div className="vector-field-grid">
         <NumberField label="Size" value={properties.fontSize} min={1} max={2000} step={1} unit="px" variant="field" onChange={(fontSize) => apply({ fontSize })} {...gesture} />
@@ -1140,7 +1165,7 @@ function TextPanel({ element, onUpdate, onOutline, gesture }: {
         </>
       ) : null}
       <div className="vector-panel__actions">
-        <Tooltip content={outlineable ? 'Convert the letters into editable paths' : `${properties.fontFamily} is a system font, so its glyphs cannot be read`}>
+        <Tooltip content={outlineable ? 'Convert the letters into editable paths' : outlineReason(properties.fontFamily, fonts)}>
           <span>
             <Button variant="quiet" size="sm" data-action="outline-text" disabled={!outlineable} onClick={() => void onOutline()}>Outline text</Button>
           </span>

@@ -40,6 +40,7 @@ import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
 import { brushFromElement } from '@/vector/brushes'
 import { pathBounds, pathDataOf } from '@/vector/textPath'
+import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
@@ -62,7 +63,7 @@ import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, lea
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
-import type { VectorElement, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
+import type { VectorElement, VectorFont, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
 type SelectionTool = Extract<VectorTool, 'select' | 'transform'>
@@ -224,6 +225,37 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }
     current.endGesture(countedLabel('Rotate', angles.length, 'copy'))
     current.clearRepeat()
+  }, [])
+
+  /** Applies a font to the selected texts, registering it with the document when it is new. */
+  const pickFont = useCallback((family: string, source: 'system' | 'google' | 'file' | 'app') => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc) return
+    const texts = current.selectedElements.filter((element) => element.kind === 'text')
+    if (texts.length === 0) return
+    const known = (doc.fonts ?? []).find((font) => font.family === family)
+    const font: VectorFont | null = known ?? (source === 'google' ? { family, source: 'google', weights: [400] } : null)
+    current.editDocument((state) => ({
+      ...state,
+      ...(font && !(state.fonts ?? []).some((item) => item.family === family) ? { fonts: [...(state.fonts ?? []), font] } : {}),
+      elements: state.elements.map((element) => texts.some((text) => text.id === element.id) ? { ...element, fontFamily: family } : element),
+    }), true, `Set font ${family}`)
+    // The face has to reach the page before the canvas can draw with it.
+    if (font) void ensureFont(font)
+  }, [])
+
+  const importFont = useCallback((font: VectorFont) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc) return
+    const texts = current.selectedElements.filter((element) => element.kind === 'text')
+    current.editDocument((state) => ({
+      ...state,
+      fonts: [...(state.fonts ?? []).filter((item) => item.family !== font.family), font],
+      elements: state.elements.map((element) => texts.some((text) => text.id === element.id) ? { ...element, fontFamily: font.family } : element),
+    }), true, `Import font ${font.family}`)
+    void ensureFont(font)
   }, [])
 
   /** Turns the selected path into a brush the document keeps, and stamps the selection with it. */
@@ -695,6 +727,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
    * once. What it says is whatever changed last: the selection, the nodes, the tool, or the entry
    * that just went into the history.
    */
+  // The fonts a document carries have to be registered with the page before anything can be drawn.
+  useEffect(() => { void ensureFonts(document?.fonts) }, [document?.fonts])
+
   const spoken = useRef({ tool, ids: '', nodes: 0, depth: 0, ready: false })
   const pendingAnnounce = useRef(0)
   useEffect(() => {
@@ -746,7 +781,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       setExportError('There is nothing to export with those settings.')
       return
     }
-    const embedded = await embedFonts(markup)
+    const embedded = await embedFonts(markup, document.fonts ?? [])
     const name = exportFileName(document, settings, selectedFrame?.name)
     if (settings.format === 'svg') {
       downloadBlob(new Blob([embedded], { type: 'image/svg+xml' }), name)
@@ -1080,6 +1115,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onDeleteStyle={deleteStyle}
           onCropImage={(id) => controller.current?.cropImage(id)}
           onDefineBrush={defineBrush}
+          onPickFont={pickFont}
+          onImportFont={importFont}
           onBooleanGroup={booleanGroup}
         />
       }

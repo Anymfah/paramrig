@@ -31,7 +31,7 @@ export async function sampleDocument(document: VectorDocument): Promise<CanvasSa
   const bounds: Bounds = { x: 0, y: 0, width: document.width, height: document.height }
   const markup = exportMarkup(document, { target: 'document', format: 'png', scale: SAMPLE_SCALE, transparent: false }, { frameId: null, selectedIds: [] })
   if (!markup) return null
-  const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await embedFonts(markup))}`
+  const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await embedFonts(markup, document.fonts ?? []))}`
   const image = await new Promise<HTMLImageElement | null>((resolve) => {
     const element = new Image()
     element.onload = () => resolve(element)
