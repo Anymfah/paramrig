@@ -53,6 +53,7 @@ import {
   PanelRight,
   Pause,
   Pencil,
+  Pentagon,
   Play,
   Plus,
   Pipette,
@@ -115,7 +116,8 @@ export const IconFrame = glyph(Frame)
 export const IconCommand = glyph(Command)
 export const IconScreenPick = glyph(Crosshair)
 export const IconLine = glyph(LineGlyph)
-export const IconPolygon = glyph(Star)
+export const IconPolygon = glyph(Pentagon)
+export const IconStar = glyph(Star)
 export const IconScissors = glyph(Scissors)
 export const IconScale = glyph(Maximize)
 export const IconHand = glyph(Hand)

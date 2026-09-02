@@ -76,24 +76,58 @@
   box-shadow: inset 0 0 0 1px var(--border-hairline);
 }
 
+/*
+ * Four regions: the document menu, the six tool groups, the document's name, and the view. The
+ * tools are the part that gives way when the window narrows — they scroll on their own instead of
+ * pushing the name and the zoom off the end of the bar.
+ */
+.vector-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'start tools title end';
+  gap: var(--space-3);
+  column-gap: var(--space-3);
+}
 .vector-toolbar .workspace-toolbar__group + .workspace-toolbar__group { margin-inline-start: 0; }
-.vector-toolbar__tools { margin-inline-start: var(--space-4) !important; }
-.vector-toolbar__end { margin-inline-start: auto !important; }
-/* The tool row is the part that gives way when the window is narrow: it scrolls on its own
-   instead of pushing the zoom and the document name off the end of the bar. */
-.vector-toolbar > .workspace-toolbar__group { flex: 0 0 auto; }
-.vector-toolbar > .vector-toolbar__tools {
-  flex: 0 1 auto;
+.vector-toolbar__start { grid-area: start; }
+.vector-toolbar__tools {
+  grid-area: tools;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
+  gap: var(--space-2);
 }
 .vector-toolbar__tools::-webkit-scrollbar { display: none; }
 /* The buttons keep their size; it is the row that scrolls. */
 .vector-toolbar__tools > * { flex: 0 0 auto; }
+.vector-toolbar__title {
+  grid-area: title;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.vector-toolbar__title .vector-document-name {
+  width: auto;
+  max-width: 22ch;
+  text-align: center;
+}
+.vector-toolbar__end { grid-area: end; }
+.vector-file-button__mark { display: inline-flex; }
+.vector-file-button__mark svg { width: 16px; height: 14px; }
 .vector-toolbar__zoom { display: flex; align-items: center; gap: var(--space-1); }
+.vector-zoom-menu { min-width: 11rem; }
+.vector-zoom-menu__item { padding-inline: var(--space-2); }
+.vector-zoom-menu__label { flex: 1; }
+.vector-zoom-menu__item kbd {
+  margin-inline-start: var(--space-4);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+}
 .vector-tool[aria-pressed='true'] {
   color: var(--text-primary);
   background: var(--surface-overlay);
@@ -403,13 +437,6 @@
   pointer-events: none;
 }
 
-.vector-inspector__head {
-  display: flex;
-  align-items: center;
-  min-height: 48px;
-  padding-inline: var(--space-4);
-  border-bottom: 1px solid var(--border-default);
-}
 .vector-document-name {
   width: 100%;
   min-width: 0;
@@ -554,15 +581,15 @@
   .vector-toolbar {
     padding-inline: var(--space-2);
     gap: var(--space-2);
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-    touch-action: pan-x;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      'start tools end'
+      'title title title';
+    padding-block-end: var(--space-2);
   }
-  .vector-toolbar::-webkit-scrollbar { display: none; }
-  .vector-toolbar > .workspace-toolbar__group { flex: none; }
-  .vector-toolbar__tools { margin-inline-start: 0 !important; }
+  .vector-toolbar__tools { touch-action: pan-x; }
+  .vector-toolbar__title { justify-content: flex-start; }
+  .vector-toolbar__title .vector-document-name { text-align: start; }
   .vector-toolbar__zoom { display: none; }
 }
 
@@ -1034,8 +1061,6 @@
   user-select: text;
 }
 
-.vector-inspector__head { gap: var(--space-2); }
-.vector-inspector__head .vector-document-name { flex: 1 1 6rem; width: auto; }
 .vector-save-badge {
   display: inline-flex;
   align-items: center;

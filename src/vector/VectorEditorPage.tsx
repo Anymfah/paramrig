@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
@@ -9,7 +9,7 @@ import { nodeAnnouncement, selectionAnnouncement, toolAnnouncement } from '@/vec
 import { MAX_ZOOM, MIN_ZOOM, nextZoom } from '@/vector/measure'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconHand, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconRuler, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock, IconWidth, IconZoomTool } from '@/ui/icons'
+import { IconBringForward, IconCheck, IconChevronRight, IconCopy, IconEyeOff, IconFlipH, IconFlipV, IconGrid, IconGroup, IconLock, IconNode, IconPaste, IconPencil, IconRotate90, IconSendBackward, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -29,7 +29,6 @@ import {
   nextSiblingId,
   opacityFromDigit,
   SHORTCUTS,
-  withShortcut,
   type Appearance,
   type OpacityBuffer,
   type VectorCommand,
@@ -50,6 +49,9 @@ import { serializeVectorMarkup } from '@/vector/document'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
+import { ToolGroup, ZoomControl } from '@/vector/VectorToolbar'
+import { DEFAULT_ENTRIES, groupOfTool, TOOL_GROUPS, type ToolGroupId } from '@/vector/toolGroups'
+import { STAR_INNER_RATIO } from '@/vector/shapes'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
 import {
   applyStylePatch,
@@ -73,15 +75,14 @@ import { VectorLayers } from '@/vector/VectorLayers'
 import type { VectorElement, VectorFont, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
-type SelectionTool = Extract<VectorTool, 'select' | 'transform'>
-
 const ALIGN_KEYS: Record<string, AlignMode> = { KeyA: 'left', KeyH: 'centerX', KeyD: 'right', KeyW: 'top', KeyV: 'centerY', KeyS: 'bottom' }
 
 export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const navigate = useNavigate()
   const editor = useVectorDocument(manifest.id)
   const [tool, setTool] = useState<VectorTool>('select')
-  const [selectionTool, setSelectionTool] = useState<SelectionTool>('select')
+  /** Which tool each toolbar group is showing: the last one used in it. */
+  const [groupEntry, setGroupEntry] = useState<Record<ToolGroupId, string>>(DEFAULT_ENTRIES)
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [zoom, setZoom] = useState(() => {
     if (typeof window === 'undefined' || window.innerWidth >= 768) return 0.8
@@ -114,9 +115,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   useRovingFocus(toolbarRef)
   /** Read out to a screen reader: the selection, the nodes, the tool, the last history entry. */
   const [announcement, setAnnouncement] = useState('')
-  const [viewTool, setViewTool] = useState<ViewTool>('hand')
-  /** Same idea for the shapes: the toolbar shows the last one drawn. */
-  const [shapeTool, setShapeTool] = useState<ShapeTool>('rectangle')
   /** The mesh knot the canvas has selected, so the inspector can offer its colour. */
   const [meshPoint, setMeshPoint] = useState<number | null>(null)
   const [traceOpen, setTraceOpen] = useState(false)
@@ -168,11 +166,20 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const selectedIds = editor.selectedIds
   const selectedElements = editor.selectedElements
   const canUngroup = selectedElements.some((element) => element.kind === 'group')
+  /** Tools that need one editable object under them, and say so by going quiet without it. */
+  const nodeEditable = selectedIds.length === 1 && selectedElements[0] && selectedElements[0].kind !== 'group' && selectedElements[0].kind !== 'text' && !selectedElements[0].locked
+  const disabledEntries = [
+    ...(nodeEditable ? [] : ['node']),
+    ...(selectedIds.length === 1 ? [] : ['scissors', 'width']),
+  ]
   const allLocked = selectedElements.length > 0 && selectedElements.every((element) => element.locked)
 
-  const chooseTool = useCallback((next: VectorTool) => {
+  const chooseTool = useCallback((next: VectorTool, entryId?: string) => {
     setTool(next)
-    if (next === 'select' || next === 'transform') setSelectionTool(next)
+    const group = groupOfTool(next)
+    if (!group) return
+    const entry = entryId ?? TOOL_GROUPS.find((item) => item.id === group)!.tools.find((item) => item.tool === next)?.id
+    if (entry) setGroupEntry((current) => current[group] === entry ? current : { ...current, [group]: entry })
   }, [])
 
   const group = useCallback(() => {
@@ -686,7 +693,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       }
       if (event.altKey && event.code === 'KeyP') {
         event.preventDefault()
-        setShapeTool('polygon')
         chooseTool('polygon')
         return
       }
@@ -719,15 +725,15 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'p') chooseTool('pen')
       else if (key === 't') chooseTool('text')
       else if (key === 'f') chooseTool('frame')
-      else if (key === 'l') { setShapeTool('line'); chooseTool('line') }
+      else if (key === 'l') chooseTool('line')
       else if (key === 'c') chooseTool('scissors')
       else if (key === 'k') chooseTool('scale')
       else if (key === 'w' && event.shiftKey) chooseTool('width')
-      else if (key === 'h') { setViewTool('hand'); chooseTool('hand') }
-      else if (key === 'z' && !event.metaKey && !event.ctrlKey) { setViewTool('zoom'); chooseTool('zoom') }
-      else if (key === 'm' && event.shiftKey) { setViewTool('measure'); chooseTool('measure') }
-      else if (key === 'r') { setShapeTool('rectangle'); chooseTool('rectangle') }
-      else if (key === 'o') { setShapeTool('ellipse'); chooseTool('ellipse') }
+      else if (key === 'h') chooseTool('hand')
+      else if (key === 'z' && !event.metaKey && !event.ctrlKey) chooseTool('zoom')
+      else if (key === 'm' && event.shiftKey) chooseTool('measure')
+      else if (key === 'r') chooseTool('rectangle')
+      else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
         const selected = current.selected
         if (current.selectedIds.length === 1 && selected) {
@@ -1191,7 +1197,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           tool={tool}
           selectedElements={selectedElements}
           selectedNodeIds={selectedNodeIds}
-          onRenameDocument={editor.rename}
           onUpdateDocument={editor.updateDocument}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
@@ -1208,7 +1213,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGestureStart={editor.beginGesture}
           onGestureEnd={editor.endGesture}
           onGestureCancel={editor.cancelGesture}
-          saveBadge={<VectorSaveBadge file={file} />}
           saveMessage={file.message ?? exportError}
           palette={palette}
           onCreateStyle={createStyle}
@@ -1227,67 +1231,70 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     >
       <h1 className="visually-hidden">{document.name}</h1>
       <div ref={toolbarRef} className="workspace-toolbar vector-toolbar" role="toolbar" aria-label="Vector tools">
-        <div className="workspace-toolbar__group">
+        <div className="workspace-toolbar__group vector-toolbar__start">
           <VectorFileMenu
             file={file}
+            canUndo={editor.canUndo}
+            canRedo={editor.canRedo}
+            undoLabel={editor.canUndo ? editor.historySteps[editor.historyIndex]?.label ?? null : null}
+            redoLabel={editor.canRedo ? editor.historySteps[editor.historyIndex + 1]?.label ?? null : null}
+            onUndo={editor.undo}
+            onRedo={editor.redo}
             onNewDocument={newDocument}
             onOpenProject={requestOpen}
             onImportSvg={() => importInput.current?.click()}
+            onCommands={() => setPaletteOpen(true)}
           />
-          <Tooltip content={withShortcut('Undo', 'undo')}>
-            <IconButton label="Undo" disabled={!editor.canUndo} onClick={editor.undo}><IconUndo /></IconButton>
-          </Tooltip>
-          <Tooltip content={withShortcut('Redo', 'redo')}>
-            <IconButton label="Redo" disabled={!editor.canRedo} onClick={editor.redo}><IconRedo /></IconButton>
-          </Tooltip>
         </div>
         <div className="workspace-toolbar__group vector-toolbar__tools">
-          <SelectionToolMenu
-            value={selectionTool}
-            active={tool === selectionTool}
-            onChange={(next) => chooseTool(next)}
-            onActivate={() => chooseTool(selectionTool)}
-          />
-          <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || selectedElements[0]?.kind === 'text' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
-          <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
-          <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
-          <ToolButton label="Scissors · C" active={tool === 'scissors'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('scissors')}><IconScissors /></ToolButton>
-          <ToolButton label="Width · ⇧W" active={tool === 'width'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('width')}><IconWidth /></ToolButton>
-          <ToolButton label="Scale · K" active={tool === 'scale'} onClick={() => chooseTool('scale')}><IconScale /></ToolButton>
-          <ViewToolMenu value={viewTool} active={tool === viewTool} onChange={(next) => { setViewTool(next); chooseTool(next) }} onActivate={() => chooseTool(viewTool)} />
-          <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
-          <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
-          <ToolButton label="Frame · F" active={tool === 'frame'} onClick={() => chooseTool('frame')}><IconFrame /></ToolButton>
-          <ToolButton label="Text · T" active={tool === 'text'} onClick={() => chooseTool('text')}><IconText /></ToolButton>
-          <ShapeToolMenu
-            value={shapeTool}
-            active={tool === shapeTool}
-            onChange={(next) => { setShapeTool(next); chooseTool(next) }}
-            onActivate={(keyboard) => {
-              chooseTool(shapeTool)
-              if (!keyboard) return
-              if (shapeTool === 'rectangle') editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
-              if (shapeTool === 'ellipse') editor.addElement(createVectorElement('ellipse', centeredBounds(document, 140, 140)))
+          {TOOL_GROUPS.map((group) => (
+            <ToolGroup
+              key={group.id}
+              group={group}
+              entryId={groupEntry[group.id]}
+              activeTool={tool}
+              disabled={disabledEntries}
+              onChoose={(entry) => chooseTool(entry.tool, entry.id)}
+              onActivate={(entry, keyboard) => {
+                chooseTool(entry.tool, entry.id)
+                if (!keyboard) return
+                if (entry.id === 'rectangle') editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
+                if (entry.id === 'ellipse') editor.addElement(createVectorElement('ellipse', centeredBounds(document, 140, 140)))
+              }}
+            />
+          ))}
+        </div>
+        <div className="vector-toolbar__title">
+          <input
+            className="vector-document-name"
+            aria-label="Document name"
+            defaultValue={document.name}
+            maxLength={120}
+            key={document.name}
+            spellCheck={false}
+            onBlur={(event) => editor.rename(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+              if (event.key === 'Escape') {
+                event.currentTarget.value = document.name
+                event.currentTarget.blur()
+              }
             }}
           />
+          <VectorSaveBadge file={file} />
         </div>
         <div className="workspace-toolbar__group vector-toolbar__end">
-          <div className="vector-toolbar__zoom">
-            <Tooltip content="Zoom out">
-              <IconButton label="Zoom out" disabled={zoom <= MIN_ZOOM} onClick={() => setZoom((value) => nextZoom(value, -1))}><IconMinus /></IconButton>
-            </Tooltip>
-            <button type="button" className="vector-zoom" aria-label="Reset canvas view" onClick={() => { setZoom(0.8); setPan({ x: 0, y: 0 }) }}>{Math.round(zoom * 100)}%</button>
-            <Tooltip content="Zoom in">
-              <IconButton label="Zoom in" disabled={zoom >= MAX_ZOOM} onClick={() => setZoom((value) => nextZoom(value, 1))}><IconPlus /></IconButton>
-            </Tooltip>
-          </div>
-          <Tooltip content={withShortcut(fullscreen ? 'Leave full screen' : 'Full screen', 'fullscreen')}>
-            <IconButton label={fullscreen ? 'Leave full screen' : 'Full screen canvas'} aria-pressed={fullscreen} onClick={toggleFullscreen}><IconExpand /></IconButton>
-          </Tooltip>
-          <Tooltip content={withShortcut('Commands', 'palette')}>
-            <IconButton label="Commands" onClick={() => setPaletteOpen(true)}><IconCommand /></IconButton>
-          </Tooltip>
-          <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} />
+          <ZoomControl
+            zoom={zoom}
+            min={MIN_ZOOM}
+            max={MAX_ZOOM}
+            hasSelection={selectedIds.length > 0}
+            onStep={(direction) => setZoom((value) => nextZoom(value, direction))}
+            onZoomTo={(scale) => controller.current?.zoomTo(scale)}
+            onFitPage={() => controller.current?.fit(null)}
+            onFitSelection={() => controller.current?.fit(selectionBounds(leafElements(document.elements, selectedIds)), 96)}
+          />
+          <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} fullscreen={fullscreen} onFullscreen={toggleFullscreen} />
           <VectorExportMenu
             settings={exportSettings}
             onSettings={setExportSettings}
@@ -1298,33 +1305,6 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
             onSavePreset={savePreset}
             onDeletePreset={deletePreset}
           />
-          {selectedIds.length > 0 ? (
-            <div className="workspace-toolbar__group vector-toolbar__selection">
-              {canUngroup ? (
-                <Tooltip content={withShortcut('Ungroup', 'ungroup')}>
-                  <IconButton label="Ungroup" onClick={ungroup}><IconUngroup /></IconButton>
-                </Tooltip>
-              ) : null}
-              <Tooltip content={withShortcut('Group', 'group')}>
-                <IconButton label="Group" onClick={group}><IconGroup /></IconButton>
-              </Tooltip>
-              <Tooltip content={withShortcut('Flip horizontal', 'flipHorizontal')}>
-                <IconButton label="Flip horizontal" onClick={() => transformSelection((center) => flipAffine('x', center))}><IconFlipH /></IconButton>
-              </Tooltip>
-              <Tooltip content={withShortcut('Flip vertical', 'flipVertical')}>
-                <IconButton label="Flip vertical" onClick={() => transformSelection((center) => flipAffine('y', center))}><IconFlipV /></IconButton>
-              </Tooltip>
-              <Tooltip content={withShortcut('Rotate 90°', 'rotate90')}>
-                <IconButton label="Rotate 90 degrees" onClick={() => transformSelection((center) => rotationAffine(90, center))}><IconRotate90 /></IconButton>
-              </Tooltip>
-              <Tooltip content={withShortcut(allLocked ? 'Unlock' : 'Lock', 'lock')}>
-                <IconButton label={allLocked ? 'Unlock selection' : 'Lock selection'} aria-pressed={allLocked} onClick={toggleLock}>{allLocked ? <IconLock /> : <IconUnlock />}</IconButton>
-              </Tooltip>
-              <Tooltip content={withShortcut('Delete', 'delete')}>
-                <IconButton label="Delete selection" onClick={() => editor.removeElements(selectedIds)}><IconTrash /></IconButton>
-              </Tooltip>
-            </div>
-          ) : null}
           <input ref={importInput} type="file" accept=".svg,image/svg+xml" className="visually-hidden" tabIndex={-1} onChange={(event) => { void importFile(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
           <input ref={projectInput} type="file" accept=".json,application/json" className="visually-hidden" tabIndex={-1} onChange={(event) => { const picked = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (picked) void openProject(picked) }} />
         </div>
@@ -1356,7 +1336,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onSelectNodes={setSelectedNodeIds}
           onToolChange={chooseTool}
           onAddElements={(elements) => {
-            editor.addElements(elements)
+            const star = tool === 'polygon' && groupEntry.shapes === 'star'
+            editor.addElements(star ? elements.map((element) => element.kind === 'polygon' ? { ...element, name: 'Star', innerRatio: STAR_INNER_RATIO } : element) : elements)
             if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'frame' || tool === 'polygon' || tool === 'line') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
@@ -1445,7 +1426,12 @@ function expandMoves(elements: VectorElement[], patches: ElementPatch[]): Elemen
   return updates
 }
 
-function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChange: (value: VectorViewOptions) => void }) {
+function ViewOptionsMenu({ value, onChange, fullscreen, onFullscreen }: {
+  value: VectorViewOptions
+  onChange: (value: VectorViewOptions) => void
+  fullscreen: boolean
+  onFullscreen: () => void
+}) {
   const active = value.pixelPreview !== 'off' || value.pixelGrid || value.snapToPixelGrid || value.layoutGuides || value.rulers || value.outlines !== 'off'
   const update = <Key extends keyof VectorViewOptions>(key: Key, next: VectorViewOptions[Key]) => onChange({ ...value, [key]: next })
   return (
@@ -1478,6 +1464,16 @@ function ViewOptionsMenu({ value, onChange }: { value: VectorViewOptions; onChan
             { value: 'all', label: 'All objects' },
             { value: 'selected', label: 'Selected objects' },
           ]} />
+          <DropdownMenu.Separator className="menu__sep" />
+          <DropdownMenu.CheckboxItem
+            className="menu__item vector-view-menu__item"
+            checked={fullscreen}
+            onCheckedChange={onFullscreen}
+          >
+            <span className="vector-view-menu__check"><DropdownMenu.ItemIndicator><IconCheck /></DropdownMenu.ItemIndicator></span>
+            <span className="vector-view-menu__label">Full screen canvas</span>
+            <kbd>{SHORTCUTS.fullscreen}</kbd>
+          </DropdownMenu.CheckboxItem>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -1525,172 +1521,6 @@ function ViewSubmenu<Value extends string>({ label, value, options, onChange }: 
         </DropdownMenu.SubContent>
       </DropdownMenu.Portal>
     </DropdownMenu.Sub>
-  )
-}
-
-function SelectionToolMenu({ value, active, onChange, onActivate }: {
-  value: SelectionTool
-  active: boolean
-  onChange: (tool: SelectionTool) => void
-  onActivate: () => void
-}) {
-  const CurrentIcon = value === 'select' ? IconSelect : IconTransformSelect
-  const currentLabel = value === 'select' ? 'Select · V' : 'Transform · G / R / S'
-  return (
-    <div className="vector-tool-menu" data-active={active || undefined}>
-      <Tooltip content={currentLabel}>
-        <IconButton label={currentLabel.split(' · ')[0]!} aria-pressed={active} className="vector-tool vector-tool-menu__main" onClick={onActivate}>
-          <CurrentIcon />
-        </IconButton>
-      </Tooltip>
-      <DropdownMenu.Root modal={false}>
-        <Tooltip content="Selection tools">
-          <DropdownMenu.Trigger asChild>
-            <button type="button" className="vector-tool-menu__trigger" aria-label="Selection tools">
-              <IconChevron />
-            </button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu vector-tool-menu__content" side="bottom" align="start" sideOffset={8} collisionPadding={8} aria-label="Selection tools">
-            <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as SelectionTool)}>
-              <SelectionToolItem value="select" label="Select" shortcut="V"><IconSelect /></SelectionToolItem>
-              <SelectionToolItem value="transform" label="Transform" shortcut="G / R / S"><IconTransformSelect /></SelectionToolItem>
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </div>
-  )
-}
-
-type ShapeTool = 'rectangle' | 'ellipse' | 'line' | 'polygon'
-
-const SHAPE_TOOLS: Record<ShapeTool, { label: string; shortcut: string; icon: typeof IconRectangle }> = {
-  rectangle: { label: 'Rectangle', shortcut: 'R', icon: IconRectangle },
-  ellipse: { label: 'Ellipse', shortcut: 'O', icon: IconEllipse },
-  line: { label: 'Line', shortcut: 'L', icon: IconLine },
-  polygon: { label: 'Polygon', shortcut: '⌥P', icon: IconPolygon },
-}
-
-/** The four primitives in one slot, showing whichever was drawn last. */
-function ShapeToolMenu({ value, active, onChange, onActivate }: {
-  value: ShapeTool
-  active: boolean
-  onChange: (tool: ShapeTool) => void
-  onActivate: (keyboard: boolean) => void
-}) {
-  const current = SHAPE_TOOLS[value]
-  const CurrentIcon = current.icon
-  return (
-    <div className="vector-tool-menu" data-active={active || undefined}>
-      <Tooltip content={`${current.label} · ${current.shortcut}`}>
-        <IconButton label={current.label} aria-pressed={active} className="vector-tool vector-tool-menu__main" onClick={(event: ReactMouseEvent<HTMLButtonElement>) => onActivate(event.detail === 0)}>
-          <CurrentIcon />
-        </IconButton>
-      </Tooltip>
-      <DropdownMenu.Root modal={false}>
-        <Tooltip content="Shape tools">
-          <DropdownMenu.Trigger asChild>
-            <button type="button" className="vector-tool-menu__trigger" aria-label="Shape tools">
-              <IconChevron />
-            </button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu vector-tool-menu__content" side="bottom" align="start" sideOffset={8} collisionPadding={8} aria-label="Shape tools">
-            <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as ShapeTool)}>
-              {(Object.keys(SHAPE_TOOLS) as ShapeTool[]).map((key) => {
-                const item = SHAPE_TOOLS[key]
-                const Icon = item.icon
-                return (
-                  <DropdownMenu.RadioItem key={key} className="menu__item vector-tool-menu__item" value={key}>
-                    <span className="vector-tool-menu__check"><DropdownMenu.ItemIndicator><IconCheck /></DropdownMenu.ItemIndicator></span>
-                    <Icon />
-                    <span className="vector-tool-menu__label">{item.label}</span>
-                    <kbd>{item.shortcut}</kbd>
-                  </DropdownMenu.RadioItem>
-                )
-              })}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </div>
-  )
-}
-
-type ViewTool = 'hand' | 'zoom' | 'measure'
-
-const VIEW_TOOLS: Record<ViewTool, { label: string; shortcut: string; icon: typeof IconHand }> = {
-  hand: { label: 'Hand', shortcut: 'H', icon: IconHand },
-  zoom: { label: 'Zoom', shortcut: 'Z', icon: IconZoomTool },
-  measure: { label: 'Measure', shortcut: '⇧M', icon: IconRuler },
-}
-
-/** The three ways of looking rather than drawing, kept in one slot of the toolbar. */
-function ViewToolMenu({ value, active, onChange, onActivate }: {
-  value: ViewTool
-  active: boolean
-  onChange: (tool: ViewTool) => void
-  onActivate: () => void
-}) {
-  const current = VIEW_TOOLS[value]
-  const CurrentIcon = current.icon
-  return (
-    <div className="vector-tool-menu" data-active={active || undefined}>
-      <Tooltip content={`${current.label} · ${current.shortcut}`}>
-        <IconButton label={current.label} aria-pressed={active} className="vector-tool vector-tool-menu__main" onClick={onActivate}>
-          <CurrentIcon />
-        </IconButton>
-      </Tooltip>
-      <DropdownMenu.Root modal={false}>
-        <Tooltip content="View tools">
-          <DropdownMenu.Trigger asChild>
-            <button type="button" className="vector-tool-menu__trigger" aria-label="View tools">
-              <IconChevron />
-            </button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu vector-tool-menu__content" side="bottom" align="start" sideOffset={8} collisionPadding={8} aria-label="View tools">
-            <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as ViewTool)}>
-              {(Object.keys(VIEW_TOOLS) as ViewTool[]).map((key) => {
-                const item = VIEW_TOOLS[key]
-                const Icon = item.icon
-                return (
-                  <DropdownMenu.RadioItem key={key} className="menu__item vector-tool-menu__item" value={key}>
-                    <span className="vector-tool-menu__check"><DropdownMenu.ItemIndicator><IconCheck /></DropdownMenu.ItemIndicator></span>
-                    <Icon />
-                    <span className="vector-tool-menu__label">{item.label}</span>
-                    <kbd>{item.shortcut}</kbd>
-                  </DropdownMenu.RadioItem>
-                )
-              })}
-            </DropdownMenu.RadioGroup>
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
-    </div>
-  )
-}
-
-function SelectionToolItem({ value, label, shortcut, children }: { value: SelectionTool; label: string; shortcut: string; children: ReactNode }) {
-  return (
-    <DropdownMenu.RadioItem className="menu__item vector-tool-menu__item" value={value}>
-      <span className="vector-tool-menu__check"><DropdownMenu.ItemIndicator><IconCheck /></DropdownMenu.ItemIndicator></span>
-      {children}
-      <span className="vector-tool-menu__label">{label}</span>
-      <kbd>{shortcut}</kbd>
-    </DropdownMenu.RadioItem>
-  )
-}
-
-function ToolButton({ label, active, disabled, onClick, children }: { label: string; active: boolean; disabled?: boolean; onClick: (keyboard: boolean) => void; children: ReactNode }) {
-  return (
-    <Tooltip content={label}>
-      <IconButton label={label.split(' · ')[0]!} aria-pressed={active} disabled={disabled} className="vector-tool" onClick={(event: ReactMouseEvent<HTMLButtonElement>) => onClick(event.detail === 0)}>{children}</IconButton>
-    </Tooltip>
   )
 }
 

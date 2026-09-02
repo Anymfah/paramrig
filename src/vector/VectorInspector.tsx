@@ -43,7 +43,6 @@ type VectorInspectorProps = {
   tool: VectorTool
   selectedElements: VectorElement[]
   selectedNodeIds: string[]
-  onRenameDocument: (name: string) => void
   onUpdateDocument: (patch: DocumentPatch, record?: boolean) => void
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
@@ -60,8 +59,7 @@ type VectorInspectorProps = {
   onGestureStart: () => void
   onGestureEnd: () => void
   onGestureCancel: () => void
-  /** Autosave state shown in the header, and the message when a write failed. */
-  saveBadge?: ReactNode
+  /** The message shown when a write to browser storage failed. */
   saveMessage?: string | null
   palette?: PaintPalette
   /** Creates a named style from what the selection currently paints. */
@@ -90,7 +88,6 @@ export function VectorInspector({
   tool,
   selectedElements,
   selectedNodeIds,
-  onRenameDocument,
   onUpdateDocument,
   onUpdate,
   onUpdateElements,
@@ -107,7 +104,6 @@ export function VectorInspector({
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
-  saveBadge,
   saveMessage,
   palette,
   onCreateStyle,
@@ -272,24 +268,6 @@ export function VectorInspector({
 
   return (
     <aside className="inspector vector-inspector" aria-label="Vector inspector">
-      <div className="vector-inspector__head">
-        <input
-          className="vector-document-name"
-          aria-label="Document name"
-          defaultValue={document.name}
-          key={document.name}
-          spellCheck={false}
-          onBlur={(event) => onRenameDocument(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur()
-            if (event.key === 'Escape') {
-              event.currentTarget.value = document.name
-              event.currentTarget.blur()
-            }
-          }}
-        />
-        {saveBadge}
-      </div>
       <div className="vector-inspector__body scroll-area">
         {saveMessage ? <div className="vector-inspector__notice"><StatusMessage tone="error">{saveMessage}</StatusMessage></div> : null}
         {selectedElements.length === 0 ? (

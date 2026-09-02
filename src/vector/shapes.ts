@@ -237,3 +237,6 @@ export function shapeHudLabel(element: VectorElement, handle: ShapeHandle, at: P
   if (handle === 'arc-ratio') return `${Math.round((patch.arcRatio ?? 0) * 100)}%`
   return `${Math.round(patch.arcStart ?? 0)}° · ${Math.round(patch.arcSweep ?? 0)}°`
 }
+
+/** How far in a star's inner points sit when the shape tool draws one. */
+export const STAR_INNER_RATIO = 0.45
