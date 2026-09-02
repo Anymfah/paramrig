@@ -1,6 +1,7 @@
 import { useEffect,useId,useState } from 'react'
+import { FieldReset } from './FieldReset'
 
-export function TextController({label,value,onChange,multiline=false,maxLength=10000,validate}:{label:string;value:string;onChange:(v:string)=>void;multiline?:boolean;maxLength?:number;validate?:(v:string)=>string|null}) {
+export function TextController({label,value,onChange,multiline=false,maxLength=10000,validate,defaultValue}:{label:string;value:string;onChange:(v:string)=>void;multiline?:boolean;maxLength?:number;validate?:(v:string)=>string|null;defaultValue?:string}) {
   const [draft,setDraft]=useState(value),[error,setError]=useState('')
   const id=useId()
   useEffect(()=>{setDraft(value);setError('')},[value])
@@ -9,6 +10,7 @@ export function TextController({label,value,onChange,multiline=false,maxLength=1
   return <div className="control control--field">
     <label className="text-field" data-multiline={multiline||undefined} data-invalid={error?'':undefined}>
       <span className="text-field__label">{label}</span>
+      {defaultValue!==undefined&&value!==defaultValue?<FieldReset label={label} defaultLabel={defaultValue?`“${defaultValue.length>24?defaultValue.slice(0,24)+'…':defaultValue}”`:'empty'} onReset={()=>onChange(defaultValue)}/>:null}
       {multiline?<textarea {...props} rows={3}/>:<input {...props} type="text"/>}
     </label>
     {error?<p id={`${id}-error`} className="field__error" role="alert">{error}</p>:null}

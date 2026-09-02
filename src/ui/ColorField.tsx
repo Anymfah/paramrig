@@ -2,6 +2,7 @@ import * as Popover from '@radix-ui/react-popover'
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { hexToRgb, hsvToHex, rgbToHsv } from '@/ui/color'
 import { IconButton } from '@/ui/Button'
+import { FieldReset } from '@/ui/FieldReset'
 import { IconNone, IconPipette, IconPlus, IconScreenPick } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { cmykLabel, outOfSrgbGamut } from '@/vector/colorSpace'
@@ -30,6 +31,10 @@ type ColorFieldProps = {
   onGestureStart?: () => void
   onGestureEnd?: () => void
   onGestureCancel?: () => void
+  /** A mark shows once the colour leaves this value, and puts it back on click. */
+  defaultValue?: string
+  /** Bump to open the picker from outside, for instance on a double-clicked stop. */
+  openSignal?: number
 }
 
 type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> }
@@ -51,6 +56,8 @@ export function ColorField({
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
+  defaultValue,
+  openSignal,
 }: ColorFieldProps) {
   const id = useId()
   const none = value === 'none'
@@ -68,6 +75,10 @@ export function ColorField({
   useEffect(() => {
     setCanPick(typeof window !== 'undefined' && 'EyeDropper' in window)
   }, [])
+  useEffect(() => {
+    if (openSignal) setOpen(true)
+  }, [openSignal])
+  const modified = defaultValue !== undefined && !mixed && value.toLowerCase() !== defaultValue.toLowerCase()
   const hueFill = hsv.h / 360
 
   const hueGradient = useMemo(
@@ -138,6 +149,7 @@ export function ColorField({
           <label className="color-field__label" htmlFor={hexId}>
             {label}
           </label>
+          {modified ? <FieldReset label={label} defaultLabel={defaultValue!.toUpperCase()} onReset={() => onChange(defaultValue!)} /> : null}
           <input
             id={hexId}
             className="color-field__hex"

@@ -771,3 +771,17 @@ export function animationFrom(def: AnimationDef | undefined): Pick<SessionSnapsh
     tracks: structuredClone(def?.tracks ?? []),
   }
 }
+
+/** One sentence for a field whose value comes from a source rather than the hand. */
+export function describeValueSource(source: ValueSource | undefined, parameters: ParameterDef[]): string | undefined {
+  if (!source || source.mode === 'local') return undefined
+  const name = (id?: string) => parameters.find((item) => item.id === id)?.label ?? id ?? 'a parameter'
+  switch (source.mode) {
+    case 'parameter': return `Follows ${name(source.source)}`
+    case 'expression': return source.expression ? `Expression: ${source.expression}` : 'Driven by an expression'
+    case 'animation': return 'Follows its timeline track'
+    case 'macro': return `Macro from ${name(source.source)} · ${source.min} to ${source.max}`
+    case 'modulation': return `Modulated · ${source.shape} at ${source.rate} Hz`
+    case 'blend': return `Blend of ${name(source.source)} · ${source.from} to ${source.to}`
+  }
+}

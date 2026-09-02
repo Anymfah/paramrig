@@ -3,7 +3,7 @@ import type { GradientStop } from '@/rigs/types'
 import { ColorField } from '@/ui/ColorField'
 import { NumberField } from '@/ui/NumberField'
 import { IconButton } from '@/ui/Button'
-import { IconPlus, IconMinus } from '@/ui/icons'
+import { IconPlus, IconMinus, IconFlipH, IconDistributeH } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import {
   DROP_STOP_PX,
@@ -36,6 +36,7 @@ type DragState = {
 export function GradientField({ label, value, onChange, onGestureStart, onGestureEnd, onGestureCancel }: GradientFieldProps) {
   const [selected, setSelected] = useState(0)
   const [droppingIndex, setDroppingIndex] = useState<number | null>(null)
+  const [openPicker, setOpenPicker] = useState(0)
   const index = Math.min(selected, value.length - 1)
   const current = value[index]
   const bar = useRef<HTMLDivElement>(null)
@@ -114,6 +115,8 @@ export function GradientField({ label, value, onChange, onGestureStart, onGestur
     <div className="control control--gradient">
       <div className="control__head"><span className="control__label">{label}</span>
         <div className="control__tools">
+          <Tooltip content="Reverse the stops"><IconButton label={`Reverse ${label}`} onClick={() => { onGestureStart?.(); onChange([...value].map((stop) => ({ ...stop, t: Math.round((1 - stop.t) * 100) / 100 })).reverse()); onGestureEnd?.(); setSelected(value.length - 1 - index) }}><IconFlipH /></IconButton></Tooltip>
+          <Tooltip content={value.length < 3 ? 'Two stops already sit at the ends' : 'Space the stops evenly'}><IconButton label={`Distribute ${label} stops`} disabled={value.length < 3} onClick={() => { onGestureStart?.(); onChange(value.map((stop, i) => ({ ...stop, t: Math.round(i / (value.length - 1) * 100) / 100 }))); onGestureEnd?.() }}><IconDistributeH /></IconButton></Tooltip>
           <Tooltip content="Add color stop"><IconButton label={`Add ${label} stop`} disabled={value.length >= MAX_GRADIENT_STOPS} onClick={() => add()}><IconPlus /></IconButton></Tooltip>
           <Tooltip content={value.length <= 2 ? 'Keep at least two color stops' : 'Remove selected color stop'}><IconButton label={`Remove ${label} stop`} disabled={value.length <= 2} onClick={() => { onChange(removeGradientStop(value, index)); setSelected(Math.max(0,index-1)) }}><IconMinus /></IconButton></Tooltip>
         </div>
@@ -140,9 +143,10 @@ export function GradientField({ label, value, onChange, onGestureStart, onGestur
         <span className="gradient-bar__ramp" style={{ background: css }} aria-hidden="true" />
         {value.map((stop,i) => (
           <button key={i} type="button" className="gradient-handle" style={{ left: `${stop.t * 100}%`, '--stop-color': stop.color } as CSSProperties}
-            aria-label={`Select stop ${i+1} at ${Math.round(stop.t*100)} percent`} aria-description="Drag horizontally to move this stop. Drag away from the ramp to remove it, or use the arrow keys for precise changes." aria-pressed={index===i}
+            aria-label={`Select stop ${i+1} at ${Math.round(stop.t*100)} percent`} aria-description="Drag horizontally to move this stop. Drag away from the ramp to remove it, double-click to pick its color, or use the arrow keys for precise changes." aria-pressed={index===i}
             data-dropping={droppingIndex === i ? '' : undefined}
             onClick={() => setSelected(i)}
+            onDoubleClick={() => { setSelected(i); setOpenPicker((n) => n + 1) }}
             onPointerDown={event => {
               if (event.button !== 0 || !bar.current) return
               event.preventDefault()
@@ -162,7 +166,7 @@ export function GradientField({ label, value, onChange, onGestureStart, onGestur
         ))}
       </div>
       <div className="gradient-stop-editor">
-        <ColorField label={`Stop ${index+1}`} value={current.color} onChange={color=>onChange(value.map((stop,i)=>i===index?{...stop,color}:stop))} onGestureStart={onGestureStart} onGestureEnd={onGestureEnd} onGestureCancel={onGestureCancel} />
+        <ColorField label={`Stop ${index+1}`} value={current.color} openSignal={openPicker} onChange={color=>onChange(value.map((stop,i)=>i===index?{...stop,color}:stop))} onGestureStart={onGestureStart} onGestureEnd={onGestureEnd} onGestureCancel={onGestureCancel} />
         <NumberField variant="field" label="Position" value={Math.round(current.t*100)} min={minimum} max={maximum} step={1} unit="%" onChange={position} onGestureStart={onGestureStart} onGestureEnd={onGestureEnd} onGestureCancel={onGestureCancel} />
       </div>
     </div>

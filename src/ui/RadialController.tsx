@@ -162,6 +162,13 @@ export function RadialController({
             onPointerMove={e => { if (drag.active.current) fromPointer(e, layerIndex, i) }}
             {...drag.handlers}
             onKeyDown={e => {
+              if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault()
+                if (item.points.length <= 2) return
+                onChange(replaceLayer(layers, layerIndex, { ...item, points: item.points.filter((_, n) => n !== i) }))
+                setSelected({ layer: layerIndex, point: Math.max(0, i - 1) })
+                return
+              }
               if (!e.key.startsWith('Arrow')) return
               e.preventDefault()
               setSelected({ layer: layerIndex, point: i })
@@ -173,8 +180,8 @@ export function RadialController({
         ))
       })}
     </div>
-    {zones.length ? <div className="radial-controller__zones" aria-hidden="true">
-      {zones.map(zone => <span key={zone.label} style={{ left: `${zone.start * 100}%`, width: `${(zone.end - zone.start) * 100}%` }}>{zone.label}</span>)}
+    {zones.length ? <div className="radial-controller__zones">
+      {zones.map(zone => <span key={zone.label} style={{ left: `${zone.start * 100}%`, width: `${(zone.end - zone.start) * 100}%` }}><Tooltip content={`${zone.label} · ${Math.round(zone.start * 100)}–${Math.round(zone.end * 100)}%`} block><span className="radial-controller__zone-label" tabIndex={0}>{zone.label}</span></Tooltip></span>)}
     </div> : null}
     {current && layer ? <output className="visually-hidden" aria-live="polite">{layer.name}, radius {(current.x * 100).toFixed(1)} percent, value {(current.y * 100).toFixed(1)} percent</output> : null}
     {layer && tab !== ALL ? <>

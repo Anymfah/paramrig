@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { DocsChrome } from '@/docs/DocsChrome'
 import { controllerDefinitions, controllerExamples, controllerCategories, controllerManifest } from '@/rigs/controller-catalog'
 import type { ParameterDef } from '@/rigs/types'
-import { RigSession } from '@/state/session'
+import { RigSession, describeValueSource } from '@/state/session'
 import { loadDraft, saveDraft } from '@/state/persistence'
 import { ParameterField } from '@/ui/ParameterField'
 import { ValueSourceController } from '@/ui/BindingController'
@@ -54,7 +54,7 @@ export function ControlsPage() {
             </IconButton>
           </Tooltip>
         </header>
-        <div className="control-sample__live"><ParameterField param={param.kind==='number'&&param.role==='playhead'?{...param,max:state.duration}:param} value={state.values[param.id]??param.defaultValue} onChange={next=>session.setValue(param.id,next)} onAction={id=>session.runAction(id)} onPreset={(id,next)=>session.applyPreset(id,next)} resolveNumber={id=>{const value=state.values[id];if(typeof value!=='number')throw new Error(`Not a numeric parameter: ${id}`);return value}} parameters={controllerDefinitions} animated={id=>Boolean(session.trackFor(id))} onGestureStart={()=>session.beginGesture(`Adjust ${param.label}`)} onGestureEnd={()=>session.endGesture()} onGestureCancel={()=>session.cancelGesture()}/></div>
+        <div className="control-sample__live"><ParameterField param={param.kind==='number'&&param.role==='playhead'?{...param,max:state.duration}:param} value={state.values[param.id]??param.defaultValue} onChange={next=>session.setValue(param.id,next)} onAction={id=>session.runAction(id)} onPreset={(id,next)=>session.applyPreset(id,next)} resolveNumber={id=>{const value=state.values[id];if(typeof value!=='number')throw new Error(`Not a numeric parameter: ${id}`);return value}} parameters={controllerDefinitions} animated={id=>Boolean(session.trackFor(id))} driven={id=>describeValueSource(session.sourceFor(id),controllerDefinitions)} onGestureStart={()=>session.beginGesture(`Adjust ${param.label}`)} onGestureEnd={()=>session.endGesture()} onGestureCancel={()=>session.cancelGesture()}/></div>
         {errors[param.id]?<p className="field__error" role="alert">{errors[param.id]}</p>:null}
       </article></ContextTarget></CatalogSlot>)}</div></ContextMenuRoot>
     {!filtered.length?<p>No controllers match this search. Try another name or family.</p>:null}

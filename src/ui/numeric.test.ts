@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   applyScrub,
   clampNumber,
+  evaluateExpression,
+  evaluateNumberInput,
   fineStep,
   formatNumber,
   isIntegerStep,
@@ -21,6 +23,24 @@ describe('numeric helpers', () => {
     expect(clampNumber(12, 3, 8)).toBe(8)
     expect(parseNumberInput('7', 3, 16, 1)).toBe(7)
     expect(parseNumberInput('nope', 0, 1, 0.01)).toBeNull()
+  })
+
+  it('evaluates arithmetic, percentages of the range, relative steps and known units', () => {
+    expect(evaluateExpression('32*2')).toBe(64)
+    expect(evaluateExpression('(100-8)/3')).toBeCloseTo(30.6667, 3)
+    expect(evaluateExpression('2^3')).toBe(8)
+    expect(evaluateExpression('-4+-2')).toBe(-6)
+    expect(evaluateExpression('3/0')).toBeNull()
+    expect(evaluateExpression('nope')).toBeNull()
+    expect(evaluateExpression('1+')).toBeNull()
+    const bounds = { min: 0, max: 200, step: 1 }
+    expect(evaluateNumberInput('50%', 32, bounds)).toBe(100)
+    expect(evaluateNumberInput('+=10', 32, bounds)).toBe(42)
+    expect(evaluateNumberInput('-=50', 32, bounds)).toBe(0)
+    expect(evaluateNumberInput(' 12 px ', 32, { ...bounds, unit: 'px' })).toBe(12)
+    expect(evaluateNumberInput('2rem', 32, { ...bounds, unit: 'px', units: [{ value: 'px', label: 'Pixels', factor: 1 }, { value: 'rem', label: 'Rem', factor: 16 }] })).toBe(32)
+    expect(evaluateNumberInput('2cm', 32, { ...bounds, unit: 'px' })).toBeNull()
+    expect(evaluateNumberInput('', 32, bounds)).toBeNull()
   })
 
   it('uses steppers for unitless integer counts, not for measured sliders', () => {

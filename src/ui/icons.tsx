@@ -1,7 +1,9 @@
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import {
+  Activity,
   ArrowRight,
   Dices,
+  GripVertical,
   Link2,
   Hand,
   ZoomIn,
@@ -390,4 +392,10 @@ export function IconDice(props: LucideProps) {
 }
 export function IconLink(props: LucideProps) {
   return <Link2 aria-hidden size={16} strokeWidth={1.5} {...props} />
+}
+export function IconDriven(props: LucideProps) {
+  return <Activity aria-hidden size={14} strokeWidth={1.75} {...props} />
+}
+export function IconGrip(props: LucideProps) {
+  return <GripVertical aria-hidden size={16} strokeWidth={1.5} {...props} />
 }

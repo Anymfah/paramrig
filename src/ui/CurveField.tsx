@@ -1,6 +1,6 @@
 import { useId, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { BezierCurve } from '@/rigs/types'
-import { IconExpand } from '@/ui/icons'
+import { IconCopy, IconExpand } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
 import { NumberField } from '@/ui/NumberField'
 import { Tooltip } from '@/ui/Tooltip'
@@ -43,7 +43,9 @@ export function CurveField({
 }: CurveFieldProps) {
   const id = useId()
   const [expanded, setExpanded] = useState(false)
+  const [copied, setCopied] = useState(false)
   const height = expanded ? 144 : 96
+  const css = `cubic-bezier(${[value.p1[0], value.p1[1], value.p2[0], value.p2[1]].map((n) => Number(n.toFixed(3))).join(', ')})`
   const p0 = toPx(value.p0, height)
   const p1 = toPx(value.p1, height)
   const p2 = toPx(value.p2, height)
@@ -64,15 +66,29 @@ export function CurveField({
         <span className="control__label" id={id}>
           {label}
         </span>
-        <Tooltip content={expanded ? 'Compact curve editor' : 'Enlarge curve editor'}>
-          <IconButton
-            label={expanded ? `Compact ${label}` : `Enlarge ${label}`}
-            aria-pressed={expanded}
-            onClick={() => setExpanded((open) => !open)}
-          >
-            <IconExpand />
-          </IconButton>
-        </Tooltip>
+        <div className="control__tools">
+          <Tooltip content={copied ? 'Copied' : `Copy ${css}`}>
+            <IconButton
+              label={`Copy ${label} as CSS`}
+              onClick={() => {
+                void navigator.clipboard?.writeText(css)
+                setCopied(true)
+                window.setTimeout(() => setCopied(false), 1400)
+              }}
+            >
+              <IconCopy />
+            </IconButton>
+          </Tooltip>
+          <Tooltip content={expanded ? 'Compact curve editor' : 'Enlarge curve editor'}>
+            <IconButton
+              label={expanded ? `Compact ${label}` : `Enlarge ${label}`}
+              aria-pressed={expanded}
+              onClick={() => setExpanded((open) => !open)}
+            >
+              <IconExpand />
+            </IconButton>
+          </Tooltip>
+        </div>
       </div>
       <div className="curve-presets" role="group" aria-label={`${label} presets`}>
         {CURVE_PRESETS.map((preset) => (

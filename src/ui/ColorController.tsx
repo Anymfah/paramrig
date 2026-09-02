@@ -23,8 +23,9 @@ export function ColorController({param,value,onChange,...gesture}:GestureProps &
     const channel=(n:number)=>{const k=(n+hh/30)%12;return Math.round(255*(ll-a*Math.max(-1,Math.min(k-3,9-k,1))))}
     rgba('#'+[0,8,4].map(n=>channel(n).toString(16).padStart(2,'0')).join(''))
   }
-  if(!param.alpha&&!param.channels)return <ColorField label={param.label} value={hex} onChange={onChange} {...gesture}/>
-  return <div className="controller-stack"><ColorField label={param.label} value={hex} onChange={rgba} {...gesture}/>
+  const defaultHex=param.defaultValue.slice(0,7)
+  if(!param.alpha&&!param.channels)return <ColorField label={param.label} value={hex} defaultValue={defaultHex} onChange={onChange} {...gesture}/>
+  return <div className="controller-stack"><ColorField label={param.label} value={hex} defaultValue={defaultHex} onChange={rgba} {...gesture}/>
     {param.alpha?<SliderField label="Opacity" value={alpha*100} min={0} max={100} step={1} unit="%" onChange={n=>rgba(hex,n/100)} {...gesture}/>:null}
     {param.channels?<><SelectField label="Channels" value={mode} options={[{value:'rgb',label:'RGB'},{value:'hsl',label:'HSL'}]} onChange={setMode}/><div className="controller-components" style={{'--component-count':3} as CSSProperties}>{(mode==='rgb'?['R','G','B']:['H','S','L']).map((label,i)=><NumberField key={label} label={label} value={values[i]!} min={0} max={mode==='rgb'?255:i===0?360:100} step={1} variant="field" onChange={n=>change(i,n)} {...gesture}/>)}</div></>:null}
   </div>

@@ -3,12 +3,16 @@ import { IconMinus, IconPlus } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
 import { useHoldRepeat } from '@/ui/useHoldRepeat'
+import { FieldReset } from '@/ui/FieldReset'
+import { IconDriven } from '@/ui/icons'
 import {
   SCRUB_THRESHOLD_PX,
   applyScrub,
+  evaluateNumberInput,
   formatNumber,
   nudgeNumber,
   parseNumberInput,
+  type UnitOption,
 } from '@/ui/numeric'
 
 type NumberFieldProps = {
@@ -20,10 +24,16 @@ type NumberFieldProps = {
   step: number
   unit?: string
   /** Display units the unit chip cycles through; the stored value stays in the base unit. */
-  units?: { value: string; label: string }[]
+  units?: UnitOption[]
   onUnitChange?: (unit: string) => void
   /** Extra controls that live inside the box, after the value. */
   trailing?: ReactNode
+  /** When given, a mark shows once the value leaves it, and puts it back on click. */
+  defaultValue?: number
+  /** Several selected items disagree: the field shows "Mixed" until a value is typed. */
+  mixed?: boolean
+  /** The value comes from elsewhere (an expression, a track, another parameter); the field only shows it. */
+  driven?: string
   variant?: 'slider' | 'stepper' | 'field'
   disabled?: boolean
   onChange: (value: number) => void
@@ -43,6 +53,9 @@ export function NumberField({
   units,
   onUnitChange,
   trailing,
+  defaultValue,
+  mixed = false,
+  driven,
   variant = 'slider',
   disabled,
   onChange,
@@ -58,7 +71,7 @@ export function NumberField({
   const valueOnFocus = useRef<number | null>(null)
   const valueRef = useRef(value)
   valueRef.current = value
-  const [draft, setDraft] = useState(formatNumber(value, step))
+  const [draft, setDraft] = useState(mixed ? '' : formatNumber(value, step))
   const [error, setError] = useState<string | null>(null)
   const [scrubbing, setScrubbing] = useState(false)
   const gesture = useRef<'none' | 'pending' | 'scrub' | 'arrows' | 'stepper'>('none')
@@ -77,20 +90,23 @@ export function NumberField({
 
   useEffect(() => {
     if (inputRef.current && document.activeElement === inputRef.current) return
-    setDraft(formatNumber(value, step))
-  }, [value, step])
+    setDraft(mixed ? '' : formatNumber(value, step))
+  }, [value, step, mixed])
 
   const bounds = { min, max, step }
+  const locked = disabled || Boolean(driven)
+  const modified = defaultValue !== undefined && !mixed && Math.abs(value - defaultValue) > 1e-9
 
   const commit = (raw: string) => {
-    const next = parseNumberInput(raw, min, max, step)
+    if (mixed && raw.trim() === '') { setError(null); return }
+    const next = evaluateNumberInput(raw, valueRef.current, { min, max, step, unit, units })
     if (next === null) {
       setError('Enter a number')
-      setDraft(formatNumber(value, step))
+      setDraft(mixed ? '' : formatNumber(value, step))
       return
     }
     setError(null)
-    if (next !== value) onChange(next)
+    if (next !== value || mixed) onChange(next)
     setDraft(formatNumber(next, step))
   }
 
@@ -147,8 +163,10 @@ export function NumberField({
     <div
       className="number-value"
       data-scrubbing={scrubbing || undefined}
+      data-driven={driven ? '' : undefined}
+      data-mixed={mixed || undefined}
       onPointerDown={(event) => {
-        if (disabled || event.button !== 0) return
+        if (locked || event.button !== 0) return
         event.preventDefault()
         gesture.current = 'pending'
         pointer.current = {
@@ -210,18 +228,24 @@ export function NumberField({
           {label}
         </label>
       )}
+      {driven ? <span className="number-value__driven" aria-hidden="true"><IconDriven /></span> : null}
+      {modified && !locked ? (
+        <FieldReset label={label} defaultLabel={`${formatNumber(defaultValue!, step)}${unit ? ` ${unit}` : ''}`} onReset={() => onChange(defaultValue!)} />
+      ) : null}
       <input
         ref={inputRef}
         id={fieldId}
         className="number-value__input"
-        style={{ width: `${Math.max(4, draft.length + 1)}ch` }}
+        style={{ width: `${Math.max(mixed ? 6 : 4, draft.length + 1)}ch` }}
         inputMode="decimal"
         autoComplete="off"
         spellCheck={false}
         disabled={disabled}
+        readOnly={Boolean(driven)}
+        placeholder={mixed ? 'Mixed' : undefined}
         value={draft}
         aria-invalid={error ? true : undefined}
-        aria-description="Drag horizontally to adjust, click to type, or use the arrow keys. Hold Shift while dragging for finer changes."
+        aria-description={driven ? `${driven}. The value is read-only while it is driven.` : 'Drag horizontally to adjust, click to type an expression, or use the arrow keys. Hold Shift while dragging for finer changes.'}
         aria-describedby={error ? `${fieldId}-error` : unit ? `${fieldId}-unit` : undefined}
         onChange={(event) => {
           setDraft(event.target.value)
@@ -252,7 +276,7 @@ export function NumberField({
             setError(null)
             event.currentTarget.blur()
           }
-          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && !locked) {
             event.preventDefault()
             if (gesture.current === 'none') {
               gesture.current = 'arrows'
@@ -300,7 +324,7 @@ export function NumberField({
   const switchable = Boolean(unit && units && units.length > 1 && onUnitChange)
   const nextUnit = switchable ? units![(units!.findIndex((item) => item.value === unit) + 1) % units!.length]!.label : ''
   const guidedValueControl = (
-    <Tooltip content={`Drag to adjust · Click to type · Shift for precision${switchable ? ` · Click the unit for ${nextUnit}` : ''}`}>
+    <Tooltip content={driven ?? `Drag to adjust · Type a value or an expression · Shift for precision${switchable ? ` · Click the unit for ${nextUnit}` : ''}`}>
       {valueControl}
     </Tooltip>
   )
@@ -316,9 +340,9 @@ export function NumberField({
             <IconButton
               label={`Decrease ${label}`}
               onClick={event => { if (event.detail === 0) applyNudge(-1) }}
-              disabled={disabled || value <= min}
+              disabled={locked || value <= min}
               onPointerDown={(event) => {
-                if (event.button !== 0 || disabled || value <= min) return
+                if (event.button !== 0 || locked || value <= min) return
                 event.preventDefault()
                 hold.start(-1)
               }}
@@ -334,9 +358,9 @@ export function NumberField({
             <IconButton
               label={`Increase ${label}`}
               onClick={event => { if (event.detail === 0) applyNudge(1) }}
-              disabled={disabled || value >= max}
+              disabled={locked || value >= max}
               onPointerDown={(event) => {
-                if (event.button !== 0 || disabled || value >= max) return
+                if (event.button !== 0 || locked || value >= max) return
                 event.preventDefault()
                 hold.start(1)
               }}

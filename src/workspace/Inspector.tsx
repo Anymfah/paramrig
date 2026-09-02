@@ -4,6 +4,7 @@ import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/Conte
 import { horizontalStripWheel } from '@/ui/horizontal-strip-wheel'
 import { IconChevron, IconReset, IconResetSection, IconSliders } from '@/ui/icons'
 import { ParameterField } from '@/ui/ParameterField'
+import { describeValueSource } from '@/state/session'
 import { ValueSourceController } from '@/ui/BindingController'
 import type { RigSession } from '@/state/session'
 import { usePlayhead } from '@/state/workspace'
@@ -366,7 +367,7 @@ function SessionParameterField({param,session,value}:{param:ParameterDef;session
   return <><ParameterField param={param.kind==='number'&&param.role==='playhead'?{...param,max:session.durationTime()}:param} value={shown} onChange={next=>session.setValue(param.id,next)}
     onAction={id=>session.runAction(id)} onPreset={(id,next)=>session.applyPreset(id,next)}
     resolveNumber={id=>{const v=session.viewValues()[id];if(typeof v!=='number')throw new Error(`Not a numeric parameter: ${id}`);return v}}
-    parameters={session.parameters} animated={id=>Boolean(session.trackFor(id))}
+    parameters={session.parameters} animated={id=>Boolean(session.trackFor(id))} driven={id=>describeValueSource(session.sourceFor(id),session.parameters)}
     onGestureStart={()=>session.beginGesture(`Adjust ${param.label}`)} onGestureEnd={()=>session.endGesture()} onGestureCancel={()=>session.cancelGesture()}/>
     {error?<p className="field__error" role="alert">{error}</p>:null}</>
 }

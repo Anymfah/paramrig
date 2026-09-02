@@ -65,3 +65,102 @@ export function nudgeNumber(
 ): number {
   return clampNumber(snapToStep(value + direction * options.step, options.min, options.step), options.min, options.max)
 }
+
+/**
+ * A field accepts arithmetic, not just a number: `32*2`, `(100-8)/3`, `2^3`, `50%` of the range,
+ * `+=10` relative to the current value, and a trailing unit the field knows (`2rem`).
+ */
+export type UnitOption = { value: string; label: string; factor?: number }
+
+export function evaluateExpression(source: string): number | null {
+  const src = source.replace(/\s+/g, '').replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-')
+  if (!src) return null
+  let i = 0
+  const peek = () => src[i]
+  const number = (): number | null => {
+    const match = /^(\d+\.?\d*|\.\d+)(e[+-]?\d+)?/i.exec(src.slice(i))
+    if (!match) return null
+    i += match[0].length
+    return Number(match[0])
+  }
+  const factor = (): number | null => {
+    if (peek() === '-') { i++; const v = factor(); return v === null ? null : -v }
+    if (peek() === '+') { i++; return factor() }
+    if (peek() === '(') {
+      i++
+      const v = expression()
+      if (v === null || peek() !== ')') return null
+      i++
+      return v
+    }
+    return number()
+  }
+  const power = (): number | null => {
+    let base = factor()
+    if (base === null) return null
+    while (peek() === '^') {
+      i++
+      const exponent = factor()
+      if (exponent === null) return null
+      base = Math.pow(base, exponent)
+    }
+    return base
+  }
+  const term = (): number | null => {
+    let left = power()
+    if (left === null) return null
+    while (peek() === '*' || peek() === '/' || peek() === '%') {
+      const op = src[i++]
+      const right = power()
+      if (right === null) return null
+      left = op === '*' ? left * right : op === '/' ? left / right : left % right
+    }
+    return left
+  }
+  const expression = (): number | null => {
+    let left = term()
+    if (left === null) return null
+    while (peek() === '+' || peek() === '-') {
+      const op = src[i++]
+      const right = term()
+      if (right === null) return null
+      left = op === '+' ? left + right : left - right
+    }
+    return left
+  }
+  const result = expression()
+  if (result === null || i !== src.length || !Number.isFinite(result)) return null
+  return result
+}
+
+export function evaluateNumberInput(
+  raw: string,
+  current: number,
+  options: { min: number; max: number; step: number; unit?: string; units?: UnitOption[] },
+): number | null {
+  let text = raw.trim()
+  if (text === '') return null
+  let relative: 1 | -1 | 0 = 0
+  if (text.startsWith('+=')) { relative = 1; text = text.slice(2) }
+  else if (text.startsWith('-=')) { relative = -1; text = text.slice(2) }
+  let scale = 1
+  const percent = /%$/.test(text) && !/[-+*/^(]/.test(text)
+  if (percent) {
+    text = text.slice(0, -1)
+    const span = options.max - options.min
+    if (Number.isFinite(span) && span > 0 && span !== 100) scale = span / 100
+  } else {
+    const suffix = /([a-z°%]+)$/i.exec(text)?.[1]
+    if (suffix) {
+      const known = options.units?.find((item) => item.value.toLowerCase() === suffix.toLowerCase())
+      const currentUnit = options.units?.find((item) => item.value === options.unit)
+      if (known && known.factor && currentUnit?.factor) scale = known.factor / currentUnit.factor
+      else if (suffix.toLowerCase() !== (options.unit ?? '').toLowerCase()) return null
+      text = text.slice(0, -suffix.length)
+    }
+  }
+  const evaluated = evaluateExpression(text)
+  if (evaluated === null) return null
+  const absolute = relative === 0 ? evaluated * scale + (percent && scale !== 1 ? options.min : 0) : current + relative * evaluated * scale
+  return clampNumber(snapToStep(absolute, options.min, options.step), options.min, options.max)
+}

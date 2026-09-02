@@ -12,6 +12,9 @@ type SliderFieldProps = {
   sliderMin?: number
   sliderMax?: number
   disabled?: boolean
+  defaultValue?: number
+  mixed?: boolean
+  driven?: string
   onChange: (value: number) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -28,6 +31,9 @@ export function SliderField({
   sliderMin,
   sliderMax,
   disabled,
+  defaultValue,
+  mixed,
+  driven,
   onChange,
   onGestureStart,
   onGestureEnd,
@@ -77,12 +83,15 @@ export function SliderField({
         unit={unit}
         variant="slider"
         disabled={disabled}
+        defaultValue={defaultValue}
+        mixed={mixed}
+        driven={driven}
         onChange={onChange}
         onGestureStart={onGestureStart}
         onGestureEnd={onGestureEnd}
         onGestureCancel={onGestureCancel}
       />
-      <div className="slider-wrap" data-overflow={overflow} data-bipolar={origin !== null || undefined} style={wrapStyle}>
+      <div className="slider-wrap" data-overflow={overflow} data-bipolar={origin !== null || undefined} data-driven={driven ? '' : undefined} style={wrapStyle} onDoubleClick={() => { if (defaultValue !== undefined && !driven) onChange(defaultValue) }}>
         {origin !== null ? <span className="slider__origin" /> : null}
         <span className="slider__track" aria-hidden="true">
           <span className="slider__fill" />
@@ -97,9 +106,9 @@ export function SliderField({
           max={trackMax}
           step={step}
           value={Math.min(trackMax, Math.max(trackMin, value))}
-          disabled={disabled}
+          disabled={disabled || Boolean(driven)}
           aria-label={`${label} slider`}
-          aria-description="Drag the handle or use the arrow keys. Hold Shift for finer changes. Press Home or End for the limits, and Escape to cancel a drag."
+          aria-description="Drag the handle or use the arrow keys. Hold Shift for finer changes. Press Home or End for the limits, Escape to cancel a drag, and double-click to reset."
           aria-valuetext={unit ? `${value}${unit}` : String(value)}
           onPointerDown={(event) => {
             dragging.current = true

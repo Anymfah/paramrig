@@ -504,8 +504,8 @@ export function VectorInspector({
               </section>
             ) : null}
             <section className="vector-panel" aria-label="State">
-              <SwitchField label="Locked" checked={selectedElements.every((element) => element.locked)} onChange={(locked) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked } })))} />
-              <SwitchField label="Visible" checked={selectedElements.every((element) => element.visible)} onChange={(visible) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible } })))} />
+              <SwitchField label="Locked" checked={selectedElements.every((element) => element.locked)} mixed={selectedElements.some((element) => element.locked) && !selectedElements.every((element) => element.locked)} onChange={(locked) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked } })))} />
+              <SwitchField label="Visible" checked={selectedElements.every((element) => element.visible)} mixed={selectedElements.some((element) => element.visible) && !selectedElements.every((element) => element.visible)} onChange={(visible) => onUpdateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible } })))} />
             </section>
           </>
         )}
@@ -589,9 +589,8 @@ function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedM
         {groupOpacity ? (
           <NumberField label="Opacity" value={Math.round(groupOpacity.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(opacity) => onUpdate(groupOpacity.id, { opacity: opacity / 100 })} {...gesture} />
         ) : (
-          <NumberField label="Opacity" value={Math.round(first.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(opacity) => apply({ opacity: opacity / 100 })} {...gesture} />
+          <NumberField label="Opacity" value={Math.round(first.opacity * 100)} min={0} max={100} step={1} unit="%" variant="field" mixed={!single && !same('opacity')} onChange={(opacity) => apply({ opacity: opacity / 100 })} {...gesture} />
         )}
-        {!single && (!same('strokeWidth') || !same('opacity')) ? <p className="vector-panel__hint">Mixed values show the first object. Editing applies to all.</p> : null}
       </section>
       {single && strokes.length > 0 && single.kind !== 'text' && single.kind !== 'image' ? (
         <BrushPanel
@@ -624,7 +623,7 @@ function AppearancePanel({ elements, leaves, styles, brushes, palette, selectedM
       {strokes.length > 0 ? (
         <section className="vector-panel" aria-label="Stroke properties">
           <h2 className="vector-panel__title">Stroke</h2>
-          <NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
+          <NumberField label="Width" value={first.strokeWidth} min={0} max={100} step={0.5} unit="px" variant="field" mixed={!single && !same('strokeWidth')} onChange={(strokeWidth) => apply({ strokeWidth })} {...gesture} />
           <SelectField label="Align" value={first.strokeAlign ?? 'center'} options={[{ value: 'inside', label: 'Inside' }, { value: 'center', label: 'Center' }, { value: 'outside', label: 'Outside' }]} onChange={(value) => apply({ strokeAlign: value === 'center' ? undefined : value as VectorElement['strokeAlign'] })} />
           <SelectField label="Cap" value={first.strokeCap ?? 'butt'} options={[{ value: 'butt', label: 'Butt' }, { value: 'round', label: 'Round' }, { value: 'square', label: 'Square' }]} onChange={(value) => apply({ strokeCap: value === 'butt' ? undefined : value as VectorElement['strokeCap'] })} />
           <SelectField label="Join" value={first.strokeJoin ?? 'miter'} options={[{ value: 'miter', label: 'Miter' }, { value: 'round', label: 'Round' }, { value: 'bevel', label: 'Bevel' }]} onChange={(value) => apply({ strokeJoin: value === 'miter' ? undefined : value as VectorElement['strokeJoin'] })} />
