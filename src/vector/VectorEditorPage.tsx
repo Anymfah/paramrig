@@ -76,6 +76,9 @@ import { geometryOps } from '@/vector/geometryOps'
 import { connectNodes, deleteNodes, toggleNodeSmooth, worldNetwork } from '@/vector/network'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
+import { documentAssets } from '@/vector/assets'
+import type { AssetActions } from '@/vector/VectorAssets'
+import { DEFAULT_BRUSH_SETTINGS } from '@/vector/brushes'
 import type { VectorElement, VectorFont, VectorNetwork, VectorPaint, VectorStyleKind, VectorTool } from '@/vector/types'
 import { useVectorDocument } from '@/vector/useVectorDocument'
 
@@ -955,6 +958,70 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }), true, `Delete style “${style.name}”`)
   }
 
+  /** What the rail can do with the things this document reuses. */
+  const assetActions: AssetActions = {
+    onPlace: (asset) => { if (asset.sourceId) placeComponent(asset.sourceId) },
+    onApply: (asset) => {
+      if (asset.kind === 'style') {
+        const style = (document.styles ?? []).find((item) => item.id === asset.id)
+        if (style) linkStyle(style.kind, style.id)
+        return
+      }
+      if (asset.kind === 'brush') {
+        const targets = selectedElements.filter((element) => element.kind !== 'group')
+        if (targets.length === 0) return
+        editor.updateElements(targets.map((element) => ({ id: element.id, patch: { brush: { ...(element.brush ?? DEFAULT_BRUSH_SETTINGS), id: asset.id } } })), true, `Brush with “${asset.name}”`)
+        return
+      }
+      if (asset.kind === 'font') pickFont(asset.name, 'file')
+    },
+    onRename: (asset, name) => {
+      const trimmed = name.trim().slice(0, 60)
+      if (!trimmed || trimmed === asset.name) return
+      if (asset.kind === 'style') {
+        editor.updateDocument({ styles: (document.styles ?? []).map((style) => style.id === asset.id ? { ...style, name: trimmed } : style) }, true, 'Rename style')
+        return
+      }
+      if (asset.kind === 'brush') {
+        editor.updateDocument({ brushes: (document.brushes ?? []).map((brush) => brush.id === asset.id ? { ...brush, name: trimmed } : brush) }, true, 'Rename brush')
+        return
+      }
+      if (asset.kind === 'component' || asset.kind === 'pattern') editor.renameElement(asset.id, trimmed)
+    },
+    onDuplicate: (asset) => {
+      if (asset.kind === 'style') {
+        const style = (document.styles ?? []).find((item) => item.id === asset.id)
+        if (!style) return
+        editor.updateDocument({ styles: [...(document.styles ?? []), { ...style, id: crypto.randomUUID(), name: `${style.name} copy` }] }, true, 'Duplicate style')
+        return
+      }
+      if (asset.kind === 'brush') {
+        const brush = (document.brushes ?? []).find((item) => item.id === asset.id)
+        if (!brush) return
+        editor.updateDocument({ brushes: [...(document.brushes ?? []), { ...brush, id: crypto.randomUUID(), name: `${brush.name} copy` }] }, true, 'Duplicate brush')
+        return
+      }
+      if (asset.sourceId) editor.duplicateElement(asset.sourceId)
+    },
+    onDelete: (asset) => {
+      if (asset.kind === 'style') { deleteStyle(asset.id); return }
+      if (asset.kind === 'brush') {
+        editor.editDocument((current) => ({
+          ...current,
+          brushes: (current.brushes ?? []).filter((brush) => brush.id !== asset.id),
+          elements: current.elements.map((element) => element.brush?.id === asset.id ? { ...element, brush: undefined } : element),
+        }), true, `Delete brush “${asset.name}”`)
+        return
+      }
+      if (asset.kind === 'font') {
+        editor.updateDocument({ fonts: (document.fonts ?? []).filter((font) => font.family !== asset.id) }, true, `Delete font “${asset.name}”`)
+        return
+      }
+      if (asset.sourceId) editor.removeElements([asset.sourceId])
+    },
+    onSelectUsers: (asset) => { if (asset.userIds.length > 0) editor.setSelectedIds(asset.userIds) },
+  }
+
   /** Wraps shapes in a boolean group, which keeps them editable underneath the result. */
   const booleanGroup = (operation: BooleanOperation, ids: string[]) => {
     if (ids.length < 2) return
@@ -1264,7 +1331,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(group) }}
           onUngroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(ungroup) }}
           onRenameMany={(ids) => { editor.setSelectedIds(ids); setRenameOpen(true) }}
-          onPlaceComponent={placeComponent}
+          assets={documentAssets(document)}
+          assetActions={assetActions}
         />
       )}
       inspector={

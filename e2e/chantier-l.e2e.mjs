@@ -73,7 +73,7 @@ export default run('chantier-l', async ({ page, check, log, helpers }) => {
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.vector-toolbar')
   await page.waitForTimeout(400)
-  const selected = await page.locator('[role="tab"][aria-selected="true"]').innerText()
+  const selected = await page.locator('.vector-inspector__tabs [role="tab"][aria-selected="true"]').innerText()
   check('the tab comes back with the document', selected.trim() === 'Controls', selected)
 
   await page.click('[role="tab"][id="vector-tab-history"]')

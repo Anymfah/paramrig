@@ -33,15 +33,15 @@ export default run('chantier-h', async ({ page, check, helpers, shot }) => {
   await page.click('.vector-layers__tab[aria-selected="false"]')
   await page.waitForTimeout(300)
   const asset = await page.evaluate(() => {
-    const item = document.querySelector('.vector-assets__item')
-    return item ? { name: item.querySelector('.vector-assets__name')?.textContent, count: item.querySelector('.vector-assets__count')?.textContent, shapes: item.querySelectorAll('svg path, svg rect, svg ellipse, svg image, svg text').length } : null
+    const item = document.querySelector('[data-section="assets-components"] .vector-asset')
+    return item ? { name: item.querySelector('.vector-asset__name')?.textContent, count: item.querySelector('.vector-asset__meta')?.textContent, shapes: item.querySelectorAll('svg path, svg rect, svg ellipse, svg image, svg text').length } : null
   })
-  check('the assets tab shows the component with a thumbnail', !!asset && asset.shapes >= 2 && asset.count === '0', JSON.stringify(asset))
+  check('the assets tab shows the component with a thumbnail', !!asset && asset.shapes >= 2 && asset.count === '0 used', JSON.stringify(asset))
   await shot('chantier-h-assets.png')
 
   // 3. Placing it three times gives three instances that copy the master.
   for (let index = 0; index < 3; index += 1) {
-    await page.click('.vector-assets__item')
+    await page.click('[data-section="assets-components"] .vector-asset__open')
     await page.waitForTimeout(300)
   }
   state = await helpers.doc()
