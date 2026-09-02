@@ -44,6 +44,8 @@
 }
 :root[data-theme='light'] { --vector-halo: rgb(247 250 249 / 0.92); }
 
+/* A project file dropped anywhere on the library opens it. */
+.shell[data-dropping] .library-main { outline: 2px dashed var(--accent); outline-offset: -8px; }
 .library-titlebar {
   display: flex;
   align-items: center;

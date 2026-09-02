@@ -136,9 +136,19 @@ export function pageHelpers(page) {
     await page.waitForTimeout(150)
   }
 
-  /** A new vector document, focused, ready for tool keys. */
+  /**
+   * A new vector document, focused, ready for tool keys. The browser's stored documents and drafts
+   * are cleared first: a run that starts on a library of two hundred leftovers is a run whose
+   * clicks land on a page that is still settling.
+   */
   const newDocument = async () => {
     await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await page.evaluate(() => {
+      localStorage.removeItem('paramrig.vector-documents.v1')
+      localStorage.removeItem('paramrig.drafts.v1')
+      localStorage.removeItem('paramrig.tabs.v1')
+    })
+    await page.reload({ waitUntil: 'networkidle' })
     await page.click('[aria-label="New vector document"]')
     await page.waitForSelector('.vector-toolbar')
     await page.locator('#main').focus()

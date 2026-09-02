@@ -20,6 +20,7 @@ import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 import { backdropBlur } from '@/vector/filters'
 import { selectionBounds } from '@/vector/geometry'
 import { sanitizeRig } from '@/vector/rig'
+import { BUNDLED_DOCUMENTS } from '@/rigs/examples/aperture-mark'
 
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
@@ -93,12 +94,30 @@ export function createVectorDocument(): VectorDocument {
   return document
 }
 
+/**
+ * Every document this browser can open: the ones it has stored, plus the ones that ship with the
+ * app and have not been edited yet. A bundled document becomes an ordinary stored one the moment
+ * it is changed.
+ */
 export function listVectorDocuments(): VectorDocument[] {
-  return Object.values(readAll()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const stored = readAll()
+  const bundled = BUNDLED_DOCUMENTS.filter((document) => !stored[document.id]).flatMap((document) => {
+    const valid = sanitizeVectorDocument(document)
+    return valid ? [valid] : []
+  })
+  return [...Object.values(stored), ...bundled].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export function getVectorDocument(id: string): VectorDocument | null {
-  return readAll()[id] ?? null
+  const stored = readAll()[id]
+  if (stored) return stored
+  const bundled = BUNDLED_DOCUMENTS.find((document) => document.id === id)
+  return bundled ? sanitizeVectorDocument(bundled) : null
+}
+
+/** Whether a document is one of the app's own examples rather than one of this browser's. */
+export function isBundledDocument(id: string): boolean {
+  return BUNDLED_DOCUMENTS.some((document) => document.id === id)
 }
 
 export function saveVectorDocument(document: VectorDocument): StorageResult {
@@ -124,9 +143,9 @@ export function vectorManifest(document: VectorDocument): RigManifest {
     description: '',
     renderer: 'vector',
     rendererLabel: 'Vector',
-    collection: 'project',
-    title: 'Projects/Vector',
-    sourceFile: 'Local document',
+    collection: isBundledDocument(document.id) ? 'examples' : 'project',
+    title: isBundledDocument(document.id) ? 'Examples/Vector' : 'Projects/Vector',
+    sourceFile: isBundledDocument(document.id) ? 'rigs/examples/aperture-mark.ts' : 'Local document',
     tags: ['vector', 'svg', 'project', ...(controls > 0 ? ['rig'] : [])],
     groups: rig?.groups ?? [],
     parameters: rig?.parameters ?? [],

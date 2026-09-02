@@ -26,6 +26,11 @@ export function DocsPage() {
         </Link>
       </p>
       <p>
+        <Link className="text-link" to="/docs/vector-rigs">
+          Vector rigs: a drawing that carries its own controls
+        </Link>
+      </p>
+      <p>
         <Link className="text-link" to="/">
           Back to the library
         </Link>

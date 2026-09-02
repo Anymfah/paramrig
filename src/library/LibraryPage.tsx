@@ -28,6 +28,9 @@ export function LibraryPage() {
   const [recent, setRecent] = useState<RecentProject[]>([])
   const [recentError, setRecentError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const [dropping, setDropping] = useState(false)
+  /** What a dropped file asked for and did not get: controls or bindings the app could not read. */
+  const [note, setNote] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -83,6 +86,20 @@ export function LibraryPage() {
     }
   }, [fixture])
 
+  /** A project file dropped on the library opens as a document and, when it has one, its rig. */
+  const openDropped = async (file: File) => {
+    setRecentError(null)
+    setNote(null)
+    const result = importProject(await file.text())
+    if (!result.ok) {
+      setRecentError(result.error)
+      return
+    }
+    saveVectorDocument(result.project.document)
+    if (result.note) setNote(result.note)
+    navigate(`/r/${result.project.document.id}`)
+  }
+
   const { dataNav, style, compact } = useNavColumn()
   const visible = useMemo(() => searchRigs(rigs ?? [], query), [rigs, query])
 
@@ -94,7 +111,22 @@ export function LibraryPage() {
       data-inspector="collapsed"
       data-mobile-panel={mobilePanel}
       data-nav={dataNav}
+      data-dropping={dropping || undefined}
       style={style}
+      onDragOver={(event) => {
+        if (![...event.dataTransfer.items].some((item) => item.kind === 'file')) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropping(true)
+      }}
+      onDragLeave={(event) => { if (event.currentTarget === event.target) setDropping(false) }}
+      onDrop={(event) => {
+        const file = [...event.dataTransfer.files][0]
+        if (!file) return
+        event.preventDefault()
+        setDropping(false)
+        void openDropped(file)
+      }}
     >
       <RigNavigation rigs={fixture === 'loading' ? listExampleRigs() : (rigs ?? [])} activeId={undefined} compact={compact} onNavigate={() => setMobilePanel('main')} />
       <main id="main" className="library-main scroll-area">
@@ -120,6 +152,8 @@ export function LibraryPage() {
             <a href="https://paramrig.com/docs/persistence/">About local data</a>
           </p>
         )}
+        {recentError && recent.length === 0 ? <StatusMessage tone="error">{recentError}</StatusMessage> : null}
+        {note ? <StatusMessage>{note}</StatusMessage> : null}
         {recent.length > 0 ? (
           <section className="library-recent" aria-label="Recent projects">
             <h2 className="library-recent__title">Recent</h2>

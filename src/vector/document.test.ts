@@ -33,7 +33,8 @@ describe('vector documents', () => {
       elements: [],
     })
     expect(getVectorDocument(document.id)).toEqual(document)
-    expect(listVectorDocuments()).toEqual([document])
+    // The list also carries the documents that ship with the app, until they are edited.
+    expect(listVectorDocuments().filter((item) => !item.id.startsWith('vector-example-'))).toEqual([document])
     expect(vectorManifest(document)).toMatchObject({
       id: document.id,
       renderer: 'vector',

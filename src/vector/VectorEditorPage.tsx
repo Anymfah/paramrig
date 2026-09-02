@@ -13,7 +13,7 @@ import { IconBringForward, IconCheck, IconChevronRight, IconCopy, IconEyeOff, Ic
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
-import { readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
+import { pastedBindings, readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
 import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
@@ -347,7 +347,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     current.editDocument((state) => ({ ...state, brushes: [...(state.brushes ?? []), brush] }), true, `Define brush “${brush.name}”`)
   }, [])
 
-  const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string): string[] => {
+  const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string, bindings: VectorBinding[] = []): string[] => {
     const current = editorRef.current
     if (!current.document || elements.length === 0) return []
     const idMap = new Map(elements.map((element) => [element.id, crypto.randomUUID()]))
@@ -357,7 +357,19 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
       const moved = element.kind !== 'group' ? { x: element.x + offset, y: element.y + offset } : {}
       return { ...rest, ...moved, id: idMap.get(element.id)!, ...(mapped ? { parentId: mapped } : {}) }
     })
-    current.addElements(copies, true, 'Paste')
+    // A copy keeps whatever bindings this document already has the controls for.
+    const kept = bindings.length && current.document.rig
+      ? pastedBindings(bindings, Object.fromEntries(idMap), new Set(current.document.rig.parameters.map((parameter) => parameter.id)))
+      : []
+    if (kept.length) {
+      current.editDocument((state) => ({
+        ...state,
+        elements: [...state.elements, ...copies],
+        rig: state.rig ? { ...state.rig, bindings: [...state.rig.bindings, ...kept] } : state.rig,
+      }), true, 'Paste')
+    } else {
+      current.addElements(copies, true, 'Paste')
+    }
     return copies.map((element) => element.id)
   }, [])
 
@@ -540,7 +552,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
         return
       }
       event.preventDefault()
-      pasteElements(payload.elements, payload.source === 'internal' ? 12 : 0)
+      pasteElements(payload.elements, payload.source === 'internal' ? 12 : 0, undefined, payload.bindings)
     }
     const copyHandler = (event: ClipboardEvent) => onCopy(event, false)
     const cutHandler = (event: ClipboardEvent) => onCopy(event, true)

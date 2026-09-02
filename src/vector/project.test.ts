@@ -90,3 +90,53 @@ describe('vector project files', () => {
     expect(storageMessage(result)).toBe(STORAGE_FULL_MESSAGE)
   })
 })
+
+describe('a project file that carries a rig', () => {
+  const withRig = (rig: unknown) => ({
+    format: 'paramrig.vector',
+    formatVersion: 1,
+    document: {
+      version: 1,
+      id: 'vector-imported',
+      name: 'Imported',
+      width: 400,
+      height: 400,
+      background: '#101211',
+      elements: [{ id: 'a', kind: 'rectangle', name: 'Rect', x: 0, y: 0, width: 10, height: 10, rotation: 0, fill: '#FFFFFF', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }],
+      guides: [],
+      rig,
+      createdAt: '2026-09-02T00:00:00.000Z',
+      updatedAt: '2026-09-02T00:00:00.000Z',
+    },
+  })
+
+  it('brings the controls and the bindings in with the drawing', () => {
+    const result = importProject(withRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [{ kind: 'number', id: 'w', label: 'Width', group: 'main', min: 0, max: 100, step: 1, defaultValue: 10 }],
+      bindings: [{ id: 'b', elementId: 'a', parameterId: 'w', property: 'width' }],
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.project.document.rig?.parameters).toHaveLength(1)
+    expect(result.project.document.rig?.bindings).toHaveLength(1)
+    expect(result.note).toBeUndefined()
+  })
+
+  it('says what it could not read instead of dropping it in silence', () => {
+    const result = importProject(withRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [
+        { kind: 'number', id: 'w', label: 'Width', group: 'main', min: 0, max: 100, step: 1, defaultValue: 10 },
+        { kind: 'gizmo3d', id: 'g', label: 'Gizmo', group: 'main' },
+      ],
+      bindings: [
+        { id: 'b', elementId: 'a', parameterId: 'w', property: 'width' },
+        { id: 'orphan', elementId: 'gone', parameterId: 'w', property: 'width' },
+      ],
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.note).toBe('1 control and 1 binding in that file could not be read and were left out.')
+  })
+})
