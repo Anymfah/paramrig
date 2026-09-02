@@ -1,4 +1,4 @@
-import { createElement, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
+import { createElement, Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
@@ -2124,6 +2124,7 @@ export function VectorCanvas({
               textEditingId={textEditId}
               inheritedLocked={false}
               viewBounds={viewBounds}
+              scene={elements}
               onPointerDown={stableShapePointerDown}
               onHover={setHoveredId}
             />
@@ -2340,7 +2341,7 @@ function nodeModalMap(mode: VectorTransformMode, axis: VectorTransformAxis, orig
   return (point) => ({ x: origin.x + (point.x - origin.x) * factorX, y: origin.y + (point.y - origin.y) * factorY })
 }
 
-function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, textEditingId, inheritedLocked, viewBounds, onPointerDown, onHover }: {
+function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, textEditingId, inheritedLocked, viewBounds, scene, onPointerDown, onHover }: {
   nodes: TreeNode[]
   zoom: number
   coarse: boolean
@@ -2350,6 +2351,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
   textEditingId: string | null
   inheritedLocked: boolean
   viewBounds: Bounds | null
+  scene: VectorElement[]
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
@@ -2372,6 +2374,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
               editing={element.id === editingId}
               hideText={false}
               hitTarget={withinView(element, viewBounds)}
+              scene={scene}
               onPointerDown={onPointerDown}
               onHover={onHover}
             />
@@ -2389,6 +2392,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
               editingId={editingId}
               textEditingId={textEditingId}
               inheritedLocked={inheritedLocked || element.locked}
+              scene={scene}
               viewBounds={viewBounds}
               onPointerDown={onPointerDown}
               onHover={onHover}
@@ -2406,6 +2410,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 editing={false}
                 hideText={false}
                 hitTarget={withinView(element, viewBounds)}
+                scene={scene}
                 onPointerDown={onPointerDown}
                 onHover={onHover}
               />
@@ -2436,6 +2441,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 editingId={editingId}
                 textEditingId={textEditingId}
                 inheritedLocked={inheritedLocked || element.locked}
+              scene={scene}
                 viewBounds={viewBounds}
                 onPointerDown={onPointerDown}
                 onHover={onHover}
@@ -2450,6 +2456,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
             key={element.id}
             element={element}
             locked={inheritedLocked || element.locked}
+            scene={scene}
             zoom={zoom}
             coarse={coarse}
             pixelPreview={pixelPreview}
@@ -2470,7 +2477,7 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
  * One painted shape plus its stroke hit companion. Memoised on primitive props so a gesture
  * re-renders only the object it edits; the hit companion is skipped for shapes outside the view.
  */
-const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hideText, hitTarget, onPointerDown, onHover }: {
+const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, pixelPreview, selected, editing, hideText, hitTarget, scene, onPointerDown, onHover }: {
   element: VectorElement
   locked: boolean
   zoom: number
@@ -2480,12 +2487,14 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   editing: boolean
   hideText: boolean
   hitTarget: boolean
+  /** Every element, so a pattern fill can find the object it stamps. */
+  scene: VectorElement[]
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
   const rendered = previewGeometry(element, pixelPreview)
   const hittable = isHittable({ ...element, locked }) && hitTarget
-  const model = renderModel(rendered, 'canvas')
+  const model = renderModel(rendered, 'canvas', scene)
   const pointerDown = (event: ReactPointerEvent<SVGElement>) => onPointerDown(element, event)
   const hover = hittable ? { onPointerEnter: () => onHover(element.id), onPointerLeave: () => onHover(null) } : {}
   // A text box is grabbed anywhere inside it; a shape only where it actually paints.
@@ -2830,6 +2839,21 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
             return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" fillRule="evenodd" /></mask>
           case 'textPath':
             return <path key={def.id} id={def.id} d={def.d} fill="none" />
+          case 'objectPattern':
+            return (
+              <Fragment key={def.id}>
+                <RenderDefs defs={def.content.defs} />
+                <pattern id={def.id} patternUnits="userSpaceOnUse" width={def.width} height={def.height} patternTransform={def.transform || undefined}>
+                  {def.stamps.map((stamp, index) => (
+                    <g key={index} transform={`translate(${stamp.x} ${stamp.y})`}>
+                      {def.content.layers.map((layer, position) => (
+                        <path key={position} d={layer.d} transform={def.content.transform} {...layerAttributes(layer)} />
+                      ))}
+                    </g>
+                  ))}
+                </pattern>
+              </Fragment>
+            )
           case 'filter':
             return (
               <filter key={def.id} id={def.id} filterUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}>

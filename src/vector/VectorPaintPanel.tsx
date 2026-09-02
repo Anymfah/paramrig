@@ -87,7 +87,7 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
   const [imageError, setImageError] = useState<string | null>(null)
-  const typeLabel = paint.type === 'solid' ? 'Solid' : paint.type === 'linear' ? 'Linear' : paint.type === 'radial' ? 'Radial' : 'Image'
+  const typeLabel = paint.type === 'solid' ? 'Solid' : paint.type === 'linear' ? 'Linear' : paint.type === 'radial' ? 'Radial' : paint.type === 'pattern' ? 'Pattern' : 'Image'
   const changeType = (type: VectorPaint['type']) => {
     if (type === paint.type) return
     const base = paint.type === 'solid' && paint.color ? paint.color : paint.stops?.[0]?.color ?? '#D4E7E1'
@@ -130,7 +130,13 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
       <SelectField
         label={`${label} type`}
         value={paint.type}
-        options={[{ value: 'solid', label: 'Solid' }, { value: 'linear', label: 'Linear' }, { value: 'radial', label: 'Radial' }, { value: 'image', label: 'Image' }]}
+        options={[
+          { value: 'solid', label: 'Solid' },
+          { value: 'linear', label: 'Linear' },
+          { value: 'radial', label: 'Radial' },
+          { value: 'image', label: 'Image' },
+          ...(paint.type === 'pattern' ? [{ value: 'pattern', label: 'Pattern' }] : []),
+        ]}
         onChange={(value) => changeType(value as VectorPaint['type'])}
       />
       {paint.type === 'solid' ? (
@@ -170,6 +176,26 @@ function PaintRow({ label, paint, removable, onChange, onRemove, gesture, palett
             onChange={(value) => onChange({ imageMode: value as VectorPaint['imageMode'] })}
           />
           <p className="vector-panel__hint">Images up to 512 KB are stored inside the document.</p>
+        </>
+      ) : null}
+      {paint.type === 'pattern' && paint.tile ? (
+        <>
+          <SelectField
+            label="Repeat"
+            value={paint.patternMode ?? 'grid'}
+            options={[{ value: 'grid', label: 'Grid' }, { value: 'brick', label: 'Brick' }, { value: 'hex', label: 'Hex' }]}
+            onChange={(value) => onChange({ patternMode: value as VectorPaint['patternMode'] })}
+          />
+          <div className="vector-field-grid">
+            <NumberField label="Tile W" value={paint.tile.width} min={1} max={10000} step={1} unit="px" variant="field" onChange={(width) => onChange({ tile: { ...paint.tile!, width } })} {...gesture} />
+            <NumberField label="Tile H" value={paint.tile.height} min={1} max={10000} step={1} unit="px" variant="field" onChange={(height) => onChange({ tile: { ...paint.tile!, height } })} {...gesture} />
+          </div>
+          <div className="vector-field-grid">
+            <NumberField label="Spacing" value={paint.spacing ?? 0} min={-1000} max={1000} step={1} unit="px" variant="field" onChange={(spacing) => onChange({ spacing })} {...gesture} />
+            <NumberField label="Angle" value={paint.angle ?? 0} min={0} max={360} step={1} unit="°" variant="field" onChange={(angle) => onChange({ angle })} {...gesture} />
+          </div>
+          <SliderField label="Scale" value={Math.round((paint.scale ?? 1) * 100)} min={5} max={400} step={1} unit="%" onChange={(value) => onChange({ scale: value / 100 })} {...gesture} />
+          <p className="vector-panel__hint">The pattern stamps an object of the document. Editing that object changes every fill that uses it.</p>
         </>
       ) : null}
       <SliderField label="Layer opacity" value={Math.round(paint.opacity * 100)} min={0} max={100} step={1} unit="%" onChange={(opacity) => onChange({ opacity: opacity / 100 })} {...gesture} />

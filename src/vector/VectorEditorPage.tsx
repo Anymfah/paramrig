@@ -39,6 +39,8 @@ import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
 import { brushFromElement } from '@/vector/brushes'
+import { patternFromElement } from '@/vector/patterns'
+import { summaryColor } from '@/vector/paints'
 import { pathBounds, pathDataOf } from '@/vector/textPath'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
@@ -963,6 +965,25 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'define-pattern', label: 'Define pattern from selection', section: 'Object', disabled: selectedIds.length < 2, run: () => {
+      const doc = editor.document
+      if (!doc || selectedIds.length < 2) return
+      // The topmost selected object is the tile; the ones under it are filled with it.
+      const ordered = doc.elements.filter((element) => selectedIds.includes(element.id))
+      const source = ordered[ordered.length - 1]
+      const targets = ordered.slice(0, -1)
+      if (!source || targets.length === 0) return
+      editor.editDocument((state) => ({
+        ...state,
+        elements: state.elements.map((element) => {
+          if (element.id === source.id) return { ...element, visible: false }
+          if (!targets.some((target) => target.id === element.id)) return element
+          const paint = patternFromElement(source, crypto.randomUUID())
+          return { ...element, fill: summaryColor([paint]), fills: [paint] }
+        }),
+      }), true, countedLabel('Fill with pattern', targets.length))
+      editor.setSelectedIds(targets.map((target) => target.id))
+    } },
     { id: 'attach-to-path', label: 'Attach to path', section: 'Object', disabled: !attachable, run: () => {
       if (!attachable) return
       editor.updateElement(attachable.text.id, {

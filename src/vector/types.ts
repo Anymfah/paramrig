@@ -39,10 +39,13 @@ export type VectorNetwork = {
 
 export type VectorGradientStop = { t: number; color: string }
 
+/** How the tiles of a pattern are laid out against each other. */
+export type VectorPatternMode = 'grid' | 'brick' | 'hex'
+
 /** One paint layer. Solid colours stay hex; gradients run along the element box; images are data URLs. */
 export type VectorPaint = {
   id: string
-  type: 'solid' | 'linear' | 'radial' | 'image'
+  type: 'solid' | 'linear' | 'radial' | 'image' | 'pattern'
   color?: string
   opacity: number
   visible: boolean
@@ -57,6 +60,13 @@ export type VectorPaint = {
   radius?: number
   image?: string
   imageMode?: 'fill' | 'fit' | 'tile'
+  /** Pattern fills: the object of the document that is stamped, and how it repeats. */
+  sourceId?: string
+  tile?: { width: number; height: number }
+  spacing?: number
+  scale?: number
+  offset?: VectorPoint
+  patternMode?: VectorPatternMode
   /** Where the picture sits inside the box, in fractions of the box, and how big it is drawn. */
   imageOffset?: VectorPoint
   imageScale?: number

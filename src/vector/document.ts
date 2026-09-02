@@ -227,8 +227,8 @@ export function serializeVectorMarkup(
 }
 
 /** Markup for one element's paint layers plus the defs it needs; used by exports and thumbnails. */
-export function elementMarkup(element: VectorElement, prefix: string): { defs: string; body: string } {
-  const model = renderModel(element, prefix)
+export function elementMarkup(element: VectorElement, prefix: string, scene: VectorElement[] = []): { defs: string; body: string } {
+  const model = renderModel(element, prefix, scene)
   return { defs: defsToSvg(model.defs), body: layersToSvg(model, element.id) }
 }
 
@@ -251,7 +251,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
     if (!element.visible) return []
     const backdrop = backdropMarkup(scene, element, depth, defs)
     if (element.kind === 'frame') {
-      const model = renderModel(element, 'svg')
+      const model = renderModel(element, 'svg', scene)
       const background = defsToSvg(model.defs)
       if (background) defs.push(background)
       const children = serializeNodes(node.children, depth + 1, defs, scene)
@@ -270,7 +270,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
           `${indent}</g>`,
         ]
       }
-      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
+      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element, scene)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
     }
     if (element.kind === 'group') {
       const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
@@ -278,7 +278,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
       if (children.length === 0) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       if (maskNode) {
-        const model = renderModel(maskNode.element, 'svg')
+        const model = renderModel(maskNode.element, 'svg', scene)
         const clipId = `mask-${element.id}`
         defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.fillD || model.d}" transform="${model.transform}" clip-rule="evenodd"/></clipPath>`)
         return [
@@ -292,11 +292,11 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
     }
     if (element.kind === 'boolean') {
       // The combined shape is what the file carries; its members are not exported.
-      const markup = elementMarkup(element, 'svg')
+      const markup = elementMarkup(element, 'svg', scene)
       if (markup.defs) defs.push(markup.defs)
       if (!markup.body) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
+      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element, scene)}>${markup.body}</g>`]
     }
     // Only a plain box or a whole ellipse takes the short export path.
     const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
@@ -316,11 +316,11 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
       }
       return [...backdrop, `${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
     }
-    const markup = elementMarkup(element, 'svg')
+    const markup = elementMarkup(element, 'svg', scene)
     if (markup.defs) defs.push(markup.defs)
     if (!markup.body) return []
     const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-    return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
+    return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element, scene)}>${markup.body}</g>`]
   })
 }
 
@@ -363,8 +363,8 @@ function backdropMarkup(scene: VectorElement[], element: VectorElement, depth: n
 }
 
 /** The filter and blend attributes an element's effects put on its wrapper. */
-function effectAttributes(element: VectorElement, prefix = 'svg'): string {
-  const model = renderModel(element, prefix)
+function effectAttributes(element: VectorElement, scene: VectorElement[], prefix = 'svg'): string {
+  const model = renderModel(element, prefix, scene)
   const blend = model.blend ? ` style="mix-blend-mode:${model.blend}"` : ''
   return `${model.filter ? ` filter="${escapeXml(model.filter)}"` : ''}${blend}`
 }

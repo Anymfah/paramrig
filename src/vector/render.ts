@@ -6,6 +6,7 @@ import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } f
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontFeatureSettings, fontStack, layoutText, textProperties } from '@/vector/text'
+import { patternCell, patternTransform } from '@/vector/patterns'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
 import { envelopePath } from '@/vector/strokeProfile'
@@ -19,6 +20,16 @@ export type RenderDef =
   | { type: 'pattern'; id: string; image: string; mode: 'fill' | 'fit' | 'tile'; x: number; y: number; width: number; height: number; offset?: VectorPoint; scale?: number }
   | { type: 'clipPath'; id: string; d: string }
   | { type: 'textPath'; id: string; d: string }
+  | {
+      type: 'objectPattern'
+      id: string
+      width: number
+      height: number
+      transform: string
+      /** Where the source object is stamped inside the repeating cell. */
+      stamps: VectorPoint[]
+      content: RenderModel
+    }
   | { type: 'mask'; id: string; d: string; x: number; y: number; width: number; height: number }
   | { type: 'marker'; id: string; shape: Exclude<VectorArrowhead, 'none'>; color: string; end: boolean }
   | FilterDef
@@ -163,21 +174,33 @@ const modelCache = createLruCache<RenderModel>(MODEL_CACHE_SIZE)
 /** Hits and misses on the model cache, so a QA run can tell a repaint from a rebuild. */
 export const renderStats = { hits: 0, misses: 0, get size() { return modelCache.size } }
 
-export function renderModel(element: VectorElement, prefix: string): RenderModel {
-  const key = `${prefix}\u0000${JSON.stringify(element)}`
+export function renderModel(element: VectorElement, prefix: string, scene: VectorElement[] = []): RenderModel {
+  // A pattern fill draws another object, so that object is part of what this model depends on.
+  const sources = patternSources(element, scene)
+  const key = `${prefix}\u0000${JSON.stringify(element)}${sources.length ? `\u0000${JSON.stringify(sources)}` : ''}`
   const cached = modelCache.get(key)
   if (cached) {
     renderStats.hits += 1
     return cached
   }
   renderStats.misses += 1
-  const model = buildRenderModel(element, prefix)
+  const model = buildRenderModel(element, prefix, scene)
   modelCache.set(key, model)
   return model
 }
 
-function buildRenderModel(element: VectorElement, prefix: string): RenderModel {
-  return withEffects(element, `${prefix}-${element.id}`, buildBaseModel(element, prefix))
+function buildRenderModel(element: VectorElement, prefix: string, scene: VectorElement[]): RenderModel {
+  return withEffects(element, `${prefix}-${element.id}`, buildBaseModel(element, prefix, scene))
+}
+
+/** The objects an element's pattern fills stamp, so the cache notices when one of them changes. */
+function patternSources(element: VectorElement, scene: VectorElement[]): VectorElement[] {
+  if (scene.length === 0) return []
+  const ids = [...fillsOf(element), ...strokesOf(element)]
+    .filter((paint) => paint.type === 'pattern' && paint.sourceId)
+    .map((paint) => paint.sourceId!)
+  if (ids.length === 0) return []
+  return scene.filter((item) => ids.includes(item.id))
 }
 
 /** Adds the effect filter, the blend mode and the background blur to a freshly built model. */
@@ -195,7 +218,7 @@ function withEffects(element: VectorElement, key: string, model: RenderModel): R
   }
 }
 
-function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
+function buildBaseModel(element: VectorElement, prefix: string, scene: VectorElement[] = []): RenderModel {
   if (element.kind === 'text') return buildTextModel(element, prefix)
   if (element.kind === 'image') return buildImageModel(element, prefix)
   const defs: RenderDef[] = []
@@ -211,7 +234,7 @@ function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
   if (fillD) {
     fillsOf(element).forEach((paint, index) => {
       if (!paint.visible || paint.opacity <= 0) return
-      const reference = paintReference(paint, `${key}-fill-${index}`, bounds, defs)
+      const reference = paintReference(paint, `${key}-fill-${index}`, bounds, defs, scene, prefix)
       if (!reference) return
       layers.push({ kind: 'fill', d: fillD, paint: reference, opacity: paint.opacity })
     })
@@ -227,7 +250,7 @@ function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
   if (profileD) {
     strokes.forEach((paint, index) => {
       if (!paint.visible || paint.opacity <= 0) return
-      const reference = paintReference(paint, `${key}-profile-${index}`, bounds, defs)
+      const reference = paintReference(paint, `${key}-profile-${index}`, bounds, defs, scene, prefix)
       if (!reference) return
       // Stamps and swept outlines overlap themselves: even-odd would punch holes in them.
       layers.push({ kind: 'fill', d: profileD, paint: reference, opacity: paint.opacity, fillRule: 'nonzero' })
@@ -254,7 +277,7 @@ function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
     const hasOpenEnd = geometry.strokeRuns.some((run) => !run.closed)
     strokes.forEach((paint, index) => {
       if (!paint.visible || paint.opacity <= 0) return
-      const reference = paintReference(paint, `${key}-stroke-${index}`, bounds, defs)
+      const reference = paintReference(paint, `${key}-stroke-${index}`, bounds, defs, scene, prefix)
       if (!reference) return
       const color = paint.type === 'solid' && paint.color ? paint.color : summaryColor([paint])
       const markerStart = hasOpenEnd && element.strokeArrowStart && element.strokeArrowStart !== 'none'
@@ -348,7 +371,14 @@ function marker(defs: RenderDef[], id: string, shape: Exclude<VectorArrowhead, '
   return `url(#${id})`
 }
 
-function paintReference(paint: VectorPaint, id: string, bounds: { x: number; y: number; width: number; height: number }, defs: RenderDef[]): string | null {
+function paintReference(
+  paint: VectorPaint,
+  id: string,
+  bounds: { x: number; y: number; width: number; height: number },
+  defs: RenderDef[],
+  scene: VectorElement[] = [],
+  prefix = 'p',
+): string | null {
   if (paint.type === 'solid') return paint.color && paint.color !== 'none' ? paint.color : null
   if (paint.type === 'linear') {
     if (!paint.stops || paint.stops.length < 2) return null
@@ -360,6 +390,23 @@ function paintReference(paint: VectorPaint, id: string, bounds: { x: number; y: 
     if (!paint.stops || paint.stops.length < 2) return null
     const circle = gradientCircle(paint)
     defs.push({ type: 'radialGradient', id, cx: round(circle.center.x), cy: round(circle.center.y), r: round(circle.radius), stops: paint.stops })
+    return `url(#${id})`
+  }
+  if (paint.type === 'pattern') {
+    const source = scene.find((item) => item.id === paint.sourceId)
+    if (!source || !paint.tile) return null
+    const cell = patternCell(paint.patternMode ?? 'grid', paint.tile, paint.spacing ?? 0)
+    // The source is drawn as it stands, moved so its own box starts at the cell's origin.
+    const content = renderModel({ ...source, x: source.x - source.x, y: source.y - source.y, parentId: undefined }, `${prefix}-tile`, scene)
+    defs.push({
+      type: 'objectPattern',
+      id,
+      width: round(cell.width),
+      height: round(cell.height),
+      transform: patternTransform(paint),
+      stamps: cell.stamps.map((stamp) => ({ x: round(stamp.x), y: round(stamp.y) })),
+      content,
+    })
     return `url(#${id})`
   }
   if (!paint.image) return null
@@ -412,6 +459,13 @@ export function defsToSvg(defs: RenderDef[]): string {
         return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
       case 'textPath':
         return `<path id="${def.id}" d="${def.d}" fill="none"/>`
+      case 'objectPattern': {
+        const body = def.stamps
+          .map((stamp, index) => `<g transform="translate(${stamp.x} ${stamp.y})">${layersToSvg(def.content, `${def.id}-${index}`)}</g>`)
+          .join('')
+        const nested = defsToSvg(def.content.defs)
+        return `${nested}<pattern id="${def.id}" patternUnits="userSpaceOnUse" width="${def.width}" height="${def.height}"${def.transform ? ` patternTransform="${def.transform}"` : ''}>${body}</pattern>`
+      }
       case 'mask':
         return `<mask id="${def.id}" maskUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}"><rect x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}" fill="#fff"/><path d="${def.d}" fill="#000" fill-rule="evenodd"/></mask>`
       case 'filter':
