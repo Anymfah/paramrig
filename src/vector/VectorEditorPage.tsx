@@ -39,6 +39,7 @@ import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
 import { brushFromElement } from '@/vector/brushes'
+import { pathBounds, pathDataOf } from '@/vector/textPath'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
@@ -721,6 +722,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     )
   }
 
+  /** A text and an outline selected together are what "Attach to path" needs. */
+  const attachable = (() => {
+    if (selectedElements.length !== 2) return null
+    const text = selectedElements.find((element) => element.kind === 'text')
+    const path = selectedElements.find((element) => element !== text && element.kind !== 'group' && element.kind !== 'image' && element.kind !== 'text')
+    return text && path ? { text, path } : null
+  })()
+
   /** The frame an export means: the selected one, the one holding the selection, or the only one. */
   const frames = document.elements.filter((element) => element.kind === 'frame')
   const selectedFrame = selectedElements.find((element) => element.kind === 'frame')
@@ -919,6 +928,18 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'attach-to-path', label: 'Attach to path', section: 'Object', disabled: !attachable, run: () => {
+      if (!attachable) return
+      editor.updateElement(attachable.text.id, {
+        textPath: { elementId: attachable.path.id, offset: 0, side: 'above', align: 'left', d: pathDataOf(attachable.path) },
+        ...(pathBounds(attachable.path) ?? {}),
+      }, true, 'Attach to path')
+      editor.setSelectedIds([attachable.text.id])
+    } },
+    { id: 'detach-from-path', label: 'Detach from path', section: 'Object', disabled: !selectedElements.some((element) => element.textPath), run: () => {
+      const targets = selectedElements.filter((element) => element.textPath)
+      editor.updateElements(targets.map((element) => ({ id: element.id, patch: { textPath: undefined } })), true, 'Detach from path')
+    } },
     { id: 'reset-stroke-width', label: 'Reset stroke width', section: 'Object', disabled: !selectedElements.some((element) => element.strokeProfile), run: () => {
       const targets = selectedElements.filter((element) => element.strokeProfile)
       editor.updateElements(targets.map((element) => ({ id: element.id, patch: { strokeProfile: undefined } })), true, 'Reset stroke width')

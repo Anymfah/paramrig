@@ -1112,6 +1112,20 @@ function TextPanel({ element, onUpdate, onOutline, gesture }: {
         options={[{ value: 'auto', label: 'Auto width' }, { value: 'fixed', label: 'Fixed width' }]}
         onChange={(textSizing) => apply({ textSizing: textSizing as VectorElement['textSizing'] })}
       />
+      {element.textPath ? (
+        <>
+          <SliderField label="Path offset" value={Math.round(element.textPath.offset * 100)} min={0} max={100} step={1} unit="%" onChange={(offset) => apply({ textPath: { ...element.textPath!, offset: offset / 100 } })} {...gesture} />
+          <SelectField
+            label="Side"
+            value={element.textPath.side}
+            options={[{ value: 'above', label: 'Above' }, { value: 'below', label: 'Below' }]}
+            onChange={(side) => apply({ textPath: { ...element.textPath!, side: side as 'above' | 'below' } })}
+          />
+          <div className="vector-panel__actions">
+            <Button variant="quiet" size="sm" data-action="detach-path" onClick={() => apply({ textPath: undefined })}>Detach from path</Button>
+          </div>
+        </>
+      ) : null}
       <div className="vector-panel__actions">
         <Tooltip content={outlineable ? 'Convert the letters into editable paths' : `${properties.fontFamily} is a system font, so its glyphs cannot be read`}>
           <span>

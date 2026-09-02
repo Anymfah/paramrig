@@ -9,6 +9,7 @@ import { sanitizeAdjustments, sanitizeBlendMode, sanitizeEffects } from '@/vecto
 import { sanitizeCrop } from '@/vector/crop'
 import { sanitizeStrokeProfile } from '@/vector/strokeProfile'
 import { sanitizeBrushes, sanitizeBrushSettings } from '@/vector/brushes'
+import { sanitizeTextPath, syncTextPaths } from '@/vector/textPath'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
@@ -404,7 +405,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     background: typeof source.background === 'string' && /^#[0-9a-f]{6}$/i.test(source.background) ? source.background.toUpperCase() : DEFAULT_BACKGROUND,
     width: source.width,
     height: source.height,
-    elements: syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? [])),
+    elements: syncTextPaths(syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? []))),
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
@@ -544,6 +545,7 @@ function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorE
     letterSpacing: number(source.letterSpacing, -200, 200, DEFAULT_TEXT.letterSpacing),
     textAlign: source.textAlign === 'center' || source.textAlign === 'right' ? source.textAlign : DEFAULT_TEXT.textAlign,
     textSizing: source.textSizing === 'fixed' ? 'fixed' : DEFAULT_TEXT.textSizing,
+    ...(sanitizeTextPath(source.textPath) ? { textPath: sanitizeTextPath(source.textPath) } : {}),
   }
 }
 

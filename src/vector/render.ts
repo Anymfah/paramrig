@@ -18,6 +18,7 @@ export type RenderDef =
   | { type: 'radialGradient'; id: string; cx: number; cy: number; r: number; stops: VectorGradientStop[] }
   | { type: 'pattern'; id: string; image: string; mode: 'fill' | 'fit' | 'tile'; x: number; y: number; width: number; height: number; offset?: VectorPoint; scale?: number }
   | { type: 'clipPath'; id: string; d: string }
+  | { type: 'textPath'; id: string; d: string }
   | { type: 'mask'; id: string; d: string; x: number; y: number; width: number; height: number }
   | { type: 'marker'; id: string; shape: Exclude<VectorArrowhead, 'none'>; color: string; end: boolean }
   | FilterDef
@@ -52,6 +53,8 @@ export type TextRender = {
   stroke: string | null
   strokeOpacity: number
   strokeWidth: number
+  /** Set when the text rides on an outline: the def to hang it on, and where it starts. */
+  path?: { id: string; startOffset: string; side: 'left' | 'right' }
 }
 
 /** A placed picture: where it lands in world space, and the box that clips it. */
@@ -307,9 +310,14 @@ function buildTextModel(element: VectorElement, prefix: string): RenderModel {
   const stroke = strokesOf(element).filter((paint) => paint.visible && paint.opacity > 0).at(-1)
   const fillReference = fill ? paintReference(fill, `${key}-text-fill`, bounds, defs) : null
   const strokeReference = stroke && element.strokeWidth > 0 ? paintReference(stroke, `${key}-text-stroke`, bounds, defs) : null
+  const ride = element.textPath?.d ? element.textPath : null
+  if (ride?.d) defs.push({ type: 'textPath', id: `${key}-textpath`, d: ride.d })
   const text: TextRender = {
-    lines: layout.lines.map((line) => ({ text: line.text, x: round(bounds.x + line.x), y: round(bounds.y + line.y) })),
-    anchor: layout.anchor,
+    // On a path the whole text is one run: the browser walks the outline for us.
+    lines: ride
+      ? [{ text: properties.text.replace(/\n/g, ' '), x: 0, y: 0 }]
+      : layout.lines.map((line) => ({ text: line.text, x: round(bounds.x + line.x), y: round(bounds.y + line.y) })),
+    anchor: ride ? (ride.align === 'center' ? 'middle' : ride.align === 'right' ? 'end' : 'start') : layout.anchor,
     fontFamily: fontStack(properties.fontFamily),
     fontSize: properties.fontSize,
     fontWeight: properties.fontWeight,
@@ -319,6 +327,7 @@ function buildTextModel(element: VectorElement, prefix: string): RenderModel {
     stroke: strokeReference,
     strokeOpacity: stroke?.opacity ?? 1,
     strokeWidth: element.strokeWidth,
+    ...(ride ? { path: { id: `${key}-textpath`, startOffset: `${round(ride.offset * 100)}%`, side: ride.side === 'below' ? 'right' as const : 'left' as const } } : {}),
   }
   return {
     d: box,
@@ -398,6 +407,8 @@ export function defsToSvg(defs: RenderDef[]): string {
       }
       case 'clipPath':
         return `<clipPath id="${def.id}"><path d="${def.d}" clip-rule="evenodd"/></clipPath>`
+      case 'textPath':
+        return `<path id="${def.id}" d="${def.d}" fill="none"/>`
       case 'mask':
         return `<mask id="${def.id}" maskUnits="userSpaceOnUse" x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}"><rect x="${round(def.x)}" y="${round(def.y)}" width="${round(def.width)}" height="${round(def.height)}" fill="#fff"/><path d="${def.d}" fill="#000" fill-rule="evenodd"/></mask>`
       case 'filter':
@@ -483,6 +494,10 @@ function textToSvg(model: RenderModel, id: string): string {
     `xml:space="preserve"`,
     `transform="${model.transform}"`,
   ].filter(Boolean).join(' ')
+  if (text.path) {
+    const content = escapeText(text.lines.map((line) => line.text).join(' '))
+    return `<text ${attributes}><textPath href="#${escapeAttribute(text.path.id)}" startOffset="${text.path.startOffset}" side="${text.path.side}">${content}</textPath></text>`
+  }
   const spans = text.lines.map((line) => `<tspan x="${line.x}" y="${line.y}">${escapeText(line.text)}</tspan>`).join('')
   return `<text ${attributes}>${spans}</text>`
 }

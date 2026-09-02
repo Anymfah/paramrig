@@ -2,6 +2,7 @@ import { rotatePoint } from '@/vector/directTransform'
 import { networkFromRuns, normalizeWorld, worldNetwork, type Run } from '@/vector/network'
 import { computeFaces, holeFaceKeys } from '@/vector/planar'
 import { canvasMeasure, faceOf, layoutText, textProperties } from '@/vector/text'
+import { pathLength, placeOnPath, runFromPathData } from '@/vector/textPath'
 import type { VectorElement, VectorNetwork, VectorPoint } from '@/vector/types'
 
 type OutlineResult = { x: number; y: number; width: number; height: number; network: VectorNetwork; regionsOff?: string[] }
@@ -13,7 +14,10 @@ type GlyphCommand =
   | { type: 'Q'; x: number; y: number; x1: number; y1: number }
   | { type: 'Z' }
 
-type LoadedFont = { getPath: (text: string, x: number, y: number, size: number, options?: Record<string, unknown>) => { commands: GlyphCommand[] } }
+type LoadedFont = {
+  getPath: (text: string, x: number, y: number, size: number, options?: Record<string, unknown>) => { commands: GlyphCommand[] }
+  getAdvanceWidth: (text: string, size: number, options?: Record<string, unknown>) => number
+}
 
 const fonts = new Map<string, Promise<LoadedFont | null>>()
 
@@ -50,7 +54,38 @@ export async function outlineText(element: VectorElement): Promise<OutlineResult
   if (!font) return null
   const layout = layoutText(properties, element.width, canvasMeasure)
   const runs: Run[] = []
-  for (const line of layout.lines) {
+  const ride = element.textPath?.d ? element.textPath : null
+  if (ride?.d) {
+    // On a path each glyph is placed on its own: the point at that distance along the outline,
+    // turned to the local tangent, which is what makes the letters follow a curve rather than
+    // sit on a straight baseline.
+    const run = runFromPathData(ride.d)
+    const total = run ? pathLength(run) : 0
+    if (!run || total <= 0) return null
+    const content = properties.text.replace(/\n/g, ' ')
+    const widths = [...content].map((glyph) => font.getAdvanceWidth(glyph, properties.fontSize, { kerning: true }) + properties.letterSpacing)
+    const width = widths.reduce((sum, value) => sum + value, 0)
+    const start = ride.offset * total - (ride.align === 'center' ? width / 2 : ride.align === 'right' ? width : 0)
+    const lift = ride.side === 'below' ? properties.fontSize * 0.8 : 0
+    let travelled = start
+    ;[...content].forEach((glyph, index) => {
+      const advance = widths[index] ?? 0
+      const place = placeOnPath(run, travelled + advance / 2)
+      travelled += advance
+      if (!place || glyph === ' ') return
+      const path = font.getPath(glyph, -advance / 2, lift, properties.fontSize, { kerning: true })
+      const turned = commandsToRuns(path.commands).map((item) => ({
+        closed: item.closed,
+        points: item.points.map((point) => ({
+          anchor: offsetPoint(point.anchor, place.point, place.angle),
+          ...(point.in ? { in: offsetPoint(point.in, place.point, place.angle) } : {}),
+          ...(point.out ? { out: offsetPoint(point.out, place.point, place.angle) } : {}),
+        })),
+      }))
+      runs.push(...turned)
+    })
+  }
+  for (const line of ride ? [] : layout.lines) {
     if (!line.text) continue
     const x = element.x + line.x - (layout.anchor === 'middle' ? line.width / 2 : layout.anchor === 'end' ? line.width : 0)
     const path = font.getPath(line.text, x, element.y + line.y, properties.fontSize, {
@@ -78,6 +113,14 @@ export async function outlineText(element: VectorElement): Promise<OutlineResult
 }
 
 /** Turns opentype path commands into closed anchor runs, quadratics raised to cubics. */
+export /** A glyph point drawn at the origin, moved onto the path and turned to it. */
+function offsetPoint(point: { x: number; y: number }, at: { x: number; y: number }, angle: number) {
+  const radians = (angle * Math.PI) / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+  return { x: at.x + point.x * cos - point.y * sin, y: at.y + point.x * sin + point.y * cos }
+}
+
 export function commandsToRuns(commands: GlyphCommand[]): Run[] {
   const runs: Run[] = []
   let points: Run['points'] = []

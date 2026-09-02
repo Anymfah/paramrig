@@ -2670,7 +2670,10 @@ function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>
       pointerEvents="none"
       xmlSpace="preserve"
     >
-      {text.lines.map((line, index) => <tspan key={index} x={line.x} y={line.y}>{line.text}</tspan>)}
+      {text.path
+        // `side` is not in React's SVG typings yet; the attribute is what the browser reads.
+        ? <textPath href={`#${text.path.id}`} startOffset={text.path.startOffset} {...{ side: text.path.side }}>{text.lines.map((line) => line.text).join(' ')}</textPath>
+        : text.lines.map((line, index) => <tspan key={index} x={line.x} y={line.y}>{line.text}</tspan>)}
     </text>
   )
 }
@@ -2824,6 +2827,8 @@ export function RenderDefs({ defs }: { defs: RenderDef[] }) {
             return <clipPath key={def.id} id={def.id}><path d={def.d} clipRule="evenodd" /></clipPath>
           case 'mask':
             return <mask key={def.id} id={def.id} maskUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}><rect x={def.x} y={def.y} width={def.width} height={def.height} fill="#fff" /><path d={def.d} fill="#000" fillRule="evenodd" /></mask>
+          case 'textPath':
+            return <path key={def.id} id={def.id} d={def.d} fill="none" />
           case 'filter':
             return (
               <filter key={def.id} id={def.id} filterUnits="userSpaceOnUse" x={def.x} y={def.y} width={def.width} height={def.height}>

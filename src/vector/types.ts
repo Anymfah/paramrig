@@ -63,6 +63,19 @@ export type VectorPaint = {
 }
 
 export type VectorTextAlign = 'left' | 'center' | 'right'
+
+/**
+ * A text riding on another object's outline. `d` is a copy of the path the text follows, kept in
+ * step with the object it names, so the text draws itself wherever it is opened.
+ */
+export type VectorTextPath = {
+  elementId: string
+  /** How far along the path the text starts, as a fraction of its length. */
+  offset: number
+  side: 'above' | 'below'
+  align: VectorTextAlign
+  d?: string
+}
 /** `auto` grows the box with the content; `fixed` wraps the content into the box width. */
 export type VectorTextSizing = 'auto' | 'fixed'
 
@@ -197,6 +210,8 @@ export type VectorElement = {
   letterSpacing?: number
   textAlign?: VectorTextAlign
   textSizing?: VectorTextSizing
+  /** Text elements: the outline this text runs along, instead of its own box. */
+  textPath?: VectorTextPath
   /** Frames only: whether children are cut off at the frame's edge. */
   clipContent?: boolean
   /** Boolean groups: how the shapes under it are combined. */
