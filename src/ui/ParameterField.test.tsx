@@ -79,7 +79,7 @@ describe('shared parameter instruments',()=>{
   it('converts display units while preserving the stored base value',()=>{
     const s=new RigSession(controllerManifest);render(<Field session={s} id="exact"/>)
     expect(screen.getByRole('textbox',{name:'Exact value'})).toHaveValue('32.00')
-    fireEvent.click(screen.getByRole('radio',{name:'Rem'}))
+    fireEvent.click(screen.getByRole('button',{name:'Unit: px. Switch unit'}))
     expect(screen.getByRole('textbox',{name:'Exact value'})).toHaveValue('2.00')
     fireEvent.change(screen.getByRole('textbox',{name:'Exact value'}),{target:{value:'3'}})
     fireEvent.blur(screen.getByRole('textbox',{name:'Exact value'}))

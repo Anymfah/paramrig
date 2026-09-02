@@ -315,6 +315,34 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   padding-inline-start: 0.12em;
   text-box: trim-both cap alphabetic;
 }
+/* A unit that can change is a small button: same glyph, a hairline pill on hover. */
+button.number-value__unit--menu {
+  appearance: none;
+  min-width: 0;
+  min-height: 22px;
+  margin-inline-end: calc(-1 * var(--space-1));
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  text-box: normal;
+  transition: color var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+button.number-value__unit--menu:hover,
+button.number-value__unit--menu:focus-visible { color: var(--text-primary); background: var(--accent-subtle); }
+button.number-value__unit--menu:active { transform: scale(0.96); }
+.number-value__trailing {
+  display: inline-flex;
+  flex: none;
+  margin-inline-end: calc(-1 * var(--space-1) - 1px);
+}
+.number-value__trailing .icon-btn { width: var(--hit-target); height: calc(var(--hit-target) - 2px); border-radius: calc(var(--field-radius) - 1px); }
+.stepper .number-value__trailing { margin-inline-end: 0; }
 .stepper {
   display: flex;
   align-items: center;
@@ -413,6 +441,13 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   border-radius: inherit;
   background: var(--text-primary);
 }
+/* A bipolar track fills from its origin, so the eye reads the sign before the number. */
+.slider-wrap[data-bipolar] .slider__fill {
+  margin-inline-start: calc(var(--fill-start, 0) * (100% - var(--thumb-size)));
+  width: calc(var(--fill-span, 0) * (100% - var(--thumb-size)));
+  border-radius: 0;
+}
+.slider-wrap[data-bipolar] .slider__origin { z-index: 1; background: var(--text-primary); }
 .slider {
   appearance: none;
   background: transparent;
@@ -737,6 +772,19 @@ input.slider:focus-visible { outline: none; }
 .select-trigger:active,
 .select-trigger[data-state='open'],
 .number-value[data-scrubbing] { border-color: var(--border-strong); }
+:is(.number-value, .stepper, .color-field, .text-field, .segment-field, .choice-box):has(:focus-visible),
+.select-trigger:focus-visible,
+.control--switch:focus-visible {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+:is(.number-value, .text-field, .segment-field):has(:disabled),
+.select-trigger[data-disabled],
+.control--switch[aria-disabled='true'] {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+:is(.number-value, .text-field):has(:disabled) :is(input, textarea) { color: var(--text-muted); cursor: not-allowed; }
 .number-value__label,
 .stepper__label,
 .color-field__label,
@@ -1330,7 +1378,8 @@ a.menu__item:visited { color: var(--text-primary); }
 .color-field { min-width: 0; max-width: 100%; }
 .color-field .icon-btn { flex: none; cursor: pointer; }
 .color-field__hex { min-width: 0; }
-.gradient-actions { display: flex; gap: var(--space-2); }
+.control__tools { display: flex; flex: none; gap: var(--space-1); margin-inline-end: calc(-1 * var(--space-2)); }
+.control__tools .icon-btn { width: var(--hit-target); height: var(--hit-target); }
 .gradient-stop-editor { grid-column: 1 / -1; display: grid; gap: var(--space-2); min-width: 0; }
 .gradient-stop-editor .control { grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: var(--space-1); }
 .gradient-stop-editor .color-field,
@@ -1378,6 +1427,9 @@ a.menu__item:visited { color: var(--text-primary); }
 .controller-components { display: grid; grid-template-columns: repeat(var(--component-count, 2),minmax(0,1fr)); gap: var(--space-3); min-width: 0; }
 .controller-components .control { display: grid; grid-template-columns: minmax(0,1fr); align-items: stretch; min-width: 0; }
 .controller-components .number-value { width: 100%; margin: 0; box-sizing: border-box; }
+/* Rows with worded axes (Width, Height, Depth) wrap rather than truncate. */
+.controller-components[data-long] { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
+.control__tools .icon-btn[aria-pressed='true'] { color: var(--text-primary); background: var(--accent-subtle); }
 .controller-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .controller-pad, .points-controller {
   position: relative;
@@ -1429,6 +1481,7 @@ a.menu__item:visited { color: var(--text-primary); }
   color: var(--text-primary);
   box-shadow: inset 0 -1px 0 var(--text-primary);
 }
+.radial-controller__add { flex: none; width: var(--hit-target); height: var(--hit-target); align-self: center; margin-inline-start: auto; }
 .radial-controller__swatch {
   width: 8px;
   height: 8px;
@@ -1514,10 +1567,11 @@ a.menu__item:visited { color: var(--text-primary); }
   background: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 .points-controller svg { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.range-controller { position: relative; height: 4px; background: var(--rule); border-radius: var(--radius-full); margin: var(--space-5) var(--space-4); }
+.range-controller { position: relative; height: 4px; background: var(--rule); border-radius: var(--radius-full); margin: var(--space-5) var(--space-4); cursor: pointer; touch-action: none; }
+.range-controller::before { content: ''; position: absolute; inset: -14px 0; }
 .range-controller__fill { position: absolute; inset-block: 0; background: var(--text-secondary); }
 .range-controller .controller-point { top: 50%; }
-.dial-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-2); }
+.dial-row { display: flex; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-1) 0; }
 .controller-dial {
   --dial-start: -135deg;
   --dial-sweep: 270deg;
@@ -1600,11 +1654,47 @@ a.menu__item:visited { color: var(--text-primary); }
   border: 2px solid var(--surface-inset);
   box-sizing: border-box;
 }
-.anchor-presets { display: grid; grid-template-columns: repeat(3,32px); gap: var(--space-1); justify-content: center; }
-.anchor-presets button { height: 32px; border: 1px solid var(--rule); background: var(--surface-inset); color: var(--text-primary); border-radius: var(--radius-sm); touch-action: manipulation; transition: background var(--duration-fast) var(--ease-out); }
+.anchor-presets {
+  display: grid;
+  grid-template-columns: repeat(3, var(--hit-target));
+  gap: 2px;
+  justify-content: center;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  justify-self: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.anchor-presets button {
+  position: relative;
+  height: var(--hit-target);
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.anchor-presets button::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: currentColor;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.anchor-presets button[data-center]::before { width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; }
 .anchor-presets button:hover,
-.anchor-presets button:focus-visible { background: var(--surface-raised); }
-.anchor-presets button:active { background: var(--rule); }
+.anchor-presets button:focus-visible { color: var(--text-primary); background: var(--accent-subtle); }
+.anchor-presets button:active { transform: scale(0.96); }
+.anchor-presets button[aria-pressed='true'] { color: var(--text-primary); background: var(--surface-raised); box-shadow: 0 0 0 1px var(--border-default); }
+.anchor-presets button[aria-pressed='true']::before { transform: scale(1.4); }
 .choice-controller { display: grid; max-height: 240px; overflow-y: auto; gap: 2px; }
 .choice-controller--visual { grid-template-columns: repeat(auto-fit,minmax(80px,1fr)); }
 .choice-controller__option { display: flex; min-height: var(--hit-target); gap: var(--space-2); align-items: center; justify-content: space-between; text-align: start; padding: var(--space-1) var(--space-2); border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--text-sm); border-radius: calc(var(--radius-sm) - 2px); touch-action: manipulation; transition: background var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out),color var(--duration-fast) var(--ease-out); }

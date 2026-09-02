@@ -4,7 +4,9 @@ import { NumberField } from './NumberField'
 import { ColorField } from './ColorField'
 import { SwitchField } from './SwitchField'
 import { TextController } from './TextController'
-import { Button } from './Button'
+import { Button, IconButton } from './Button'
+import { Tooltip } from './Tooltip'
+import { IconMinus, IconPlus, IconTrash } from './icons'
 import { useControllerGesture, type GestureProps } from './controller-gesture'
 import { radialFillPath, radialStrokePath } from './radial-curve'
 
@@ -86,8 +88,31 @@ export function RadialController({
     setSelected({ layer: layers.length, point: 0 })
   }
 
-  return <fieldset className="controller-stack controller-fieldset">
-    <legend>{label}</legend>
+  const pointsFull = !layer || layer.points.length >= 32
+  const pointsMinimal = !layer || layer.points.length <= 2
+  const addPoint = () => {
+    if (!layer) return
+    const next = insertPoint(layer)
+    onChange(replaceLayer(layers, focused, next))
+    setSelected({ layer: focused, point: Math.min(next.points.length - 1, pointIndex + 1) })
+  }
+  const removePoint = () => {
+    if (!layer) return
+    onChange(replaceLayer(layers, focused, { ...layer, points: layer.points.filter((_, i) => i !== pointIndex) }))
+    setSelected({ layer: focused, point: Math.max(0, pointIndex - 1) })
+  }
+  const removeLayer = () => {
+    onChange(layers.filter((_, i) => i !== focused))
+    setTab(ALL)
+    setSelected({ layer: 0, point: 0 })
+  }
+  return <div className="controller-stack" role="group" aria-labelledby={`${uid}-label`}>
+    <div className="control__head"><span className="control__label" id={`${uid}-label`}>{label}</span>
+      <div className="control__tools">
+        <Tooltip content={pointsFull ? 'No more points on this layer' : `Add point to ${layer?.name ?? 'layer'}`}><IconButton label="Add point" disabled={pointsFull} onClick={addPoint}><IconPlus /></IconButton></Tooltip>
+        <Tooltip content={pointsMinimal ? 'Keep at least two points' : `Remove point ${pointIndex + 1} of ${layer?.name ?? 'layer'}`}><IconButton label="Remove point" disabled={pointsMinimal} onClick={removePoint}><IconMinus /></IconButton></Tooltip>
+      </div>
+    </div>
     <div className="radial-controller__tabs" role="tablist" aria-label={`${label} layers`}>
       <button type="button" role="tab" aria-selected={tab === ALL} onClick={() => setTab(ALL)}>All</button>
       {layers.map((item, i) => (
@@ -96,6 +121,7 @@ export function RadialController({
           {item.name}
         </button>
       ))}
+      <Tooltip content={layers.length >= maxLayers ? 'No more layers' : 'Add layer'}><IconButton className="radial-controller__add" label="Add layer" disabled={layers.length >= maxLayers} onClick={addLayer}><IconPlus /></IconButton></Tooltip>
     </div>
     <div className="radial-controller__plot points-controller" role="group" aria-label={`${label} graph`}>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
@@ -160,24 +186,8 @@ export function RadialController({
         <NumberField key={`r-${focused}-${pointIndex}`} variant="field" label="Radius" value={current.x} min={layer.points[pointIndex - 1]?.x ?? 0} max={layer.points[pointIndex + 1]?.x ?? 1} step={0.01} onChange={x => onChange(replaceLayer(layers, focused, replacePoint(layer, pointIndex, { ...current, x })))} {...gesture} />
         <NumberField key={`v-${focused}-${pointIndex}`} variant="field" label="Value" value={current.y} min={0} max={1} step={0.01} onChange={y => onChange(replaceLayer(layers, focused, replacePoint(layer, pointIndex, { ...current, y })))} {...gesture} />
       </div> : null}
-    <div className="controller-actions">
-      <Button size="sm" variant="quiet" disabled={!layer || layer.points.length >= 32} onClick={() => {
-        if (!layer) return
-        const next = insertPoint(layer)
-        onChange(replaceLayer(layers, focused, next))
-        setSelected({ layer: focused, point: Math.min(next.points.length - 1, pointIndex + 1) })
-      }}>Add point</Button>
-      <Button size="sm" variant="quiet" disabled={!layer || layer.points.length <= 2} onClick={() => {
-        if (!layer) return
-        onChange(replaceLayer(layers, focused, { ...layer, points: layer.points.filter((_, i) => i !== pointIndex) }))
-        setSelected({ layer: focused, point: Math.max(0, pointIndex - 1) })
-      }}>Remove point</Button>
-      <Button size="sm" variant="quiet" disabled={layers.length >= maxLayers} onClick={addLayer}>Add layer</Button>
-      <Button size="sm" variant="quiet" disabled={layers.length <= 1} onClick={() => {
-        onChange(layers.filter((_, i) => i !== focused))
-        setTab(ALL)
-        setSelected({ layer: 0, point: 0 })
-      }}>Remove layer</Button>
-    </div>
-  </fieldset>
+    {layer && tab !== ALL ? <div className="controller-actions">
+      <Button size="sm" variant="quiet" icon={<IconTrash />} disabled={layers.length <= 1} onClick={removeLayer}>Remove {layer.name}</Button>
+    </div> : null}
+  </div>
 }

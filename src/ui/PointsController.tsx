@@ -1,11 +1,16 @@
-import { useState, type PointerEvent } from 'react'
+import { useId, useState, type PointerEvent } from 'react'
 import type { Point } from '@/rigs/extended-types'
 import { NumberField } from './NumberField'
-import { Button } from './Button'
+import { IconButton } from './Button'
+import { Tooltip } from './Tooltip'
+import { IconMinus, IconPlus } from './icons'
 import { useControllerGesture, type GestureProps } from './controller-gesture'
+
+const MAX_POINTS = 128
 
 export function PointsController({label,value,onChange,min=0,max=1,path=false,displayPoints,...gesture}:GestureProps & {label:string;value:Point[];onChange:(value:Point[])=>void;min?:number;max?:number;path?:boolean;displayPoints?:Point[]}) {
   const [selected,setSelected]=useState(0)
+  const labelId=useId()
   const index=Math.min(selected,value.length-1)
   const current=value[index]!
   const drag=useControllerGesture(gesture)
@@ -24,13 +29,20 @@ export function PointsController({label,value,onChange,min=0,max=1,path=false,di
     onChange([...value.slice(0,slot+1),{x:(value[slot]!.x+value[slot+1]!.x)/2,y:(value[slot]!.y+value[slot+1]!.y)/2},...value.slice(slot+1)])
     setSelected(slot+1)
   }
-  return <fieldset className="controller-stack controller-fieldset"><legend>{label}</legend>
+  const remove=()=>{onChange(value.filter((_,i)=>i!==index));setSelected(Math.max(0,index-1))}
+  const full=value.length>=MAX_POINTS,minimal=value.length<=2
+  return <div className="controller-stack" role="group" aria-labelledby={labelId}>
+    <div className="control__head"><span className="control__label" id={labelId}>{label}</span>
+      <div className="control__tools">
+        <Tooltip content={full?'No more points':'Add point'}><IconButton label="Add point" disabled={full} onClick={add}><IconPlus/></IconButton></Tooltip>
+        <Tooltip content={minimal?'Keep at least two points':`Remove point ${index+1}`}><IconButton label="Remove point" disabled={minimal} onClick={remove}><IconMinus/></IconButton></Tooltip>
+      </div>
+    </div>
     <div className="points-controller" role="group" aria-label={`${label} graph`}>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><polyline points={(displayPoints??value).map(p=>`${p.x*100},${(max-p.y)/(max-min)*100}`).join(' ')} fill="none" stroke="currentColor" strokeWidth="1.5" vectorEffect="non-scaling-stroke"/></svg>
       {value.map((p,i)=><button type="button" key={i} className="controller-point" aria-label={`${label} point ${i+1}`} aria-description="Drag to move this point or use the arrow keys. Exact values are available below." aria-pressed={index===i} style={{left:`${p.x*100}%`,top:`${(max-p.y)/(max-min)*100}%`}}
         onClick={()=>setSelected(i)} onPointerDown={e=>{setSelected(i);drag.start(e)}} onPointerMove={e=>{if(drag.active.current)update(i,e)}} {...drag.handlers}
         onKeyDown={e=>{if(!e.key.startsWith('Arrow'))return;e.preventDefault();setSelected(i);const next={...p};if(e.key==='ArrowLeft')next.x-=0.01;if(e.key==='ArrowRight')next.x+=0.01;if(e.key==='ArrowUp')next.y+=(max-min)/100;if(e.key==='ArrowDown')next.y-=(max-min)/100;next.x=Math.max(path?0:(value[i-1]?.x??0),Math.min(path?1:(value[i+1]?.x??1),next.x));next.y=Math.max(min,Math.min(max,next.y));onChange(value.map((v,j)=>j===i?next:v))}}/>)}</div>
     <div className="controller-components"><NumberField variant="field" label={path?'X':'Position'} value={current.x} min={path?0:(value[index-1]?.x??0)} max={path?1:(value[index+1]?.x??1)} step={0.01} onChange={x=>replace({...current,x})} {...gesture}/><NumberField variant="field" label={path?'Y':'Value'} value={current.y} min={min} max={max} step={(max-min)/100} onChange={y=>replace({...current,y})} {...gesture}/></div>
-    <div className="controller-actions"><Button size="sm" variant="quiet" disabled={value.length>=128} onClick={add}>Add point</Button><Button size="sm" variant="quiet" disabled={value.length<=2} onClick={()=>{onChange(value.filter((_,i)=>i!==index));setSelected(Math.max(0,index-1))}}>Remove point</Button></div>
-  </fieldset>
+  </div>
 }

@@ -60,7 +60,9 @@ export function SliderField({
 
   const wrapStyle = {
     '--p': String(fill),
-    ...(origin !== null ? { '--origin': String(origin) } : {}),
+    ...(origin !== null
+      ? { '--origin': String(origin), '--fill-start': String(Math.min(origin, fill)), '--fill-span': String(Math.abs(fill - origin)) }
+      : {}),
   } as CSSProperties
 
   return (
@@ -80,7 +82,7 @@ export function SliderField({
         onGestureEnd={onGestureEnd}
         onGestureCancel={onGestureCancel}
       />
-      <div className="slider-wrap" data-overflow={overflow} style={wrapStyle}>
+      <div className="slider-wrap" data-overflow={overflow} data-bipolar={origin !== null || undefined} style={wrapStyle}>
         {origin !== null ? <span className="slider__origin" /> : null}
         <span className="slider__track" aria-hidden="true">
           <span className="slider__fill" />

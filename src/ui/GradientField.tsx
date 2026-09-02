@@ -113,7 +113,7 @@ export function GradientField({ label, value, onChange, onGestureStart, onGestur
   return (
     <div className="control control--gradient">
       <div className="control__head"><span className="control__label">{label}</span>
-        <div className="gradient-actions">
+        <div className="control__tools">
           <Tooltip content="Add color stop"><IconButton label={`Add ${label} stop`} disabled={value.length >= MAX_GRADIENT_STOPS} onClick={() => add()}><IconPlus /></IconButton></Tooltip>
           <Tooltip content={value.length <= 2 ? 'Keep at least two color stops' : 'Remove selected color stop'}><IconButton label={`Remove ${label} stop`} disabled={value.length <= 2} onClick={() => { onChange(removeGradientStop(value, index)); setSelected(Math.max(0,index-1)) }}><IconMinus /></IconButton></Tooltip>
         </div>

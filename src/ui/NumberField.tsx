@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { IconMinus, IconPlus } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
@@ -19,6 +19,11 @@ type NumberFieldProps = {
   max: number
   step: number
   unit?: string
+  /** Display units the unit chip cycles through; the stored value stays in the base unit. */
+  units?: { value: string; label: string }[]
+  onUnitChange?: (unit: string) => void
+  /** Extra controls that live inside the box, after the value. */
+  trailing?: ReactNode
   variant?: 'slider' | 'stepper' | 'field'
   disabled?: boolean
   onChange: (value: number) => void
@@ -35,6 +40,9 @@ export function NumberField({
   max,
   step,
   unit,
+  units,
+  onUnitChange,
+  trailing,
   variant = 'slider',
   disabled,
   onChange,
@@ -261,16 +269,38 @@ export function NumberField({
         }}
         onWheel={(event) => event.preventDefault()}
       />
-      {unit ? (
+      {unit && units && units.length > 1 && onUnitChange ? (
+        <button
+          type="button"
+          id={`${fieldId}-unit`}
+          className="number-value__unit number-value__unit--menu"
+          aria-label={`Unit: ${unit}. Switch unit`}
+          disabled={disabled}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => {
+            const index = units.findIndex((item) => item.value === unit)
+            onUnitChange(units[(index + 1) % units.length]!.value)
+          }}
+        >
+          {unit}
+        </button>
+      ) : unit ? (
         <span id={`${fieldId}-unit`} className="number-value__unit">
           {unit}
+        </span>
+      ) : null}
+      {trailing && variant !== 'stepper' ? (
+        <span className="number-value__trailing" onPointerDown={(event) => event.stopPropagation()}>
+          {trailing}
         </span>
       ) : null}
     </div>
   )
 
+  const switchable = Boolean(unit && units && units.length > 1 && onUnitChange)
+  const nextUnit = switchable ? units![(units!.findIndex((item) => item.value === unit) + 1) % units!.length]!.label : ''
   const guidedValueControl = (
-    <Tooltip content="Drag to adjust · Click to type · Shift for precision">
+    <Tooltip content={`Drag to adjust · Click to type · Shift for precision${switchable ? ` · Click the unit for ${nextUnit}` : ''}`}>
       {valueControl}
     </Tooltip>
   )
@@ -317,6 +347,7 @@ export function NumberField({
               <IconPlus />
             </IconButton>
           </Tooltip>
+          {trailing ? <span className="number-value__trailing">{trailing}</span> : null}
         </div>
         {error ? (
           <p className="field__error" id={`${fieldId}-error`}>

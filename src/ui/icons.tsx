@@ -1,6 +1,8 @@
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import {
   ArrowRight,
+  Dices,
+  Link2,
   Hand,
   ZoomIn,
   Ruler,
@@ -381,4 +383,11 @@ export function IconBucket(props: LucideProps) {
       <path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" />
     </svg>
   )
+}
+
+export function IconDice(props: LucideProps) {
+  return <Dices aria-hidden size={16} strokeWidth={1.5} {...props} />
+}
+export function IconLink(props: LucideProps) {
+  return <Link2 aria-hidden size={16} strokeWidth={1.5} {...props} />
 }
