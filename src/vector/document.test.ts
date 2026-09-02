@@ -7,6 +7,7 @@ import {
   sanitizeVectorDocument,
   saveVectorDocument,
   serializeVectorDocument,
+  serializeVectorMarkup,
   vectorManifest,
 } from '@/vector/document'
 import type { VectorElement } from '@/vector/types'
@@ -215,5 +216,72 @@ describe('text elements', () => {
 
     expect(svg).toContain('&lt;b&gt;&amp;"&lt;/b&gt;')
     expect(svg).not.toContain('<b>')
+  })
+})
+
+describe('background blur at export', () => {
+  const backdrop = { id: 'fx', kind: 'backgroundBlur' as const, visible: true, blur: 12 }
+
+  function scene() {
+    const photo = { ...createVectorElement('rectangle', { x: 0, y: 0, width: 400, height: 300 }), id: 'photo', name: 'Photo', fill: '#FF0000' }
+    const pane = { ...createVectorElement('rectangle', { x: 50, y: 50, width: 200, height: 120 }), id: 'pane', name: 'Pane', effects: [backdrop] }
+    return [photo, pane]
+  }
+
+  it('bakes what is underneath: a blurred, clipped copy just below the pane', () => {
+    const markup = serializeVectorMarkup(scene(), { x: 0, y: 0, width: 400, height: 300 })
+
+    expect(markup).toContain('<clipPath id="backdrop-clip-pane">')
+    expect(markup).toContain('<filter id="backdrop-blur-pane" filterUnits="userSpaceOnUse"')
+    expect(markup).toContain('<feGaussianBlur stdDeviation="6"/>')
+    expect(markup).toContain('clip-path="url(#backdrop-clip-pane)" filter="url(#backdrop-blur-pane)"')
+    // The copy carries its own id, so nothing in the file is named twice.
+    expect(markup).toContain('bd-pane-photo')
+    expect(markup.match(/id="photo"/g)).toHaveLength(1)
+  })
+
+  it('puts the copy before the pane, so it is painted under it', () => {
+    const markup = serializeVectorMarkup(scene(), { x: 0, y: 0, width: 400, height: 300 })
+
+    expect(markup.indexOf('backdrop-clip-pane"')).toBeLessThan(markup.lastIndexOf('id="pane"'))
+  })
+
+  it('reaches past the shape by three sigma so the blur has something to sample', () => {
+    const markup = serializeVectorMarkup(scene(), { x: 0, y: 0, width: 400, height: 300 })
+    const region = markup.match(/id="backdrop-blur-pane" filterUnits="userSpaceOnUse" x="([-\d.]+)" y="([-\d.]+)" width="([\d.]+)" height="([\d.]+)"/)!
+
+    expect(region.slice(1).map(Number)).toEqual([50 - 36, 50 - 36, 200 + 72, 120 + 72])
+  })
+
+  it('bakes nothing when there is nothing underneath', () => {
+    const [, pane] = scene()
+
+    expect(serializeVectorMarkup([pane!], { x: 0, y: 0, width: 400, height: 300 })).not.toContain('backdrop-clip')
+  })
+
+  it('leaves a pane with no background blur alone', () => {
+    const [photo, pane] = scene()
+
+    expect(serializeVectorMarkup([photo!, { ...pane!, effects: undefined }], { x: 0, y: 0, width: 400, height: 300 })).not.toContain('backdrop-clip')
+  })
+
+  it('does not copy the pane, or its own children, into its backdrop', () => {
+    const [photo, pane] = scene()
+    const child = { ...createVectorElement('ellipse', { x: 60, y: 60, width: 40, height: 40 }), id: 'child', parentId: 'pane' }
+    const markup = serializeVectorMarkup([photo!, child, { ...pane!, kind: 'frame' as const }], { x: 0, y: 0, width: 400, height: 300 })
+
+    expect(markup).not.toContain('bd-pane-pane')
+    expect(markup).not.toContain('bd-pane-child')
+    expect(markup).toContain('bd-pane-photo')
+  })
+
+  it('flattens a stack of frosted panes instead of squaring it', () => {
+    const [photo, pane] = scene()
+    const second = { ...pane!, id: 'pane2', x: 120 }
+    const markup = serializeVectorMarkup([photo!, pane!, second], { x: 0, y: 0, width: 400, height: 300 })
+
+    // The second pane copies the first, but that copy carries no background blur of its own.
+    expect(markup).toContain('bd-pane2-pane')
+    expect(markup).not.toContain('backdrop-clip-bd-pane2-pane')
   })
 })

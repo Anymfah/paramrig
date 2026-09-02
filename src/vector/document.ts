@@ -1,6 +1,6 @@
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
-import { buildTree, sanitizeParents, type TreeNode } from '@/vector/tree'
+import { buildTree, descendantIds, sanitizeParents, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPreset } from '@/vector/types'
 import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
@@ -11,6 +11,8 @@ import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
+import { backdropBlur } from '@/vector/filters'
+import { selectionBounds } from '@/vector/geometry'
 
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
@@ -203,9 +205,11 @@ export function serializeVectorMarkup(
   background?: string,
 ): string {
   const defs: string[] = []
-  const lines = serializeNodes(buildTree(elements), 1, defs)
+  const lines = serializeNodes(buildTree(elements), 1, defs, elements)
   const body = lines.join('\n')
-  const defsMarkup = defs.length ? `  <defs>${defs.join('')}</defs>\n` : ''
+  // A baked backdrop repeats the defs of what it copies; the same string twice is the same def.
+  const unique = [...new Set(defs)]
+  const defsMarkup = unique.length ? `  <defs>${unique.join('')}</defs>\n` : ''
   const width = round(viewBox.width)
   const height = round(viewBox.height)
   const paint = background
@@ -233,22 +237,24 @@ export function documentThumbnail(document: Pick<VectorDocument, 'id' | 'element
   return `${defs.length ? `<defs>${defs.join('')}</defs>` : ''}${bodies.join('')}`
 }
 
-function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): string[] {
+function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene: VectorElement[]): string[] {
   const indent = '  '.repeat(depth)
   return nodes.flatMap((node) => {
     const element = node.element
     if (!element.visible) return []
+    const backdrop = backdropMarkup(scene, element, depth, defs)
     if (element.kind === 'frame') {
       const model = renderModel(element, 'svg')
       const background = defsToSvg(model.defs)
       if (background) defs.push(background)
-      const children = serializeNodes(node.children, depth + 1, defs)
+      const children = serializeNodes(node.children, depth + 1, defs, scene)
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       const body = layersToSvg(model, element.id)
       if (element.clipContent && children.length) {
         const clipId = `frame-clip-${element.id}`
         defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.d}" transform="${model.transform}"/></clipPath>`)
         return [
+          ...backdrop,
           `${indent}<g id="${escapeXml(element.id)}"${opacity}>`,
           ...(body ? [`${indent}  ${body}`] : []),
           `${indent}  <g clip-path="url(#${escapeXml(clipId)})">`,
@@ -257,11 +263,11 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
           `${indent}</g>`,
         ]
       }
-      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
+      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
     }
     if (element.kind === 'group') {
       const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
-      const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs)
+      const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs, scene)
       if (children.length === 0) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       if (maskNode) {
@@ -269,12 +275,13 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
         const clipId = `mask-${element.id}`
         defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.fillD || model.d}" transform="${model.transform}" clip-rule="evenodd"/></clipPath>`)
         return [
+          ...backdrop,
           `${indent}<g id="${escapeXml(element.id)}"${opacity} clip-path="url(#${escapeXml(clipId)})">`,
           ...children,
           `${indent}</g>`,
         ]
       }
-      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
+      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
     if (element.kind === 'boolean') {
       // The combined shape is what the file carries; its members are not exported.
@@ -282,7 +289,7 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       if (markup.defs) defs.push(markup.defs)
       if (!markup.body) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
+      return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
     }
     // Only a plain box or a whole ellipse takes the short export path.
     const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
@@ -298,16 +305,54 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
         `transform="${transform}"`,
       ].join(' ')
       if (element.kind === 'ellipse') {
-        return [`${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
+        return [...backdrop, `${indent}<ellipse id="${escapeXml(element.id)}" cx="${round(element.x + element.width / 2)}" cy="${round(element.y + element.height / 2)}" rx="${round(element.width / 2)}" ry="${round(element.height / 2)}" ${common}/>`]
       }
-      return [`${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
+      return [...backdrop, `${indent}<rect id="${escapeXml(element.id)}" x="${element.x}" y="${element.y}" width="${element.width}" height="${element.height}" ${common}/>`]
     }
     const markup = elementMarkup(element, 'svg')
     if (markup.defs) defs.push(markup.defs)
     if (!markup.body) return []
     const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
-    return [`${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
+    return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element)}>${markup.body}</g>`]
   })
+}
+
+/**
+ * A background blur has nothing to sample in SVG: the format has no backdrop. At export it is
+ * baked instead — everything painted under the element is copied, blurred as a whole and clipped
+ * to the element's own shape, then dropped in just below it. The copies lose their own background
+ * blurs, so a stack of frosted panes flattens rather than multiplying the file.
+ */
+function backdropMarkup(scene: VectorElement[], element: VectorElement, depth: number, defs: string[]): string[] {
+  const blur = backdropBlur(element)
+  if (!blur || !element.visible) return []
+  const index = scene.findIndex((item) => item.id === element.id)
+  if (index <= 0) return []
+  const own = new Set([element.id, ...descendantIds(scene, element.id)])
+  const below = scene.slice(0, index).filter((item) => item.visible && !own.has(item.id))
+  if (below.length === 0) return []
+  const kept = new Set(below.map((item) => item.id))
+  // The copies are renamed, so the file never carries the same id — or the same def — twice.
+  const copyId = (id: string) => `bd-${element.id}-${id}`
+  const copies = below.map((item) => {
+    const effects = item.effects?.filter((effect) => effect.kind !== 'backgroundBlur')
+    const parentId = item.parentId && kept.has(item.parentId) ? copyId(item.parentId) : undefined
+    return { ...item, id: copyId(item.id), ...(effects?.length ? { effects } : { effects: undefined }), parentId }
+  })
+  const model = renderModel(element, 'svg')
+  const clipId = `backdrop-clip-${element.id}`
+  const filterId = `backdrop-blur-${element.id}`
+  // The region reaches past the shape by three sigma so the blur inside it samples what it should.
+  const box = selectionBounds([element])
+  const margin = blur * 3
+  defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.fillD || model.d}" transform="${model.transform}" clip-rule="evenodd"/></clipPath>`)
+  defs.push(`<filter id="${escapeXml(filterId)}" filterUnits="userSpaceOnUse" x="${round(box.x - margin)}" y="${round(box.y - margin)}" width="${round(box.width + margin * 2)}" height="${round(box.height + margin * 2)}"><feGaussianBlur stdDeviation="${round(blur / 2)}"/></filter>`)
+  const indent = '  '.repeat(depth)
+  return [
+    `${indent}<g clip-path="url(#${escapeXml(clipId)})" filter="url(#${escapeXml(filterId)})" aria-hidden="true">`,
+    ...serializeNodes(buildTree(copies), depth + 1, defs, copies),
+    `${indent}</g>`,
+  ]
 }
 
 /** The filter and blend attributes an element's effects put on its wrapper. */
