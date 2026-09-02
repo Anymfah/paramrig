@@ -135,7 +135,7 @@ export function reorderIndex(elements: VectorElement[], id: string, mode: 'forwa
 export const APPEARANCE_KEYS = [
   'fill', 'fills', 'stroke', 'strokes', 'strokeWidth', 'strokeAlign', 'strokeCap', 'strokeJoin',
   'strokeDash', 'strokeArrowStart', 'strokeArrowEnd', 'strokeSides', 'cornerRadius', 'cornerSmoothing', 'opacity',
-  'strokeProfile',
+  'strokeProfile', 'brush',
   'effects', 'blendMode', 'adjustments',
 ] as const
 

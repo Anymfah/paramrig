@@ -128,6 +128,16 @@ export type VectorStrokeJoin = 'miter' | 'round' | 'bevel'
 /** Width along a stroke: `t` runs 0 to 1 over the whole chain, `width` multiplies `strokeWidth`. */
 export type VectorStrokeProfile = Array<{ t: number; width: number }>
 
+/** A stamp shape in a unit box, used by a brushed stroke. */
+export type VectorBrush = { id: string; name: string; network: VectorNetwork }
+
+/**
+ * How an element uses a brush: which one, how densely, how scattered, how tapered. The shape is
+ * copied onto the element the way a linked style copies its paints, so an object still draws
+ * itself when it is exported, pasted elsewhere or opened without the document that defined it.
+ */
+export type VectorBrushSettings = { id: string; spacing: number; jitter: number; taper: number; network?: VectorNetwork }
+
 export type VectorArrowhead = 'none' | 'arrow' | 'triangle' | 'circle' | 'square' | 'bar'
 export type VectorStrokeSides = { top: boolean; right: boolean; bottom: boolean; left: boolean }
 
@@ -156,6 +166,8 @@ export type VectorElement = {
   strokeDash?: [number, number]
   /** Width along the stroke, at least two points. Absent means an even width. */
   strokeProfile?: VectorStrokeProfile
+  /** Stamps the stroke with a brush from the document instead of drawing a line. */
+  brush?: VectorBrushSettings
   strokeArrowStart?: VectorArrowhead
   strokeArrowEnd?: VectorArrowhead
   /** Rectangles only: which sides carry the stroke. Absent means all. */
@@ -255,6 +267,8 @@ export type VectorDocument = {
   exportPresets?: VectorExportPreset[]
   /** Named fill and stroke styles. */
   styles?: VectorStyle[]
+  /** Brushes this document defines, on top of the ones that ship. */
+  brushes?: VectorBrush[]
   /** Colours pinned to this document, and the last ones used. */
   swatches?: string[]
   recentColors?: string[]

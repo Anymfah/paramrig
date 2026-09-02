@@ -9,8 +9,9 @@ import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/t
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
 import { envelopePath } from '@/vector/strokeProfile'
+import { brushOutline, resolveBrush } from '@/vector/brushes'
 import { resolveSelfIntersections } from '@/vector/booleans'
-import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
+import type { VectorArrowhead, VectorBrush, VectorElement, VectorGradientStop, VectorPaint, VectorPoint } from '@/vector/types'
 
 export type RenderDef =
   | { type: 'linearGradient'; id: string; x1: number; y1: number; x2: number; y2: number; stops: VectorGradientStop[] }
@@ -24,6 +25,8 @@ export type RenderDef =
 export type RenderLayer = {
   kind: 'fill' | 'stroke'
   d: string
+  /** Fills default to even-odd; a swept or stamped stroke overlaps itself and wants non-zero. */
+  fillRule?: 'nonzero' | 'evenodd'
   paint: string
   opacity: number
   strokeWidth?: number
@@ -127,13 +130,18 @@ export function outlinePathData(element: VectorElement): string {
 /** Envelopes are expensive enough to keep: the key is the geometry and the profile together. */
 const outlineCache = createLruCache<string>(120)
 
-function profileOutline(runs: Run[], element: VectorElement): string {
+function profileOutline(runs: Run[], element: VectorElement, brush: VectorBrush | null): string {
   const cap = element.strokeCap ?? 'butt'
-  const key = JSON.stringify([runs, element.strokeWidth, element.strokeProfile, cap])
+  const key = JSON.stringify([runs, element.strokeWidth, element.strokeProfile, cap, element.brush, brush?.id])
   const cached = outlineCache.get(key)
   if (cached !== undefined) return cached
-  const raw = runs.map((run) => envelopePath(run, element.strokeWidth, element.strokeProfile, cap)).filter(Boolean).join(' ')
-  const cleaned = raw ? resolveSelfIntersections(raw) : ''
+  // A brush leaves hundreds of stamps: they paint correctly under the non-zero rule, and putting
+  // them through a boolean union would cost far more than it shows.
+  const stamped = brush && element.brush
+  const raw = stamped
+    ? brushOutline(runs, element, brush, element.brush!)
+    : runs.map((run) => envelopePath(run, element.strokeWidth, element.strokeProfile, cap)).filter(Boolean).join(' ')
+  const cleaned = raw && !stamped ? resolveSelfIntersections(raw) : raw
   outlineCache.set(key, cleaned)
   return cleaned
 }
@@ -207,15 +215,17 @@ function buildBaseModel(element: VectorElement, prefix: string): RenderModel {
   const strokes = strokesOf(element)
   // A profiled stroke is not a stroke at all once it is drawn: it is the shape the pen would
   // sweep, filled with the stroke's own paint. It replaces the stroke layers entirely.
-  const profileD = element.strokeProfile && element.strokeWidth > 0 && strokes.length
-    ? profileOutline(geometry.strokeRuns, element)
+  const brush = resolveBrush(element.brush)
+  const profileD = (element.strokeProfile || brush) && element.strokeWidth > 0 && strokes.length
+    ? profileOutline(geometry.strokeRuns, element, brush)
     : ''
   if (profileD) {
     strokes.forEach((paint, index) => {
       if (!paint.visible || paint.opacity <= 0) return
       const reference = paintReference(paint, `${key}-profile-${index}`, bounds, defs)
       if (!reference) return
-      layers.push({ kind: 'fill', d: profileD, paint: reference, opacity: paint.opacity })
+      // Stamps and swept outlines overlap themselves: even-odd would punch holes in them.
+      layers.push({ kind: 'fill', d: profileD, paint: reference, opacity: paint.opacity, fillRule: 'nonzero' })
     })
   } else if (element.strokeWidth > 0 && strokes.length && d) {
     const align = element.strokeAlign ?? 'center'
@@ -488,7 +498,7 @@ function escapeText(value: string): string {
 /** Attribute bag for a layer in React prop names. */
 export function layerAttributes(layer: RenderLayer): Record<string, string | number> {
   if (layer.kind === 'fill') {
-    return { fill: layer.paint, fillOpacity: layer.opacity, fillRule: 'evenodd', stroke: 'none' }
+    return { fill: layer.paint, fillOpacity: layer.opacity, fillRule: layer.fillRule ?? 'evenodd', stroke: 'none' }
   }
   return {
     fill: 'none',

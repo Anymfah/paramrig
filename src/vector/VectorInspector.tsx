@@ -9,6 +9,7 @@ import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import { SliderField } from '@/ui/SliderField'
 import { AdjustmentsPanel, BlendPanel, EffectsPanel } from '@/vector/VectorEffectsPanel'
+import { BrushPanel } from '@/vector/VectorBrushPanel'
 import { PaintList, type PaintPalette } from '@/vector/VectorPaintPanel'
 import { linkedStyle, styleUsage } from '@/vector/styles'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
@@ -32,7 +33,7 @@ import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { scaleElementsToBounds } from '@/vector/transform'
 import { leafElements } from '@/vector/tree'
-import type { VectorDocument, VectorElement, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
+import type { VectorBrush, VectorDocument, VectorElement, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
 
 import type { DocumentPatch } from '@/vector/useVectorDocument'
 
@@ -74,6 +75,8 @@ type VectorInspectorProps = {
   onCropImage?: (id: string) => void
   /** Wraps the given shapes in a boolean group. */
   onBooleanGroup?: (operation: BooleanOperation, ids: string[]) => void
+  /** Turns a selected path into a brush the document keeps. */
+  onDefineBrush?: (element: VectorElement) => void
 }
 
 export function VectorInspector({
@@ -108,6 +111,7 @@ export function VectorInspector({
   onDeleteStyle,
   onCropImage,
   onBooleanGroup,
+  onDefineBrush,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -399,12 +403,14 @@ export function VectorInspector({
               elements={selectedElements}
               leaves={leaves}
               styles={document.styles ?? []}
+              brushes={document.brushes ?? []}
               palette={palette}
               onUpdate={onUpdate}
               onUpdateElements={onUpdateElements}
               onCreateStyle={onCreateStyle}
               onLinkStyle={onLinkStyle}
               onUpdateStyle={onUpdateStyle}
+              onDefineBrush={onDefineBrush}
               gesture={gesture}
             />
             {single && single.kind === 'boolean' ? (
@@ -483,16 +489,18 @@ export function VectorInspector({
   )
 }
 
-function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, gesture }: {
+function AppearancePanel({ elements, leaves, styles, brushes, palette, onUpdate, onUpdateElements, onCreateStyle, onLinkStyle, onUpdateStyle, onDefineBrush, gesture }: {
   elements: VectorElement[]
   leaves: VectorElement[]
   styles: VectorStyle[]
+  brushes: VectorBrush[]
   palette?: PaintPalette
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
   onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
   onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
   onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
+  onDefineBrush?: (element: VectorElement) => void
   gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
   const single = elements.length === 1 && elements[0]!.kind !== 'group' ? elements[0]! : null
@@ -558,6 +566,16 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
         )}
         {!single && (!same('strokeWidth') || !same('opacity')) ? <p className="vector-panel__hint">Mixed values show the first object. Editing applies to all.</p> : null}
       </section>
+      {single && strokes.length > 0 && single.kind !== 'text' && single.kind !== 'image' ? (
+        <BrushPanel
+          element={single}
+          brushes={brushes}
+          canDefine={!!single.network}
+          onDefine={() => onDefineBrush?.(single)}
+          onChange={(brush, record) => onUpdate(single.id, { brush }, record, 'Change brush')}
+          gesture={gesture}
+        />
+      ) : null}
       <EffectsPanel
         effects={first.effects ?? []}
         mixed={targets.some((element) => JSON.stringify(element.effects ?? []) !== JSON.stringify(first.effects ?? []))}

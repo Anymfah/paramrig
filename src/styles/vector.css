@@ -1856,3 +1856,14 @@
 .vector-canvas[data-tool='width'] .vector-artboard,
 .vector-canvas[data-tool='width'] [data-vector-element],
 .vector-canvas[data-tool='width'] .vector-hit { cursor: crosshair; }
+
+/* Brushes: the shape a stroke is stamped with. */
+.vector-brush__preview {
+  width: 100%;
+  height: 32px;
+  margin-block: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-canvas) 60%, transparent);
+}
+.vector-brush__preview path { fill: var(--text-primary); }
+.vector-brush__actions { display: flex; justify-content: flex-start; margin-top: var(--space-2); }

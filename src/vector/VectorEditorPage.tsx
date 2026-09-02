@@ -38,6 +38,7 @@ import { countedLabel } from '@/vector/history'
 import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
+import { brushFromElement } from '@/vector/brushes'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
@@ -222,6 +223,19 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }
     current.endGesture(countedLabel('Rotate', angles.length, 'copy'))
     current.clearRepeat()
+  }, [])
+
+  /** Turns the selected path into a brush the document keeps, and stamps the selection with it. */
+  const defineBrush = useCallback((element: VectorElement) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc) return
+    const existing = doc.brushes ?? []
+    let name = `Brush ${existing.length + 1}`
+    while (existing.some((brush) => brush.name === name)) name = `${name}'`
+    const brush = brushFromElement(element, name, crypto.randomUUID())
+    if (!brush) return
+    current.editDocument((state) => ({ ...state, brushes: [...(state.brushes ?? []), brush] }), true, `Define brush “${brush.name}”`)
   }, [])
 
   const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string): string[] => {
@@ -1044,6 +1058,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onRenameStyle={renameStyle}
           onDeleteStyle={deleteStyle}
           onCropImage={(id) => controller.current?.cropImage(id)}
+          onDefineBrush={defineBrush}
           onBooleanGroup={booleanGroup}
         />
       }
