@@ -4,6 +4,7 @@ import { reorderIndex } from '@/vector/commands'
 import { countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
 import { selectionBounds } from '@/vector/geometry'
+import { boxBounds, boxCenter, numericPatches, stepBetween, type NumericTransform } from '@/vector/repeat'
 import {
   ancestorIds,
   descendantIds,
@@ -73,6 +74,13 @@ export function useVectorDocument(documentId: string) {
     setHistory(next)
   }, [])
 
+  /**
+   * The transform ⌘D repeats: the copies it is watching, their geometry when they were made, and
+   * the move the user has since applied to them. Any other edit clears it.
+   */
+  const repeat = useRef<{ ids: string[]; snapshot: VectorElement[]; step: NumericTransform | null } | null>(null)
+  const keepRepeat = useRef(false)
+
   const replace = useCallback((update: (current: VectorDocument) => VectorDocument, record = true, label = DEFAULT_STEP_LABEL) => {
     const current = latest.current
     if (!current) return
@@ -85,6 +93,7 @@ export function useVectorDocument(documentId: string) {
       writeHistory({ past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: clone(current), label, at: Date.now() }], future: [] })
     }
     latest.current = next
+    if (!keepRepeat.current) repeat.current = null
     setDocument(next)
   }, [writeHistory])
 
@@ -130,6 +139,10 @@ export function useVectorDocument(documentId: string) {
   const updateElements = useCallback((updates: Array<{ id: string; patch: Partial<VectorElement> }>, record = true, label?: string) => {
     if (updates.length === 0) return
     const byId = new Map(updates.map((update) => [update.id, update.patch]))
+    // Moving the copies that were just made is what arms ⌘D; any other edit lets `replace` clear it.
+    const tracked = repeat.current
+    const watching = !!tracked && updates.length === tracked.ids.length && updates.every((update) => tracked.ids.includes(update.id))
+    keepRepeat.current = watching
     replace((current) => ({
       ...current,
       elements: current.elements.map((element) => {
@@ -137,6 +150,11 @@ export function useVectorDocument(documentId: string) {
         return patch ? { ...element, ...patch } : element
       }),
     }), record, label)
+    keepRepeat.current = false
+    if (!watching || !tracked) return
+    const after = (latest.current?.elements ?? []).filter((element) => tracked.ids.includes(element.id))
+    const step = stepBetween(tracked.snapshot, after)
+    if (step) tracked.step = step
   }, [replace])
 
   /** Arbitrary element-list edit recorded as one undo entry (or folded into an open gesture). */
@@ -189,7 +207,7 @@ export function useVectorDocument(documentId: string) {
    * Copies elements (with their descendants) right above the originals and returns the new ids
    * of the requested elements. Inside a gesture the copy joins the gesture's single undo entry.
    */
-  const duplicateElements = useCallback((ids: string[], offset = 12): { ids: string[]; idMap: Record<string, string> } => {
+  const duplicateElements = useCallback((ids: string[], offset = 12, step: NumericTransform | null = null): { ids: string[]; idMap: Record<string, string> } => {
     const idMap = new Map<string, string>()
     const base = latest.current
     const requested = ids.map((id) => {
@@ -202,6 +220,7 @@ export function useVectorDocument(documentId: string) {
         for (const id of descendantIds(base.elements, source.id)) if (!idMap.has(id)) idMap.set(id, crypto.randomUUID())
       }
     }
+    keepRepeat.current = true
     replace((current) => {
       const sources = current.elements.filter((element) => ids.includes(element.id))
       if (sources.length === 0) return current
@@ -228,11 +247,20 @@ export function useVectorDocument(documentId: string) {
       })
       const topIndex = Math.max(...[...blockIds].map((id) => current.elements.findIndex((element) => element.id === id)))
       const elements = [...current.elements]
-      elements.splice(topIndex + 1, 0, ...block)
+      // Repeating a transform puts the copy where the last one ended up, not at the usual offset.
+      const placed = step ? applyStep(block, new Set<string>(requested), step) : block
+      elements.splice(topIndex + 1, 0, ...placed)
       return { ...current, elements }
     }, true, countedLabel('Duplicate', ids.length))
+    keepRepeat.current = false
+    const copyIds = new Set<string>(requested)
+    const copies = (latest.current?.elements ?? []).filter((element) => copyIds.has(element.id))
+    repeat.current = copies.length ? { ids: [...copyIds], snapshot: copies, step } : null
     return { ids: requested, idMap: Object.fromEntries(idMap) }
   }, [replace])
+
+  /** Forgets the transform ⌘D would repeat, for commands that make their own copies. */
+  const clearRepeat = useCallback(() => { repeat.current = null }, [])
 
   const duplicateElement = useCallback((id: string) => {
     const [copy] = duplicateElements([id]).ids
@@ -240,7 +268,9 @@ export function useVectorDocument(documentId: string) {
   }, [duplicateElements, setSelectedIds])
 
   const duplicateSelection = useCallback(() => {
-    const copies = duplicateElements(selectedIds).ids
+    // A second ⌘D on the copy repeats what was done to it, the way Figma does.
+    const armed = repeat.current && sameIds(repeat.current.ids, selectedIds) ? repeat.current.step : null
+    const copies = duplicateElements(selectedIds, armed ? 0 : 12, armed).ids
     if (copies.length) setSelectedIds(copies)
   }, [duplicateElements, selectedIds, setSelectedIds])
 
@@ -449,6 +479,7 @@ export function useVectorDocument(documentId: string) {
     renameElement,
     duplicateElement,
     duplicateElements,
+    clearRepeat,
     duplicateSelection,
     rename,
     resizeDocument,
@@ -465,6 +496,14 @@ export function useVectorDocument(documentId: string) {
     historyIndex: history.past.length,
     goToStep,
   }
+}
+
+/** Places a freshly copied block where the repeated transform says it belongs. */
+function applyStep(block: VectorElement[], requested: Set<string>, step: NumericTransform): VectorElement[] {
+  const anchors = block.filter((element) => requested.has(element.id))
+  if (anchors.length === 0) return block
+  const patches = new Map(numericPatches(block, step, boxCenter(boxBounds(anchors))).map((patch) => [patch.id, patch.patch]))
+  return block.map((element) => ({ ...element, ...patches.get(element.id) }))
 }
 
 function sameIds(a: string[], b: string[]): boolean {

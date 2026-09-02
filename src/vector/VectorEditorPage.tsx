@@ -35,6 +35,8 @@ import {
 import { countedLabel } from '@/vector/history'
 import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
+import { VectorRotateCopiesDialog, VectorTransformDialog } from '@/vector/VectorTransformDialog'
+import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
 import { colorAt, sampleDocument, type CanvasSample } from '@/vector/sampling'
 import {
@@ -95,6 +97,10 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
   const [exportError, setExportError] = useState<string | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [transformOpen, setTransformOpen] = useState(false)
+  const [rotateCopiesOpen, setRotateCopiesOpen] = useState(false)
+  /** ⌘⇧T reopens the dialog on the values it was last applied with. */
+  const lastTransform = useRef<NumericTransform>(IDENTITY_TRANSFORM)
   const appearanceClipboard = useRef<Appearance | null>(null)
   const elementClipboard = useRef<VectorElement[]>([])
   /** Mirrors what the clipboards hold, so the palette and menus can grey the right entries. */
@@ -174,6 +180,38 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     const center = elementCenter(selectionBounds(leafElements(doc.elements, current.selectedIds)))
     const map = build(center)
     current.updateElements(leaves.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) })), true, label)
+  }, [])
+
+  /** The numeric Transform dialog: one move, scale, turn and flip in a single undo entry. */
+  const applyNumericTransform = useCallback((transform: NumericTransform) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedIds.length === 0) return
+    const leaves = transformLeaves(doc.elements, current.selectedIds).filter((element) => !element.locked)
+    if (leaves.length === 0) return
+    lastTransform.current = transform
+    const center = boxCenter(boxBounds(leafElements(doc.elements, current.selectedIds)))
+    current.updateElements(numericPatches(leaves, transform, center), true, 'Transform')
+  }, [])
+
+  /** Copies swung around the pivot: one undo entry for the whole ring. */
+  const applyRotateCopies = useCallback((count: number, total: number) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedIds.length === 0) return
+    const ids = current.selectedIds
+    const originals = transformLeaves(doc.elements, ids).filter((element) => !element.locked)
+    if (originals.length === 0) return
+    const pivot = controller.current?.pivot() ?? boxCenter(boxBounds(leafElements(doc.elements, ids)))
+    const angles = copyAngles(count, total)
+    current.beginGesture(countedLabel('Rotate', angles.length, 'copy'))
+    for (const angle of angles) {
+      const { idMap } = current.duplicateElements(ids, 0)
+      // The copies land on the originals, so their patches can be worked out from the originals.
+      current.updateElements(rotatedCopyPatches(originals, angle, pivot).map((patch) => ({ id: idMap[patch.id] ?? patch.id, patch: patch.patch })), false)
+    }
+    current.endGesture(countedLabel('Rotate', angles.length, 'copy'))
+    current.clearRepeat()
   }, [])
 
   const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string): string[] => {
@@ -438,6 +476,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       if (meta && key === '/') {
         event.preventDefault()
         setPaletteOpen((open) => !open)
+        return
+      }
+      if (meta && event.shiftKey && key === 't') {
+        event.preventDefault()
+        if (current.selectedIds.length > 0) setTransformOpen(true)
         return
       }
       if (meta && key === 'd') {
@@ -794,6 +837,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'transform', label: 'Transform…', section: 'Arrange', shortcut: SHORTCUTS.transform, disabled: !hasSelection, run: () => setTransformOpen(true) },
+    { id: 'rotate-copies', label: 'Rotate copies…', section: 'Arrange', disabled: !hasSelection, run: () => setRotateCopiesOpen(true) },
     { id: 'rename', label: 'Rename layers…', section: 'Object', disabled: !hasSelection, run: () => setRenameOpen(true) },
     { id: 'open', label: 'Open…', section: 'File', shortcut: SHORTCUTS.open, run: requestOpen },
     { id: 'save-as', label: 'Save as…', section: 'File', shortcut: SHORTCUTS.saveAs, run: () => void file.saveAs() },
@@ -1089,6 +1134,19 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         </ContextMenuRoot>
       </div>
       <VectorCommandPalette commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <VectorTransformDialog
+        count={selectedIds.length}
+        open={transformOpen && selectedIds.length > 0}
+        initial={lastTransform.current}
+        onClose={() => setTransformOpen(false)}
+        onApply={applyNumericTransform}
+      />
+      <VectorRotateCopiesDialog
+        count={selectedIds.length}
+        open={rotateCopiesOpen && selectedIds.length > 0}
+        onClose={() => setRotateCopiesOpen(false)}
+        onApply={applyRotateCopies}
+      />
       <VectorRenameDialog
         elements={selectedElements}
         open={renameOpen && selectedElements.length > 0}

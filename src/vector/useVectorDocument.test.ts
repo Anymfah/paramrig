@@ -19,6 +19,59 @@ describe('useVectorDocument transactions', () => {
     return hook
   }
 
+  describe('the transform ⌘D repeats', () => {
+    it('offsets the first copy and repeats the move on the next one', () => {
+      const hook = setup()
+      const original = hook.result.current.selectedId!
+
+      act(() => hook.result.current.duplicateSelection())
+      const first = hook.result.current.selectedId!
+      const copy = () => hook.result.current.document!.elements.find((element) => element.id === first)!
+
+      expect(copy()).toMatchObject({ x: 12, y: 12 })
+
+      // Moving the copy is what arms the repeat.
+      act(() => hook.result.current.updateElements([{ id: first, patch: { x: 112, y: 12 } }]))
+      act(() => hook.result.current.duplicateSelection())
+      const second = hook.result.current.document!.elements.find((element) => element.id === hook.result.current.selectedId!)!
+
+      expect(second).toMatchObject({ x: 212, y: 12 })
+      expect(hook.result.current.document!.elements.map((element) => element.id)).toContain(original)
+
+      // And again, from the copy of the copy.
+      act(() => hook.result.current.duplicateSelection())
+      expect(hook.result.current.document!.elements.find((element) => element.id === hook.result.current.selectedId!)).toMatchObject({ x: 312, y: 12 })
+    })
+
+    it('forgets the transform after any other edit', () => {
+      const hook = setup()
+      act(() => hook.result.current.duplicateSelection())
+      const first = hook.result.current.selectedId!
+      act(() => hook.result.current.updateElements([{ id: first, patch: { x: 112, y: 12 } }]))
+
+      // Something else entirely happens in between.
+      act(() => hook.result.current.updateElement(first, { opacity: 0.5 }))
+      act(() => hook.result.current.duplicateSelection())
+
+      expect(hook.result.current.document!.elements.find((element) => element.id === hook.result.current.selectedId!)).toMatchObject({ x: 124, y: 24 })
+    })
+
+    it('gives up the repeat when the selection moves elsewhere', () => {
+      const hook = setup()
+      act(() => hook.result.current.addElement(createVectorElement('ellipse', { x: 300, y: 300, width: 40, height: 40 })))
+      const other = hook.result.current.selectedId!
+      act(() => hook.result.current.setSelectedIds([hook.result.current.document!.elements[0]!.id]))
+      act(() => hook.result.current.duplicateSelection())
+      const first = hook.result.current.selectedId!
+      act(() => hook.result.current.updateElements([{ id: first, patch: { x: 112, y: 12 } }]))
+
+      act(() => hook.result.current.setSelectedIds([other]))
+      act(() => hook.result.current.duplicateSelection())
+
+      expect(hook.result.current.document!.elements.find((element) => element.id === hook.result.current.selectedId!)).toMatchObject({ x: 312, y: 312 })
+    })
+  })
+
   it('records one undo entry per pointer gesture and restores on cancel', () => {
     const hook = setup()
     const id = hook.result.current.selectedId!

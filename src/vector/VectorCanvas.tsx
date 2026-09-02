@@ -57,6 +57,8 @@ export type VectorCanvasController = {
   zoomTo: (zoom: number) => void
   /** Opens in-place editing on a text element, as a double-click does. */
   editText: (id: string) => void
+  /** The pivot the user has placed, or null when it still sits at the centre of the selection. */
+  pivot: () => Point | null
   /** Adds picture files as image elements, centred on the middle of the page. */
   addImages: (files: File[], at?: Point) => Promise<void>
   /** Opens crop editing on an image element, as a double-click does. */
@@ -204,6 +206,8 @@ export function VectorCanvas({
   const [pencilPoints, setPencilPoints] = useState<Point[] | null>(null)
   const [lassoPoints, setLassoPoints] = useState<Point[] | null>(null)
   const [pivot, setPivot] = useState<Point | null>(null)
+  const pivotRef = useRef(pivot)
+  pivotRef.current = pivot
   const [altDown, setAltDown] = useState(false)
   const [metaDown, setMetaDown] = useState(false)
   const [bending, setBending] = useState(false)
@@ -323,6 +327,7 @@ export function VectorCanvas({
         onZoomChange(clamp(nextZoom, 0.1, 8))
         onPanChange({ x: current.pan.x * ratio, y: current.pan.y * ratio })
       },
+      pivot: () => pivotRef.current,
       editText: (id) => {
         const element = documentRef.current.elements.find((item) => item.id === id)
         if (element?.kind === 'text' && !element.locked) editText.current(element)

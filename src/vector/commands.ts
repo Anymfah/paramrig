@@ -18,6 +18,7 @@ export const SHORTCUTS = {
   undo: '⌘Z',
   redo: '⇧⌘Z',
   duplicate: '⌘D',
+  transform: '⌘⇧T',
   selectAll: '⌘A',
   group: '⌘G',
   ungroup: '⇧⌘G',

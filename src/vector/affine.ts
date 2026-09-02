@@ -118,3 +118,24 @@ function round(value: number): number {
 }
 
 export { rotatePoint }
+
+/** `b` applied after `a`. */
+export function composeAffine(a: Affine, b: Affine): Affine {
+  return {
+    a: b.a * a.a + b.c * a.b,
+    b: b.b * a.a + b.d * a.b,
+    c: b.a * a.c + b.c * a.d,
+    d: b.b * a.c + b.d * a.d,
+    e: b.a * a.e + b.c * a.f + b.e,
+    f: b.b * a.e + b.d * a.f + b.f,
+  }
+}
+
+/** Scales about a centre, independently on each axis. */
+export function scaleAffine(sx: number, sy: number, center: VectorPoint): Affine {
+  return { a: sx, b: 0, c: 0, d: sy, e: center.x - sx * center.x, f: center.y - sy * center.y }
+}
+
+export function translationAffine(dx: number, dy: number): Affine {
+  return { a: 1, b: 0, c: 0, d: 1, e: dx, f: dy }
+}
