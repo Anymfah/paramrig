@@ -5,7 +5,7 @@ import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
 import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } from '@/vector/planar'
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { gradientCircle, gradientLine } from '@/vector/gradient'
-import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
+import { canvasMeasure, fontFeatureSettings, fontStack, layoutText, textProperties } from '@/vector/text'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
 import { blendModeCss } from '@/vector/effects'
 import { envelopePath } from '@/vector/strokeProfile'
@@ -53,6 +53,8 @@ export type TextRender = {
   stroke: string | null
   strokeOpacity: number
   strokeWidth: number
+  /** `font-feature-settings`, when the text asks for anything beyond the defaults. */
+  features?: string
   /** Set when the text rides on an outline: the def to hang it on, and where it starts. */
   path?: { id: string; startOffset: string; side: 'left' | 'right' }
 }
@@ -327,6 +329,7 @@ function buildTextModel(element: VectorElement, prefix: string): RenderModel {
     stroke: strokeReference,
     strokeOpacity: stroke?.opacity ?? 1,
     strokeWidth: element.strokeWidth,
+    ...(fontFeatureSettings(element.fontFeatures) ? { features: fontFeatureSettings(element.fontFeatures)! } : {}),
     ...(ride ? { path: { id: `${key}-textpath`, startOffset: `${round(ride.offset * 100)}%`, side: ride.side === 'below' ? 'right' as const : 'left' as const } } : {}),
   }
   return {
@@ -491,6 +494,7 @@ function textToSvg(model: RenderModel, id: string): string {
     `fill="${escapeAttribute(text.fill)}"`,
     `fill-opacity="${text.fillOpacity}"`,
     text.stroke ? `stroke="${escapeAttribute(text.stroke)}" stroke-opacity="${text.strokeOpacity}" stroke-width="${text.strokeWidth}"` : '',
+    text.features ? `font-feature-settings="${escapeAttribute(text.features)}"` : '',
     `xml:space="preserve"`,
     `transform="${model.transform}"`,
   ].filter(Boolean).join(' ')

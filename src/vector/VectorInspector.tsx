@@ -33,7 +33,7 @@ import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
 import { scaleElementsToBounds } from '@/vector/transform'
 import { leafElements } from '@/vector/tree'
-import type { VectorBrush, VectorDocument, VectorElement, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
+import type { VectorBrush, VectorDocument, VectorElement, VectorFontFeatures, VectorPaint, VectorStyle, VectorStyleKind, VectorTool } from '@/vector/types'
 
 import type { DocumentPatch } from '@/vector/useVectorDocument'
 
@@ -1066,6 +1066,13 @@ function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }:
   )
 }
 
+/** The features an element asks for once one of the switches moves. */
+function features(element: VectorElement, patch: VectorFontFeatures): VectorFontFeatures | undefined {
+  const next = { kern: true, ...element.fontFeatures, ...patch }
+  const entries = Object.entries(next).filter(([tag, on]) => on !== (tag === 'kern'))
+  return entries.length ? Object.fromEntries(entries) as VectorFontFeatures : undefined
+}
+
 function TextPanel({ element, onUpdate, onOutline, gesture }: {
   element: VectorElement
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
@@ -1112,6 +1119,12 @@ function TextPanel({ element, onUpdate, onOutline, gesture }: {
         options={[{ value: 'auto', label: 'Auto width' }, { value: 'fixed', label: 'Fixed width' }]}
         onChange={(textSizing) => apply({ textSizing: textSizing as VectorElement['textSizing'] })}
       />
+      <div className="vector-sides" role="group" aria-label="Type features">
+        <SwitchField label="Ligatures" checked={element.fontFeatures?.liga ?? false} onChange={(liga) => apply({ fontFeatures: features(element, { liga }) })} />
+        <SwitchField label="Kerning" checked={element.fontFeatures?.kern ?? true} onChange={(kern) => apply({ fontFeatures: features(element, { kern }) })} />
+        <SwitchField label="Small caps" checked={element.fontFeatures?.smcp ?? false} onChange={(smcp) => apply({ fontFeatures: features(element, { smcp }) })} />
+        <SwitchField label="Tabular figures" checked={element.fontFeatures?.tnum ?? false} onChange={(tnum) => apply({ fontFeatures: features(element, { tnum }) })} />
+      </div>
       {element.textPath ? (
         <>
           <SliderField label="Path offset" value={Math.round(element.textPath.offset * 100)} min={0} max={100} step={1} unit="%" onChange={(offset) => apply({ textPath: { ...element.textPath!, offset: offset / 100 } })} {...gesture} />

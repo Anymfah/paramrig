@@ -2669,6 +2669,7 @@ function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>
       strokeWidth={text.stroke ? text.strokeWidth : undefined}
       pointerEvents="none"
       xmlSpace="preserve"
+      style={text.features ? { fontFeatureSettings: text.features } : undefined}
     >
       {text.path
         // `side` is not in React's SVG typings yet; the attribute is what the browser reads.

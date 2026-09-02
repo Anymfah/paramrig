@@ -3,7 +3,7 @@ import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, descendantIds, sanitizeParents, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorElementKind, VectorExportPreset } from '@/vector/types'
 import { sanitizeNetwork } from '@/vector/network'
-import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
+import { DEFAULT_TEXT, MAX_TEXT_LENGTH, sanitizeFontFeatures, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
 import { sanitizeAdjustments, sanitizeBlendMode, sanitizeEffects } from '@/vector/effects'
 import { sanitizeCrop } from '@/vector/crop'
@@ -546,6 +546,7 @@ function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorE
     textAlign: source.textAlign === 'center' || source.textAlign === 'right' ? source.textAlign : DEFAULT_TEXT.textAlign,
     textSizing: source.textSizing === 'fixed' ? 'fixed' : DEFAULT_TEXT.textSizing,
     ...(sanitizeTextPath(source.textPath) ? { textPath: sanitizeTextPath(source.textPath) } : {}),
+    ...(sanitizeFontFeatures(source.fontFeatures) ? { fontFeatures: sanitizeFontFeatures(source.fontFeatures) } : {}),
   }
 }
 

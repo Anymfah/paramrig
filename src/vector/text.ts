@@ -1,4 +1,4 @@
-import type { VectorElement, VectorTextAlign, VectorTextSizing } from '@/vector/types'
+import type { VectorFontFeatures, VectorElement, VectorTextAlign, VectorTextSizing } from '@/vector/types'
 
 /** Families offered in the inspector. Only the one shipped with the app can be outlined. */
 export type TextFace = {
@@ -211,4 +211,26 @@ export function canvasMeasure(line: string, properties: TextProperties): number 
 /** Forgets the cached measuring context, for tests. */
 export function resetMeasureCache(): void {
   context = undefined
+}
+
+const FEATURE_TAGS = ['liga', 'kern', 'smcp', 'tnum'] as const
+
+export function sanitizeFontFeatures(value: unknown): VectorFontFeatures | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Record<string, unknown>
+  const entries = FEATURE_TAGS
+    .filter((tag) => typeof source[tag] === 'boolean')
+    // Kerning on and the rest off is the default; storing it would say nothing.
+    .filter((tag) => source[tag] !== (tag === 'kern'))
+    .map((tag) => [tag, source[tag] as boolean] as const)
+  return entries.length ? Object.fromEntries(entries) as VectorFontFeatures : undefined
+}
+
+/** The `font-feature-settings` value for a text, or null when it asks for nothing unusual. */
+export function fontFeatureSettings(features: VectorFontFeatures | undefined): string | null {
+  if (!features) return null
+  const parts = FEATURE_TAGS
+    .filter((tag) => features[tag] !== undefined)
+    .map((tag) => `"${tag}" ${features[tag] ? 1 : 0}`)
+  return parts.length ? parts.join(', ') : null
 }

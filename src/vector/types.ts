@@ -65,6 +65,12 @@ export type VectorPaint = {
 export type VectorTextAlign = 'left' | 'center' | 'right'
 
 /**
+ * The OpenType features a text asks for. Kerning is on unless it is turned off, which is what a
+ * reader expects; the other three are off unless asked for.
+ */
+export type VectorFontFeatures = { liga?: boolean; kern?: boolean; smcp?: boolean; tnum?: boolean }
+
+/**
  * A text riding on another object's outline. `d` is a copy of the path the text follows, kept in
  * step with the object it names, so the text draws itself wherever it is opened.
  */
@@ -212,6 +218,8 @@ export type VectorElement = {
   textSizing?: VectorTextSizing
   /** Text elements: the outline this text runs along, instead of its own box. */
   textPath?: VectorTextPath
+  /** Ligatures, kerning, small capitals and tabular figures. */
+  fontFeatures?: VectorFontFeatures
   /** Frames only: whether children are cut off at the frame's edge. */
   clipContent?: boolean
   /** Boolean groups: how the shapes under it are combined. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approximateMeasure, autoTextBounds, canOutline, fontStack, layoutText, textProperties, TEXT_FACES, type Measure, type TextProperties } from '@/vector/text'
+import { approximateMeasure, autoTextBounds, canOutline, fontFeatureSettings, fontStack, layoutText, sanitizeFontFeatures, textProperties, TEXT_FACES, type Measure, type TextProperties } from '@/vector/text'
 
 /** Ten pixels per character, so expectations read directly. */
 const measure: Measure = (line) => line.length * 10
@@ -97,5 +97,24 @@ describe('approximate measure', () => {
 
   it('gives a monospace face a wider ratio than a serif one', () => {
     expect(approximateMeasure('abcd', base({ fontFamily: 'Courier New' }))).toBeGreaterThan(approximateMeasure('abcd', base({ fontFamily: 'Times New Roman' })))
+  })
+})
+
+describe('OpenType features', () => {
+  it('stores only what differs from the defaults: kerning on, the rest off', () => {
+    expect(sanitizeFontFeatures({ kern: true, liga: false })).toBeUndefined()
+    expect(sanitizeFontFeatures({ kern: false })).toEqual({ kern: false })
+    expect(sanitizeFontFeatures({ liga: true, smcp: true })).toEqual({ liga: true, smcp: true })
+  })
+
+  it('drops anything that is not a switch', () => {
+    expect(sanitizeFontFeatures({ liga: 'yes' })).toBeUndefined()
+    expect(sanitizeFontFeatures(null)).toBeUndefined()
+  })
+
+  it('writes them the way CSS and SVG read them', () => {
+    expect(fontFeatureSettings({ liga: true, kern: false })).toBe('"liga" 1, "kern" 0')
+    expect(fontFeatureSettings(undefined)).toBeNull()
+    expect(fontFeatureSettings({})).toBeNull()
   })
 })
