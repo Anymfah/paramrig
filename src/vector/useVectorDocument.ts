@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { syncBooleanGroups } from '@/vector/booleanGroups'
 import { syncTextPaths } from '@/vector/textPath'
+import { overrideUpdate, syncInstances } from '@/vector/instances'
 import { reorderIndex } from '@/vector/commands'
 import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
@@ -87,7 +88,7 @@ export function useVectorDocument(documentId: string) {
     if (!current) return
     const updated = update(current)
     if (updated === current) return
-    const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(syncTextPaths(syncBooleanGroups(updated.elements))) }
+    const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncInstances(syncGroupBounds(syncTextPaths(syncBooleanGroups(updated.elements)))) }
     if (sameDocument(synced, current)) return
     const next = { ...synced, updatedAt: new Date().toISOString() }
     if (record && !gestureStart.current) {
@@ -130,19 +131,25 @@ export function useVectorDocument(documentId: string) {
 
   const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [setSelectedIds])
 
-  const updateElement = useCallback((id: string, patch: Partial<VectorElement>, record = true, label?: string) => {
-    replace((current) => ({
-      ...current,
-      elements: current.elements.map((element) => element.id === id ? { ...element, ...patch } : element),
-    }), record, label)
-  }, [replace])
-
   const updateElements = useCallback((updates: Array<{ id: string; patch: Partial<VectorElement> }>, record = true, label?: string) => {
     if (updates.length === 0) return
-    const byId = new Map(updates.map((update) => [update.id, update.patch]))
+    // An edit aimed at a copy inside an instance is recorded on the instance, not on the copy:
+    // the copy is rebuilt from the master on the next pass and would lose it otherwise.
+    const scene = latest.current?.elements ?? []
+    const routed = updates.flatMap((update) => {
+      const override = overrideUpdate(scene, update.id, update.patch)
+      return override ? (Object.keys(override.patch).length ? [override] : []) : [update]
+    })
+    if (routed.length === 0) return
+    const byId = new Map(routed.map((update) => [update.id, update.patch]))
     // Moving the copies that were just made is what arms ⌘D; any other edit lets `replace` clear it.
     const tracked = repeat.current
-    const watching = !!tracked && updates.length === tracked.ids.length && updates.every((update) => tracked.ids.includes(update.id))
+    // Only a move, a resize or a turn keeps ⌘D armed; anything else is "another action".
+    const geometryOnly = (patch: Partial<VectorElement>) =>
+      Object.keys(patch).length > 0 && Object.keys(patch).every((key) => GEOMETRY_KEYS.includes(key as never))
+    const watching = !!tracked
+      && routed.length === tracked.ids.length
+      && routed.every((update) => tracked.ids.includes(update.id) && geometryOnly(update.patch))
     keepRepeat.current = watching
     replace((current) => ({
       ...current,
@@ -157,6 +164,10 @@ export function useVectorDocument(documentId: string) {
     const step = stepBetween(tracked.snapshot, after)
     if (step) tracked.step = step
   }, [replace])
+
+  const updateElement = useCallback((id: string, patch: Partial<VectorElement>, record = true, label?: string) => {
+    updateElements([{ id, patch }], record, label)
+  }, [updateElements])
 
   /** Arbitrary element-list edit recorded as one undo entry (or folded into an open gesture). */
   const editElements = useCallback((edit: (elements: VectorElement[]) => VectorElement[], record = true, label?: string) => {
@@ -516,6 +527,8 @@ function applyStep(block: VectorElement[], requested: Set<string>, step: Numeric
   const patches = new Map(numericPatches(block, step, boxCenter(boxBounds(anchors))).map((patch) => [patch.id, patch.patch]))
   return block.map((element) => ({ ...element, ...patches.get(element.id) }))
 }
+
+const GEOMETRY_KEYS = ['x', 'y', 'width', 'height', 'rotation', 'network'] as const
 
 function sameIds(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])

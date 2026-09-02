@@ -1202,6 +1202,8 @@ function kindLabel(element: VectorElement): string {
     case 'image': return 'Image'
     case 'polygon': return 'Polygon'
     case 'boolean': return 'Boolean'
+    case 'component': return 'Component'
+    case 'instance': return 'Instance'
   }
 }
 

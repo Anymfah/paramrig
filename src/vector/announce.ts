@@ -13,7 +13,7 @@ export function toolAnnouncement(tool: VectorTool): string {
 
 const KIND_NAMES: Record<VectorElement['kind'], string> = {
   rectangle: 'Rectangle', ellipse: 'Ellipse', path: 'Path', group: 'Group', text: 'Text',
-  frame: 'Frame', image: 'Image', polygon: 'Polygon', boolean: 'Boolean group',
+  frame: 'Frame', image: 'Image', polygon: 'Polygon', boolean: 'Boolean group', component: 'Component', instance: 'Instance',
 }
 
 /** What a screen reader is told about the selection: one object in full, several by count. */

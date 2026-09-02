@@ -21,6 +21,8 @@ export const SHORTCUTS = {
   transform: '⌘⇧T',
   selectAll: '⌘A',
   group: '⌘G',
+  createComponent: '⌥⌘K',
+  detachInstance: '⌥⌘B',
   ungroup: '⇧⌘G',
   delete: '⌫',
   copy: '⌘C',

@@ -11,6 +11,7 @@ import { sanitizeStrokeProfile } from '@/vector/strokeProfile'
 import { sanitizeBrushes, sanitizeBrushSettings } from '@/vector/brushes'
 import { sanitizeTextPath, syncTextPaths } from '@/vector/textPath'
 import { sanitizeFonts } from '@/vector/fonts'
+import { OVERRIDE_KEYS, syncInstances } from '@/vector/instances'
 import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
@@ -195,6 +196,8 @@ function defaultName(kind: VectorElementKind): string {
     case 'image': return 'Image'
     case 'polygon': return 'Polygon'
     case 'boolean': return 'Boolean'
+    case 'component': return 'Component'
+    case 'instance': return 'Instance'
   }
 }
 
@@ -244,6 +247,16 @@ export function documentThumbnail(document: Pick<VectorDocument, 'id' | 'element
   return `${unique.length ? `<defs>${unique.join('')}</defs>` : ''}${body}`
 }
 
+/** Inline markup for one component's own subtree, for the assets list. */
+export function componentThumbnail(elements: VectorElement[], componentId: string): string {
+  const wanted = new Set(descendantIds(elements, componentId))
+  const subtree = elements.filter((element) => wanted.has(element.id))
+  const defs: string[] = []
+  const body = serializeNodes(buildTree(subtree.map((element) => element.parentId === componentId ? { ...element, parentId: undefined } : element)), 0, defs, elements).join('')
+  const unique = [...new Set(defs)]
+  return `${unique.length ? `<defs>${unique.join('')}</defs>` : ''}${body}`
+}
+
 function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene: VectorElement[]): string[] {
   const indent = '  '.repeat(depth)
   return nodes.flatMap((node) => {
@@ -272,7 +285,8 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[], scene:
       }
       return [...backdrop, `${indent}<g id="${escapeXml(element.id)}"${opacity}${effectAttributes(element, scene)}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
     }
-    if (element.kind === 'group') {
+    // A component and an instance serialise like a group: the shapes they hold, expanded.
+    if (element.kind === 'group' || element.kind === 'component' || element.kind === 'instance') {
       const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
       const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs, scene)
       if (children.length === 0) return []
@@ -369,6 +383,22 @@ function effectAttributes(element: VectorElement, scene: VectorElement[], prefix
   return `${model.filter ? ` filter="${escapeXml(model.filter)}"` : ''}${blend}`
 }
 
+/** What an instance is allowed to remember about its copies, and nothing else. */
+function sanitizeOverrides(value: unknown): { overrides?: Record<string, Partial<VectorElement>> } {
+  if (!value || typeof value !== 'object') return {}
+  const entries = Object.entries(value as Record<string, unknown>).flatMap(([key, override]) => {
+    if (!override || typeof override !== 'object') return []
+    const source = override as Partial<VectorElement>
+    const patch: Partial<VectorElement> = {}
+    for (const property of OVERRIDE_KEYS) {
+      if (source[property] === undefined) continue
+      Object.assign(patch, { [property]: structuredClone(source[property]) })
+    }
+    return Object.keys(patch).length ? [[key, patch] as const] : []
+  })
+  return entries.length ? { overrides: Object.fromEntries(entries) } : {}
+}
+
 function sanitizeStrokeSides(value: unknown): VectorElement['strokeSides'] | undefined {
   if (!value || typeof value !== 'object') return undefined
   const source = value as Record<string, unknown>
@@ -409,7 +439,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     background: typeof source.background === 'string' && /^#[0-9a-f]{6}$/i.test(source.background) ? source.background.toUpperCase() : DEFAULT_BACKGROUND,
     width: source.width,
     height: source.height,
-    elements: syncTextPaths(syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? []))),
+    elements: syncInstances(syncTextPaths(syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? [])))),
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
@@ -468,7 +498,7 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown, families: Set<string> = new Set()): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  const KINDS: VectorElementKind[] = ['rectangle', 'ellipse', 'path', 'group', 'text', 'frame', 'image', 'polygon', 'boolean']
+  const KINDS: VectorElementKind[] = ['rectangle', 'ellipse', 'path', 'group', 'text', 'frame', 'image', 'polygon', 'boolean', 'component', 'instance']
   if (!source.kind || !KINDS.includes(source.kind)) return null
   const kind: VectorElementKind = source.kind
   if (source.kind === 'text' && typeof source.text !== 'string') return null
@@ -533,6 +563,8 @@ function sanitizeElement(value: unknown, families: Set<string> = new Set()): Vec
     ...(source.kind === 'polygon' && !source.network ? polygonProperties(source) : {}),
     ...(source.kind === 'boolean' ? { operation: BOOLEAN_OPERATIONS.includes(source.operation as never) ? source.operation : 'unite' } : {}),
     ...(source.mask === true ? { mask: true as const } : {}),
+    ...(source.kind === 'instance' && typeof source.componentId === 'string' && source.componentId ? { componentId: source.componentId } : {}),
+    ...(source.kind === 'instance' ? sanitizeOverrides(source.overrides) : {}),
     ...(source.kind === 'ellipse' && !source.network ? sanitizeArc(source) : {}),
   }
 }

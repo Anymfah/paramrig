@@ -140,6 +140,8 @@ type VectorCanvasProps = {
   onSample?: (point: Point | null) => void
   /** Which knot of a mesh fill is selected, so the inspector can offer its colour. */
   onMeshPointChange?: (index: number | null) => void
+  /** Drops an instance of a component where it was dragged. */
+  onPlaceComponent?: (componentId: string, at: Point) => void
   onGestureStart: (label?: string) => void
   onGestureEnd: (label?: string) => void
   onGestureCancel: () => void
@@ -183,6 +185,7 @@ export function VectorCanvas({
   sampling = false,
   onSample,
   onMeshPointChange,
+  onPlaceComponent,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -2140,6 +2143,12 @@ export function VectorCanvas({
       onLostPointerCapture={() => { panDrag.current = null; setPanning(false) }}
       onPointerLeave={() => { setHoveredId(null); if (tool === 'pen') setPenCursor(null) }}
       onDragOver={(event) => {
+        if (event.dataTransfer.types.includes('application/x-paramrig-component')) {
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          setDropping(true)
+          return
+        }
         if (![...event.dataTransfer.items].some((item) => item.kind === 'file')) return
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
@@ -2147,6 +2156,13 @@ export function VectorCanvas({
       }}
       onDragLeave={(event) => { if (event.currentTarget === event.target) setDropping(false) }}
       onDrop={(event) => {
+        const componentId = event.dataTransfer.getData('application/x-paramrig-component')
+        if (componentId) {
+          event.preventDefault()
+          setDropping(false)
+          onPlaceComponent?.(componentId, point(event.nativeEvent))
+          return
+        }
         const files = [...event.dataTransfer.files]
         if (files.length === 0) return
         event.preventDefault()
@@ -2511,7 +2527,8 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
             </g>
           )
         }
-        if (element.kind === 'group') {
+        // A component and an instance are containers like a group: they paint their children.
+        if (element.kind === 'group' || element.kind === 'component' || element.kind === 'instance') {
           const mask = node.children[0]?.element.mask ? node.children[0]!.element : null
           const masked = mask ? node.children.slice(1) : node.children
           const clipId = `mask-${element.id}`
@@ -3214,7 +3231,7 @@ function CropFrame({ element, zoom, coarse, onStart }: {
 }
 
 function HoverOutline({ element, leaves }: { element: VectorElement; leaves: VectorElement[] }) {
-  if (element.kind === 'group') {
+  if (element.kind === 'group' || element.kind === 'component' || element.kind === 'instance') {
     const bounds = selectionBounds(leaves)
     return <rect className="vector-hover" x={bounds.x} y={bounds.y} width={bounds.width} height={bounds.height} />
   }

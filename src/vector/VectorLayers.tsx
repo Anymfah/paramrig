@@ -7,6 +7,8 @@ import { Tooltip } from '@/ui/Tooltip'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
 import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconMask, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
 import { SHORTCUTS } from '@/vector/commands'
+import { componentThumbnail } from '@/vector/document'
+import { componentsOf, instanceCount } from '@/vector/instances'
 import { childrenOf, flattenForLayers, isContainer, siblingIndex, type LayerRow } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
 
@@ -29,15 +31,18 @@ type VectorLayersProps = {
   onUngroup: (ids: string[]) => void
   /** Opens the batch rename dialog; absent when a single layer is all that can be renamed. */
   onRenameMany?: (ids: string[]) => void
+  /** Drops an instance of a component in the middle of the view. */
+  onPlaceComponent?: (componentId: string) => void
 }
 
 type DropTarget = { id: string; edge: 'before' | 'after' | 'inside' }
 
-export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup, onRenameMany }: VectorLayersProps) {
+export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup, onRenameMany, onPlaceComponent }: VectorLayersProps) {
   const { prefs } = useWorkspace()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const [tab, setTab] = useState<'layers' | 'assets'>('layers')
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -51,6 +56,7 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
   }, [enteredGroupId, collapsed])
 
   const rows = flattenForLayers(document.elements, collapsed)
+  const components = componentsOf(document.elements)
 
   const toggleCollapsed = (id: string) => setCollapsed((current) => {
     const next = new Set(current)
@@ -103,7 +109,51 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
           </Tooltip>
         </div>
       </div>
-      <div className="nav-rail__body scroll-area">
+      {components.length > 0 ? (
+        <div className="vector-layers__tabs" role="tablist" aria-label="Layers or assets">
+          {(['layers', 'assets'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              className="vector-layers__tab"
+              aria-selected={tab === value}
+              data-active={tab === value || undefined}
+              onClick={() => setTab(value)}
+            >
+              {value === 'layers' ? 'Layers' : `Assets · ${components.length}`}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {tab === 'assets' && components.length > 0 ? (
+        <div className="nav-rail__body scroll-area">
+          <ul className="vector-assets" role="list" aria-label="Components">
+            {components.map((component) => (
+              <li key={component.id}>
+                <button
+                  type="button"
+                  className="vector-assets__item"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('application/x-paramrig-component', component.id)
+                    event.dataTransfer.effectAllowed = 'copy'
+                  }}
+                  onClick={() => onPlaceComponent?.(component.id)}
+                >
+                  <span className="vector-assets__thumb" aria-hidden="true">
+                    <svg viewBox={`${component.x} ${component.y} ${Math.max(1, component.width)} ${Math.max(1, component.height)}`} dangerouslySetInnerHTML={{ __html: componentThumbnail(document.elements, component.id) }} />
+                  </span>
+                  <span className="vector-assets__name">{component.name}</span>
+                  <span className="vector-assets__count">{instanceCount(document.elements, component.id)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="vector-layers__empty">Click one to place it, or drag it onto the canvas.</p>
+        </div>
+      ) : null}
+      <div className="nav-rail__body scroll-area" hidden={tab === 'assets' && components.length > 0}>
         <ContextMenuRoot>
           <div className="vector-layers__list" ref={listRef} role="list" aria-label="Layer stack">
             {rows.length === 0 ? <p className="vector-layers__empty">No layers yet. Draw with the pen, rectangle or ellipse tools.</p> : null}

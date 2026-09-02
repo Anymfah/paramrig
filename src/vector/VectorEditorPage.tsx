@@ -42,6 +42,7 @@ import { VectorTraceDialog } from '@/vector/VectorTraceDialog'
 import { tracedElements } from '@/vector/traceImage'
 import { brushFromElement } from '@/vector/brushes'
 import { patternFromElement } from '@/vector/patterns'
+import { componentFrom, detachInstance, instanceOf, resetOverrides } from '@/vector/instances'
 import { summaryColor } from '@/vector/paints'
 import { pathBounds, pathDataOf } from '@/vector/textPath'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
@@ -263,6 +264,29 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       elements: state.elements.map((element) => texts.some((text) => text.id === element.id) ? { ...element, fontFamily: font.family } : element),
     }), true, `Import font ${font.family}`)
     void ensureFont(font)
+  }, [])
+
+  /** Drops an instance of a component in the middle of the view, or at a point on the canvas. */
+  const placeComponent = useCallback((componentId: string, at?: { x: number; y: number }) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc) return
+    const master = doc.elements.find((element) => element.id === componentId && element.kind === 'component')
+    if (!master) return
+    const instance = instanceOf(master, crypto.randomUUID(), at ?? { x: doc.width / 2, y: doc.height / 2 })
+    current.addElement(instance)
+  }, [])
+
+  /** Wraps the selection in a component: the master everything else copies. */
+  const createComponent = useCallback(() => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedIds.length === 0) return
+    const id = crypto.randomUUID()
+    const existing = doc.elements.filter((element) => element.kind === 'component').length
+    const name = current.selectedElements.length === 1 ? current.selectedElements[0]!.name : `Component ${existing + 1}`
+    current.editElements((elements) => componentFrom(elements, current.selectedIds, id, name)?.elements ?? elements, true, 'Create component')
+    current.setSelectedIds([id])
   }, [])
 
   /** Turns the selected path into a brush the document keeps, and stamps the selection with it. */
@@ -626,6 +650,15 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         })
         return
       }
+      if (event.altKey && meta && (event.code === 'KeyK' || event.code === 'KeyB')) {
+        event.preventDefault()
+        if (event.code === 'KeyK') createComponent()
+        else {
+          const targets = current.selectedElements.filter((element) => element.kind === 'instance')
+          if (targets.length) current.editElements((elements) => targets.reduce((all, target) => detachInstance(all, target.id), elements), true, countedLabel('Detach', targets.length, 'instance'))
+        }
+        return
+      }
       if (meta) return
       if (key === 'tab') {
         // Only the canvas walks objects with Tab; everywhere else it still moves focus.
@@ -727,7 +760,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, applyNumericTransform, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
+  }, [tool, chooseTool, applyNumericTransform, createComponent, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
 
   /**
    * One live region for the canvas, 300ms behind the action so a run of small changes is spoken
@@ -975,6 +1008,22 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
     })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
+    { id: 'create-component', label: 'Create component', section: 'Object', shortcut: SHORTCUTS.createComponent, disabled: !hasSelection, run: createComponent },
+    { id: 'detach-instance', label: 'Detach instance', section: 'Object', shortcut: SHORTCUTS.detachInstance, disabled: !selectedElements.some((element) => element.kind === 'instance'), run: () => {
+      const targets = selectedElements.filter((element) => element.kind === 'instance')
+      editor.editElements((elements) => targets.reduce((all, target) => detachInstance(all, target.id), elements), true, countedLabel('Detach', targets.length, 'instance'))
+    } },
+    { id: 'go-to-component', label: 'Go to main component', section: 'Object', disabled: !selectedElements.some((element) => element.kind === 'instance' && element.componentId), run: () => {
+      const instance = selectedElements.find((element) => element.kind === 'instance' && element.componentId)
+      if (!instance?.componentId) return
+      editor.setSelectedIds([instance.componentId])
+      const master = document.elements.find((element) => element.id === instance.componentId)
+      if (master) controller.current?.fit(selectionBounds([master]), 96)
+    } },
+    { id: 'reset-overrides', label: 'Reset overrides', section: 'Object', disabled: !selectedElements.some((element) => element.kind === 'instance' && element.overrides), run: () => {
+      const targets = selectedElements.filter((element) => element.kind === 'instance' && element.overrides)
+      editor.editElements((elements) => targets.reduce((all, target) => resetOverrides(all, target.id), elements), true, countedLabel('Reset', targets.length, 'instance'))
+    } },
     { id: 'trace-image', label: 'Trace image…', section: 'Object', disabled: !traceable, run: () => setTraceOpen(true) },
     { id: 'define-pattern', label: 'Define pattern from selection', section: 'Object', disabled: selectedIds.length < 2, run: () => {
       const doc = editor.document
@@ -1112,6 +1161,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onGroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(group) }}
           onUngroup={(ids) => { editor.setSelectedIds(ids); requestAnimationFrame(ungroup) }}
           onRenameMany={(ids) => { editor.setSelectedIds(ids); setRenameOpen(true) }}
+          onPlaceComponent={placeComponent}
         />
       )}
       inspector={
@@ -1308,6 +1358,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           sampling={!!sampler}
           onSample={finishCanvasPick}
           onMeshPointChange={setMeshPoint}
+          onPlaceComponent={placeComponent}
         />
         </ContextTarget>
         </ContextMenuRoot>

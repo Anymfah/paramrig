@@ -1,6 +1,6 @@
 export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon' | 'scissors' | 'scale' | 'hand' | 'zoom' | 'measure' | 'width'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon' | 'boolean'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon' | 'boolean' | 'component' | 'instance'
 
 export type VectorBooleanOperation = 'unite' | 'subtract' | 'intersect' | 'exclude'
 
@@ -294,6 +294,9 @@ export type VectorElement = {
   network?: VectorNetwork
   /** Face keys whose fill is switched off with the paint bucket. */
   regionsOff?: string[]
+  /** Instances: the component they copy, and what they change about its children. */
+  componentId?: string
+  overrides?: Record<string, Partial<VectorElement>>
   /** Group membership. Descendants sit immediately before their group in `elements`. */
   parentId?: string
 }

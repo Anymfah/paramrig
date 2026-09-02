@@ -5,7 +5,7 @@ export type TreeNode = { element: VectorElement; children: TreeNode[]; depth: nu
 
 /** Kinds that hold children through `parentId`: groups, which hug their content, and frames, which keep their own box. */
 export function isContainer(element: Pick<VectorElement, 'kind'>): boolean {
-  return element.kind === 'group' || element.kind === 'frame' || element.kind === 'boolean'
+  return element.kind === 'group' || element.kind === 'frame' || element.kind === 'boolean' || element.kind === 'component' || element.kind === 'instance'
 }
 
 export type LayerRow = {
@@ -92,6 +92,11 @@ export function transformLeaves(elements: VectorElement[], ids: string[]): Vecto
     if (!element) return
     if (element.kind === 'boolean' || element.kind === 'group') {
       for (const child of childrenOf(elements, id)) visit(child.id)
+      return
+    }
+    // An instance is placed by its own box: its copies are rebuilt from it, not moved with it.
+    if (element.kind === 'instance') {
+      wanted.add(id)
       return
     }
     if (element.kind === 'frame') {
