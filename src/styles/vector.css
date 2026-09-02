@@ -1591,3 +1591,17 @@
   user-select: none;
 }
 .vector-stage:fullscreen { background: var(--surface-preview); }
+
+/* Live handles of a shape that is still a primitive: polygon sides, star points, arc ends. */
+.vector-shape-handle__hit { fill: transparent; cursor: pointer; }
+.vector-shape-handle {
+  fill: var(--vector-handle-fill);
+  stroke: var(--vector-selection);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transition: fill var(--duration-fast) var(--ease-out);
+}
+.vector-shape-handle__hit:hover + .vector-shape-handle { fill: var(--vector-selection); }
+.vector-canvas[data-tool='line'] .vector-artboard,
+.vector-canvas[data-tool='polygon'] .vector-artboard { cursor: crosshair; }

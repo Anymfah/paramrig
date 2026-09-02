@@ -6,6 +6,7 @@ import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks,
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
+import { anglePoint, arcProperties, isFullEllipse, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type ShapeHandle } from '@/vector/shapes'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
 import { imageNaturalSize, readImageFile } from '@/vector/images'
 import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
@@ -73,6 +74,7 @@ type Interaction =
   | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; center: Point }
   | { kind: 'lasso'; pointerId: number; points: Point[]; additive: boolean }
   | { kind: 'crop'; pointerId: number; start: Point; element: VectorElement; box: Bounds; crop: Crop; handle: DirectResizeHandle | null }
+  | { kind: 'shape'; pointerId: number; start: Point; element: VectorElement; handle: ShapeHandle }
   | { kind: 'pivot'; pointerId: number }
   | { kind: 'guide-create'; pointerId: number; axis: 'x' | 'y' }
   | { kind: 'guide-move'; pointerId: number; guide: VectorGuide; targets: SnapTarget[] }
@@ -709,6 +711,30 @@ export function VectorCanvas({
     svgRef.current?.setPointerCapture(event.pointerId)
   }
 
+  const startShapeHandle = (event: ReactPointerEvent<SVGElement>, element: VectorElement, handle: ShapeHandle) => {
+    if (event.button !== 0) return
+    event.stopPropagation()
+    onGestureStart(handle.startsWith('polygon') ? 'Shape the polygon' : 'Shape the arc')
+    interaction.current = { kind: 'shape', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(element), handle }
+    svgRef.current?.setPointerCapture(event.pointerId)
+  }
+
+  /**
+   * A drag draws the line it shows; a click drops a hundred pixels of it. The contour is the last
+   * one used in the drawing, so a series of lines comes out consistent.
+   */
+  const addLine = (from: Point, to: Point) => {
+    const end = Math.hypot(to.x - from.x, to.y - from.y) * zoom < 3 ? { x: from.x + 100, y: from.y } : to
+    const geometry = normalizeWorld(networkFromRuns([{ points: [{ anchor: from }, { anchor: end }], closed: false }]))
+    const previous = [...documentRef.current.elements].reverse().find((element) => element.stroke !== 'none' && element.strokeWidth > 0)
+    onAddElements([createVectorElement('path', geometry, {
+      name: 'Line',
+      network: geometry.network,
+      fill: 'none',
+      ...(previous ? { stroke: previous.stroke, strokeWidth: previous.strokeWidth } : {}),
+    })], true, 'Draw line')
+  }
+
   /** Turns dropped or pasted picture files into image elements, centred on a point. */
   const addImageFiles = useCallback(async (files: File[], at: Point) => {
     const pictures = files.filter((file) => file.type.startsWith('image/'))
@@ -792,8 +818,10 @@ export function VectorCanvas({
       const bounds = boundsBetween(active.start, active.current, event.shiftKey)
       if (tool === 'text') {
         addText(bounds.width >= 8 && bounds.height >= 8 ? (viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds) : null, active.start)
+      } else if (tool === 'line') {
+        addLine(active.start, event.shiftKey ? constrainAngle(active.start, active.current) : active.current)
       } else if (bounds.width >= 2 && bounds.height >= 2) {
-        const kind = tool === 'ellipse' ? 'ellipse' : tool === 'frame' ? 'frame' : 'rectangle'
+        const kind = tool === 'ellipse' ? 'ellipse' : tool === 'frame' ? 'frame' : tool === 'polygon' ? 'polygon' : 'rectangle'
         onAddElements([createVectorElement(kind, viewOptions.snapToPixelGrid ? snapBounds(bounds) : bounds)])
       }
     } else if (active.kind === 'marquee') {
@@ -911,7 +939,7 @@ export function VectorCanvas({
     if (event.button !== 0) return
     // While sampling, a shape is just something to read a colour off: let the click reach the canvas.
     if (sampling) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -1029,7 +1057,7 @@ export function VectorCanvas({
       return
     }
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -1296,6 +1324,11 @@ export function VectorCanvas({
       onUpdate(active.element.id, { ...moveNodes(active.element, active.world, active.nodeIds, delta), kind: 'path' }, false)
       setSnapMatches(snapped.matches)
       showHud(`${round(snapped.point.x)}, ${round(snapped.point.y)} · Δ ${round(delta.x)}, ${round(delta.y)}`, event.nativeEvent)
+      return
+    }
+    if (active.kind === 'shape') {
+      onUpdate(active.element.id, shapePatch(active.element, active.handle, at, active.start, zoom), false)
+      showHud(shapeHudLabel(active.element, active.handle, at, active.start, zoom), event.nativeEvent)
       return
     }
     if (active.kind === 'crop') {
@@ -1596,6 +1629,10 @@ export function VectorCanvas({
     return null
   })()
 
+  /** The primitive whose live shape can be pulled about: only one, only while it is still a primitive. */
+  const shapeTarget = showHandles && !cropping && selectedElements.length === 1 && selected && !selected.network && !selected.locked
+    && (selected.kind === 'polygon' || selected.kind === 'ellipse') ? selected : null
+
   const hoverOutline = hoveredId && !interaction.current && (tool === 'select' || tool === 'transform') ? elements.find((element) => element.id === resolveSelection(elements, hoveredId, enteredGroupId)) ?? null : null
   const penTarget = tool === 'pen' && !penDraft && selected && !isContainer(selected) && selected.kind !== 'text' && !selected.locked ? selected : null
 
@@ -1780,6 +1817,8 @@ export function VectorCanvas({
               onRotate={(event) => startRotate(event, null, selectedLeaves)}
             />
           ) : null}
+          {/* Above the box handles: a shape handle sits on the same spot and must win the click. */}
+          {shapeTarget ? <ShapeHandles element={shapeTarget} zoom={zoom} coarse={coarse} onStart={startShapeHandle} /> : null}
           {tool === 'select' && selectedElements.length > 1 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} thin />) : null}
           {penTarget ? worldNetwork(penTarget).nodes.map((node) => (
             <circle key={node.id} className="vector-pen__endpoint" cx={node.point.x} cy={node.point.y} r={4 / zoom} />
@@ -2084,6 +2123,48 @@ function FrameLabel({ element, zoom, onPointerDown }: {
     >
       {element.name}
     </text>
+  )
+}
+
+/** Live handles of a primitive that still has a shape to pull: polygon sides, star points, arc ends. */
+function ShapeHandles({ element, zoom, coarse, onStart }: {
+  element: VectorElement
+  zoom: number
+  coarse: boolean
+  onStart: (event: ReactPointerEvent<SVGElement>, element: VectorElement, handle: ShapeHandle) => void
+}) {
+  const hit = (coarse ? 22 : 16) / zoom
+  const glyph = 3 / zoom
+  const spots: Array<{ handle: ShapeHandle; at: Point; label: string }> = []
+  if (element.kind === 'polygon') {
+    const { sides, innerRatio } = polygonProperties(element)
+    spots.push({ handle: 'polygon-sides', at: shapePoint(element, anglePoint(90)), label: `${sides} sides` })
+    spots.push({ handle: 'polygon-ratio', at: shapePoint(element, anglePoint(90 + 180 / sides, innerRatio * 0.5)), label: 'Star points' })
+  } else {
+    const arc = arcProperties(element)
+    const full = isFullEllipse(arc)
+    if (!full) spots.push({ handle: 'arc-start', at: shapePoint(element, anglePoint(arc.start)), label: 'Arc start' })
+    spots.push({ handle: 'arc-end', at: shapePoint(element, anglePoint(full ? 0 : arc.start + arc.sweep)), label: full ? 'Open an arc' : 'Arc end' })
+    spots.push({ handle: 'arc-ratio', at: shapePoint(element, anglePoint(full ? 90 : arc.start + arc.sweep / 2, arc.ratio * 0.5)), label: 'Inner radius' })
+  }
+  return (
+    <g className="vector-shape-handles" aria-hidden="true">
+      {spots.map((spot) => (
+        <g key={spot.handle}>
+          <circle
+            className="vector-shape-handle__hit"
+            data-vector-shape-handle={spot.handle}
+            cx={spot.at.x}
+            cy={spot.at.y}
+            r={hit / 2}
+            onPointerDown={(event) => onStart(event, element, spot.handle)}
+          >
+            <title>{spot.label}</title>
+          </circle>
+          <circle className="vector-shape-handle" cx={spot.at.x} cy={spot.at.y} r={glyph} />
+        </g>
+      ))}
+    </g>
   )
 }
 

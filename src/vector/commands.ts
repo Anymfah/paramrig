@@ -50,6 +50,8 @@ export const SHORTCUTS = {
   panels: '⌘\\',
   fullscreen: '⇧⌘F',
   opacity: '1 … 0',
+  line: 'L',
+  polygon: '⌥P',
   zoomReset: '⇧0',
   zoomFit: '⇧1',
   zoomSelection: '⇧2',

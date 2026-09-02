@@ -22,6 +22,7 @@ import { outlineText } from '@/vector/textOutline'
 import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
 import { isFullCrop, resetCropBox } from '@/vector/crop'
+import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { withShortcut } from '@/vector/commands'
 import { countedLabel, historyRows, type HistoryStep } from '@/vector/history'
 import { computeFaces } from '@/vector/planar'
@@ -394,6 +395,12 @@ export function VectorInspector({
               onUpdateStyle={onUpdateStyle}
               gesture={gesture}
             />
+            {single && single.kind === 'polygon' && !single.network ? (
+              <PolygonPanel element={single} onUpdate={onUpdate} gesture={gesture} />
+            ) : null}
+            {single && single.kind === 'ellipse' && !single.network ? (
+              <ArcPanel element={single} onUpdate={onUpdate} gesture={gesture} />
+            ) : null}
             {single && single.kind === 'image' ? (
               <ImagePanel element={single} onUpdate={onUpdate} onCrop={onCropImage} />
             ) : null}
@@ -762,6 +769,56 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
   )
 }
 
+function PolygonPanel({ element, onUpdate, gesture }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
+}) {
+  const { sides, innerRatio } = polygonProperties(element)
+  return (
+    <section className="vector-panel" aria-label="Polygon">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Polygon</h2>
+        <span className="vector-panel__meta">{innerRatio > 0 ? 'Star' : 'Regular'}</span>
+      </div>
+      <NumberField label="Sides" value={sides} min={MIN_SIDES} max={MAX_SIDES} step={1} variant="field" onChange={(value) => onUpdate(element.id, { sides: Math.round(value) }, true, 'Change sides')} {...gesture} />
+      <NumberField label="Star points" value={Math.round(innerRatio * 100)} min={0} max={100} step={1} unit="%" variant="field" onChange={(value) => onUpdate(element.id, { innerRatio: value / 100 }, true, 'Change star points')} {...gesture} />
+      <p className="vector-panel__hint">Drag the point at the top to change the sides, the inner one to pull the star in. Editing a node freezes the shape.</p>
+    </section>
+  )
+}
+
+function ArcPanel({ element, onUpdate, gesture }: {
+  element: VectorElement
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
+}) {
+  const arc = arcProperties(element)
+  const full = isFullEllipse(arc)
+  const apply = (patch: Partial<VectorElement>, label: string) => onUpdate(element.id, { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: arc.ratio, ...patch }, true, label)
+  return (
+    <section className="vector-panel" aria-label="Arc">
+      <div className="vector-panel__row">
+        <h2 className="vector-panel__title">Arc</h2>
+        <span className="vector-panel__meta">{full ? 'Whole ellipse' : arc.ratio > 0 ? 'Ring' : 'Sector'}</span>
+      </div>
+      <div className="vector-field-grid">
+        <NumberField label="Start" value={round(arc.start)} min={0} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcStart: value }, 'Change arc')} {...gesture} />
+        <NumberField label="Sweep" value={round(arc.sweep)} min={-360} max={360} step={1} unit="°" variant="field" onChange={(value) => apply({ arcSweep: value }, 'Change arc')} {...gesture} />
+      </div>
+      <NumberField label="Inner radius" value={Math.round(arc.ratio * 100)} min={0} max={99} step={1} unit="%" variant="field" onChange={(value) => apply({ arcRatio: value / 100 }, 'Change ring')} {...gesture} />
+      {full ? null : (
+        <div className="vector-panel__actions">
+          <Tooltip content="Close the slice back into a whole ellipse">
+            <Button variant="quiet" size="sm" data-action="reset-arc" onClick={() => onUpdate(element.id, { arcStart: undefined, arcSweep: undefined, arcRatio: undefined }, true, 'Whole ellipse')}>Whole ellipse</Button>
+          </Tooltip>
+        </div>
+      )}
+      <p className="vector-panel__hint">Drag the points on the edge for the ends of the slice, the inner one for the hole.</p>
+    </section>
+  )
+}
+
 function ImagePanel({ element, onUpdate, onCrop }: {
   element: VectorElement
   onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
@@ -1003,6 +1060,7 @@ function kindLabel(element: VectorElement): string {
     case 'text': return 'Text'
     case 'frame': return 'Frame'
     case 'image': return 'Image'
+    case 'polygon': return 'Polygon'
   }
 }
 

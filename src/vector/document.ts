@@ -6,6 +6,7 @@ import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
 import { sanitizeCrop } from '@/vector/crop'
+import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
 
@@ -116,7 +117,8 @@ export function vectorManifest(document: VectorDocument): RigManifest {
 export type CreateElementOptions = Partial<Pick<VectorElement,
   'name' | 'fill' | 'stroke' | 'strokeWidth' | 'network' | 'regionsOff' | 'clipContent'
   | 'text' | 'fontFamily' | 'fontSize' | 'fontWeight' | 'lineHeight' | 'letterSpacing' | 'textAlign' | 'textSizing'
-  | 'image' | 'imageWidth' | 'imageHeight' | 'imageRendering'>>
+  | 'image' | 'imageWidth' | 'imageHeight' | 'imageRendering'
+  | 'sides' | 'innerRatio' | 'arcStart' | 'arcSweep' | 'arcRatio'>>
 
 export function createVectorElement(
   kind: VectorElementKind,
@@ -128,6 +130,7 @@ export function createVectorElement(
   const isText = kind === 'text'
   const isFrame = kind === 'frame'
   const isImage = kind === 'image'
+  const isPolygon = kind === 'polygon'
   const element: VectorElement = {
     id: crypto.randomUUID(),
     kind,
@@ -146,6 +149,13 @@ export function createVectorElement(
   }
   if (options.network) element.network = options.network
   if (options.regionsOff?.length) element.regionsOff = options.regionsOff
+  if (isPolygon) {
+    element.sides = Math.min(MAX_SIDES, Math.max(MIN_SIDES, Math.round(options.sides ?? 5)))
+    if (options.innerRatio) element.innerRatio = Math.min(1, Math.max(0, options.innerRatio))
+  }
+  if (kind === 'ellipse' && (options.arcStart !== undefined || options.arcSweep !== undefined || options.arcRatio !== undefined)) {
+    Object.assign(element, sanitizeArc(options))
+  }
   if (isFrame) element.clipContent = options.clipContent ?? true
   if (isImage && options.image) {
     element.image = options.image
@@ -175,6 +185,7 @@ function defaultName(kind: VectorElementKind): string {
     case 'text': return 'Text'
     case 'frame': return 'Frame'
     case 'image': return 'Image'
+    case 'polygon': return 'Polygon'
   }
 }
 
@@ -251,7 +262,9 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
     }
-    const simple = element.kind !== 'text' && element.kind !== 'image' && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
+    // Only a plain box or a whole ellipse takes the short export path.
+    const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
+    const simple = element.kind !== 'text' && element.kind !== 'image' && element.kind !== 'polygon' && !sliced && !element.network && !element.fills && !element.strokes && !element.strokeAlign && !element.strokeCap && !element.strokeJoin && !element.strokeDash
       && !element.strokeArrowStart && !element.strokeArrowEnd && !element.strokeSides && !element.cornerRadius
     const transform = `rotate(${element.rotation} ${round(element.x + element.width / 2)} ${round(element.y + element.height / 2)})`
     if (simple) {
@@ -369,7 +382,7 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame' && source.kind !== 'image') return null
+  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame' && source.kind !== 'image' && source.kind !== 'polygon') return null
   if (source.kind === 'text' && typeof source.text !== 'string') return null
   if (source.kind === 'image' && (typeof source.image !== 'string' || !source.image.startsWith('data:image/'))) return null
   if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string') return null
@@ -418,6 +431,8 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(source.kind === 'text' ? sanitizeTextProperties(source) : {}),
     ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
     ...(source.kind === 'image' ? sanitizeImageProperties(source) : {}),
+    ...(source.kind === 'polygon' && !source.network ? polygonProperties(source) : {}),
+    ...(source.kind === 'ellipse' && !source.network ? sanitizeArc(source) : {}),
   }
 }
 
@@ -435,6 +450,13 @@ function sanitizeTextProperties(source: Partial<VectorElement>): Partial<VectorE
     textAlign: source.textAlign === 'center' || source.textAlign === 'right' ? source.textAlign : DEFAULT_TEXT.textAlign,
     textSizing: source.textSizing === 'fixed' ? 'fixed' : DEFAULT_TEXT.textSizing,
   }
+}
+
+/** Arc settings are only meaningful while the ellipse is still a primitive. */
+function sanitizeArc(source: Partial<VectorElement>): Partial<VectorElement> {
+  const arc = arcProperties(source)
+  if (isFullEllipse(arc)) return {}
+  return { arcStart: round(arc.start), arcSweep: round(arc.sweep), arcRatio: round(arc.ratio) }
 }
 
 function sanitizeImageProperties(source: Partial<VectorElement>): Partial<VectorElement> {

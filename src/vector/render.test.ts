@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createVectorDocument, createVectorElement, serializeVectorDocument } from '@/vector/document'
-import { defsToSvg, layersToSvg, outlinePathData, renderModel } from '@/vector/render'
+import { defsToSvg, layerAttributes, layersToSvg, outlinePathData, renderModel } from '@/vector/render'
 import { networkFromRuns, normalizeWorld } from '@/vector/network'
 import type { VectorElement } from '@/vector/types'
 
@@ -175,5 +175,53 @@ describe('image models', () => {
     expect(svg).toContain('clip-path="url(#svg-pic-crop)"')
     expect(svg).toContain(`href="${PIXEL}"`)
     expect(svg).not.toContain('<rect')
+  })
+})
+
+describe('shape primitives in the export', () => {
+  const base = { id: 's', name: 'S', x: 0, y: 0, width: 200, height: 200, rotation: 0, fill: '#112233', stroke: 'none', strokeWidth: 0, opacity: 1, visible: true, locked: false }
+
+  it('exports a polygon as a path, not a rectangle', () => {
+    const polygon: VectorElement = { ...base, kind: 'polygon', sides: 6 }
+
+    const svg = serializeVectorDocument({ ...createVectorDocument(), elements: [polygon] })
+
+    expect(svg).not.toContain('<rect')
+    expect(svg).toContain('<path')
+    // Six corners means six anchors and a close.
+    expect((svg.match(/L /g) ?? []).length).toBeGreaterThanOrEqual(5)
+  })
+
+  it('draws a star with twice the corners of its polygon', () => {
+    const plain = renderModel({ ...base, kind: 'polygon', sides: 5 } as VectorElement, 'canvas')
+    const star = renderModel({ ...base, kind: 'polygon', sides: 5, innerRatio: 0.4 } as VectorElement, 'canvas')
+
+    expect((star.d.match(/L /g) ?? []).length).toBeGreaterThan((plain.d.match(/L /g) ?? []).length)
+  })
+
+  it('exports a sliced ellipse as a path through the centre', () => {
+    const sector: VectorElement = { ...base, kind: 'ellipse', arcStart: 0, arcSweep: 90 }
+
+    const svg = serializeVectorDocument({ ...createVectorDocument(), elements: [sector] })
+
+    expect(svg).not.toContain('<ellipse')
+    expect(svg).toContain('100 100')
+  })
+
+  it('leaves the hole of a ring unpainted', () => {
+    const ring = renderModel({ ...base, kind: 'ellipse', arcStart: 0, arcSweep: 360, arcRatio: 0.5 } as VectorElement, 'canvas')
+
+    // The fill carries the outer loop and its hole, punched out by the even-odd rule; the hole is
+    // not painted a second time as a face of its own.
+    expect(ring.d.split('M ').length - 1).toBe(2)
+    expect(ring.fillD.split('M ').length - 1).toBe(2)
+    expect(ring.layers.filter((layer) => layer.kind === 'fill')).toHaveLength(1)
+    expect(layerAttributes(ring.layers[0]!)).toMatchObject({ fillRule: 'evenodd' })
+  })
+
+  it('keeps a whole ellipse on the fast path', () => {
+    const svg = serializeVectorDocument({ ...createVectorDocument(), elements: [{ ...base, kind: 'ellipse' } as VectorElement] })
+
+    expect(svg).toContain('<ellipse')
   })
 })

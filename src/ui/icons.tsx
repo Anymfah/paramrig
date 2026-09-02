@@ -9,6 +9,8 @@ import {
   Frame,
   Command,
   Crosshair,
+  Minus as LineGlyph,
+  Star,
   Repeat2,
   SkipBack,
   MoreHorizontal,
@@ -101,6 +103,8 @@ export const IconText = glyph(Type)
 export const IconFrame = glyph(Frame)
 export const IconCommand = glyph(Command)
 export const IconScreenPick = glyph(Crosshair)
+export const IconLine = glyph(LineGlyph)
+export const IconPolygon = glyph(Star)
 
 export const IconPaste = glyph(ClipboardPaste)
 export const IconTrash = glyph(Trash2)

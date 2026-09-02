@@ -2,7 +2,7 @@ import { createLruCache } from '@/vector/cache'
 import { cornerRadii, rectangleRun, roundCorners } from '@/vector/corners'
 import { chains, chainToRun, defaultNetwork, localNetwork, runPathData, worldNetwork, type AbsNetwork, type Run } from '@/vector/network'
 import { fillsOf, strokesOf, summaryColor } from '@/vector/paints'
-import { computeFaces, faceContainsPoint, loopToRun, type Face } from '@/vector/planar'
+import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } from '@/vector/planar'
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { canvasMeasure, fontStack, layoutText, textProperties } from '@/vector/text'
 import type { VectorArrowhead, VectorElement, VectorGradientStop, VectorPaint } from '@/vector/types'
@@ -84,7 +84,9 @@ export function localGeometry(element: VectorElement): { network: AbsNetwork; st
     return { points: roundCorners(run.points, run.closed, smoothing), closed: run.closed }
   })
   const faces = computeFaces(network)
-  const off = new Set(element.regionsOff ?? [])
+  // A primitive's holes are structural — the middle of a ring is not a face to paint — while an
+  // edited network leaves every face on until the bucket says otherwise.
+  const off = new Set([...(element.regionsOff ?? []), ...(element.network ? [] : holeFaceKeys(faces))])
   const fillRuns = faces.filter((face) => !off.has(face.key)).flatMap((face) => [face.outer, ...face.holes].map((loop) => {
     const run = loopToRun(network, loop)
     return { points: roundCorners(run.points, true, smoothing), closed: true }

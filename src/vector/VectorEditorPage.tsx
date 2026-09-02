@@ -6,7 +6,7 @@ import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -490,6 +490,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         setOpacity(event.key)
         return
       }
+      if (event.altKey && event.code === 'KeyP') {
+        event.preventDefault()
+        chooseTool('polygon')
+        return
+      }
       if (event.altKey) {
         const mode = ALIGN_KEYS[event.code]
         if (mode && current.selectedElements.length > 0) {
@@ -525,6 +530,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 'p') chooseTool('pen')
       else if (key === 't') chooseTool('text')
       else if (key === 'f') chooseTool('frame')
+      else if (key === 'l') chooseTool('line')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
@@ -736,6 +742,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     { id: 'edit-text', label: 'Edit text', section: 'Object', shortcut: SHORTCUTS.enter, disabled: single?.kind !== 'text', run: () => { if (single) controller.current?.editText(single.id) } },
     { id: 'combine', label: 'Combine paths', section: 'Object', shortcut: SHORTCUTS.combine, disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="combine"]')?.click() },
     { id: 'flatten', label: 'Flatten', section: 'Object', disabled: !hasSelection, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="flatten"]')?.click() },
+    { id: 'arrowhead', label: single?.strokeArrowEnd && single.strokeArrowEnd !== 'none' ? 'Remove arrowhead' : 'Line with arrowhead', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => {
+      if (!single) return
+      const on = single.strokeArrowEnd && single.strokeArrowEnd !== 'none'
+      editor.updateElement(single.id, { strokeArrowEnd: on ? undefined : 'triangle' }, true, on ? 'Remove arrowhead' : 'Add arrowhead')
+    } },
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
     { id: 'rename', label: 'Rename layers…', section: 'Object', disabled: !hasSelection, run: () => setRenameOpen(true) },
     { id: 'open', label: 'Open…', section: 'File', shortcut: SHORTCUTS.open, run: requestOpen },
@@ -773,6 +784,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     ...menuItem('combine'),
     ...menuItem('flatten', undefined, false),
     ...menuItem('outline-stroke', undefined, false),
+    ...menuItem('arrowhead', undefined, false),
     ...menuItem(single?.kind === 'text' ? 'edit-text' : 'edit-nodes', <IconNode />, false),
     ...menuItem('same-fill'),
     ...menuItem('same-stroke', undefined, false),
@@ -901,6 +913,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
           <ToolButton label="Frame · F" active={tool === 'frame'} onClick={() => chooseTool('frame')}><IconFrame /></ToolButton>
           <ToolButton label="Text · T" active={tool === 'text'} onClick={() => chooseTool('text')}><IconText /></ToolButton>
+          <ToolButton label="Line · L" active={tool === 'line'} onClick={() => chooseTool('line')}><IconLine /></ToolButton>
+          <ToolButton label="Polygon · ⌥P" active={tool === 'polygon'} onClick={() => chooseTool('polygon')}><IconPolygon /></ToolButton>
           <ToolButton label="Rectangle · R" active={tool === 'rectangle'} onClick={(keyboard) => {
             chooseTool('rectangle')
             if (keyboard) editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -996,7 +1010,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onToolChange={chooseTool}
           onAddElements={(elements) => {
             editor.addElements(elements)
-            if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'frame') chooseTool('select')
+            if (tool === 'rectangle' || tool === 'ellipse' || tool === 'text' || tool === 'frame' || tool === 'polygon' || tool === 'line') chooseTool('select')
           }}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}

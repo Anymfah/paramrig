@@ -1,6 +1,6 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon'
 
 export type VectorImageRendering = 'smooth' | 'pixelated'
 /** The part of a picture an image element shows, in normalised image coordinates. */
@@ -104,6 +104,13 @@ export type VectorElement = {
   strokeArrowEnd?: VectorArrowhead
   /** Rectangles only: which sides carry the stroke. Absent means all. */
   strokeSides?: VectorStrokeSides
+  /** Polygons and stars: how many sides, and how far in the inner points sit (0 = plain polygon). */
+  sides?: number
+  innerRatio?: number
+  /** Ellipses: the slice that is drawn, in degrees, and the hole in the middle (0 to 1). */
+  arcStart?: number
+  arcSweep?: number
+  arcRatio?: number
   /** Rectangles: uniform radius, or top-left, top-right, bottom-right, bottom-left. */
   cornerRadius?: number | [number, number, number, number]
   /** 0 = circular arcs, 1 = fully smoothed (iOS-style) corners. */

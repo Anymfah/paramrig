@@ -1,4 +1,5 @@
 import { rotatePoint } from '@/vector/directTransform'
+import { arcNetwork, arcProperties, isFullEllipse, polygonNetwork, polygonProperties } from '@/vector/shapes'
 import type { VectorElement, VectorHandleMode, VectorNetwork, VectorNetworkNode, VectorNetworkSegment, VectorPoint } from '@/vector/types'
 
 const KAPPA = 0.5522847498
@@ -20,9 +21,12 @@ export function emptyNetwork(): VectorNetwork {
 }
 
 /** The implicit network of a primitive that has not been edited yet. */
-export function defaultNetwork(element: Pick<VectorElement, 'kind' | 'network'>): VectorNetwork {
+export function defaultNetwork(element: Pick<VectorElement, 'kind' | 'network' | 'sides' | 'innerRatio' | 'arcStart' | 'arcSweep' | 'arcRatio'>): VectorNetwork {
   if (element.network) return element.network
+  if (element.kind === 'polygon') return polygonNetwork(polygonProperties(element))
   if (element.kind === 'ellipse') {
+    const arc = arcProperties(element)
+    if (!isFullEllipse(arc)) return arcNetwork(arc)
     const ids = ['n1', 'n2', 'n3', 'n4']
     const k = KAPPA / 2
     return {
