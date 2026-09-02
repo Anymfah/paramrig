@@ -1,6 +1,8 @@
-export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon'
+export type VectorTool = 'select' | 'transform' | 'node' | 'pen' | 'pencil' | 'lasso' | 'bucket' | 'rectangle' | 'ellipse' | 'text' | 'frame' | 'line' | 'polygon' | 'scissors' | 'scale'
 
-export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon'
+export type VectorElementKind = 'rectangle' | 'ellipse' | 'path' | 'group' | 'text' | 'frame' | 'image' | 'polygon' | 'boolean'
+
+export type VectorBooleanOperation = 'unite' | 'subtract' | 'intersect' | 'exclude'
 
 export type VectorImageRendering = 'smooth' | 'pixelated'
 /** The part of a picture an image element shows, in normalised image coordinates. */
@@ -140,6 +142,10 @@ export type VectorElement = {
   textSizing?: VectorTextSizing
   /** Frames only: whether children are cut off at the frame's edge. */
   clipContent?: boolean
+  /** Boolean groups: how the shapes under it are combined. */
+  operation?: VectorBooleanOperation
+  /** The bottom child of a group can cut the ones above it to its own shape. */
+  mask?: boolean
   /** Image elements: the picture as a data URL, plus how it is shown. */
   image?: string
   imageRendering?: VectorImageRendering

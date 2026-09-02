@@ -6,6 +6,7 @@ import { sanitizeNetwork } from '@/vector/network'
 import { DEFAULT_TEXT, MAX_TEXT_LENGTH, TEXT_FACES } from '@/vector/text'
 import { sanitizePaints } from '@/vector/paints'
 import { sanitizeCrop } from '@/vector/crop'
+import { BOOLEAN_OPERATIONS, syncBooleanGroups } from '@/vector/booleanGroups'
 import { arcProperties, isFullEllipse, MAX_SIDES, MIN_SIDES, polygonProperties } from '@/vector/shapes'
 import { MAX_RECENT_COLORS, MAX_SWATCHES, pruneStyleLinks, sanitizeColorList, sanitizeStyles } from '@/vector/styles'
 import { defsToSvg, layersToSvg, renderModel } from '@/vector/render'
@@ -186,6 +187,7 @@ function defaultName(kind: VectorElementKind): string {
     case 'frame': return 'Frame'
     case 'image': return 'Image'
     case 'polygon': return 'Polygon'
+    case 'boolean': return 'Boolean'
   }
 }
 
@@ -257,10 +259,29 @@ function serializeNodes(nodes: TreeNode[], depth: number, defs: string[]): strin
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...(body ? [`${indent}  ${body}`] : []), ...children, `${indent}</g>`]
     }
     if (element.kind === 'group') {
-      const children = serializeNodes(node.children, depth + 1, defs)
+      const maskNode = node.children[0]?.element.mask ? node.children[0]! : null
+      const children = serializeNodes(maskNode ? node.children.slice(1) : node.children, depth + 1, defs)
       if (children.length === 0) return []
       const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
+      if (maskNode) {
+        const model = renderModel(maskNode.element, 'svg')
+        const clipId = `mask-${element.id}`
+        defs.push(`<clipPath id="${escapeXml(clipId)}"><path d="${model.fillD || model.d}" transform="${model.transform}" clip-rule="evenodd"/></clipPath>`)
+        return [
+          `${indent}<g id="${escapeXml(element.id)}"${opacity} clip-path="url(#${escapeXml(clipId)})">`,
+          ...children,
+          `${indent}</g>`,
+        ]
+      }
       return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>`, ...children, `${indent}</g>`]
+    }
+    if (element.kind === 'boolean') {
+      // The combined shape is what the file carries; its members are not exported.
+      const markup = elementMarkup(element, 'svg')
+      if (markup.defs) defs.push(markup.defs)
+      if (!markup.body) return []
+      const opacity = element.opacity === 1 ? '' : ` opacity="${element.opacity}"`
+      return [`${indent}<g id="${escapeXml(element.id)}"${opacity}>${markup.body}</g>`]
     }
     // Only a plain box or a whole ellipse takes the short export path.
     const sliced = element.kind === 'ellipse' && !isFullEllipse(arcProperties(element))
@@ -325,7 +346,7 @@ export function sanitizeVectorDocument(value: unknown): VectorDocument | null {
     background: typeof source.background === 'string' && /^#[0-9a-f]{6}$/i.test(source.background) ? source.background.toUpperCase() : DEFAULT_BACKGROUND,
     width: source.width,
     height: source.height,
-    elements: pruneStyleLinks(sanitizeParents(elements), styles ?? []),
+    elements: syncBooleanGroups(pruneStyleLinks(sanitizeParents(elements), styles ?? [])),
     guides: sanitizeGuides(source.guides),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     ...(source.exportPresets ? { exportPresets: sanitizeExportPresets(source.exportPresets) } : {}),
@@ -382,7 +403,9 @@ export function sanitizePaint(value: unknown): string | null {
 function sanitizeElement(value: unknown): VectorElement | null {
   if (!value || typeof value !== 'object') return null
   const source = value as Partial<VectorElement>
-  if (source.kind !== 'rectangle' && source.kind !== 'ellipse' && source.kind !== 'path' && source.kind !== 'group' && source.kind !== 'text' && source.kind !== 'frame' && source.kind !== 'image' && source.kind !== 'polygon') return null
+  const KINDS: VectorElementKind[] = ['rectangle', 'ellipse', 'path', 'group', 'text', 'frame', 'image', 'polygon', 'boolean']
+  if (!source.kind || !KINDS.includes(source.kind)) return null
+  const kind: VectorElementKind = source.kind
   if (source.kind === 'text' && typeof source.text !== 'string') return null
   if (source.kind === 'image' && (typeof source.image !== 'string' || !source.image.startsWith('data:image/'))) return null
   if (typeof source.id !== 'string' || !source.id || typeof source.name !== 'string') return null
@@ -399,7 +422,7 @@ function sanitizeElement(value: unknown): VectorElement | null {
   const regionsOff = Array.isArray(source.regionsOff) ? source.regionsOff.filter((key): key is string => typeof key === 'string').slice(0, 256) : []
   return {
     id: source.id,
-    kind: source.kind,
+    kind,
     name: source.name.slice(0, 120),
     x: source.x!,
     y: source.y!,
@@ -432,6 +455,8 @@ function sanitizeElement(value: unknown): VectorElement | null {
     ...(source.kind === 'frame' ? { clipContent: source.clipContent !== false } : {}),
     ...(source.kind === 'image' ? sanitizeImageProperties(source) : {}),
     ...(source.kind === 'polygon' && !source.network ? polygonProperties(source) : {}),
+    ...(source.kind === 'boolean' ? { operation: BOOLEAN_OPERATIONS.includes(source.operation as never) ? source.operation : 'unite' } : {}),
+    ...(source.mask === true ? { mask: true as const } : {}),
     ...(source.kind === 'ellipse' && !source.network ? sanitizeArc(source) : {}),
   }
 }

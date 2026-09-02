@@ -1642,3 +1642,19 @@
   vector-effect: non-scaling-stroke;
   cursor: move;
 }
+
+/* Boolean groups, masks and the cutting tools. */
+.vector-mask-outline {
+  fill: none;
+  stroke: var(--vector-guide);
+  stroke-width: 1px;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  opacity: 0.8;
+}
+.vector-canvas[data-tool='scissors'] .vector-artboard,
+.vector-canvas[data-tool='scissors'] [data-vector-element],
+.vector-canvas[data-tool='scissors'] .vector-hit,
+.vector-canvas[data-tool='scissors'] .vector-nodes__segment-hit { cursor: crosshair; }
+.vector-canvas[data-tool='scale'] .vector-hit { cursor: nwse-resize; }

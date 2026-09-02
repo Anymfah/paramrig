@@ -365,6 +365,21 @@ export function insertNodeOnSegment(element: Box, world: AbsNetwork, segmentId: 
   return { ...commitWorld(element, { nodes: [...world.nodes, node], segments }), nodeId }
 }
 
+/** Gives the nodes of the listed segments smooth, mirrored handles along the path. */
+export function smoothSegments(element: Box, world: AbsNetwork, segmentIds: string[]): NetworkEdit {
+  const wanted = new Set(segmentIds)
+  const nodeIds = new Set(world.segments.filter((segment) => wanted.has(segment.id)).flatMap((segment) => [segment.a, segment.b]))
+  let network = world
+  for (const nodeId of nodeIds) {
+    const incident = network.segments.filter((segment) => segment.a === nodeId || segment.b === nodeId)
+    const smooth = incident.some((segment) => (segment.a === nodeId && segment.ah) || (segment.b === nodeId && segment.bh))
+    if (smooth || incident.length !== 2) continue
+    const edit = toggleNodeSmooth(element, network, nodeId)
+    network = worldNetwork({ ...element, kind: 'path' as const, network: edit.network }, edit.network)
+  }
+  return commitWorld(element, network)
+}
+
 /** Bends a segment so its point at t reaches the target. */
 export function bendSegment(element: Box, world: AbsNetwork, segmentId: string, t: number, target: VectorPoint): NetworkEdit {
   const segment = world.segments.find((item) => item.id === segmentId)

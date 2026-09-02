@@ -6,7 +6,7 @@ import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { readPrefs, updatePrefs } from '@/state/workspace'
 import { IconButton } from '@/ui/Button'
-import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconBucket, IconCheck, IconChevron, IconCommand, IconChevronRight, IconCopy, IconEllipse, IconExpand, IconEyeOff, IconFlipH, IconFlipV, IconFrame, IconGrid, IconGroup, IconLasso, IconLine, IconLock, IconMinus, IconNode, IconPaste, IconPen, IconPencil, IconPencilTool, IconPlus, IconPolygon, IconRectangle, IconRedo, IconRotate90, IconScale, IconScissors, IconSelect, IconSendBackward, IconText, IconTransformSelect, IconTrash, IconUndo, IconUngroup, IconUnlock } from '@/ui/icons'
 import { flipAffine, rotationAffine, transformElementAffine } from '@/vector/affine'
 import { elementCenter } from '@/vector/geometry'
 import { importSvg } from '@/vector/svgImport'
@@ -49,7 +49,9 @@ import type { PaintPalette } from '@/vector/VectorPaintPanel'
 import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
 import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
-import { ancestorIds, childrenOf, descendantIds, isContainer, leafElements } from '@/vector/tree'
+import { booleanLabel, BOOLEAN_OPERATIONS, maskPatch } from '@/vector/booleanGroups'
+import type { BooleanOperation } from '@/vector/booleans'
+import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, leafElements, transformLeaves } from '@/vector/tree'
 import { VectorCanvas, type VectorViewOptions } from '@/vector/VectorCanvas'
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
@@ -166,9 +168,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     const current = editorRef.current
     const doc = current.document
     if (!doc || current.selectedIds.length === 0) return
-    const leaves = leafElements(doc.elements, current.selectedIds).filter((element) => !element.locked)
+    const leaves = transformLeaves(doc.elements, current.selectedIds).filter((element) => !element.locked)
     if (leaves.length === 0) return
-    const center = elementCenter(selectionBounds(leaves))
+    const center = elementCenter(selectionBounds(leafElements(doc.elements, current.selectedIds)))
     const map = build(center)
     current.updateElements(leaves.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) })), true, label)
   }, [])
@@ -318,6 +320,13 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     current.setSelectedIds(matchingIds(doc.elements, reference, key))
   }, [])
 
+  const toggleMask = useCallback(() => {
+    const current = editorRef.current
+    const patches = maskPatch(current.document?.elements ?? [], current.selectedIds)
+    if (patches.length === 0) return
+    current.updateElements(patches, true, patches[0]!.patch.mask ? 'Use as mask' : 'Remove mask')
+  }, [])
+
   const alignSelection = useCallback((mode: AlignMode) => {
     const current = editorRef.current
     const doc = current.document
@@ -418,6 +427,11 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       if (meta && event.shiftKey && key === 'f') {
         event.preventDefault()
         toggleFullscreen()
+        return
+      }
+      if (event.ctrlKey && meta && key === 'm') {
+        event.preventDefault()
+        toggleMask()
         return
       }
       if (meta && key === '/') {
@@ -531,6 +545,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       else if (key === 't') chooseTool('text')
       else if (key === 'f') chooseTool('frame')
       else if (key === 'l') chooseTool('line')
+      else if (key === 'c') chooseTool('scissors')
+      else if (key === 'k') chooseTool('scale')
       else if (key === 'r') chooseTool('rectangle')
       else if (key === 'o') chooseTool('ellipse')
       else if (key === 'enter') {
@@ -552,7 +568,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         const amount = event.shiftKey ? 10 : 1
         const dx = key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0
         const dy = key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0
-        const leaves = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
+        const leaves = transformLeaves(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
         current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })), true, countedLabel('Move', leaves.length))
       } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node' && tool !== 'bucket') {
         event.preventDefault()
@@ -566,7 +582,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen])
+  }, [tool, chooseTool, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
 
   if (!document) {
     return (
@@ -690,6 +706,24 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     }), true, `Delete style “${style.name}”`)
   }
 
+  /** Wraps shapes in a boolean group, which keeps them editable underneath the result. */
+  const booleanGroup = (operation: BooleanOperation, ids: string[]) => {
+    if (ids.length < 2) return
+    const group = createVectorElement('boolean', { x: 0, y: 0, width: 1, height: 1 }, { name: booleanLabel(operation) })
+    const first = document.elements.find((element) => element.id === ids[0])
+    const wrapped: VectorElement = {
+      ...group,
+      operation,
+      fill: first?.fill ?? group.fill,
+      stroke: first?.stroke ?? 'none',
+      strokeWidth: first?.strokeWidth ?? 0,
+      ...(first?.fills ? { fills: first.fills } : {}),
+      ...(first?.strokes ? { strokes: first.strokes } : {}),
+    }
+    editor.editElements((elements) => groupElements(elements, ids, wrapped), true, `${booleanLabel(operation)} as a group`)
+    editor.setSelectedIds([wrapped.id])
+  }
+
   const savePreset = (name: string, settings: ExportSettings) => {
     const presets = [...(document.exportPresets ?? []), { id: crypto.randomUUID(), name: name.trim().slice(0, 60), ...settings }].slice(-MAX_EXPORT_PRESETS)
     editor.updateDocument({ exportPresets: presets })
@@ -747,6 +781,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       const on = single.strokeArrowEnd && single.strokeArrowEnd !== 'none'
       editor.updateElement(single.id, { strokeArrowEnd: on ? undefined : 'triangle' }, true, on ? 'Remove arrowhead' : 'Add arrowhead')
     } },
+    { id: 'mask', label: document.elements.find((element) => selectedIds.includes(element.id))?.mask ? 'Remove mask' : 'Use as mask', section: 'Object', shortcut: SHORTCUTS.mask, disabled: selectedIds.length === 0, run: toggleMask },
+    ...BOOLEAN_OPERATIONS.map((operation) => ({
+      id: `boolean-${operation}`,
+      label: booleanLabel(operation),
+      section: 'Object',
+      disabled: selectedElements.filter((element) => element.kind !== 'group').length < 2,
+      run: () => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
+    })),
     { id: 'outline-stroke', label: 'Outline stroke', section: 'Object', disabled: !single || single.kind === 'group' || single.strokeWidth <= 0, run: () => window.document.querySelector<HTMLButtonElement>('.vector-inspector button[data-action="outline-stroke"]')?.click() },
     { id: 'rename', label: 'Rename layers…', section: 'Object', disabled: !hasSelection, run: () => setRenameOpen(true) },
     { id: 'open', label: 'Open…', section: 'File', shortcut: SHORTCUTS.open, run: requestOpen },
@@ -785,6 +827,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     ...menuItem('flatten', undefined, false),
     ...menuItem('outline-stroke', undefined, false),
     ...menuItem('arrowhead', undefined, false),
+    ...menuItem('mask', undefined, false),
     ...menuItem(single?.kind === 'text' ? 'edit-text' : 'edit-nodes', <IconNode />, false),
     ...menuItem('same-fill'),
     ...menuItem('same-stroke', undefined, false),
@@ -880,6 +923,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onRenameStyle={renameStyle}
           onDeleteStyle={deleteStyle}
           onCropImage={(id) => controller.current?.cropImage(id)}
+          onBooleanGroup={booleanGroup}
         />
       }
     >
@@ -909,6 +953,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           <ToolButton label="Edit nodes · Enter" active={tool === 'node'} disabled={selectedIds.length !== 1 || selectedElements[0]?.kind === 'group' || selectedElements[0]?.kind === 'text' || !!selectedElements[0]?.locked} onClick={() => chooseTool('node')}><IconNode /></ToolButton>
           <ToolButton label="Pen · P" active={tool === 'pen'} onClick={() => chooseTool('pen')}><IconPen /></ToolButton>
           <ToolButton label="Pencil · ⇧P" active={tool === 'pencil'} onClick={() => chooseTool('pencil')}><IconPencilTool /></ToolButton>
+          <ToolButton label="Scissors · C" active={tool === 'scissors'} disabled={selectedIds.length !== 1} onClick={() => chooseTool('scissors')}><IconScissors /></ToolButton>
+          <ToolButton label="Scale · K" active={tool === 'scale'} onClick={() => chooseTool('scale')}><IconScale /></ToolButton>
           <ToolButton label="Lasso · Q" active={tool === 'lasso'} onClick={() => chooseTool('lasso')}><IconLasso /></ToolButton>
           <ToolButton label="Paint bucket · B" active={tool === 'bucket'} onClick={() => chooseTool('bucket')}><IconBucket /></ToolButton>
           <ToolButton label="Frame · F" active={tool === 'frame'} onClick={() => chooseTool('frame')}><IconFrame /></ToolButton>
@@ -1058,7 +1104,7 @@ function expandMoves(elements: VectorElement[], patches: ElementPatch[]): Elemen
     }
     const dx = typeof patch.x === 'number' ? patch.x - element.x : 0
     const dy = typeof patch.y === 'number' ? patch.y - element.y : 0
-    for (const leaf of leafElements(elements, [id])) updates.push({ id: leaf.id, patch: { x: Math.round((leaf.x + dx) * 100) / 100, y: Math.round((leaf.y + dy) * 100) / 100 } })
+    for (const leaf of transformLeaves(elements, [id])) updates.push({ id: leaf.id, patch: { x: Math.round((leaf.x + dx) * 100) / 100, y: Math.round((leaf.y + dy) * 100) / 100 } })
   }
   return updates
 }

@@ -16,15 +16,16 @@ import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
-  cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, toggleNodeSmooth,
+  cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, smoothSegments, toggleNodeSmooth,
   transformNodes, worldNetwork, type AbsNetwork, type AbsSegment,
 } from '@/vector/network'
 import { pencilNodes } from '@/vector/pencil'
+import { cutNode, cutSegment, scaleStylePatch, uniformFactor } from '@/vector/cut'
 import { penAddAnchor, penCanClose, penCommit, penConnect, penConnectSegment, penDragHandle, penFromNode, penFromPoint, penFromSegment, penNodeAt, penPreviewData, penRemoveLast, penStart, type PenDraft } from '@/vector/pen'
 import { layerAttributes, markerShape, outlinePathData, patternPlacement, renderModel, worldFaces, type RenderDef, type RenderModel } from '@/vector/render'
 import { collectSnapTargets, nodeSnapTargets, snapBoundsDelta, snapPoint, type SnapMatch, type SnapTarget } from '@/vector/snapping'
 import { transformElement, transformElements, type VectorTransformAxis, type VectorTransformMode } from '@/vector/transform'
-import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, type TreeNode } from '@/vector/tree'
+import { buildTree, childrenOf, descendantIds, isContainer, leafElements, resolveSelection, transformLeaves, type TreeNode } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorGuide, VectorPaint, VectorTool } from '@/vector/types'
 
 type Point = { x: number; y: number }
@@ -71,7 +72,7 @@ type Interaction =
   | { kind: 'node'; pointerId: number; start: Point; anchorStart: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; handle: HandleRef | null; targets: SnapTarget[]; moved: boolean; toggleOnClick: string | null }
   | { kind: 'segment-move'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; segmentId: string; moved: boolean }
   | { kind: 'pen'; pointerId: number }
-  | { kind: 'pencil'; pointerId: number; points: Point[] }
+  | { kind: 'pencil'; pointerId: number; points: Point[]; mode?: 'smooth' | 'erase'; target?: VectorElement }
   | { kind: 'bend'; pointerId: number; element: VectorElement; world: AbsNetwork; segmentId: string; t: number }
   | { kind: 'node-resize'; pointerId: number; element: VectorElement; world: AbsNetwork; nodeIds: string[]; bounds: Bounds; handle: DirectResizeHandle }
   | { kind: 'node-rotate'; pointerId: number; start: Point; element: VectorElement; world: AbsNetwork; nodeIds: string[]; center: Point }
@@ -120,6 +121,9 @@ type VectorCanvasProps = {
 
 /** What a modal G / R / S transform is called in the history. */
 const MODAL_LABELS = { move: 'Move', rotate: 'Rotate', scale: 'Scale' } as const
+
+/** How close the pencil has to pass for a segment to count as touched, in screen pixels. */
+const PENCIL_REACH_PX = 12
 
 const RULER_SIZE = 24
 const SNAP_PX = 6
@@ -230,10 +234,13 @@ export function VectorCanvas({
   const elements = document.elements
   const selectedElements = useMemo(() => elements.filter((element) => selectedIds.includes(element.id)), [elements, selectedIds])
   const selected = selectedElements.length === 1 ? selectedElements[0]! : null
-  const editing = (tool === 'node' || tool === 'bucket') && selected && !isContainer(selected) && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
+  const editingCandidate = selected && !isContainer(selected) && selected.kind !== 'text' && selected.kind !== 'image' && selected.visible && !selected.locked ? selected : null
+  const editing = (tool === 'node' || tool === 'bucket' || tool === 'scissors') && selected && !isContainer(selected) && selected.kind !== 'text' && selected.visible && !selected.locked ? selected : null
   const textEditing = textEditId ? elements.find((element) => element.id === textEditId && element.kind === 'text') ?? null : null
   const cropping = cropId ? elements.find((element) => element.id === cropId && element.kind === 'image' && !element.locked) ?? null : null
   const selectedLeaves = useMemo(() => leafElements(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
+  /** What a drag actually writes to: a boolean group hands over to the shapes underneath it. */
+  const movableLeaves = useMemo(() => transformLeaves(elements, selectedIds).filter((element) => element.visible && !element.locked), [elements, selectedIds])
   const tree = useMemo(() => buildTree(elements), [elements])
 
   camera.current = { pan, zoom }
@@ -469,7 +476,7 @@ export function VectorCanvas({
         setTransformStatus({ mode, axis: null })
         return true
       }
-      const leaves = leafElements(doc.elements, selectedIdsRef.current).filter((element) => !element.locked && element.visible)
+      const leaves = transformLeaves(doc.elements, selectedIdsRef.current).filter((element) => !element.locked && element.visible)
       if (leaves.length === 0 || toolRef.current !== 'transform' || interaction.current) return false
       const bounds = selectionBounds(leaves)
       const start = latestPointer.current ?? { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 }
@@ -544,7 +551,7 @@ export function VectorCanvas({
           commitPen()
           return
         }
-        if (toolRef.current === 'node' || toolRef.current === 'bucket') {
+        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors') {
           callbacks.current.onSelectNodes([])
           setSelectedSegment(null)
           callbacks.current.onToolChange('select')
@@ -691,7 +698,7 @@ export function VectorCanvas({
 
   const beginMove = (event: ReactPointerEvent<Element>, ids: string[], toggleOnClick: string | null = null) => {
     const doc = documentRef.current
-    const leaves = leafElements(doc.elements, ids).filter((element) => element.visible && !element.locked)
+    const leaves = transformLeaves(doc.elements, ids).filter((element) => element.visible && !element.locked)
     let moving = structuredClone(leaves)
     if (event.altKey) {
       // The copies join the open gesture, so the duplicate and the move undo together.
@@ -922,6 +929,20 @@ export function VectorCanvas({
       } else if (!active.additive && !editing) {
         onSelectIds([])
       }
+    } else if (active.kind === 'pencil' && active.mode && active.target) {
+      const target = documentRef.current.elements.find((item) => item.id === active.target!.id)
+      if (target) {
+        const world = worldNetwork(target)
+        const radius = PENCIL_REACH_PX / zoom
+        const touched = world.segments.filter((segment) => active.points.some((point) => segmentNear(world, segment, point, radius)))
+        if (touched.length) {
+          const edit = active.mode === 'erase'
+            ? deleteSegments(target, world, touched.map((segment) => segment.id))
+            : smoothSegments(target, world, touched.map((segment) => segment.id))
+          onUpdate(target.id, { ...edit, kind: 'path' }, true, active.mode === 'erase' ? 'Rub out' : 'Smooth the path')
+        }
+      }
+      setPencilPoints(null)
     } else if (active.kind === 'pencil') {
       const points = pencilNodes(active.points, zoom)
       if (points.length >= 2) {
@@ -1013,7 +1034,7 @@ export function VectorCanvas({
     if (event.button !== 0) return
     // While sampling, a shape is just something to read a colour off: let the click reach the canvas.
     if (sampling) return
-    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon') return
+    if (tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors') return
     event.stopPropagation()
     const resolved = resolveSelection(elements, element.id, enteredGroupId, event.metaKey || event.ctrlKey)
     const resolvedElement = elements.find((item) => item.id === resolved) ?? element
@@ -1135,7 +1156,7 @@ export function VectorCanvas({
       return
     }
     const targetElement = event.target as Element
-    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon'
+    const drawing = tool === 'pen' || tool === 'pencil' || tool === 'rectangle' || tool === 'ellipse' || tool === 'lasso' || tool === 'bucket' || tool === 'text' || tool === 'frame' || tool === 'line' || tool === 'polygon' || tool === 'scissors'
     // Drawing tools work on top of existing shapes; selection tools leave shape clicks to the shapes.
     if (!drawing && targetElement !== event.currentTarget && targetElement.closest('[data-vector-element], [data-vector-handle], [data-vector-rotate], [data-vector-guide], [data-vector-node], [data-vector-control], [data-vector-segment]')) return
     const rawAt = point(event.nativeEvent)
@@ -1157,6 +1178,13 @@ export function VectorCanvas({
     if (tool === 'lasso') {
       interaction.current = { kind: 'lasso', pointerId: event.pointerId, points: [rawAt], additive: event.shiftKey }
       setLassoPoints([rawAt])
+      event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
+    if (tool === 'pencil' && (event.shiftKey || event.altKey) && editingCandidate) {
+      // ⇧ redraws the part the stroke passes over, ⌥ rubs it out.
+      interaction.current = { kind: 'pencil', pointerId: event.pointerId, points: [rawAt], mode: event.altKey ? 'erase' : 'smooth', target: structuredClone(editingCandidate) }
+      setPencilPoints([rawAt])
       event.currentTarget.setPointerCapture(event.pointerId)
       return
     }
@@ -1213,6 +1241,20 @@ export function VectorCanvas({
       setPenDraft(penAddAnchor(draft, snapped))
       interaction.current = { kind: 'pen', pointerId: event.pointerId }
       event.currentTarget.setPointerCapture(event.pointerId)
+      return
+    }
+    if (tool === 'scissors' && editing) {
+      const nodeHit = worldNetwork(editing).nodes.find((node) => Math.hypot(node.point.x - at.x, node.point.y - at.y) <= NODE_HIT_PX / zoom)
+      if (nodeHit) {
+        onUpdate(editing.id, { ...cutNode(editing, worldNetwork(editing), nodeHit.id), kind: 'path' }, true, 'Cut the node apart')
+        onSelectNodes([])
+        return
+      }
+      const segmentHit = nearestSegment(editing, at)
+      if (segmentHit) {
+        onUpdate(editing.id, { ...cutSegment(editing, worldNetwork(editing), segmentHit.segment.id, segmentHit.t), kind: 'path' }, true, 'Cut the path')
+        onSelectNodes([])
+      }
       return
     }
     if (tool === 'node' && editing && event.altKey) {
@@ -1360,14 +1402,18 @@ export function VectorCanvas({
       const matches = snapped.matches.filter((match) => (match.axis === 'x' && affectsX) || (match.axis === 'y' && affectsY))
       if (active.single) {
         // A picture keeps its shape unless Shift says otherwise; everything else is the reverse.
-        const lockRatio = active.single.kind === 'image' ? !event.shiftKey : event.shiftKey
+        const lockRatio = active.single.kind === 'image' ? !event.shiftKey : tool === 'scale' ? true : event.shiftKey
         const patch = resizeElement(active.single, active.handle, pointer, { lockRatio, fromCenter: event.altKey })
-        onUpdate(active.single.id, viewOptions.snapToPixelGrid ? snapGeometryPatch(patch) : patch, false)
+        const styled = tool === 'scale'
+          ? { ...patch, ...scaleStylePatch(active.single, uniformFactor(active.single, { width: patch.width ?? active.single.width, height: patch.height ?? active.single.height })) }
+          : patch
+        onUpdate(active.single.id, viewOptions.snapToPixelGrid ? snapGeometryPatch(styled) : styled, false)
         showHud(`${round(patch.width)} × ${round(patch.height)}`, event.nativeEvent)
       } else {
         const next = resizeBounds(active.bounds, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
         const map = boxMap(active.bounds, next)
-        const updates = active.elements.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) }))
+        const factor = tool === 'scale' ? uniformFactor(active.bounds, next) : 1
+        const updates = active.elements.map((leaf) => ({ id: leaf.id, patch: { ...transformElementAffine(leaf, map), ...(tool === 'scale' ? scaleStylePatch(leaf, factor) : {}) } }))
           .map((update) => ({ ...update, patch: viewOptions.snapToPixelGrid ? snapGeometryPatch(update.patch) : update.patch }))
         onUpdateElements(updates, false)
         showHud(`${round(next.width)} × ${round(next.height)}`, event.nativeEvent)
@@ -1710,8 +1756,8 @@ export function VectorCanvas({
   const nodeBox = editing && editingWorld && selectedNodeIds.length > 1 ? nodeBoundsOf(editingWorld, selectedNodeIds) : null
 
   // Cropping owns the overlay: the ordinary resize handles would sit on top of the crop ones.
-  const showHandles = (tool === 'select') && selectedLeaves.length > 0 && !editing && !cropping
-  const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' ? selected : null
+  const showHandles = (tool === 'select' || tool === 'scale') && selectedLeaves.length > 0 && !editing && !cropping
+  const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' && selected.kind !== 'boolean' ? selected : null
   const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
   const shapePointerDown = useRef(onShapePointerDown)
@@ -1965,8 +2011,8 @@ export function VectorCanvas({
               bounds={multiBounds}
               leaves={selectedLeaves}
               zoom={zoom}
-              onResize={(handle, event) => startResize(event, handle, null, selectedLeaves)}
-              onRotate={(event) => startRotate(event, null, selectedLeaves)}
+              onResize={(handle, event) => startResize(event, handle, null, movableLeaves)}
+              onRotate={(event) => startRotate(event, null, movableLeaves)}
             />
           ) : null}
           {/* Above the box handles: these sit on the same spots and must win the click. */}
@@ -2120,6 +2166,25 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
       {nodes.map((node) => {
         const element = node.element
         if (!element.visible) return null
+        if (element.kind === 'boolean') {
+          // The members are the recipe; only the combined shape is painted.
+          return (
+            <VectorShape
+              key={element.id}
+              element={element}
+              locked={inheritedLocked || element.locked}
+              zoom={zoom}
+              coarse={coarse}
+              pixelPreview={pixelPreview}
+              selected={selectedIds.includes(element.id)}
+              editing={element.id === editingId}
+              hideText={false}
+              hitTarget={withinView(element, viewBounds)}
+              onPointerDown={onPointerDown}
+              onHover={onHover}
+            />
+          )
+        }
         if (element.kind === 'frame') {
           const clipId = `frame-clip-${element.id}`
           const children = (
@@ -2163,10 +2228,15 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
           )
         }
         if (element.kind === 'group') {
+          const mask = node.children[0]?.element.mask ? node.children[0]!.element : null
+          const masked = mask ? node.children.slice(1) : node.children
+          const clipId = `mask-${element.id}`
           return (
-            <g key={element.id} data-vector-group={element.id} opacity={element.opacity}>
+            <g key={element.id} data-vector-group={element.id} data-masked={mask ? true : undefined} opacity={element.opacity}>
+              {mask ? <defs><MaskClip id={clipId} element={mask} /></defs> : null}
+              <g clipPath={mask ? `url(#${clipId})` : undefined}>
               <ShapeTree
-                nodes={node.children}
+                nodes={masked}
                 zoom={zoom}
                 coarse={coarse}
                 pixelPreview={pixelPreview}
@@ -2178,6 +2248,8 @@ function ShapeTree({ nodes, zoom, coarse, pixelPreview, selectedIds, editingId, 
                 onPointerDown={onPointerDown}
                 onHover={onHover}
               />
+              </g>
+              {mask ? <MaskOutline element={mask} /> : null}
             </g>
           )
         }
@@ -2362,6 +2434,18 @@ function RotationArc({ arc, zoom }: { arc: { center: Point; from: number; to: nu
       <text className="vector-rotation__value" x={label.x} y={label.y} fontSize={11 / zoom} dy={-6 / zoom}>{round(degrees)}°</text>
     </g>
   )
+}
+
+/** The shape a masking child cuts the rest of its group to. */
+function MaskClip({ id, element }: { id: string; element: VectorElement }) {
+  const model = renderModel(element, 'canvas')
+  return <clipPath id={id}><path d={model.fillD || model.d} transform={model.transform} clipRule="evenodd" /></clipPath>
+}
+
+/** A dashed outline where the mask is, so it can be seen even though it is not painted. */
+function MaskOutline({ element }: { element: VectorElement }) {
+  const model = renderModel(element, 'canvas')
+  return <path className="vector-mask-outline" d={model.d} transform={model.transform} />
 }
 
 /** Clip shape of a frame: its box, turned with it. */
@@ -3029,6 +3113,16 @@ function constrainAngle(origin: Point, point: Point): Point {
   const snapped = Math.round(angle / (Math.PI / 4)) * (Math.PI / 4)
   const length = Math.hypot(dx, dy) * Math.cos(angle - snapped)
   return { x: round(origin.x + Math.cos(snapped) * length), y: round(origin.y + Math.sin(snapped) * length) }
+}
+
+/** Whether a point passes within `radius` of a segment, sampled along its cubic. */
+function segmentNear(world: AbsNetwork, segment: AbsSegment, point: Point, radius: number): boolean {
+  const cubic = segmentCubic(world, segment)
+  for (let step = 0; step <= 12; step += 1) {
+    const at = cubicAt(cubic, step / 12)
+    if (Math.hypot(at.x - point.x, at.y - point.y) <= radius) return true
+  }
+  return false
 }
 
 /** Length of a cubic, sampled finely enough to read out. */

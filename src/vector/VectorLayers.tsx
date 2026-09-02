@@ -5,7 +5,7 @@ import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/Conte
 import { ThemeToggle } from '@/ui/ThemeToggle'
 import { Tooltip } from '@/ui/Tooltip'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
-import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
+import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconMask, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
 import { SHORTCUTS } from '@/vector/commands'
 import { childrenOf, flattenForLayers, isContainer, siblingIndex, type LayerRow } from '@/vector/tree'
 import type { VectorDocument, VectorElement } from '@/vector/types'
@@ -213,7 +213,7 @@ function LayerRowView({ row, selected, entered, compact, items, selectedIds, onS
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(element.name)
   const inputRef = useRef<HTMLInputElement>(null)
-  const ShapeIcon = element.kind === 'group' ? IconFolderLayer : element.kind === 'frame' ? IconFrame : element.kind === 'text' ? IconText : element.kind === 'path' || element.network ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
+  const ShapeIcon = element.mask ? IconMask : element.kind === 'group' ? IconFolderLayer : element.kind === 'frame' ? IconFrame : element.kind === 'text' ? IconText : element.kind === 'path' || element.network ? IconPath : element.kind === 'ellipse' ? IconEllipse : IconRectangle
   const startRename = () => {
     setDraft(element.name)
     if (compact) {

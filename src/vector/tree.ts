@@ -5,7 +5,7 @@ export type TreeNode = { element: VectorElement; children: TreeNode[]; depth: nu
 
 /** Kinds that hold children through `parentId`: groups, which hug their content, and frames, which keep their own box. */
 export function isContainer(element: Pick<VectorElement, 'kind'>): boolean {
-  return element.kind === 'group' || element.kind === 'frame'
+  return element.kind === 'group' || element.kind === 'frame' || element.kind === 'boolean'
 }
 
 export type LayerRow = {
@@ -68,7 +68,10 @@ export function leafElements(elements: VectorElement[], ids: string[]): VectorEl
   for (const id of ids) {
     const element = elements.find((item) => item.id === id)
     if (!element) continue
-    if (isContainer(element)) {
+    if (element.kind === 'boolean') {
+      // A boolean group paints its own combined shape; its members are the recipe, not the result.
+      wanted.add(id)
+    } else if (isContainer(element)) {
       if (element.kind === 'frame') wanted.add(id)
       for (const descendant of descendantIds(elements, id)) wanted.add(descendant)
     } else {
@@ -76,6 +79,30 @@ export function leafElements(elements: VectorElement[], ids: string[]): VectorEl
     }
   }
   return elements.filter((element) => wanted.has(element.id) && element.kind !== 'group')
+}
+
+/**
+ * Elements a move or a transform should actually write to. A boolean group's own box is derived
+ * from its members, so a transform has to reach the members instead of the group.
+ */
+export function transformLeaves(elements: VectorElement[], ids: string[]): VectorElement[] {
+  const wanted = new Set<string>()
+  const visit = (id: string) => {
+    const element = elements.find((item) => item.id === id)
+    if (!element) return
+    if (element.kind === 'boolean' || element.kind === 'group') {
+      for (const child of childrenOf(elements, id)) visit(child.id)
+      return
+    }
+    if (element.kind === 'frame') {
+      wanted.add(id)
+      for (const child of childrenOf(elements, id)) visit(child.id)
+      return
+    }
+    wanted.add(id)
+  }
+  for (const id of ids) visit(id)
+  return elements.filter((element) => wanted.has(element.id))
 }
 
 /**
@@ -170,7 +197,8 @@ export function groupElements(elements: VectorElement[], ids: string[], group: V
   const memberIds = new Set(members.map((element) => element.id))
   const moved = new Set([...memberIds, ...members.flatMap((element) => descendantIds(elements, element.id))])
   const topIndex = Math.max(...members.map((element) => elements.findIndex((item) => item.id === element.id)))
-  const grouped: VectorElement = { ...group, kind: 'group', rotation: 0, ...(parentId ? { parentId } : {}) }
+  // The caller decides what kind of container this is: a plain group, or a boolean one.
+  const grouped: VectorElement = { ...group, rotation: 0, ...(parentId ? { parentId } : {}) }
   const block = elements.filter((element) => moved.has(element.id)).map((element) => memberIds.has(element.id) ? { ...element, parentId: grouped.id } : element)
   const rest = elements.filter((element) => !moved.has(element.id))
   const insertAt = rest.findIndex((element) => elements.indexOf(element) > topIndex)

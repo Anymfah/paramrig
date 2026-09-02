@@ -11,6 +11,9 @@ import {
   Crosshair,
   Minus as LineGlyph,
   Star,
+  Scissors,
+  Maximize,
+  SquareDashed,
   Repeat2,
   SkipBack,
   MoreHorizontal,
@@ -105,6 +108,9 @@ export const IconCommand = glyph(Command)
 export const IconScreenPick = glyph(Crosshair)
 export const IconLine = glyph(LineGlyph)
 export const IconPolygon = glyph(Star)
+export const IconScissors = glyph(Scissors)
+export const IconScale = glyph(Maximize)
+export const IconMask = glyph(SquareDashed)
 
 export const IconPaste = glyph(ClipboardPaste)
 export const IconTrash = glyph(Trash2)

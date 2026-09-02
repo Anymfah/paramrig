@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { syncBooleanGroups } from '@/vector/booleanGroups'
 import { reorderIndex } from '@/vector/commands'
 import { countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
@@ -77,7 +78,7 @@ export function useVectorDocument(documentId: string) {
     if (!current) return
     const updated = update(current)
     if (updated === current) return
-    const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(updated.elements) }
+    const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(syncBooleanGroups(updated.elements)) }
     if (sameDocument(synced, current)) return
     const next = { ...synced, updatedAt: new Date().toISOString() }
     if (record && !gestureStart.current) {

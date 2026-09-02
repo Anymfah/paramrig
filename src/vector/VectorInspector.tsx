@@ -13,6 +13,7 @@ import { linkedStyle, styleUsage } from '@/vector/styles'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
 import { cornerRadii } from '@/vector/corners'
 import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation } from '@/vector/booleans'
+import { booleanLabel, BOOLEAN_OPERATIONS } from '@/vector/booleanGroups'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorElement } from '@/vector/document'
@@ -70,6 +71,8 @@ type VectorInspectorProps = {
   onDeleteStyle?: (styleId: string) => void
   /** Opens crop editing on an image, the way a double-click does. */
   onCropImage?: (id: string) => void
+  /** Wraps the given shapes in a boolean group. */
+  onBooleanGroup?: (operation: BooleanOperation, ids: string[]) => void
 }
 
 export function VectorInspector({
@@ -103,6 +106,7 @@ export function VectorInspector({
   onRenameStyle,
   onDeleteStyle,
   onCropImage,
+  onBooleanGroup,
 }: VectorInspectorProps) {
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
@@ -131,10 +135,17 @@ export function VectorInspector({
     })
     onSelectIds([result.id])
   }
+  /** Wraps the selection in a boolean group, which keeps every shape editable underneath. */
   const runBoolean = (operation: BooleanOperation) => {
     if (combinable.length < 2) return
     const ordered = [...combinable].sort((a, b) => document.elements.indexOf(a) - document.elements.indexOf(b))
-    replaceWithPath(ordered, booleanOperation(operation, ordered), operation === 'unite' ? 'Union' : operation === 'subtract' ? 'Subtract' : operation === 'intersect' ? 'Intersect' : 'Exclude')
+    onBooleanGroup?.(operation, ordered.map((element) => element.id))
+  }
+
+  const flattenBoolean = (operation: BooleanOperation) => {
+    if (combinable.length < 2) return
+    const ordered = [...combinable].sort((a, b) => document.elements.indexOf(a) - document.elements.indexOf(b))
+    replaceWithPath(ordered, booleanOperation(operation, ordered), booleanLabel(operation))
   }
   const flatten = () => {
     const target = combinable[0]
@@ -395,6 +406,26 @@ export function VectorInspector({
               onUpdateStyle={onUpdateStyle}
               gesture={gesture}
             />
+            {single && single.kind === 'boolean' ? (
+              <section className="vector-panel" aria-label="Boolean">
+                <div className="vector-panel__row">
+                  <h2 className="vector-panel__title">Boolean</h2>
+                  <span className="vector-panel__meta">{document.elements.filter((element) => element.parentId === single.id).length} shapes</span>
+                </div>
+                <SelectField
+                  label="Operation"
+                  value={single.operation ?? 'unite'}
+                  options={BOOLEAN_OPERATIONS.map((operation) => ({ value: operation, label: booleanLabel(operation) }))}
+                  onChange={(value) => onUpdate(single.id, { operation: value as BooleanOperation }, true, 'Change the boolean')}
+                />
+                <div className="vector-panel__actions">
+                  <Tooltip content="Replace the group with the shape it makes">
+                    <Button variant="quiet" size="sm" data-action="flatten-boolean" onClick={() => onUpdate(single.id, { kind: 'path', operation: undefined }, true, 'Flatten the boolean')}>Flatten</Button>
+                  </Tooltip>
+                </div>
+                <p className="vector-panel__hint">The shapes underneath stay editable: double-click to go in.</p>
+              </section>
+            ) : null}
             {single && single.kind === 'polygon' && !single.network ? (
               <PolygonPanel element={single} onUpdate={onUpdate} gesture={gesture} />
             ) : null}
@@ -427,6 +458,7 @@ export function VectorInspector({
                 </div>
                 <div className="vector-panel__actions">
                   <Tooltip content={withShortcut('Keep every sub-path in one object', 'combine')}><Button variant="quiet" size="sm" data-action="combine" onClick={combine}>Combine</Button></Tooltip>
+                  <Tooltip content="Unite the shapes into one path, losing the originals"><Button variant="quiet" size="sm" data-action="flatten-union" onClick={() => flattenBoolean('unite')}>Union (flatten)</Button></Tooltip>
                   <Tooltip content="Unite the shapes into a single outline"><Button variant="quiet" size="sm" data-action="flatten" onClick={flatten}>Flatten</Button></Tooltip>
                 </div>
                 <p className="vector-panel__hint">Booleans use the bottom object as the base. Combine keeps every sub-path; Flatten unites them.</p>
@@ -1061,6 +1093,7 @@ function kindLabel(element: VectorElement): string {
     case 'frame': return 'Frame'
     case 'image': return 'Image'
     case 'polygon': return 'Polygon'
+    case 'boolean': return 'Boolean'
   }
 }
 
