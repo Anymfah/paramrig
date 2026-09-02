@@ -29,6 +29,7 @@ import {
   type OpacityBuffer,
   type VectorCommand,
 } from '@/vector/commands'
+import { countedLabel } from '@/vector/history'
 import { VectorCommandPalette } from '@/vector/VectorCommandPalette'
 import { VectorRenameDialog } from '@/vector/VectorRenameDialog'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
@@ -130,7 +131,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     current.setSelectedIds(children)
   }, [])
 
-  const transformSelection = useCallback((build: (center: { x: number; y: number }) => ReturnType<typeof flipAffine>) => {
+  const transformSelection = useCallback((build: (center: { x: number; y: number }) => ReturnType<typeof flipAffine>, label = 'Transform') => {
     const current = editorRef.current
     const doc = current.document
     if (!doc || current.selectedIds.length === 0) return
@@ -138,7 +139,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     if (leaves.length === 0) return
     const center = elementCenter(selectionBounds(leaves))
     const map = build(center)
-    current.updateElements(leaves.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) })))
+    current.updateElements(leaves.map((leaf) => ({ id: leaf.id, patch: transformElementAffine(leaf, map) })), true, label)
   }, [])
 
   const pasteElements = useCallback((elements: VectorElement[], offset = 0, parent?: string): string[] => {
@@ -151,7 +152,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       const moved = element.kind !== 'group' ? { x: element.x + offset, y: element.y + offset } : {}
       return { ...rest, ...moved, id: idMap.get(element.id)!, ...(mapped ? { parentId: mapped } : {}) }
     })
-    current.addElements(copies)
+    current.addElements(copies, true, 'Paste')
     return copies.map((element) => element.id)
   }, [])
 
@@ -219,7 +220,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     if (!appearance || current.selectedIds.length === 0) return
     const targets = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
     if (targets.length === 0) return
-    current.updateElements(targets.map((element) => ({ id: element.id, patch: appearancePatch(appearance) })))
+    current.updateElements(targets.map((element) => ({ id: element.id, patch: appearancePatch(appearance) })), true, 'Paste properties')
   }, [])
 
   /** Keeps each target's box and replaces everything else with the copied objects. */
@@ -251,7 +252,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     if (current.selectedIds.length === 0) return
     const { opacity, buffer } = opacityFromDigit(opacityBuffer.current, digit, Date.now())
     opacityBuffer.current = buffer
-    current.updateElements(current.selectedElements.filter((element) => !element.locked).map((element) => ({ id: element.id, patch: { opacity } })))
+    current.updateElements(current.selectedElements.filter((element) => !element.locked).map((element) => ({ id: element.id, patch: { opacity } })), true, 'Change opacity')
   }, [])
 
   const selectSame = useCallback((key: 'fill' | 'stroke' | 'strokeWidth') => {
@@ -268,7 +269,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     if (!doc || current.selectedElements.length === 0) return
     const leaves = leafElements(doc.elements, current.selectedIds)
     const target = current.selectedElements.length > 1 && leaves.length ? selectionBounds(leaves) : { x: 0, y: 0, width: doc.width, height: doc.height }
-    current.updateElements(expandMoves(doc.elements, alignElements(current.selectedElements, mode, target)))
+    current.updateElements(expandMoves(doc.elements, alignElements(current.selectedElements, mode, target)), true, 'Align')
   }, [])
 
   useEffect(() => {
@@ -390,14 +391,14 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         event.preventDefault()
         if (current.selectedElements.length === 0) return
         const locked = !current.selectedElements.every((element) => element.locked)
-        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { locked } })))
+        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { locked } })), true, locked ? 'Lock' : 'Unlock')
         return
       }
       if (meta && event.shiftKey && key === 'h') {
         event.preventDefault()
         if (current.selectedElements.length === 0) return
         const visible = !current.selectedElements.every((element) => element.visible)
-        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { visible } })))
+        current.updateElements(current.selectedElements.map((element) => ({ id: element.id, patch: { visible } })), true, visible ? 'Show' : 'Hide')
         return
       }
       if (meta) return
@@ -430,13 +431,13 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           alignSelection(mode)
         } else if (event.code === 'KeyR' && current.selectedElements.length > 0) {
           event.preventDefault()
-          transformSelection((center) => rotationAffine(event.shiftKey ? -90 : 90, center))
+          transformSelection((center) => rotationAffine(event.shiftKey ? -90 : 90, center), 'Rotate 90°')
         }
         return
       }
       if (event.shiftKey && (key === 'h' || key === 'v') && current.selectedElements.length > 0) {
         event.preventDefault()
-        transformSelection((center) => flipAffine(key === 'h' ? 'x' : 'y', center))
+        transformSelection((center) => flipAffine(key === 'h' ? 'x' : 'y', center), key === 'h' ? 'Flip horizontal' : 'Flip vertical')
         return
       }
       if (event.shiftKey && (key === '0' || key === '1' || key === '2' || event.code === 'Digit0' || event.code === 'Digit1' || event.code === 'Digit2')) {
@@ -480,7 +481,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         const dx = key === 'arrowleft' ? -amount : key === 'arrowright' ? amount : 0
         const dy = key === 'arrowup' ? -amount : key === 'arrowdown' ? amount : 0
         const leaves = leafElements(current.document?.elements ?? [], current.selectedIds).filter((element) => !element.locked)
-        current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })))
+        current.updateElements(leaves.map((element) => ({ id: element.id, patch: { x: element.x + dx, y: element.y + dy } })), true, countedLabel('Move', leaves.length))
       } else if ((key === 'backspace' || key === 'delete') && current.selectedIds.length > 0 && tool !== 'node' && tool !== 'bucket') {
         event.preventDefault()
         current.removeElements(current.selectedIds)
@@ -537,8 +538,8 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     recent: document.recentColors,
     swatches: document.swatches,
     onColorUsed: (hex) => editor.updateDocument({ recentColors: pushRecentColor(document.recentColors, hex) }, false),
-    onAddSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex) }),
-    onRemoveSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex, true) }),
+    onAddSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex) }, true, 'Pin colour'),
+    onRemoveSwatch: (hex) => editor.updateDocument({ swatches: toggleSwatch(document.swatches, hex, true) }, true, 'Unpin colour'),
     onPickFromCanvas: (apply) => { void startCanvasPick(apply) },
   }
 
@@ -574,7 +575,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       ...current,
       styles: [...(current.styles ?? []), style],
       elements: current.elements.map((element) => targets.some((target) => target.id === element.id) ? { ...element, ...applyStylePatch(style) } : element),
-    }))
+    }), true, `Create style “${style.name}”`)
   }
 
   const linkStyle = (kind: 'fill' | 'stroke', styleId: string | null) => {
@@ -582,7 +583,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     if (styleId && !style) return
     const targets = leafElements(document.elements, selectedIds)
     if (targets.length === 0) return
-    editor.updateElements(targets.map((element) => ({ id: element.id, patch: style ? applyStylePatch(style) : detachStylePatch(kind) })))
+    editor.updateElements(targets.map((element) => ({ id: element.id, patch: style ? applyStylePatch(style) : detachStylePatch(kind) })), true, style ? `Apply “${style.name}”` : 'Detach style')
   }
 
   const updateStyle = (styleId: string, paints: VectorPaint[], record?: boolean) => {
@@ -596,13 +597,13 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         styles,
         elements: current.elements.map((element) => patches.has(element.id) ? { ...element, ...patches.get(element.id)! } : element),
       }
-    }, record)
+    }, record, 'Change style')
   }
 
   const renameStyle = (styleId: string, name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    editor.updateDocument({ styles: (document.styles ?? []).map((style) => style.id === styleId ? { ...style, name: trimmed.slice(0, 60) } : style) })
+    editor.updateDocument({ styles: (document.styles ?? []).map((style) => style.id === styleId ? { ...style, name: trimmed.slice(0, 60) } : style) }, true, 'Rename style')
   }
 
   const deleteStyle = (styleId: string) => {
@@ -614,7 +615,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
       styles: (current.styles ?? []).filter((item) => item.id !== styleId),
       // The objects keep the look they had; only the link goes.
       elements: current.elements.map((element) => element[key] === styleId ? { ...element, [key]: undefined } : element),
-    }))
+    }), true, `Delete style “${style.name}”`)
   }
 
   const savePreset = (name: string, settings: ExportSettings) => {
@@ -629,7 +630,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
 
   const toggleLock = () => {
     if (selectedElements.length === 0) return
-    editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked: !allLocked } })))
+    editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { locked: !allLocked } })), true, allLocked ? 'Unlock' : 'Lock')
   }
 
   const single = selectedElements.length === 1 ? selectedElements[0]! : null
@@ -659,9 +660,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
     { id: 'send-to-back', label: 'Send to back', section: 'Arrange', shortcut: SHORTCUTS.sendToBack, disabled: !hasSelection, run: () => order('back') },
     { id: 'group', label: 'Group', section: 'Arrange', shortcut: SHORTCUTS.group, disabled: !hasSelection, run: group },
     { id: 'ungroup', label: 'Ungroup', section: 'Arrange', shortcut: SHORTCUTS.ungroup, disabled: !canUngroup, run: ungroup },
-    { id: 'flip-h', label: 'Flip horizontal', section: 'Arrange', shortcut: SHORTCUTS.flipHorizontal, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('x', center)) },
-    { id: 'flip-v', label: 'Flip vertical', section: 'Arrange', shortcut: SHORTCUTS.flipVertical, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('y', center)) },
-    { id: 'rotate-90', label: 'Rotate 90°', section: 'Arrange', shortcut: SHORTCUTS.rotate90, disabled: !hasSelection, run: () => transformSelection((center) => rotationAffine(90, center)) },
+    { id: 'flip-h', label: 'Flip horizontal', section: 'Arrange', shortcut: SHORTCUTS.flipHorizontal, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('x', center), 'Flip horizontal') },
+    { id: 'flip-v', label: 'Flip vertical', section: 'Arrange', shortcut: SHORTCUTS.flipVertical, disabled: !hasSelection, run: () => transformSelection((center) => flipAffine('y', center), 'Flip vertical') },
+    { id: 'rotate-90', label: 'Rotate 90°', section: 'Arrange', shortcut: SHORTCUTS.rotate90, disabled: !hasSelection, run: () => transformSelection((center) => rotationAffine(90, center), 'Rotate 90°') },
     { id: 'lock', label: allLocked ? 'Unlock' : 'Lock', section: 'Object', shortcut: SHORTCUTS.lock, disabled: !hasSelection, run: toggleLock },
     { id: 'hide', label: selectedElements.every((element) => element.visible) ? 'Hide' : 'Show', section: 'Object', shortcut: SHORTCUTS.hide, disabled: !hasSelection, run: () => editor.updateElements(selectedElements.map((element) => ({ id: element.id, patch: { visible: !selectedElements.every((item) => item.visible) } }))) },
     { id: 'opacity', label: 'Set opacity', section: 'Object', shortcut: SHORTCUTS.opacity, disabled: !hasSelection, run: () => setOpacity('0') },
@@ -781,6 +782,9 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
           onSelectIds={editor.setSelectedIds}
           onSelectNodes={setSelectedNodeIds}
           historyDepth={editor.historyDepth}
+          historySteps={editor.historySteps}
+          historyIndex={editor.historyIndex}
+          onGoToStep={editor.goToStep}
           onSaveVersion={editor.saveVersion}
           onRestoreVersion={editor.restoreVersion}
           onDeleteVersion={editor.deleteVersion}
@@ -951,7 +955,7 @@ export function VectorEditorPage({ manifest }: { manifest: RigManifest }) {
         elements={selectedElements}
         open={renameOpen && selectedElements.length > 0}
         onClose={() => setRenameOpen(false)}
-        onRename={(names) => editor.updateElements(selectedElements.map((element, index) => ({ id: element.id, patch: { name: names[index]! } })))}
+        onRename={(names) => editor.updateElements(selectedElements.map((element, index) => ({ id: element.id, patch: { name: names[index]! } })), true, countedLabel('Rename', selectedElements.length, 'layer'))}
       />
     </WorkspaceShell>
   )

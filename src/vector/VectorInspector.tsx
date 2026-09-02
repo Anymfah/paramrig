@@ -22,6 +22,7 @@ import { outlineText } from '@/vector/textOutline'
 import { commitWorld, components, connectNodes, mergeNetworks, moveHandle, moveNodes, normalizeWorld, setHandleMode, toggleNodeSmooth, worldNetwork, type AbsNetwork } from '@/vector/network'
 import { alignPoints, distributePoints, handleFromPolar, handlePolar, moveNodesTo } from '@/vector/nodeEdit'
 import { isFullCrop, resetCropBox } from '@/vector/crop'
+import { countedLabel, historyRows, type HistoryStep } from '@/vector/history'
 import { computeFaces } from '@/vector/planar'
 import { MAX_DOCUMENT_SIZE } from '@/vector/document'
 import { selectionBounds, type Bounds } from '@/vector/geometry'
@@ -38,12 +39,15 @@ type VectorInspectorProps = {
   selectedNodeIds: string[]
   onRenameDocument: (name: string) => void
   onUpdateDocument: (patch: DocumentPatch, record?: boolean) => void
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
-  onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
+  onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean, label?: string) => void
   onSelectIds: (ids: string[]) => void
   onSelectNodes: (ids: string[]) => void
   historyDepth: number
+  historySteps: HistoryStep[]
+  historyIndex: number
+  onGoToStep?: (index: number) => void
   onSaveVersion: (name: string) => void
   onRestoreVersion: (id: string) => void
   onDeleteVersion: (id: string) => void
@@ -79,6 +83,9 @@ export function VectorInspector({
   onSelectIds,
   onSelectNodes,
   historyDepth,
+  historySteps,
+  historyIndex,
+  onGoToStep,
   onSaveVersion,
   onRestoreVersion,
   onDeleteVersion,
@@ -298,22 +305,37 @@ export function VectorInspector({
                 <input className="vector-version-form__input" aria-label="Version name" placeholder="Version name" value={versionName} maxLength={80} onChange={(event) => setVersionName(event.currentTarget.value)} />
                 <Button variant="quiet" size="sm" type="submit">Save version</Button>
               </form>
-              {(document.versions ?? []).length ? (
-                <ul className="vector-versions" aria-label="Saved versions">
-                  {[...(document.versions ?? [])].reverse().map((version) => (
-                    <li key={version.id} className="vector-version">
-                      <div className="vector-version__text">
-                        <span className="vector-version__name">{version.name}</span>
-                        <span className="vector-panel__meta">{new Date(version.createdAt).toLocaleString()} · {version.elements.filter((element) => element.kind !== 'group').length} objects</span>
-                      </div>
-                      <Button variant="quiet" size="sm" onClick={() => onRestoreVersion(version.id)}>Restore</Button>
+              <ol className="vector-history" aria-label="History steps">
+                {historyRows(historySteps, historyIndex, document.versions ?? []).map((row) => (
+                  row.kind === 'step' ? (
+                    <li key={`step-${row.index}`}>
+                      <button
+                        type="button"
+                        className="vector-history__step"
+                        data-current={row.current || undefined}
+                        data-undone={row.undone || undefined}
+                        data-step={row.index}
+                        aria-current={row.current || undefined}
+                        onClick={() => onGoToStep?.(row.index)}
+                      >
+                        <span className="vector-history__dot" aria-hidden="true" />
+                        <span className="vector-history__label">{row.label}</span>
+                        <span className="vector-history__time">{formatStepTime(row.at)}</span>
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={`version-${row.id}`} className="vector-history__version">
+                      <span className="vector-history__dot vector-history__dot--version" aria-hidden="true" />
+                      <span className="vector-history__label">{row.label}</span>
+                      <Button variant="quiet" size="sm" onClick={() => onRestoreVersion(row.id)}>Restore</Button>
                       <Tooltip content="Delete version">
-                        <IconButton label={`Delete version ${version.name}`} onClick={() => onDeleteVersion(version.id)}><IconTrash /></IconButton>
+                        <IconButton label={`Delete version ${row.label}`} onClick={() => onDeleteVersion(row.id)}><IconTrash /></IconButton>
                       </Tooltip>
                     </li>
-                  ))}
-                </ul>
-              ) : <p className="vector-panel__hint">Saved versions keep a copy of every object and guide. Restoring is one undo step.</p>}
+                  )
+                ))}
+              </ol>
+              <p className="vector-panel__hint">Click a step to go back to it, or forward again. Saved versions sit in the same list and keep a copy of every object and guide.</p>
             </section>
           </>
         ) : (
@@ -425,8 +447,8 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
   leaves: VectorElement[]
   styles: VectorStyle[]
   palette?: PaintPalette
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
   onCreateStyle?: (kind: VectorStyleKind, source: VectorElement) => void
   onLinkStyle?: (kind: VectorStyleKind, styleId: string | null) => void
   onUpdateStyle?: (styleId: string, paints: VectorPaint[], record?: boolean) => void
@@ -437,9 +459,9 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
   if (targets.length === 0) return null
   const first = targets[0]!
   const same = (key: 'fill' | 'stroke' | 'strokeWidth' | 'opacity') => targets.every((element) => element[key] === first[key])
-  const apply = (patch: Partial<VectorElement>, record?: boolean) => {
-    if (single) onUpdate(single.id, patch, record)
-    else onUpdateElements(targets.map((element) => ({ id: element.id, patch })), record)
+  const apply = (patch: Partial<VectorElement>, record?: boolean, label = 'Change appearance') => {
+    if (single) onUpdate(single.id, patch, record, label)
+    else onUpdateElements(targets.map((element) => ({ id: element.id, patch })), record, label)
   }
   const groupOpacity = !single && elements.length === 1 && elements[0]!.kind === 'group' ? elements[0]! : null
   const fills = fillsOf(first)
@@ -471,7 +493,7 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
           onChange={(paints, record) => {
             // A linked paint edits its style, which repaints every object that follows it.
             if (fillStyle && onUpdateStyle) onUpdateStyle(fillStyle.id, paints, record)
-            else apply(fillsPatch(paints), record)
+            else apply(fillsPatch(paints), record, 'Change fill')
           }}
           gesture={gesture}
         />
@@ -483,7 +505,7 @@ function AppearancePanel({ elements, leaves, styles, palette, onUpdate, onUpdate
           header={<StyleLink kind="stroke" styles={styles} linked={strokeStyle} source={first} onCreateStyle={onCreateStyle} onLinkStyle={onLinkStyle} />}
           onChange={(paints, record) => {
             if (strokeStyle && onUpdateStyle) onUpdateStyle(strokeStyle.id, paints, record)
-            else apply(strokesPatch(paints), record)
+            else apply(strokesPatch(paints), record, 'Change stroke')
           }}
           gesture={gesture}
         />
@@ -553,7 +575,7 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
   element: VectorElement
   tool: VectorTool
   selectedNodeIds: string[]
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
   onSelectIds: (ids: string[]) => void
   onSelectNodes: (ids: string[]) => void
@@ -590,17 +612,17 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
     })
     onSelectIds(created.map((item) => item.id))
   }
-  const applyWorld = (next: AbsNetwork) => onUpdate(element.id, { ...commitWorld(element, next), kind: 'path' })
+  const applyWorld = (next: AbsNetwork, label = 'Edit nodes') => onUpdate(element.id, { ...commitWorld(element, next), kind: 'path' }, true, label)
   const picked = world.nodes.filter((node) => selectedNodeIds.includes(node.id))
   const alignNodes = (mode: AlignMode) => {
     if (picked.length < 2) return
     const moved = alignPoints(picked.map((node) => node.point), mode)
-    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))))
+    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))), countedLabel('Align', picked.length, 'node'))
   }
   const distributeNodes = (axis: DistributeAxis) => {
     if (picked.length < 3) return
     const moved = distributePoints(picked.map((node) => node.point), axis)
-    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))))
+    applyWorld(moveNodesTo(world, new Map(picked.map((node, index) => [node.id, moved[index]!]))), countedLabel('Distribute', picked.length, 'node'))
   }
   const handles = active
     ? incident.flatMap((segment) => {
@@ -611,7 +633,7 @@ function PathPanel({ element, tool, selectedNodeIds, onUpdate, onEditElements, o
     : []
   const setHandle = (handle: { segmentId: string; end: 'a' | 'b' }, length: number, angle: number) => {
     if (!active) return
-    onUpdate(element.id, { ...moveHandle(element, world, handle.segmentId, handle.end, handleFromPolar(active.point, Math.max(0, length), angle)), kind: 'path' })
+    onUpdate(element.id, { ...moveHandle(element, world, handle.segmentId, handle.end, handleFromPolar(active.point, Math.max(0, length), angle)), kind: 'path' }, true, 'Move handle')
   }
 
   return (
@@ -741,7 +763,7 @@ function AlignButton({ label, shortcut, onClick, children }: { label: string; sh
 
 function ImagePanel({ element, onUpdate, onCrop }: {
   element: VectorElement
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onCrop?: (id: string) => void
 }) {
   const cropped = !isFullCrop(element.crop)
@@ -775,6 +797,12 @@ function ImagePanel({ element, onUpdate, onCrop }: {
   )
 }
 
+function formatStepTime(at: number): string {
+  const date = new Date(at)
+  if (Number.isNaN(date.getTime()) || at === 0) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 function roundBox(box: { x: number; y: number; width: number; height: number }) {
   return { x: round(box.x), y: round(box.y), width: Math.max(1, round(box.width)), height: Math.max(1, round(box.height)) }
 }
@@ -782,8 +810,8 @@ function roundBox(box: { x: number; y: number; width: number; height: number }) 
 function FramePanel({ element, elements, onUpdate, onUpdateElements }: {
   element: VectorElement
   elements: VectorElement[]
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onUpdateElements: (updates: ElementPatch[], record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onUpdateElements: (updates: ElementPatch[], record?: boolean, label?: string) => void
 }) {
   const preset = matchFramePreset(element.width, element.height)
   const children = leafElements(elements, [element.id]).filter((leaf) => leaf.id !== element.id)
@@ -900,12 +928,12 @@ function StyleLink({ kind, styles, linked, source, onCreateStyle, onLinkStyle }:
 
 function TextPanel({ element, onUpdate, onOutline, gesture }: {
   element: VectorElement
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
   onOutline: () => Promise<void>
   gesture: { onGestureStart: () => void; onGestureEnd: () => void; onGestureCancel: () => void }
 }) {
   const properties = textProperties(element)
-  const apply = (patch: Partial<VectorElement>, record?: boolean) => onUpdate(element.id, resizeTextPatch(element, patch, canvasMeasure), record)
+  const apply = (patch: Partial<VectorElement>, record?: boolean) => onUpdate(element.id, resizeTextPatch(element, patch, canvasMeasure), record, 'Change text style')
   const outlineable = canOutline(properties.fontFamily)
   return (
     <section className="vector-panel" aria-label="Text">

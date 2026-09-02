@@ -156,3 +156,91 @@ describe('ordering a selection', () => {
     expect(order(result)).toEqual(['a', 'b', 'c', 'd'])
   })
 })
+
+describe('labelled history', () => {
+  const seed = () => {
+    localStorage.clear()
+    const document = createVectorDocument()
+    document.elements = ['a', 'b', 'c'].map((id) => ({ ...createVectorElement('rectangle', { x: 0, y: 0, width: 10, height: 10 }), id, name: id }))
+    saveVectorDocument(document)
+    return document.id
+  }
+  const labels = (result: { current: { historySteps: Array<{ label: string }> } }) => result.current.historySteps.map((step) => step.label)
+
+  it('names each step after the edit that made it', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.updateElement('a', { x: 40 }, true, 'Move'))
+    act(() => result.current.updateElement('a', { fill: '#123456' }, true, 'Change fill'))
+
+    expect(labels(result)).toEqual(['Opened', 'Move', 'Change fill'])
+    expect(result.current.historyIndex).toBe(2)
+  })
+
+  it('takes the label of a gesture from where it began', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.beginGesture('Move 3 objects'))
+    act(() => result.current.updateElements([{ id: 'a', patch: { x: 5 } }], false))
+    act(() => result.current.endGesture())
+
+    expect(labels(result)).toEqual(['Opened', 'Move 3 objects'])
+  })
+
+  it('keeps the names of steps that have been undone, so redo reads the same', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.updateElement('a', { x: 40 }, true, 'Move'))
+    act(() => result.current.updateElement('a', { fill: '#123456' }, true, 'Change fill'))
+    act(() => result.current.undo())
+
+    expect(labels(result)).toEqual(['Opened', 'Move', 'Change fill'])
+    expect(result.current.historyIndex).toBe(1)
+  })
+
+  it('jumps straight back to any step and forward again', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.updateElement('a', { x: 40 }, true, 'Move'))
+    act(() => result.current.updateElement('a', { x: 80 }, true, 'Move again'))
+    act(() => result.current.updateElement('a', { x: 120 }, true, 'Move once more'))
+    act(() => result.current.goToStep(1))
+
+    expect(result.current.document?.elements.find((element) => element.id === 'a')?.x).toBe(40)
+    expect(result.current.historyIndex).toBe(1)
+    expect(labels(result)).toEqual(['Opened', 'Move', 'Move again', 'Move once more'])
+
+    act(() => result.current.goToStep(3))
+
+    expect(result.current.document?.elements.find((element) => element.id === 'a')?.x).toBe(120)
+    expect(result.current.historyIndex).toBe(3)
+  })
+
+  it('jumps all the way back to the state the document opened in', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.updateElement('a', { x: 40 }, true, 'Move'))
+    act(() => result.current.removeElements(['b']))
+    act(() => result.current.goToStep(0))
+
+    expect(result.current.document?.elements.map((element) => element.id)).toEqual(['a', 'b', 'c'])
+    expect(result.current.document?.elements.find((element) => element.id === 'a')?.x).toBe(0)
+  })
+
+  it('does nothing when asked for the step it is already on', () => {
+    const id = seed()
+    const { result } = renderHook(() => useVectorDocument(id))
+
+    act(() => result.current.updateElement('a', { x: 40 }, true, 'Move'))
+    const before = result.current.document
+
+    act(() => result.current.goToStep(1))
+
+    expect(result.current.document).toBe(before)
+  })
+})

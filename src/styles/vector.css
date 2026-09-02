@@ -1460,3 +1460,72 @@
   vector-effect: non-scaling-stroke;
 }
 .vector-crop__hit { fill: transparent; cursor: move; }
+
+/* History: every state the document can be sent back to, newest first. */
+.vector-history {
+  display: grid;
+  gap: 1px;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.vector-history__step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 30px;
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.vector-history__step:hover { background: var(--accent-subtle); color: var(--text-primary); }
+.vector-history__step:active { transform: scale(0.99); }
+.vector-history__step:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.vector-history__step[data-current] {
+  color: var(--text-primary);
+  background: var(--surface-inset);
+  font-weight: 500;
+}
+.vector-history__step[data-undone] { color: var(--text-muted); }
+.vector-history__step[data-undone] .vector-history__dot { opacity: 0.35; }
+.vector-history__dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.vector-history__step[data-current] .vector-history__dot { background: var(--accent); }
+.vector-history__dot--version { background: var(--vector-guide); }
+.vector-history__label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vector-history__time {
+  flex: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.vector-history__version {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding-inline: var(--space-2);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+@media (pointer: coarse) {
+  .vector-history__step, .vector-history__version { min-height: 40px; }
+}

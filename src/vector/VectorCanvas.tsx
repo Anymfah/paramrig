@@ -4,6 +4,7 @@ import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
+import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
 import { displayRect, droppedImageBounds, FULL_CROP, isFullCrop, panCrop, resizeCrop, type Crop } from '@/vector/crop'
 import { imageNaturalSize, readImageFile } from '@/vector/images'
@@ -93,21 +94,24 @@ type VectorCanvasProps = {
   onEnterGroup: (id: string | null) => void
   onSelectNodes: (ids: string[]) => void
   onToolChange: (tool: VectorTool) => void
-  onAddElements: (elements: VectorElement[]) => void
-  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean) => void
-  onUpdateElements: (updates: Array<{ id: string; patch: Partial<VectorElement> }>, record?: boolean) => void
+  onAddElements: (elements: VectorElement[], select?: boolean, label?: string) => void
+  onUpdate: (id: string, patch: Partial<VectorElement>, record?: boolean, label?: string) => void
+  onUpdateElements: (updates: Array<{ id: string; patch: Partial<VectorElement> }>, record?: boolean, label?: string) => void
   onDuplicateElements: (ids: string[], offset: number) => { ids: string[]; idMap: Record<string, string> }
   onSetGuides: (guides: VectorGuide[], record?: boolean) => void
-  onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean) => void
+  onEditElements: (edit: (elements: VectorElement[]) => VectorElement[], record?: boolean, label?: string) => void
   controller?: MutableRefObject<VectorCanvasController | null>
   onEscape: () => void
   /** While set, a click reads a colour off the drawing instead of selecting; null cancels. */
   sampling?: boolean
   onSample?: (point: Point | null) => void
-  onGestureStart: () => void
-  onGestureEnd: () => void
+  onGestureStart: (label?: string) => void
+  onGestureEnd: (label?: string) => void
   onGestureCancel: () => void
 }
+
+/** What a modal G / R / S transform is called in the history. */
+const MODAL_LABELS = { move: 'Move', rotate: 'Rotate', scale: 'Scale' } as const
 
 const RULER_SIZE = 24
 const SNAP_PX = 6
@@ -436,7 +440,7 @@ export function VectorCanvas({
         if (Math.hypot(start.x - origin.x, start.y - origin.y) < 1) {
           start = { x: origin.x + Math.max(40, editingElement.width / 2), y: origin.y }
         }
-        callbacks.current.onGestureStart()
+        callbacks.current.onGestureStart(MODAL_LABELS[mode])
         interaction.current = { kind: 'modal', target: 'nodes', mode, axis: null, start, element: structuredClone(editingElement), world, nodeIds: [...nodeIds], preview: structuredClone(editingElement) }
         setTransformStatus({ mode, axis: null })
         return true
@@ -445,7 +449,7 @@ export function VectorCanvas({
       if (leaves.length === 0 || toolRef.current !== 'transform' || interaction.current) return false
       const bounds = selectionBounds(leaves)
       const start = latestPointer.current ?? { x: bounds.x + bounds.width, y: bounds.y + bounds.height / 2 }
-      callbacks.current.onGestureStart()
+      callbacks.current.onGestureStart(MODAL_LABELS[mode])
       interaction.current = { kind: 'modal', target: 'elements', mode, axis: null, start, elements: structuredClone(leaves), preview: structuredClone(leaves) }
       setTransformStatus({ mode, axis: null })
       return true
@@ -676,7 +680,7 @@ export function VectorCanvas({
   const startCrop = (event: ReactPointerEvent<SVGElement>, handle: DirectResizeHandle | null) => {
     if (event.button !== 0 || !cropping) return
     event.stopPropagation()
-    onGestureStart()
+    onGestureStart('Crop image')
     interaction.current = {
       kind: 'crop',
       pointerId: event.pointerId,
@@ -714,7 +718,7 @@ export function VectorCanvas({
   const openTextEditor = (element: VectorElement) => {
     if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
     textDraft.current = element.text ?? ''
-    onGestureStart()
+    onGestureStart('Edit text')
     setTextEditId(element.id)
   }
 
@@ -729,7 +733,7 @@ export function VectorCanvas({
     const bounds = box ?? { x: at.x, y: at.y - placeholder.height / 2, ...placeholder }
     const element = createVectorElement('text', bounds, { text: '', ...(box ? { textSizing: 'fixed' as const } : {}) })
     textDraft.current = ''
-    onGestureStart()
+    onGestureStart('Add text')
     onAddElements([element])
     setTextEditId(element.id)
   }
@@ -816,7 +820,7 @@ export function VectorCanvas({
         const last = points[points.length - 1]!.anchor
         const closed = points.length >= 3 && Math.hypot(first.x - last.x, first.y - last.y) <= PEN_CLOSE_PX / zoom
         const built = normalizeWorld(networkFromRuns([{ points: closed ? points.slice(0, -1) : points, closed }]))
-        onAddElements([createVectorElement('path', built, { network: built.network, name: 'Pencil' })])
+        onAddElements([createVectorElement('path', built, { network: built.network, name: 'Pencil' })], true, 'Draw with pencil')
       }
     } else if (active.kind === 'pen' || active.kind === 'guide-create') {
       /* draft-only */
@@ -863,7 +867,7 @@ export function VectorCanvas({
   const startResize = (event: ReactPointerEvent<SVGElement>, handle: DirectResizeHandle, single: VectorElement | null, leaves: VectorElement[]) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    onGestureStart()
+    onGestureStart(countedLabel('Resize', leaves.length))
     const ids = single ? [single.id] : selectedIds
     interaction.current = {
       kind: 'resize', pointerId: event.pointerId, start: point(event.nativeEvent),
@@ -876,7 +880,7 @@ export function VectorCanvas({
   const startRotate = (event: ReactPointerEvent<SVGElement>, single: VectorElement | null, leaves: VectorElement[]) => {
     if (event.button !== 0) return
     event.stopPropagation()
-    onGestureStart()
+    onGestureStart(countedLabel('Rotate', leaves.length))
     const bounds = selectionBounds(leaves)
     interaction.current = {
       kind: 'rotate', pointerId: event.pointerId, start: point(event.nativeEvent),
@@ -924,7 +928,7 @@ export function VectorCanvas({
       onSelectIds(ids)
     }
     if (tool !== 'select' || resolvedElement.locked) return
-    onGestureStart()
+    onGestureStart(countedLabel('Move', ids.length))
     beginMove(event, ids, toggleOnClick)
   }
 
@@ -938,7 +942,7 @@ export function VectorCanvas({
     const nodeHit = stack.map((node) => (node as Element).closest('[data-vector-node]')?.getAttribute('data-vector-node') ?? null).find((value): value is string => value !== null)
     if (nodeHit !== undefined && editing) {
       if (interaction.current && interaction.current.kind !== 'modal') cancelInteraction()
-      onUpdate(editing.id, { ...toggleNodeSmooth(editing, worldNetwork(editing), nodeHit), kind: 'path' })
+      onUpdate(editing.id, { ...toggleNodeSmooth(editing, worldNetwork(editing), nodeHit), kind: 'path' }, true, 'Toggle node')
       onSelectNodes([nodeHit])
       return
     }
@@ -949,7 +953,7 @@ export function VectorCanvas({
       if (hit && hit.segment.id === segmentHit) {
         const inserted = insertNodeOnSegment(editing, worldNetwork(editing), segmentHit, hit.t)
         const { nodeId, ...patch } = inserted
-        onUpdate(editing.id, { ...patch, kind: 'path' })
+        onUpdate(editing.id, { ...patch, kind: 'path' }, true, 'Add node')
         onSelectNodes([nodeId])
         setSelectedSegment(null)
       }
@@ -1364,7 +1368,7 @@ export function VectorCanvas({
     if (event.button !== 0 || tool !== 'select' && tool !== 'transform') return
     event.stopPropagation()
     setSelectedGuide(guide.id)
-    onGestureStart()
+    onGestureStart('Move guide')
     interaction.current = { kind: 'guide-move', pointerId: event.pointerId, guide, targets: snapTargetsFor([]) }
     setDirectCursor(guide.axis === 'x' ? 'col-resize' : 'row-resize')
     svgRef.current?.setPointerCapture(event.pointerId)
@@ -1417,7 +1421,7 @@ export function VectorCanvas({
       const incident = world.segments.filter((segment) => segment.a === nodeId || segment.b === nodeId)
       const smooth = incident.some((segment) => (segment.a === nodeId && segment.ah) || (segment.b === nodeId && segment.bh))
       if (smooth) {
-        onUpdate(editing.id, { ...toggleNodeSmooth(editing, world, nodeId), kind: 'path' })
+        onUpdate(editing.id, { ...toggleNodeSmooth(editing, world, nodeId), kind: 'path' }, true, 'Toggle node')
         onSelectNodes([nodeId])
         return
       }
@@ -1429,7 +1433,7 @@ export function VectorCanvas({
         segments: world.segments.map((segment) => segment.id === first.id ? (segment.a === nodeId ? { ...segment, ah: anchor } : { ...segment, bh: anchor }) : segment),
       }
       onSelectNodes([nodeId])
-      onGestureStart()
+      onGestureStart('Move handle')
       interaction.current = {
         kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: anchor,
         element: structuredClone(editing), world: seeded, nodeIds: [nodeId], handle: { segmentId: first.id, end: first.a === nodeId ? 'a' : 'b' }, targets: [], moved: true, toggleOnClick: null,
@@ -1452,7 +1456,7 @@ export function VectorCanvas({
     } else {
       nodeIds = [nodeId]
     }
-    onGestureStart()
+    onGestureStart(handle ? 'Move handle' : countedLabel('Move', nodeIds.length, 'node'))
     interaction.current = {
       kind: 'node', pointerId: event.pointerId, start: point(event.nativeEvent), anchorStart: world.nodes.find((node) => node.id === nodeId)!.point,
       element: structuredClone(editing), world, nodeIds, handle,
@@ -1475,7 +1479,7 @@ export function VectorCanvas({
     if (event.metaKey || event.ctrlKey) {
       const hit = nearestSegment(editing, at)
       if (!hit) return
-      onGestureStart()
+      onGestureStart('Bend segment')
       onSelectNodes([])
       setSelectedSegment(segmentId)
       interaction.current = { kind: 'bend', pointerId: event.pointerId, element: structuredClone(editing), world, segmentId, t: hit.t }
@@ -1487,7 +1491,7 @@ export function VectorCanvas({
     if (!segment) return
     onSelectNodes([])
     setSelectedSegment(segmentId)
-    onGestureStart()
+    onGestureStart('Move segment')
     interaction.current = { kind: 'segment-move', pointerId: event.pointerId, start: at, element: structuredClone(editing), world, nodeIds: [segment.a, segment.b], segmentId, moved: false }
     setDirectCursor('move')
     svgRef.current?.setPointerCapture(event.pointerId)
@@ -1499,7 +1503,7 @@ export function VectorCanvas({
     const world = worldNetwork(editing)
     const bounds = nodeBoundsOf(world, selectedNodeIds)
     if (!bounds) return
-    onGestureStart()
+    onGestureStart(countedLabel('Scale', selectedNodeIds.length, 'node'))
     interaction.current = { kind: 'node-resize', pointerId: event.pointerId, element: structuredClone(editing), world, nodeIds: [...selectedNodeIds], bounds, handle }
     setDirectCursor(resizeCursor(handle, 0))
     svgRef.current?.setPointerCapture(event.pointerId)
@@ -1510,7 +1514,7 @@ export function VectorCanvas({
     const world = worldNetwork(editing)
     const bounds = nodeBoundsOf(world, selectedNodeIds)
     if (!bounds) return
-    onGestureStart()
+    onGestureStart(countedLabel('Rotate', selectedNodeIds.length, 'node'))
     interaction.current = { kind: 'node-rotate', pointerId: event.pointerId, start: point(event.nativeEvent), element: structuredClone(editing), world, nodeIds: [...selectedNodeIds], center: elementCenter(bounds) }
     setTransformStatus({ mode: 'rotate', axis: null })
     setDirectCursor('var(--cursor-rotate)')

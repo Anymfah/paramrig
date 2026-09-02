@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { reorderIndex } from '@/vector/commands'
+import { countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/vector/history'
 import { createVectorElement, getVectorDocument, MAX_VERSIONS, saveVectorDocument } from '@/vector/document'
 import { selectionBounds } from '@/vector/geometry'
 import {
@@ -12,10 +13,17 @@ import {
 } from '@/vector/tree'
 import type { VectorDocument, VectorElement, VectorGuide } from '@/vector/types'
 
+/** A recorded state plus the name of the edit that led away from it. */
+type HistoryEntry = { document: VectorDocument; label: string; at: number }
+
 type VectorHistory = {
-  past: VectorDocument[]
-  future: VectorDocument[]
+  past: HistoryEntry[]
+  future: HistoryEntry[]
 }
+
+const HISTORY_LIMIT = 100
+
+const ORDER_LABELS = { forward: 'Bring forward', backward: 'Send backward', front: 'Bring to front', back: 'Send to back' } as const
 
 export type DocumentPatch = Partial<Pick<VectorDocument, 'background' | 'width' | 'height' | 'guides' | 'exportPresets' | 'styles' | 'swatches' | 'recentColors'>>
 
@@ -29,7 +37,15 @@ export function useVectorDocument(documentId: string) {
   const [selectedIds, setSelectedIdsState] = useState<string[]>([])
   const [enteredGroupId, setEnteredGroupId] = useState<string | null>(null)
   const [history, setHistory] = useState<VectorHistory>({ past: [], future: [] })
+  /**
+   * History is mirrored in a ref and written through a helper: recording from inside a state
+   * updater would run twice under StrictMode and record every edit twice.
+   */
+  const historyRef = useRef<VectorHistory>(history)
+  historyRef.current = history
   const gestureStart = useRef<VectorDocument | null>(null)
+  const gestureLabel = useRef<string>(DEFAULT_STEP_LABEL)
+  const openedAt = useRef(Date.now())
   const loadedId = useRef(documentId)
   const latest = useRef<VectorDocument | null>(initial)
   latest.current = document
@@ -40,8 +56,10 @@ export function useVectorDocument(documentId: string) {
     setDocument(getVectorDocument(documentId))
     setSelectedIdsState([])
     setEnteredGroupId(null)
-    setHistory({ past: [], future: [] })
+    historyRef.current = { past: [], future: [] }
+    setHistory(historyRef.current)
     gestureStart.current = null
+    openedAt.current = Date.now()
   }, [documentId])
 
   useEffect(() => {
@@ -49,42 +67,50 @@ export function useVectorDocument(documentId: string) {
     saveVectorDocument(document)
   }, [document])
 
-  const replace = useCallback((update: (current: VectorDocument) => VectorDocument, record = true) => {
-    setDocument((current) => {
-      if (!current) return current
-      const updated = update(current)
-      if (updated === current) return current
-      const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(updated.elements) }
-      if (sameDocument(synced, current)) return current
-      const next = { ...synced, updatedAt: new Date().toISOString() }
-      if (record && !gestureStart.current) {
-        setHistory((value) => ({ past: [...value.past.slice(-99), clone(current)], future: [] }))
-      }
-      return next
-    })
+  const writeHistory = useCallback((next: VectorHistory) => {
+    historyRef.current = next
+    setHistory(next)
   }, [])
 
-  const beginGesture = useCallback(() => {
+  const replace = useCallback((update: (current: VectorDocument) => VectorDocument, record = true, label = DEFAULT_STEP_LABEL) => {
+    const current = latest.current
+    if (!current) return
+    const updated = update(current)
+    if (updated === current) return
+    const synced = updated.elements === current.elements ? updated : { ...updated, elements: syncGroupBounds(updated.elements) }
+    if (sameDocument(synced, current)) return
+    const next = { ...synced, updatedAt: new Date().toISOString() }
+    if (record && !gestureStart.current) {
+      writeHistory({ past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: clone(current), label, at: Date.now() }], future: [] })
+    }
+    latest.current = next
+    setDocument(next)
+  }, [writeHistory])
+
+  const beginGesture = useCallback((label = DEFAULT_STEP_LABEL) => {
     if (gestureStart.current || !latest.current) return
     gestureStart.current = clone(latest.current)
+    gestureLabel.current = label
   }, [])
 
-  const endGesture = useCallback(() => {
-    setDocument((current) => {
-      const start = gestureStart.current
-      gestureStart.current = null
-      if (current && start && !sameDocument(current, start)) {
-        setHistory((value) => ({ past: [...value.past.slice(-99), start], future: [] }))
-        queueMicrotask(() => saveVectorDocument(current))
-      }
-      return current
-    })
-  }, [])
+  const endGesture = useCallback((label?: string) => {
+    const name = label ?? gestureLabel.current
+    const start = gestureStart.current
+    const current = latest.current
+    gestureStart.current = null
+    gestureLabel.current = DEFAULT_STEP_LABEL
+    if (!current || !start || sameDocument(current, start)) return
+    writeHistory({ past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: start, label: name, at: Date.now() }], future: [] })
+    queueMicrotask(() => saveVectorDocument(current))
+  }, [writeHistory])
 
   const cancelGesture = useCallback(() => {
     const start = gestureStart.current
     gestureStart.current = null
-    if (start) setDocument(start)
+    gestureLabel.current = DEFAULT_STEP_LABEL
+    if (!start) return
+    latest.current = start
+    setDocument(start)
   }, [])
 
   const setSelectedIds = useCallback((ids: string[]) => {
@@ -93,14 +119,14 @@ export function useVectorDocument(documentId: string) {
 
   const setSelectedId = useCallback((id: string | null) => setSelectedIds(id ? [id] : []), [setSelectedIds])
 
-  const updateElement = useCallback((id: string, patch: Partial<VectorElement>, record = true) => {
+  const updateElement = useCallback((id: string, patch: Partial<VectorElement>, record = true, label?: string) => {
     replace((current) => ({
       ...current,
       elements: current.elements.map((element) => element.id === id ? { ...element, ...patch } : element),
-    }), record)
+    }), record, label)
   }, [replace])
 
-  const updateElements = useCallback((updates: Array<{ id: string; patch: Partial<VectorElement> }>, record = true) => {
+  const updateElements = useCallback((updates: Array<{ id: string; patch: Partial<VectorElement> }>, record = true, label?: string) => {
     if (updates.length === 0) return
     const byId = new Map(updates.map((update) => [update.id, update.patch]))
     replace((current) => ({
@@ -109,33 +135,33 @@ export function useVectorDocument(documentId: string) {
         const patch = byId.get(element.id)
         return patch ? { ...element, ...patch } : element
       }),
-    }), record)
+    }), record, label)
   }, [replace])
 
   /** Arbitrary element-list edit recorded as one undo entry (or folded into an open gesture). */
-  const editElements = useCallback((edit: (elements: VectorElement[]) => VectorElement[], record = true) => {
+  const editElements = useCallback((edit: (elements: VectorElement[]) => VectorElement[], record = true, label?: string) => {
     replace((current) => {
       const elements = edit(current.elements)
       return elements === current.elements ? current : { ...current, elements }
-    }, record)
+    }, record, label)
   }, [replace])
 
   /** Arbitrary document-level edit recorded as one undo entry, for changes that span both. */
-  const editDocument = useCallback((edit: (current: VectorDocument) => VectorDocument, record = true) => {
-    replace(edit, record)
+  const editDocument = useCallback((edit: (current: VectorDocument) => VectorDocument, record = true, label?: string) => {
+    replace(edit, record, label)
   }, [replace])
 
-  const updateDocument = useCallback((patch: DocumentPatch, record = true) => {
-    replace((current) => ({ ...current, ...patch }), record)
+  const updateDocument = useCallback((patch: DocumentPatch, record = true, label = 'Change page') => {
+    replace((current) => ({ ...current, ...patch }), record, label)
   }, [replace])
 
-  const setGuides = useCallback((guides: VectorGuide[], record = true) => {
-    replace((current) => ({ ...current, guides }), record)
+  const setGuides = useCallback((guides: VectorGuide[], record = true, label = 'Change guides') => {
+    replace((current) => ({ ...current, guides }), record, label)
   }, [replace])
 
-  const addElements = useCallback((elements: VectorElement[], select = true) => {
+  const addElements = useCallback((elements: VectorElement[], select = true, label?: string) => {
     if (elements.length === 0) return
-    replace((current) => ({ ...current, elements: [...current.elements, ...elements] }))
+    replace((current) => ({ ...current, elements: [...current.elements, ...elements] }), true, label ?? countedLabel(`Add ${elements[0]!.kind}`, elements.length))
     if (select) setSelectedIds(elements.map((element) => element.id))
   }, [replace, setSelectedIds])
 
@@ -146,7 +172,7 @@ export function useVectorDocument(documentId: string) {
     replace((current) => {
       const removed = new Set(ids.flatMap((id) => [id, ...descendantIds(current.elements, id)]))
       return { ...current, elements: current.elements.filter((element) => !removed.has(element.id)) }
-    })
+    }, true, countedLabel('Delete', ids.length))
     setSelectedIdsState((selected) => selected.filter((id) => !ids.includes(id)))
   }, [replace])
 
@@ -155,7 +181,7 @@ export function useVectorDocument(documentId: string) {
   const renameElement = useCallback((id: string, name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    updateElement(id, { name: trimmed.slice(0, 120) })
+    updateElement(id, { name: trimmed.slice(0, 120) }, true, 'Rename layer')
   }, [updateElement])
 
   /**
@@ -203,7 +229,7 @@ export function useVectorDocument(documentId: string) {
       const elements = [...current.elements]
       elements.splice(topIndex + 1, 0, ...block)
       return { ...current, elements }
-    })
+    }, true, countedLabel('Duplicate', ids.length))
     return { ids: requested, idMap: Object.fromEntries(idMap) }
   }, [replace])
 
@@ -220,11 +246,11 @@ export function useVectorDocument(documentId: string) {
   const rename = useCallback((name: string) => {
     const trimmed = name.trim()
     if (!trimmed) return
-    replace((current) => ({ ...current, name: trimmed.slice(0, 120) }))
+    replace((current) => ({ ...current, name: trimmed.slice(0, 120) }), true, 'Rename document')
   }, [replace])
 
   const resizeDocument = useCallback((width: number, height: number) => {
-    replace((current) => ({ ...current, width, height }))
+    replace((current) => ({ ...current, width, height }), true, 'Resize page')
   }, [replace])
 
   const reorderElement = useCallback((id: string, direction: -1 | 1) => {
@@ -235,7 +261,7 @@ export function useVectorDocument(documentId: string) {
       if (index === null) return current
       const moved = moveInTree(current.elements, id, { parentId: element.parentId ?? null, index })
       return moved === current.elements ? current : { ...current, elements: moved }
-    })
+    }, true, direction > 0 ? 'Bring forward' : 'Send backward')
   }, [replace])
 
   /**
@@ -256,14 +282,14 @@ export function useVectorDocument(documentId: string) {
         elements = moveInTree(elements, id, { parentId: element.parentId ?? null, index })
       }
       return elements === current.elements ? current : { ...current, elements }
-    })
+    }, true, ORDER_LABELS[mode])
   }, [replace])
 
   const moveElementInTree = useCallback((id: string, target: { parentId: string | null; index: number }) => {
     replace((current) => {
       const moved = moveInTree(current.elements, id, target)
       return moved === current.elements ? current : { ...current, elements: moved }
-    })
+    }, true, 'Reorder')
   }, [replace])
 
   const groupSelection = useCallback((ids: string[]): string | null => {
@@ -275,7 +301,7 @@ export function useVectorDocument(documentId: string) {
       if (members.length === 0) return current
       created = true
       return { ...current, elements: groupElements(current.elements, members.map((element) => element.id), group) }
-    })
+    }, true, 'Group')
     return created ? group.id : group.id
   }, [replace])
 
@@ -284,7 +310,7 @@ export function useVectorDocument(documentId: string) {
       let elements = current.elements
       for (const id of ids) elements = ungroupElements(elements, id)
       return elements === current.elements ? current : { ...current, elements }
-    })
+    }, true, 'Ungroup')
   }, [replace])
 
   const saveVersion = useCallback((name: string) => {
@@ -292,7 +318,7 @@ export function useVectorDocument(documentId: string) {
     replace((current) => ({
       ...current,
       versions: [...(current.versions ?? []), { id: crypto.randomUUID(), name: trimmed, createdAt: new Date().toISOString(), elements: structuredClone(current.elements), guides: structuredClone(current.guides) }].slice(-MAX_VERSIONS),
-    }))
+    }), true, `Save version “${trimmed}”`)
   }, [replace])
 
   const restoreVersion = useCallback((id: string) => {
@@ -300,7 +326,7 @@ export function useVectorDocument(documentId: string) {
       const version = current.versions?.find((item) => item.id === id)
       if (!version) return current
       return { ...current, elements: structuredClone(version.elements), guides: structuredClone(version.guides) }
-    })
+    }, true, 'Restore version')
     setSelectedIdsState([])
   }, [replace])
 
@@ -308,34 +334,70 @@ export function useVectorDocument(documentId: string) {
     replace((current) => {
       const versions = (current.versions ?? []).filter((item) => item.id !== id)
       return { ...current, versions: versions.length ? versions : undefined }
-    })
+    }, true, 'Delete version')
   }, [replace])
 
   const undo = useCallback(() => {
     if (gestureStart.current) return
-    setHistory((value) => {
-      const previous = value.past.at(-1)
-      if (!previous) return value
-      setDocument((current) => current ? clone(previous) : current)
-      return {
-        past: value.past.slice(0, -1),
-        future: document ? [clone(document), ...value.future].slice(0, 100) : value.future,
-      }
+    const value = historyRef.current
+    const previous = value.past.at(-1)
+    const current = latest.current
+    if (!previous || !current) return
+    // The state we leave keeps the name of the edit that produced it, so redo reads the same.
+    writeHistory({
+      past: value.past.slice(0, -1),
+      future: [{ document: clone(current), label: previous.label, at: previous.at }, ...value.future].slice(0, HISTORY_LIMIT),
     })
-  }, [document])
+    latest.current = clone(previous.document)
+    setDocument(latest.current)
+  }, [writeHistory])
 
   const redo = useCallback(() => {
     if (gestureStart.current) return
-    setHistory((value) => {
-      const next = value.future[0]
-      if (!next) return value
-      setDocument((current) => current ? clone(next) : current)
-      return {
-        past: document ? [...value.past, clone(document)].slice(-100) : value.past,
-        future: value.future.slice(1),
-      }
+    const value = historyRef.current
+    const next = value.future[0]
+    const current = latest.current
+    if (!next || !current) return
+    writeHistory({
+      past: [...value.past, { document: clone(current), label: next.label, at: next.at }].slice(-HISTORY_LIMIT),
+      future: value.future.slice(1),
     })
-  }, [document])
+    latest.current = clone(next.document)
+    setDocument(latest.current)
+  }, [writeHistory])
+
+  /** Sends the document to any recorded state in one move, undoing or redoing as far as needed. */
+  const goToStep = useCallback((index: number) => {
+    if (gestureStart.current) return
+    const value = historyRef.current
+    const current = latest.current
+    if (!current) return
+    // One array of states, each named after the edit that produced it.
+    const states: HistoryEntry[] = [
+      { document: value.past[0]?.document ?? current, label: START_LABEL, at: value.past[0]?.at ?? openedAt.current },
+      ...value.past.map((entry, position) => ({
+        document: position + 1 < value.past.length ? value.past[position + 1]!.document : current,
+        label: entry.label,
+        at: entry.at,
+      })),
+      ...value.future,
+    ]
+    const position = value.past.length
+    const target = Math.max(0, Math.min(states.length - 1, index))
+    if (target === position) return
+    writeHistory({
+      past: states.slice(0, target).map((entry, at) => ({ document: entry.document, label: states[at + 1]!.label, at: states[at + 1]!.at })),
+      future: states.slice(target + 1),
+    })
+    latest.current = clone(states[target]!.document)
+    setDocument(latest.current)
+  }, [writeHistory])
+
+  const historySteps: HistoryStep[] = [
+    { index: 0, label: START_LABEL, at: history.past[0]?.at ?? openedAt.current },
+    ...history.past.map((entry, index) => ({ index: index + 1, label: entry.label, at: entry.at })),
+    ...history.future.map((entry, index) => ({ index: history.past.length + 1 + index, label: entry.label, at: entry.at })),
+  ]
 
   const elements = document?.elements ?? []
   const validSelectedIds = selectedIds.filter((id) => elements.some((element) => element.id === id))
@@ -398,6 +460,9 @@ export function useVectorDocument(documentId: string) {
     restoreVersion,
     deleteVersion,
     historyDepth: history.past.length,
+    historySteps,
+    historyIndex: history.past.length,
+    goToStep,
   }
 }
 
