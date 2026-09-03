@@ -1,4 +1,4 @@
-import type { SceneViewport } from '@/scene/viewport/SceneViewport'
+import type { ElementHits, SceneViewport } from '@/scene/viewport/SceneViewport'
 import type { Vec3 } from '@/scene/types'
 
 /**
@@ -15,6 +15,8 @@ export type SceneDebugApi = {
   unproject: (x: number, y: number, depth?: number) => Vec3
   pick: (x: number, y: number) => { kind: string; id: number } | null
   pickObject: (x: number, y: number) => string | null
+  /** What is under a point in edit mode, per element kind, with its distance in pixels. */
+  pickElements: (x: number, y: number, radius?: number) => ElementHits
   stats: () => ReturnType<SceneViewport['stats']>
   /** Draws one frame synchronously and returns how long it took, in milliseconds. */
   frame: () => number
@@ -89,6 +91,7 @@ export function installSceneDebug(viewport: SceneViewport): () => void {
     unproject: (x, y, depth) => viewport.unproject(x, y, depth),
     pick: (x, y) => viewport.pick(x, y),
     pickObject: (x, y) => viewport.pickObject(x, y),
+    pickElements: (x, y, radius) => viewport.pickElements(x, y, radius),
     stats: () => viewport.stats(),
     frame: () => {
       const started = performance.now()

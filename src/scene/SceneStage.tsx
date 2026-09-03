@@ -113,7 +113,16 @@ export function SceneStage({
   const viewport = useRef<SceneViewport | null>(null)
   const navigator = useRef<ViewNavigator | null>(null)
   const frameHandle = useRef<number | null>(null)
-  const press = useRef<{ x: number; y: number; button: number; moved: boolean; navigating: boolean; touch: boolean } | null>(null)
+  const press = useRef<{
+    x: number
+    y: number
+    button: number
+    moved: boolean
+    navigating: boolean
+    touch: boolean
+    /** A ⌥ press in edit mode: an orbit if it moves, an edge loop if it does not. */
+    loop?: boolean
+  } | null>(null)
   /**
    * The fingers on the glass. Blender's touch scheme, which is also every map's: one finger turns
    * the view, two pan it and pinch it, a tap picks, and a long press is the right button.
@@ -376,6 +385,16 @@ export function SceneStage({
             return
           }
           const gesture = nav.gestureFor(event.nativeEvent)
+          /*
+           * ⌥ and the left button orbit, for a mouse with no middle button — and in edit mode they
+           * are also how Blender takes an edge loop. Both are kept, told apart by whether the
+           * pointer moved: a ⌥ drag turns the view, and a ⌥ press that stays still takes the loop.
+           * Anything else would mean choosing between orbiting on a trackpad and loop select, and
+           * neither is one a modelling editor can do without.
+           */
+          const takingALoop = latestDocument.current.view.mode === 'edit'
+            && event.button === 0
+            && event.altKey
           const box = event.currentTarget.getBoundingClientRect()
           const x = event.clientX - box.left
           const y = event.clientY - box.top
@@ -432,7 +451,7 @@ export function SceneStage({
               onMenuRef.current({ x: event.clientX, y: event.clientY })
             }, 500)
           }
-          press.current = { x, y, button: event.button, moved: false, navigating: !!gesture, touch }
+          press.current = { x, y, button: event.button, moved: false, navigating: !!gesture, touch, loop: takingALoop }
           event.currentTarget.setPointerCapture(event.pointerId)
           if (gesture) {
             event.preventDefault()
@@ -609,7 +628,8 @@ export function SceneStage({
             nav.end()
             region.current = null
             marquee.clear()
-            return
+            // A ⌥ press that never moved was not an orbit: it was a loop select waiting to happen.
+            if (!held.loop || held.moved) return
           }
           const drawing = region.current
           region.current = null
@@ -625,12 +645,17 @@ export function SceneStage({
           }
           if (held.moved || held.button !== 0) return
           const box = event.currentTarget.getBoundingClientRect()
+
           if (latestDocument.current.view.mode === 'edit') {
             const hits = instance.pickElements(event.clientX - box.left, event.clientY - box.top, ELEMENT_RADIUS)
-            const chosen = chooseElement(hits, latestDocument.current.view.selectMode)
             const mode: ElementPickMode = event.altKey && event.ctrlKey
               ? 'ring'
               : event.altKey ? 'loop' : event.ctrlKey ? 'path' : event.shiftKey ? 'toggle' : 'new'
+            // A loop and a ring are always about an edge, whichever kind is being selected: that is
+            // how ⌥ click takes a loop of vertices while the editor is in vertex mode.
+            const chosen = mode === 'loop' || mode === 'ring'
+              ? (hits.edge ? { objectId: hits.edge.objectId, kind: 'edge' as const, slot: hits.edge.slot } : null)
+              : chooseElement(hits, latestDocument.current.view.selectMode)
             if (!chosen && mode === 'new' && !preferences.deselectOnEmptyClick) return
             onElementRef.current.onPickElement(chosen, mode)
             return

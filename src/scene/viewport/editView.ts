@@ -517,8 +517,13 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     // Blender never hides the edges: they are how a person reads the shape they are working on.
     edges.object.visible = true
     if (faces) faces.visible = true
-    vertexPick.visible = modes.includes('vertex')
-    edgePick.visible = modes.includes('edge')
+    /*
+     * All three passes stay in the id buffer whatever is being selected. ⌥ click takes a loop of
+     * edges while the editor is in vertex mode, and a hover has to know what it is over before the
+     * priority is applied — a buffer that only answered for the current mode could do neither.
+     */
+    vertexPick.visible = true
+    edgePick.visible = true
   }
 
   function applyXray(): void {

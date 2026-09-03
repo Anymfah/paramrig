@@ -71,6 +71,13 @@ const CONTEXT_IDS = [
 
 const SELECT_TOOLS: SceneTool[] = ['select-box', 'select-circle', 'select-lasso']
 
+/** B and C name a way of selecting, not a selection: the key picks up the tool. */
+const SELECT_TOOL_FOR = new Map<string, SceneTool>([
+  ['select.box', 'select-box'],
+  ['select.circle', 'select-circle'],
+  ['select.lasso', 'select-lasso'],
+])
+
 type PieKind = 'pivot' | 'orientation' | 'shading' | 'snap' | 'mode'
 type Pie = { kind: PieKind; at: { x: number; y: number } } | null
 
@@ -245,6 +252,14 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         const active = editor.activeObject
         if (!active) editor.setMessage('Select an object first.')
         else setRenaming(active.name)
+        return
+      }
+      // B, C and the lasso choose a tool rather than selecting nothing: the region operators are
+      // run by the drag that follows, with what it covered, and running one from a key with no
+      // region at all would clear the selection instead of starting a gesture.
+      if (SELECT_TOOL_FOR.has(action.id)) {
+        patchView({ tool: SELECT_TOOL_FOR.get(action.id)! })
+        setAnnouncement(binding.label)
         return
       }
       // A pointer-driven operator opens a gesture rather than running once: the key starts an

@@ -672,7 +672,7 @@ export class SceneViewport {
     const left = Math.round(x * ratio) - half
     const top = Math.round(y * ratio) - half
     const span = half * 2 + 1
-    const buffer = this.picking.region(renderer, this.camera, left, top + span, span, span)
+    const buffer = this.picking.region(renderer, this.camera, left, top, span, span)
     for (let row = 0; row < span; row += 1) {
       for (let column = 0; column < span; column += 1) {
         const offset = (row * span + column) * 4
@@ -681,8 +681,9 @@ export class SceneViewport {
         const { objectIndex, elementIndex } = decodeElement(found.id)
         const objectId = this.editObjects[objectIndex]
         if (!objectId) continue
+        // The buffer's rows run bottom-up and the pointer's coordinates run top-down.
         const dx = column - half
-        const dy = row - half
+        const dy = (span - 1 - row) - half
         const distance = Math.sqrt(dx * dx + dy * dy) / ratio
         const current = hits[found.kind]
         if (current && current.distance <= distance) continue
