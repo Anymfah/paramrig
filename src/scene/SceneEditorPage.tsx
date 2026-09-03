@@ -1,16 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
+import { EditorModal } from '@/editor/EditorModal'
+import { LiveRegion } from '@/editor/LiveRegion'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { StatusMessage } from '@/ui/StatusMessage'
-import { LiveRegion } from '@/editor/LiveRegion'
-import { getSceneDocument, sceneCounts } from '@/scene/document'
-import { resolveKey } from '@/scene/keymap'
+import { ContextMenuRoot } from '@/ui/ContextMenu'
+import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
+import { getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
+import { describeKeymap, resolveKey } from '@/scene/keymap'
 import { getOperator } from '@/scene/operators/registry'
-import type { TransformMode } from '@/scene/transform/session'
-import { DEFAULT_PREFERENCES, readScenePrefs, type SceneMode } from '@/scene/prefs'
+import {
+  isOpen as sectionIsOpen,
+  readScenePrefs,
+  tabOf,
+  withSection,
+  withTab,
+  writeScenePrefs,
+  DEFAULT_PREFERENCES,
+  type SceneMode,
+} from '@/scene/prefs'
+import { SceneFileMenu } from '@/scene/SceneFileMenu'
+import { SceneHeader } from '@/scene/SceneHeader'
+import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
+import { SceneNavGizmo } from '@/scene/SceneNavGizmo'
+import { SceneOutliner } from '@/scene/SceneOutliner'
+import { ScenePieMenu, type ScenePieItem } from '@/scene/ScenePieMenu'
+import { SceneProperties } from '@/scene/SceneProperties'
+import { SceneRedoPanel } from '@/scene/SceneRedoPanel'
+import { SceneSidebar } from '@/scene/SceneSidebar'
 import { SceneStage, type SceneStageHandle } from '@/scene/SceneStage'
 import { SceneStatusBar } from '@/scene/SceneStatusBar'
+import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
+import { useSceneFile } from '@/scene/useSceneFile'
+import type { SceneTool, ViewState } from '@/scene/types'
+import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/operators'
 
@@ -20,6 +45,18 @@ const MODAL_MODES: Record<string, TransformMode> = {
   'transform.rotate': 'rotate',
   'transform.scale': 'scale',
 }
+
+/** The menu the right button opens over the viewport: the Object menu, cut to what is used most. */
+const CONTEXT_IDS = [
+  'transform.move', 'transform.rotate', 'transform.scale', '-',
+  'object.duplicate', 'object.duplicateLinked', '-',
+  'object.setOrigin', 'object.shadeSmooth', 'object.shadeFlat', '-',
+  'object.delete',
+]
+
+const SELECT_TOOLS: SceneTool[] = ['select-box', 'select-circle', 'select-lasso']
+
+type Pie = { kind: 'pivot' | 'orientation' | 'shading' | 'snap'; at: { x: number; y: number } } | null
 
 /**
  * The 3D editor: the outliner on the left, the viewport in the middle, the properties on the right.
@@ -36,24 +73,63 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   viewportOptions?: SceneViewportOptions
 }) {
   const editor = useSceneDocument(documentId)
+  const file = useSceneFile(editor.document)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
-  const [preferences, setPreferences] = useState(() => readScenePrefs().preferences ?? DEFAULT_PREFERENCES)
+  const [prefs, setPrefs] = useState(() => readScenePrefs())
   const [announcement, setAnnouncement] = useState('')
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [keymapOpen, setKeymapOpen] = useState(false)
+  const [redoExpanded, setRedoExpanded] = useState(false)
+  const [pie, setPie] = useState<Pie>(null)
+  const [contextAt, setContextAt] = useState<{ x: number; y: number } | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
+  const preferences = prefs.preferences ?? DEFAULT_PREFERENCES
 
-  useEffect(() => {
-    setPreferences(readScenePrefs().preferences ?? DEFAULT_PREFERENCES)
+  const { document, selection, selectObjects, setView, undo, redo, runOperator } = editor
+  const tab = tabOf(prefs, documentId)
+
+  const savePrefs = useCallback((next: typeof prefs) => {
+    setPrefs(next)
+    writeScenePrefs(next)
   }, [])
 
-  const { document, selection, selectObjects, setView, undo, redo } = editor
-  const runOperator = editor.runOperator
+  const patchView = useCallback((patch: Partial<ViewState>) => {
+    setView((current) => ({ ...current, ...patch }))
+  }, [setView])
 
   /** Framing has to know how wide the viewport is, and the page is the only one that does. */
   const viewportAspect = useCallback(() => {
     const size = stage.current?.viewport?.pixelSize
     return size ? Math.max(0.1, size.width) / Math.max(0.1, size.height) : undefined
   }, [])
+
+  const run = useCallback((id: string, params: Record<string, unknown> = {}) => {
+    const operator = getOperator(id)
+    if (operator?.modal) {
+      const transform = MODAL_MODES[id]
+      const context = editor.operatorContext()
+      const available = context ? operator.available(context) : 'There is no scene open.'
+      if (!transform || available !== true) {
+        editor.setMessage(available === true ? 'That tool is not available here.' : available)
+        return
+      }
+      if (!stage.current?.startTransform(transform)) editor.setMessage('Select something to move first.')
+      return
+    }
+    const aspect = viewportAspect()
+    runOperator(id, { ...params, ...(aspect ? { aspect } : {}) })
+  }, [editor, runOperator, viewportAspect])
+
+  /** Opening a file replaces the document, which means going to its own address. */
+  const openFromDisk = useCallback(async () => {
+    const opened = await file.openFromDisk()
+    if (!opened) return
+    saveSceneDocument(opened)
+    window.location.assign(`/r/${opened.id}`)
+  }, [file])
+
+  /* --------------------------------------------------------------- keyboard */
 
   const onKeyDown = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || !document) return
@@ -75,29 +151,12 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     const action = binding.action
 
     if (action.kind === 'operator') {
-      // A modal operator is a viewport session, not a pure function of the document.
-      const operator = getOperator(action.id)
-      if (operator?.modal) {
-        event.preventDefault()
-        const mode = MODAL_MODES[action.id]
-        const context = editor.operatorContext()
-        const available = context ? operator.available(context) : 'There is no scene open.'
-        if (!mode || available !== true) {
-          editor.setMessage(available === true ? 'That tool is not available here.' : available)
-          return
-        }
-        if (!stage.current?.startTransform(mode)) editor.setMessage('Select something to move first.')
-        else setAnnouncement(binding.label)
-        return
-      }
       event.preventDefault()
-      const aspect = viewportAspect()
-      runOperator(action.id, { ...(action.params as Record<string, never> | undefined), ...(aspect ? { aspect } : {}) })
+      run(action.id, (action.params ?? {}) as Record<string, unknown>)
       setAnnouncement(binding.label)
       return
     }
 
-    // The handful of things that change the editor rather than the document.
     switch (action.id) {
       case 'undo':
         event.preventDefault()
@@ -109,15 +168,79 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         redo()
         setAnnouncement('Redo')
         return
+      case 'palette':
+        event.preventDefault()
+        setPaletteOpen(true)
+        return
+      case 'keymapSheet':
+        event.preventDefault()
+        setKeymapOpen(true)
+        return
+      case 'redoPanel':
+        event.preventDefault()
+        setRedoExpanded((current) => !current)
+        return
+      case 'repeatLast':
+        event.preventDefault()
+        editor.repeatLastOperation()
+        return
+      case 'panel.toolbar':
+        event.preventDefault()
+        patchView({ panels: { ...panelsOf(document.view), toolbar: !panelsOf(document.view).toolbar } })
+        return
+      case 'panel.sidebar':
+        event.preventDefault()
+        patchView({ panels: { ...panelsOf(document.view), sidebar: !panelsOf(document.view).sidebar } })
+        return
+      case 'tool.cycleSelect': {
+        event.preventDefault()
+        const index = SELECT_TOOLS.indexOf(document.view.tool)
+        patchView({ tool: SELECT_TOOLS[(index + 1) % SELECT_TOOLS.length]! })
+        return
+      }
+      case 'mode.toggleEdit':
+        event.preventDefault()
+        editor.setMessage('Edit mode arrives with the mesh editing prompt.')
+        return
+      case 'file.save':
+        event.preventDefault()
+        void file.saveNow()
+        return
+      case 'file.saveAs':
+        event.preventDefault()
+        void file.saveAs()
+        return
+      case 'file.open':
+        event.preventDefault()
+        void openFromDisk()
+        return
+      case 'escape':
+        if (pie) {
+          event.preventDefault()
+          setPie(null)
+        }
+        return
+      case 'pie.pivot':
+      case 'pie.orientation':
+        event.preventDefault()
+        setPie({ kind: action.id === 'pie.pivot' ? 'pivot' : 'orientation', at: pointerCentre() })
+        return
+      case 'add.menu':
+        // The Add menu is opened from the header; a pie for it arrives with the mesh prompt.
+        event.preventDefault()
+        setPaletteOpen(true)
+        return
       default:
         return
     }
-  }, [document, editor, preferences, redo, runOperator, undo, viewportAspect])
+  }, [document, editor, file, openFromDisk, patchView, pie, preferences, redo, run, undo])
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onKeyDown])
+
+  /* ---------------------------------------------------------------- render */
 
   if (!document) {
     return (
@@ -133,41 +256,267 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   void onMode
 
   const counts = sceneCounts(document)
+  const context = editor.operatorContext()
+  const panels = panelsOf(document.view)
+  const commands: SceneCommand[] = [
+    ...sceneCommands({ context, runOperator: (id) => run(id) }),
+    ...editorCommands({
+      undo,
+      redo,
+      palette: () => setPaletteOpen(true),
+      redoPanel: () => setRedoExpanded((current) => !current),
+      keymapSheet: () => setKeymapOpen(true),
+      repeatLast: () => editor.repeatLastOperation(),
+      'panel.toolbar': () => patchView({ panels: { ...panels, toolbar: !panels.toolbar } }),
+      'panel.sidebar': () => patchView({ panels: { ...panels, sidebar: !panels.sidebar } }),
+      'file.save': () => void file.saveNow(),
+      'file.saveAs': () => void file.saveAs(),
+      'file.open': () => void openFromDisk(),
+    }),
+  ]
+
+  const contextEntries = menuEntries(CONTEXT_IDS, context, (id) => run(id)) as SceneMenuEntry[]
 
   return (
-    <WorkspaceShell
-      rigs={listRigs()}
-      activeId={document.id}
-      mainLabel="Viewport"
-      navLabel="Objects"
-      mobilePanel={mobilePanel}
-      onMobilePanel={setMobilePanel}
-      inspector={<div className="scene-properties" />}
-    >
-      <h1 className="visually-hidden">{document.name}</h1>
-      <div
-        className="scene-stage"
-        id="main"
-        tabIndex={-1}
-        data-scene-theme={preferences.theme === 'blender-classic' ? 'blender-classic' : undefined}
+    <ContextMenuRoot>
+      <WorkspaceShell
+        rigs={listRigs()}
+        activeId={document.id}
+        mainLabel="Viewport"
+        navLabel="Objects"
+        mobilePanel={mobilePanel}
+        onMobilePanel={setMobilePanel}
+        renderNavigation={({ compact, inert, onNavigate }) => (
+          <SceneOutliner
+            document={document}
+            selection={selection}
+            compact={compact}
+            inert={inert}
+            onNavigate={onNavigate}
+            onSelect={selectObjects}
+            onRename={editor.renameObject}
+            onRenameCollection={(id, name) => editor.editDocument((current) => ({
+              ...current,
+              collections: current.collections.map((entry) => (entry.id === id ? { ...entry, name } : entry)),
+            }), 'Rename collection')}
+            onReparent={(id, target, keepTransform) => run('object.parent', { id, ...target, keepTransform })}
+            onUpdateObject={(id, patch) => editor.updateObject(id, patch, 'Change object')}
+            onUpdateCollection={(id, patch) => editor.editDocument((current) => ({
+              ...current,
+              collections: current.collections.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
+            }), 'Change collection')}
+            onRunOperator={run}
+            onOpenTab={(next) => savePrefs(withTab(prefs, documentId, next))}
+          />
+        )}
+        inspector={
+          <SceneProperties
+            document={document}
+            selection={selection}
+            selectedObjects={editor.selectedObjects}
+            activeObject={editor.activeObject}
+            tab={tab}
+            onTab={(next) => savePrefs(withTab(prefs, documentId, next))}
+            onUpdateObject={editor.updateObject}
+            onUpdateObjects={editor.updateObjects}
+            onEditDocument={editor.editDocument}
+            onGestureStart={() => editor.beginGesture('Change value')}
+            onGestureEnd={() => editor.endGesture('Change value')}
+            isOpen={(sectionId) => sectionIsOpen(prefs, sectionId)}
+            onSection={(sectionId, open) => savePrefs(withSection(prefs, sectionId, open))}
+            history={{
+              steps: editor.historySteps,
+              index: editor.historyIndex,
+              onGoTo: editor.goToStep,
+              versions: document.versions ?? [],
+              onRestoreVersion: editor.restoreVersion,
+              onDeleteVersion: editor.deleteVersion,
+              onSaveVersion: editor.saveVersion,
+            }}
+          />
+        }
       >
-        <SceneStage
-          document={document}
-          selection={selection}
-          preferences={preferences}
-          onView={setView}
-          onSelect={(ids, active) => selectObjects(ids, active)}
-          onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
-          onGestureStart={(label) => editor.beginGesture(label)}
-          onGestureEnd={(label) => editor.endGesture(label)}
-          onGestureCancel={() => editor.cancelGesture()}
-          onReady={(handle) => { stage.current = handle }}
-          createViewport={createViewport}
-          options={viewportOptions}
+        <h1 className="visually-hidden">{document.name}</h1>
+        <div
+          className="scene-stage"
+          id="main"
+          tabIndex={-1}
+          data-scene-theme={preferences.theme === 'blender-classic' ? 'blender-classic' : undefined}
+        >
+          <div className="scene-titlebar">
+            <SceneFileMenu
+              name={document.name}
+              file={file}
+              versions={document.versions ?? []}
+              onRename={editor.rename}
+              onOpen={() => void openFromDisk()}
+              onImport={(dropped) => void file.openFromDisk(dropped)}
+              onExport={file.downloadProject}
+              onRevert={() => {
+                const stored = getSceneDocument(documentId)
+                if (stored) editor.editDocument(() => stored, 'Revert')
+              }}
+              onSaveVersion={editor.saveVersion}
+              onRestoreVersion={editor.restoreVersion}
+              onDeleteVersion={editor.deleteVersion}
+            />
+            <SceneHeader
+              view={document.view}
+              mode={document.view.mode}
+              context={context}
+              onRunOperator={run}
+              onView={patchView}
+              onMode={() => editor.setMessage('Edit mode arrives with the mesh editing prompt.')}
+              onCommand={(id) => commands.find((command) => command.id === id)?.run()}
+            />
+          </div>
+          <div className="scene-body">
+            <SceneStage
+              document={document}
+              selection={selection}
+              preferences={preferences}
+              onView={setView}
+              onSelect={selectObjects}
+              onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
+              onPlaceCursor={(position, normal) => run('cursor.place', { position, ...(normal ? { normal } : {}) })}
+              onContextMenu={setContextAt}
+              onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
+              onGestureStart={editor.beginGesture}
+              onGestureEnd={editor.endGesture}
+              onGestureCancel={editor.cancelGesture}
+              onReady={(handle) => { stage.current = handle }}
+              createViewport={createViewport}
+              options={viewportOptions}
+            />
+            <SceneToolbar
+              open={panels.toolbar}
+              tool={document.view.tool}
+              mode={document.view.mode}
+              onTool={(tool) => patchView({ tool })}
+              onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
+            />
+            <SceneSidebar
+              open={panels.sidebar}
+              tab={panels.sidebarTab}
+              onTab={(sidebarTab) => patchView({ panels: { ...panels, sidebarTab } })}
+              onClose={() => patchView({ panels: { ...panels, sidebar: false } })}
+              document={document}
+              selection={selection}
+              activeObject={editor.activeObject}
+              selectedObjects={editor.selectedObjects}
+              onUpdateObject={editor.updateObject}
+              onEditDocument={editor.editDocument}
+              onView={patchView}
+              onGestureStart={() => editor.beginGesture('Change value')}
+              onGestureEnd={() => editor.endGesture('Change value')}
+            />
+            <SceneNavGizmo
+              view={document.view}
+              hasCamera={document.objects.some((object) => object.data.kind === 'camera' && object.data.active)}
+              onAxis={(axis) => run(`view.${axis}`)}
+              onOrbit={(dx, dy) => stage.current?.navigator?.orbit(dx, dy)}
+              onPan={(dx, dy) => stage.current?.navigator?.pan(dx, dy)}
+              onZoom={(delta) => stage.current?.navigator?.zoomBy(delta)}
+              onToggleProjection={() => run('view.togglePerspective')}
+              onCamera={() => run('view.camera')}
+            />
+            <SceneRedoPanel
+              operation={editor.lastOperation
+                ? { operatorId: editor.lastOperation.operatorId, label: editor.lastOperation.label, params: editor.lastOperation.params }
+                : null}
+              expanded={redoExpanded}
+              onExpanded={setRedoExpanded}
+              onAdjust={editor.adjustLastOperation}
+            />
+          </div>
+          <SceneStatusBar document={document} selection={selection} counts={counts} message={editor.message} />
+        </div>
+      </WorkspaceShell>
+
+      <EditorCommandPalette prefix="scene" commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <EditorModal prefix="scene" label="Keyboard" open={keymapOpen} onClose={() => setKeymapOpen(false)}>
+        <KeymapSheet />
+      </EditorModal>
+      {pie ? (
+        <ScenePieMenu
+          open
+          at={pie.at}
+          label={pie.kind === 'pivot' ? 'Pivot point' : 'Transform orientation'}
+          items={pieItems(pie.kind, document.view)}
+          onPick={(id) => {
+            setPie(null)
+            if (pie.kind === 'pivot') patchView({ pivot: id as ViewState['pivot'] })
+            else patchView({ orientation: id as ViewState['orientation'] })
+          }}
+          onClose={() => setPie(null)}
         />
-        <SceneStatusBar document={document} selection={selection} counts={counts} message={editor.message} />
-      </div>
+      ) : null}
+      {contextAt ? (
+        <SceneMenu
+          label="Object"
+          entries={contextEntries}
+          at={contextAt}
+          open
+          onOpenChange={(open) => { if (!open) setContextAt(null) }}
+        />
+      ) : null}
       <LiveRegion name="scene" message={announcement} />
-    </WorkspaceShell>
+    </ContextMenuRoot>
+  )
+}
+
+function panelsOf(view: ViewState): NonNullable<ViewState['panels']> {
+  return view.panels ?? { toolbar: true, sidebar: false, sidebarTab: 'item' }
+}
+
+/** Where a pie opens when it is called from the keyboard rather than the pointer. */
+function pointerCentre(): { x: number; y: number } {
+  if (typeof window === 'undefined') return { x: 0, y: 0 }
+  return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+}
+
+const PIVOT_ITEMS: ScenePieItem[] = [
+  { id: 'bounding-box', label: 'Bounding box centre', icon: 'pivot-bounding-box' },
+  { id: 'cursor', label: '3D cursor', icon: 'pivot-cursor' },
+  { id: 'individual', label: 'Individual origins', icon: 'pivot-individual' },
+  { id: 'median', label: 'Median point', icon: 'pivot-median' },
+  { id: 'active', label: 'Active element', icon: 'pivot-active' },
+]
+
+const ORIENTATION_ITEMS: ScenePieItem[] = [
+  { id: 'global', label: 'Global', icon: 'orientation-global' },
+  { id: 'local', label: 'Local', icon: 'orientation-local' },
+  { id: 'normal', label: 'Normal', icon: 'orientation-normal' },
+  { id: 'gimbal', label: 'Gimbal', icon: 'orientation-gimbal' },
+  { id: 'view', label: 'View', icon: 'orientation-view' },
+  { id: 'cursor', label: 'Cursor', icon: 'orientation-cursor' },
+]
+
+function pieItems(kind: 'pivot' | 'orientation' | 'shading' | 'snap', view: ViewState): ScenePieItem[] {
+  void view
+  return kind === 'pivot' ? PIVOT_ITEMS : ORIENTATION_ITEMS
+}
+
+/** The keymap, as the F1 sheet shows it: generated from the table, so it cannot go out of date. */
+function KeymapSheet() {
+  const sections = describeKeymap()
+  return (
+    <div className="scene-keymap scroll-area">
+      <h2 className="scene-keymap__title">Keyboard</h2>
+      {sections.map((section) => (
+        <section key={section.title} className="scene-keymap__section">
+          <h3>{section.title}</h3>
+          <ul>
+            {section.entries.map((entry) => (
+              <li key={`${entry.shortcut}-${entry.label}`}>
+                <kbd>{entry.shortcut}</kbd>
+                <span className="scene-keymap__label">{entry.label}</span>
+                {entry.note ? <span className="scene-keymap__note">{entry.note}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   )
 }

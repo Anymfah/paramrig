@@ -311,3 +311,219 @@
   pointer-events: none;
   z-index: 6;
 }
+
+/* ------------------------------------------------------ the navigation ball */
+
+.scene-nav {
+  position: absolute;
+  inset-block-start: var(--space-3);
+  inset-inline-end: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  z-index: 5;
+}
+.scene-nav__ball {
+  width: 76px;
+  height: 76px;
+  overflow: visible;
+  cursor: grab;
+  touch-action: none;
+}
+.scene-nav__ball:active { cursor: grabbing; }
+.scene-nav__spoke {
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.scene-nav__spoke[data-axis='x'] { color: var(--scene-axis-x); }
+.scene-nav__spoke[data-axis='y'] { color: var(--scene-axis-y); }
+.scene-nav__spoke[data-axis='z'] { color: var(--scene-axis-z); }
+
+.scene-nav__axis[data-axis='x'] { color: var(--scene-axis-x); }
+.scene-nav__axis[data-axis='y'] { color: var(--scene-axis-y); }
+.scene-nav__axis[data-axis='z'] { color: var(--scene-axis-z); }
+/* An axis pointing away from the viewer is drawn hollow, which is how a ball reads as a ball. */
+.scene-nav__ball-dot {
+  fill: var(--scene-viewport);
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.scene-nav__axis[data-near] .scene-nav__ball-dot { fill: currentColor; }
+.scene-nav__label {
+  fill: var(--scene-viewport);
+  font-size: 9px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+.scene-nav__axis:not([data-near]) .scene-nav__label { fill: currentColor; }
+/* The ink is nine pixels across; the thing you can hit is the whole ball and then some. */
+.scene-nav__hit {
+  fill: transparent;
+  cursor: pointer;
+  outline: none;
+}
+.scene-nav__axis:hover .scene-nav__ball-dot,
+.scene-nav__hit:focus-visible + .scene-nav__ball-dot {
+  stroke: var(--scene-active);
+  stroke-width: 2.4;
+}
+.scene-nav__hit:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-radius: 50%; }
+
+.scene-nav__buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scene-nav__button {
+  display: grid;
+  place-items: center;
+  width: var(--hit-target);
+  height: var(--hit-target);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  touch-action: none;
+}
+.scene-nav__button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.scene-nav__button:hover { background: var(--scene-panel); color: var(--text-primary); }
+.scene-nav__button:active { background: var(--surface-overlay); }
+.scene-nav__button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-nav__button[aria-pressed='true'] { background: var(--accent-subtle); color: var(--text-primary); }
+.scene-nav__button[aria-disabled='true'] { color: var(--text-muted); cursor: not-allowed; }
+
+@media (pointer: coarse) {
+  .scene-nav__button { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
+  .scene-nav__ball { width: 88px; height: 88px; }
+}
+@media (forced-colors: active) {
+  .scene-nav__ball-dot { stroke: CanvasText; }
+  .scene-nav__label { fill: CanvasText; }
+}
+
+/* ---------------------------------------------------------- the marquees */
+
+/*
+ * Box, lasso and circle selection are drawn in the DOM rather than the canvas: a one-pixel dashed
+ * rectangle is a thing browsers already draw crisply at every device ratio, and drawing it here
+ * means it never has to wait for a frame of the 3D scene.
+ */
+.scene-marquee {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+.scene-marquee__shape {
+  fill: color-mix(in srgb, var(--scene-selected) 12%, transparent);
+  stroke: var(--scene-selected);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+.scene-marquee__circle {
+  fill: none;
+  stroke: var(--scene-selected);
+  stroke-width: 1.5;
+}
+
+/* ------------------------------------------------------- the stage's layout */
+
+/*
+ * Three rows: the title bar and the header, the viewport with everything that floats over it, and
+ * the status bar. Only the middle row grows, and only the middle row ever changes size — which is
+ * what stops the layout moving while a gesture is running.
+ */
+/*
+ * One column, explicitly bounded. Without `minmax(0, 1fr)` a grid column is sized to its widest
+ * child's own width, and a header full of menus would push the whole viewport out past the
+ * inspector rather than folding.
+ */
+.scene-stage {
+  grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.scene-titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 40px;
+  padding-inline: var(--space-2);
+  border-block-end: 1px solid var(--rule);
+  background: var(--surface-raised);
+}
+.scene-titlebar > * { min-width: 0; }
+.scene-titlebar > .scene-header { flex: 1; }
+
+.scene-body {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------- the keymap */
+
+.scene-keymap { padding: var(--space-4); max-height: 70vh; }
+.scene-keymap__title { margin: 0 0 var(--space-3); font-size: var(--text-md); }
+.scene-keymap__section { margin-block-end: var(--space-4); }
+.scene-keymap__section h3 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.scene-keymap__section ul { margin: 0; padding: 0; list-style: none; }
+.scene-keymap__section li {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: baseline;
+  padding-block: 3px;
+  font-size: var(--text-sm);
+}
+.scene-keymap__section kbd {
+  justify-self: start;
+  padding: 1px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.scene-keymap__note {
+  grid-column: 2;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/*
+ * The "Adjust last operation" panel. It is a corner of the viewport, not a second inspector: it
+ * stays narrow and scrolls, because an operator with fifteen parameters must not become a column
+ * of controls covering the thing that operator just made.
+ */
+.scene-redo { max-width: 15rem; }
+.scene-redo__body { max-height: min(48vh, 380px); overflow-y: auto; }

@@ -37,6 +37,11 @@ export type OperatorResult = {
   label?: string
   /** Set instead of a document when the operator declines; shown in the status bar, never silent. */
   error?: string
+  /**
+   * Text for the system clipboard. Only the editor can reach the clipboard — it needs a user
+   * gesture and a promise — so an operator that copies says what to put there and lets it.
+   */
+  clipboard?: string
 }
 
 /**

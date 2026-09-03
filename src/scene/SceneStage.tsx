@@ -9,6 +9,8 @@ import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneDocument, SceneObject, SceneSelection, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
+import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
+import { SceneMarquee } from '@/scene/SceneMarquee'
 import { ViewNavigator } from '@/scene/viewport/navigation'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import { cameraBasis, type AxisView } from '@/scene/viewport/view'
@@ -46,6 +48,9 @@ export function SceneStage({
   preferences,
   onView,
   onSelect,
+  onRegionSelect,
+  onPlaceCursor,
+  onContextMenu,
   onTransform,
   onGestureStart,
   onGestureEnd,
@@ -61,6 +66,12 @@ export function SceneStage({
   /** Called when a view movement settles, so the document keeps the view without re-rendering. */
   onView: (view: ViewState) => void
   onSelect: (ids: string[], active: string | null) => void
+  /** What a box, lasso or circle covered, and how it should be combined with the selection. */
+  onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
+  /** Where a ⇧ right-click asks for the 3D cursor to go. */
+  onPlaceCursor: (position: Vec3, normal: Vec3 | null) => void
+  /** A plain right-click asks for the object menu at that point. */
+  onContextMenu: (at: { x: number; y: number }) => void
   /** Writes transforms during a gesture, without recording each frame. */
   onTransform: (patches: Array<{ id: string; patch: Partial<SceneObject> }>) => void
   onGestureStart: (label: string) => void
@@ -89,6 +100,14 @@ export function SceneStage({
   gestures.current = { onTransform, onGestureStart, onGestureEnd, onGestureCancel }
   const pointer = useRef<[number, number]>([0, 0])
   const hud = useMemo(() => new HudChannel(), [])
+  const marquee = useMemo(() => new MarqueeChannel(), [])
+  const region = useRef<{ kind: MarqueeKind; points: Array<[number, number]>; mode: 'new' | 'extend' | 'subtract'; radius: number } | null>(null)
+  const onRegionRef = useRef(onRegionSelect)
+  onRegionRef.current = onRegionSelect
+  const onPlaceRef = useRef(onPlaceCursor)
+  onPlaceRef.current = onPlaceCursor
+  const onMenuRef = useRef(onContextMenu)
+  onMenuRef.current = onContextMenu
   const modal = useRef<ModalTransform | null>(null)
   if (!modal.current) {
     modal.current = new ModalTransform({
@@ -295,11 +314,39 @@ export function SceneStage({
               return
             }
           }
+          // ⇧ and the right button put the 3D cursor on the surface under the pointer, and on the
+          // plane the view is looking at where there is no surface — which is what Blender does.
+          if (event.button === 2 && event.shiftKey) {
+            event.preventDefault()
+            const hit = instance.raycast(x, y)
+            onPlaceRef.current(hit?.point ?? instance.pointOnViewPlane(x, y), hit?.normal ?? null)
+            return
+          }
           press.current = { x, y, button: event.button, moved: false, navigating: !!gesture }
           event.currentTarget.setPointerCapture(event.pointerId)
           if (gesture) {
             event.preventDefault()
             nav.begin(gesture, event.pointerId, x, y)
+            return
+          }
+          // A drag with the select tool draws a region; ⌃ makes it a lasso, as in Blender.
+          if (event.button === 0) {
+            const tool = latestDocument.current.view.tool
+            const kind: MarqueeKind | null = event.ctrlKey || tool === 'select-lasso'
+              ? 'lasso'
+              : tool === 'select-circle'
+                ? 'circle'
+                : tool === 'select-box'
+                  ? 'box'
+                  : null
+            if (kind) {
+              region.current = {
+                kind,
+                points: [[x, y]],
+                mode: event.shiftKey ? 'extend' : event.ctrlKey && kind !== 'lasso' ? 'subtract' : 'new',
+                radius: 40,
+              }
+            }
           }
         }}
         onPointerMove={(event) => {
@@ -331,6 +378,13 @@ export function SceneStage({
               pump()
               return
             }
+            const drawing = region.current
+            if (drawing && held.moved) {
+              if (drawing.kind === 'box') drawing.points = [[held.x, held.y], [x, y]]
+              else if (drawing.kind === 'lasso') drawing.points.push([x, y])
+              else drawing.points = [[x, y]]
+              marquee.set({ kind: drawing.kind, points: [...drawing.points], radius: drawing.radius })
+            }
             return
           }
           // Hovering costs one small read of the id buffer, and never a React render. A gizmo
@@ -360,6 +414,16 @@ export function SceneStage({
           if (!nav || !instance || !held) return
           if (held.navigating) {
             nav.end()
+            region.current = null
+            marquee.clear()
+            return
+          }
+          const drawing = region.current
+          region.current = null
+          marquee.clear()
+          if (drawing && held.moved) {
+            const found = readRegion(instance, drawing)
+            onRegionRef.current(found, drawing.mode)
             return
           }
           if (held.moved || held.button !== 0) return
@@ -381,15 +445,52 @@ export function SceneStage({
         }}
         onPointerCancel={() => {
           press.current = null
+          region.current = null
+          marquee.clear()
+          modal.current?.cancel()
           navigator.current?.end()
         }}
         ref={surface}
-        onContextMenu={(event) => event.preventDefault()}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          // ⇧ and the right button place the cursor instead; that is handled on the press.
+          if (event.shiftKey || modal.current?.active) return
+          onMenuRef.current({ x: event.clientX, y: event.clientY })
+        }}
       />
+      <SceneMarquee channel={marquee} />
       <SceneHud channel={hud} />
       {children}
     </SceneViewportHost>
   )
+}
+
+/**
+ * Which objects a drawn region covers.
+ *
+ * A box is read straight out of the id buffer; a lasso and a circle read the buffer over the box
+ * that holds them and then keep only the pixels actually inside the shape. Reading a rectangle once
+ * and filtering is far cheaper than asking the graphics card a question per pixel.
+ */
+function readRegion(
+  viewport: SceneViewport,
+  region: { kind: MarqueeKind; points: Array<[number, number]>; radius: number },
+): string[] {
+  if (region.kind === 'box') {
+    const [a, b] = region.points
+    if (!a || !b) return []
+    return viewport.pickRegion(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))
+  }
+  if (region.kind === 'circle') {
+    const centre = region.points[0]
+    if (!centre) return []
+    const radius = region.radius
+    return viewport.pickRegion(centre[0] - radius, centre[1] - radius, radius * 2, radius * 2,
+      (x, y) => Math.hypot(x - centre[0], y - centre[1]) <= radius)
+  }
+  const box = boundsOfPoints(region.points)
+  if (region.points.length < 3) return []
+  return viewport.pickRegion(box.x, box.y, box.width, box.height, (x, y) => insidePolygon(region.points, x, y))
 }
 
 /** The 3D cursor's own frame, from the Euler angles the document stores it with. */

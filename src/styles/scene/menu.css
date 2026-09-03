@@ -58,6 +58,7 @@
      focus, and the focus lands on the highlighted entry in the same frame. */
   opacity: 0;
   pointer-events: none;
+  transition: opacity var(--duration-instant) var(--ease-out);
 }
 .scene-menu[data-placed] { opacity: 1; pointer-events: auto; }
 .scene-menu:focus-visible { outline: none; }
@@ -219,6 +220,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .scene-menu,
   .scene-menu__trigger,
   .scene-pie__item { transition: none; }
   .scene-pie { animation: none; }

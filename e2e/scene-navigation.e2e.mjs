@@ -71,8 +71,11 @@ export default run('scene-navigation', async ({ page, check, log, helpers, shot 
   await page.waitForTimeout(600)
   const framed = await view()
   const framedCentre = await page.evaluate(() => window.__paramrigScene.project([0, 0, 0]))
-  check('framing the selection centres the cube', Math.abs(framedCentre[0] - box.width / 2) < 3 && Math.abs(framedCentre[1] - box.height / 2) < 3,
-    JSON.stringify(framedCentre.map((value) => Math.round(value))))
+  // Measured again here: the panels settle after the first frame, and the canvas is what matters.
+  const canvas = await helpers.viewportBox()
+  check('framing the selection centres the cube',
+    Math.abs(framedCentre[0] - canvas.width / 2) < 3 && Math.abs(framedCentre[1] - canvas.height / 2) < 3,
+    JSON.stringify({ at: framedCentre.map((value) => Math.round(value)), centre: [Math.round(canvas.width / 2), Math.round(canvas.height / 2)] }))
   check('and comes close enough for it to fill the view', framed.distance < 8, framed.distance.toFixed(2))
 
   // The point under the pointer must stay under the pointer while the wheel turns.

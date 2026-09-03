@@ -220,6 +220,10 @@ export function useSceneDocument(documentId: string) {
       return
     }
     setMessage(null)
+    // An operator that copies hands back the text; reaching the clipboard is the editor's job.
+    if (result.clipboard && typeof navigator !== 'undefined' && navigator.clipboard) {
+      void navigator.clipboard.writeText(result.clipboard).catch(() => setMessage('The clipboard could not be written.'))
+    }
     const label = result.label ?? operator?.label ?? DEFAULT_STEP_LABEL
     const record = operator?.history !== false
     if (result.document) {

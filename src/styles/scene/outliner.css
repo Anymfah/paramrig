@@ -31,7 +31,6 @@
 .scene-outliner__search:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
 .scene-outliner .nav-rail__body { padding: var(--space-2) var(--space-2) var(--space-3); }
-.scene-outliner__context { display: block; }
 .scene-outliner__tree {
   display: flex;
   flex-direction: column;
@@ -216,7 +215,7 @@
   line-height: 1.5;
 }
 .scene-outliner__drop-hint {
-  margin: 0;
+  margin: 0 0 var(--space-1);
   overflow: hidden;
   color: var(--text-muted);
   font-size: var(--text-xs);

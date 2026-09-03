@@ -9,8 +9,10 @@
  * how big a tool is.
  */
 
+/* How tall the bar is once it folds into a row; `sidebar.css` parks the redo panel above it. */
+:root { --scene-toolbar-strip: 3.5rem; }
+
 .scene-toolbar {
-  --scene-toolbar-strip: 3.5rem;
   position: absolute;
   inset-block-start: var(--space-2);
   inset-inline-start: var(--space-2);

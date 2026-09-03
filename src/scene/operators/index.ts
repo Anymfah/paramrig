@@ -6,6 +6,10 @@
  * here is a family that exists in the source and nowhere in the interface. The editor page imports
  * this once.
  */
+import '@/scene/operators/add'
+import '@/scene/operators/collection'
+import '@/scene/operators/cursor'
+import '@/scene/operators/object'
 import '@/scene/operators/select'
 import '@/scene/operators/transform'
 import '@/scene/operators/view'

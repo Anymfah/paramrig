@@ -111,7 +111,7 @@
   align-items: center;
   gap: var(--space-1);
 }
-.scene-sidebar__row .control { flex: 1; min-inline-size: 0; }
+.scene-sidebar__row .control { min-inline-size: 0; }
 .scene-sidebar__lock {
   inline-size: var(--hit-target);
   block-size: var(--hit-target);
@@ -206,6 +206,6 @@
     max-block-size: 55%;
   }
   .scene-redo {
-    inset-block-end: calc(var(--space-2) + var(--scene-toolbar-strip, 3.5rem) + var(--space-2));
+    inset-block-end: calc(var(--space-2) + var(--scene-toolbar-strip) + var(--space-2));
   }
 }
