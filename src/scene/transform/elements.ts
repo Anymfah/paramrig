@@ -2,6 +2,7 @@ import { meshOf, withMesh } from '@/scene/document'
 import { setVertexPosition, vertexPosition } from '@/scene/mesh/data'
 import { readOnlyAdjacency } from '@/scene/mesh/adjacency'
 import { EditMesh } from '@/scene/mesh/editMesh'
+import { applyMatrix, IDENTITY, invert, multiply as multiplyMatrices } from '@/scene/modifiers/matrix'
 import { add, cross, length, normalize, scale, subtract } from '@/scene/mesh/normals'
 import { editedObjectIds, toElements } from '@/scene/mesh/selection'
 import { elementSlot } from '@/scene/operators/edit'
@@ -10,7 +11,7 @@ import { symmetryMap } from '@/scene/operators/symmetry'
 import { proportionalWeights, type FalloffKind } from '@/scene/transform/proportional'
 import type { Basis } from '@/scene/transform/math'
 import type { TransformResult, TransformTarget } from '@/scene/transform/session'
-import type { SceneDocument, SceneSelection, Vec3 } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, Vec3 } from '@/scene/types'
 
 /**
  * What G, R and S move in edit mode.
@@ -176,11 +177,12 @@ export function applyElementTargets(
     const slotOf = new Map<number, number>()
     for (let slot = 0; slot < mesh.vertexIds.length; slot += 1) slotOf.set(mesh.vertexIds[slot]!, slot)
     const matrix = worldMatrix(next, object)
+    const planes = clippingPlanes(next, object)
     const moved = new Map<number, Vec3>()
     for (const { vertexId, point } of points) {
       const slot = slotOf.get(vertexId)
       if (slot === undefined) continue
-      const local = localFromWorldPoint(matrix, point)
+      const local = clipToPlanes(planes, vertexPosition(data, slot), localFromWorldPoint(matrix, point))
       setVertexPosition(mesh, slot, local)
       moved.set(slot, local)
     }
@@ -203,6 +205,68 @@ export function applyElementTargets(
     next = withMesh(next, object.data.meshId, mesh)
   }
   return next
+}
+
+/**
+ * A mirror's clipping plane, in the object's own space.
+ *
+ * `into` takes a point into the frame the plane is flat in — the object's own, or the mirror
+ * object's when one is named — and `back` returns it. `axis` is which of that frame's axes the
+ * plane is perpendicular to, and `tolerance` how near it a vertex has to start to be held on it.
+ */
+type ClipPlane = { axis: 0 | 1 | 2; into: number[]; back: number[]; tolerance: number }
+
+/**
+ * The planes a vertex of this object may not cross.
+ *
+ * Clipping is Blender's answer to the one thing that makes mirrored modelling unpleasant: a vertex
+ * on the seam, dragged sideways, leaves a crack down the middle of the model that is invisible
+ * until it is rendered. With it on, a vertex that started on the plane stays on it and no other one
+ * may cross — so the seam is welded by construction rather than repaired afterwards.
+ *
+ * It is a rule about positions, so it lives beside the other one, and it is read from the modifier
+ * stack rather than kept in state: switching the modifier off has to stop the clipping with it.
+ */
+function clippingPlanes(document: SceneDocument, object: SceneObject): ClipPlane[] {
+  const planes: ClipPlane[] = []
+  for (const modifier of object.modifiers) {
+    if (modifier.kind !== 'mirror' || modifier.params.clipping !== true) continue
+    if (modifier.enabled.editMode === false) continue
+    const tolerance = typeof modifier.params.mergeDistance === 'number' && Number.isFinite(modifier.params.mergeDistance)
+      ? Math.max(SYMMETRY_TOLERANCE, modifier.params.mergeDistance)
+      : SYMMETRY_TOLERANCE
+    const named = typeof modifier.params.mirrorObject === 'string' ? modifier.params.mirrorObject : ''
+    const other = named ? document.objects.find((candidate) => candidate.id === named) : undefined
+    // The mirror object's frame, brought into this object's — the same composition the stack does.
+    const there = other
+      ? multiplyMatrices(invert(worldMatrix(document, object).toArray()), worldMatrix(document, other).toArray())
+      : [...IDENTITY]
+    const axes: Array<[0 | 1 | 2, string]> = [[0, 'axisX'], [1, 'axisY'], [2, 'axisZ']]
+    for (const [axis, key] of axes) {
+      if (modifier.params[key] !== true) continue
+      planes.push({ axis, into: invert(there), back: there, tolerance })
+    }
+  }
+  return planes
+}
+
+/** The nearest position to `wanted` that no plane forbids, given where the vertex started. */
+function clipToPlanes(planes: ClipPlane[], started: Vec3, wanted: Vec3): Vec3 {
+  if (planes.length === 0) return wanted
+  let point = wanted
+  for (const plane of planes) {
+    const from = applyMatrix(plane.into, started)
+    const to = applyMatrix(plane.into, point)
+    const side = from[plane.axis]
+    const held = Math.abs(side) <= plane.tolerance
+      ? 0
+      : side > 0 ? Math.max(0, to[plane.axis]) : Math.min(0, to[plane.axis])
+    if (held === to[plane.axis]) continue
+    const clipped: Vec3 = [...to]
+    clipped[plane.axis] = held
+    point = applyMatrix(plane.back, clipped)
+  }
+  return point
 }
 
 /** Where a set of vertices sits now, so a caller can put them back exactly. */

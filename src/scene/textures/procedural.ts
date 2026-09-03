@@ -173,12 +173,15 @@ function nearestFeature(point: Vec3, seed: number): { distance: number; cell: [n
 /**
  * What the nearest distance is divided by to land in 0..1.
  *
- * With one point to a cell the nearest one is a little over half a cell away on average, and past
- * one whole cell only when all twenty-seven of them have pushed their point to the far side — which
- * a sweep of a hundred thousand points never once produced. One cell is therefore the divisor that
- * uses the whole range without the clamp below ever having anything to do.
+ * With one point to a cell the nearest one is a little over half a cell away on average. How far
+ * away it can get is a question of geometry rather than of taste: the worst case is the cell
+ * diagonal, √3, reached only if all twenty-seven cells pushed their point to the far side at once.
+ * Dividing by √3 would be safe and would waste two thirds of the range, so the divisor is measured
+ * instead — a sweep of four hundred thousand points reached 1.115 cells and no further, and 1.25
+ * leaves that a comfortable margin. The clamp below stands behind the measurement for the corner
+ * the sweep did not turn up; a test asserts that it stays idle.
  */
-const VORONOI_REACH = 8
+const VORONOI_REACH = 1.25
 
 function voronoiField(point: Vec3, seed: number): number {
   return Math.min(1, nearestFeature(point, seed).distance / VORONOI_REACH)

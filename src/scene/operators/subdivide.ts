@@ -100,7 +100,7 @@ function noise(seed: number, key: number, channel: number): number {
  * shading, and the rest are minted beside it carrying the same. Answers the slots it left behind,
  * or an empty list when the first loop was not one a face could be made from.
  */
-function rewriteFace(mesh: EditMesh, face: number, loops: number[][]): number[] {
+export function rewriteFace(mesh: EditMesh, face: number, loops: number[][]): number[] {
   const first = loops[0]
   if (!first || first.length < 3) return []
   if (!mesh.setFaceLoop(face, first)) return []
@@ -904,7 +904,7 @@ function beautify(triples: number[][], points: Vec3[], normal: Vec3): number[][]
 }
 
 /** The triangles one face becomes, as corner indices into its own loop. */
-function faceTriples(mesh: EditMesh, face: number, quadMethod: string, ngonMethod: string): number[][] {
+export function faceTriples(mesh: EditMesh, face: number, quadMethod: string, ngonMethod: string): number[][] {
   const loop = mesh.faceVertices(face)
   const points = loop.map((slot) => mesh.position(slot))
   const normal = mesh.faceNormal(face)
@@ -1176,7 +1176,7 @@ function fanGroups(mesh: EditMesh, vertex: number, split: Set<number>): number[]
  * own copy of both its ends, and which faces share a copy is decided by what is *not* being split —
  * the faces still joined by a whole edge at that vertex keep the vertex they had.
  */
-function splitAlongEdges(mesh: EditMesh, split: Set<number>): number[] {
+export function splitAlongEdges(mesh: EditMesh, split: Set<number>): number[] {
   const touched = new Set<number>()
   for (const edge of split) for (const end of mesh.edgeVertices(edge)) if (end >= 0) touched.add(end)
   const copies: number[] = []

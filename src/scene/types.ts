@@ -119,9 +119,16 @@ export type EmptyData = {
 
 export type ObjectData = MeshRef | LightData | CameraData | EmptyData
 
-export type ModifierKind =
-  | 'subsurf' | 'mirror' | 'array' | 'solidify' | 'bevel' | 'boolean' | 'decimate' | 'screw'
-  | 'triangulate' | 'weld' | 'wireframe' | 'smooth' | 'simpleDeform' | 'cast' | 'edgeSplit' | 'displace'
+/**
+ * The modifiers a document can name, as a list rather than as a union: the sanitiser has to check a
+ * value against them at run time, and a union that only exists in the type system cannot be read.
+ */
+export const MODIFIER_KINDS = [
+  'subsurf', 'mirror', 'array', 'solidify', 'bevel', 'boolean', 'decimate', 'screw',
+  'triangulate', 'weld', 'wireframe', 'smooth', 'simpleDeform', 'cast', 'edgeSplit', 'displace',
+] as const
+
+export type ModifierKind = (typeof MODIFIER_KINDS)[number]
 
 export type Modifier = {
   id: string
@@ -183,6 +190,8 @@ export type Collection = {
 export type TextureSlot = {
   /** Id of a resource in `src/state/resources.ts`, or null for none. */
   resourceId: string | null
+  /** The file it came from, so a panel can name it without reading the resource back. */
+  name?: string
   scale?: Vec2
   offset?: Vec2
 }
@@ -214,8 +223,19 @@ export type Material = {
 export type World = {
   color: string
   strength: number
-  /** Id of an environment image resource, when one is chosen. */
+  /** Id of an environment image resource, when one is chosen, and the file it came from. */
   environmentId?: string | null
+  environmentName?: string
+  /** How much of the environment reaches the surfaces, and how far round it has been turned. */
+  environmentStrength?: number
+  environmentRotation?: number
+  /**
+   * Lighting and background are separate switches, as they are in Blender: an environment can light
+   * a scene without being seen behind it, which is how a product shot is lit.
+   */
+  useForLighting?: boolean
+  visibleAsBackground?: boolean
+  fog?: { enabled: boolean; density: number; color: string }
 }
 
 /* ------------------------------------------------------------------- view */
@@ -296,6 +316,29 @@ export type ViewState = {
   shading: ShadingMode
   /** Solid shading's light: a fixed studio rig or a matcap. */
   studio?: string
+  /**
+   * What solid shading looks like. Blender's own list, and the same defaults: a studio rig, one
+   * grey, no cavity — the picture a person models against rather than one that flatters the model.
+   */
+  solid?: {
+    lighting: 'studio' | 'matcap' | 'flat'
+    /** Which matcap, by the name of a file in `public/matcaps`. */
+    matcap: string
+    colour: 'material' | 'object' | 'single' | 'random' | 'texture'
+    single: string
+    background: 'theme' | 'world' | 'viewport'
+    backfaceCulling: boolean
+    cavity: boolean
+    cavityStrength: number
+    shadow: boolean
+    outline: boolean
+    specular: boolean
+  }
+  /** How solid a mesh is in X-ray, and how heavy the wireframe overlay's lines are. */
+  xrayAlpha?: number
+  wireframeOpacity?: number
+  /** Edges flatter than this are left out of the wireframe overlay, as Blender's threshold does. */
+  wireframeThreshold?: number
   xray: boolean
   overlays: OverlayFlags
   gizmos: GizmoFlags
@@ -394,6 +437,9 @@ export type SceneDocument = {
   cursor: { position: Vec3; rotation: Vec3 }
   view: ViewState
   units: SceneUnits
+  /** What an image is rendered at, and how the numbers reach the screen. */
+  output?: { width: number; height: number; percentage: number; transparent: boolean }
+  colorManagement?: { exposure: number; gamma: number }
   annotations?: Annotation[]
   measurements?: Measurement[]
   rig?: SceneRig
@@ -410,6 +456,12 @@ export type ElementRef = { kind: SelectMode; objectId: string; id: string }
 
 /** What the editor has selected, in whichever mode it is in. */
 export type SceneSelection = {
+  /**
+   * Which material slot of the active object the Material panel is on. It is here rather than on
+   * the object because it is a place in the interface rather than a property of the scene: a file
+   * reopened elsewhere should not remember which row a person had highlighted.
+   */
+  activeMaterialSlot?: number
   /** Object ids, in the order they were picked; the last one is active. */
   objectIds: string[]
   activeObjectId: string | null

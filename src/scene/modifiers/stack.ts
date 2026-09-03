@@ -88,7 +88,7 @@ export function evaluateObject(document: SceneDocument, object: SceneObject, opt
       continue
     }
     const outcome = module.apply(mesh, withModifierDefaults(modifier), {
-      inputs: inputsFor(document, object, modifier, module.objectInputs ?? []),
+      inputs: modifierInputs(document, object, modifier, module.objectInputs ?? []),
       forRender,
       editing,
     })
@@ -146,7 +146,12 @@ function round(value: number): number {
   return Math.round(value * 1e6) / 1e6
 }
 
-function inputsFor(
+/**
+ * The objects a modifier reads, each placed in the frame of the one being modified. Exported
+ * because applying a modifier needs exactly the same composition as evaluating it, and two copies
+ * of it would be two chances for a mirror to bake somewhere it did not preview.
+ */
+export function modifierInputs(
   document: SceneDocument,
   object: SceneObject,
   modifier: Modifier,

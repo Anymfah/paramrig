@@ -131,16 +131,17 @@ describe('the procedural textures', () => {
     }
   })
 
-  it('never asks the voronoi clamp to do anything, which is why one cell is the divisor', () => {
-    // The claim in the module: past one whole cell the nearest feature point never is. A sweep of
-    // a hundred thousand points is what that claim is worth; anything at 1 would be a flat spot.
+  it('never asks the voronoi clamp to do anything, which is what its divisor is measured for', () => {
+    // The divisor is a measurement, so it is measured again here: a value that reached 1 would be
+    // the clamp firing, and the clamp firing is a flat spot in a displacement.
     let highest = 0
-    for (let index = 0; index < 100000; index += 1) {
+    for (let index = 0; index < 200000; index += 1) {
       const point: Vec3 = [index * 0.0137, index * 0.0219 - 3, index * 0.0331 + 7]
       highest = Math.max(highest, sample('voronoi', point, { detail: 1 }))
     }
     expect(highest).toBeLessThan(1)
-    expect(highest).toBeGreaterThan(0.6)
+    // And not so far below it that the field is using a corner of the range it was given.
+    expect(highest).toBeGreaterThan(0.8)
   })
 
   it('keeps the wood in rings around the vertical axis', () => {

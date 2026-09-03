@@ -3,18 +3,21 @@ import type { RigManifest } from '@/rigs/types'
 import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { MAX_PITCH } from '@/scene/viewport/view'
+import { MODIFIER_KINDS } from '@/scene/types'
 import type {
   Collection,
   EmptyDisplay,
   Material,
   MeshData,
   Modifier,
+  ModifierKind,
   ObjectData,
   SceneDocument,
   SceneObject,
   SceneRig,
   SceneUnits,
   SceneVersion,
+  TextureSlot,
   Transform,
   Vec2,
   Vec3,
@@ -68,7 +71,23 @@ export const DEFAULT_VIEW: ViewState = {
   clipEnd: 1000,
   shading: 'solid',
   studio: 'default',
+  solid: {
+    lighting: 'studio',
+    matcap: 'basic-1',
+    colour: 'material',
+    single: '#b4b4b4',
+    background: 'theme',
+    backfaceCulling: false,
+    cavity: false,
+    cavityStrength: 0.5,
+    shadow: false,
+    outline: true,
+    specular: true,
+  },
   xray: false,
+  xrayAlpha: 0.5,
+  wireframeOpacity: 0.5,
+  wireframeThreshold: 1,
   overlays: {
     grid: true,
     floor: true,
@@ -406,11 +425,10 @@ function objectData(value: unknown, kind: string, meshIds: Set<string>): ObjectD
 
 function modifiers(value: unknown): Modifier[] {
   if (!Array.isArray(value)) return []
-  const kinds = ['subsurf', 'mirror', 'array', 'solidify', 'bevel', 'boolean', 'decimate', 'screw', 'triangulate', 'weld', 'wireframe', 'smooth', 'simpleDeform', 'cast', 'edgeSplit', 'displace'] as const
   return value.flatMap((entry): Modifier[] => {
     if (!entry || typeof entry !== 'object') return []
     const source = entry as Partial<Modifier>
-    if (!kinds.includes(source.kind as (typeof kinds)[number])) return []
+    if (!MODIFIER_KINDS.includes(source.kind as ModifierKind)) return []
     const enabled = (source.enabled ?? {}) as Partial<Modifier['enabled']>
     return [{
       id: text(source.id, `modifier-${crypto.randomUUID()}`, 80),
@@ -446,8 +464,34 @@ function material(value: unknown): Material | null {
     normalStrength: num(source.normalStrength, 1, 0, 10),
     backfaceCulling: !!source.backfaceCulling,
     blendMode: pick(source.blendMode, ['opaque', 'blend', 'clip'] as const, 'opaque'),
-    ...(source.textures && typeof source.textures === 'object' ? { textures: source.textures } : {}),
+    ...(source.textures && typeof source.textures === 'object' ? { textures: textureSlots(source.textures) } : {}),
   }
+}
+
+/**
+ * The image slots of a material, read one field at a time.
+ *
+ * They used to be passed through as they arrived, which meant a hand-edited file could put a
+ * number where a resource id belongs and the renderer would ask the store for it. A slot with no
+ * usable id is dropped rather than kept empty: a material carries the maps it has.
+ */
+function textureSlots(value: object): NonNullable<Material['textures']> {
+  const names = ['baseColor', 'roughness', 'metallic', 'normal', 'emission'] as const
+  const source = value as Record<string, unknown>
+  const slots: Record<string, TextureSlot> = {}
+  for (const name of names) {
+    const slot = source[name]
+    if (!slot || typeof slot !== 'object') continue
+    const entry = slot as Partial<TextureSlot>
+    if (typeof entry.resourceId !== 'string' || entry.resourceId === '') continue
+    slots[name] = {
+      resourceId: entry.resourceId.slice(0, 80),
+      ...(entry.name === undefined ? {} : { name: text(entry.name, '', 120) }),
+      ...(entry.scale === undefined ? {} : { scale: vec2(entry.scale, [1, 1]) }),
+      ...(entry.offset === undefined ? {} : { offset: vec2(entry.offset, [0, 0]) }),
+    }
+  }
+  return slots
 }
 
 function viewState(value: unknown): ViewState {
@@ -473,7 +517,11 @@ function viewState(value: unknown): ViewState {
     clipEnd: num(source.clipEnd, 1000, 1e-3, 1e7),
     shading: pick(source.shading, ['wireframe', 'solid', 'material', 'rendered'] as const, 'solid'),
     studio: text(source.studio, 'default', 60),
+    solid: readSolid(source.solid),
     xray: !!source.xray,
+    xrayAlpha: num(source.xrayAlpha, 0.5, 0, 1),
+    wireframeOpacity: num(source.wireframeOpacity, 0.5, 0, 1),
+    wireframeThreshold: num(source.wireframeThreshold, 1, 0, 1),
     overlays: {
       grid: flag(overlays.grid, true),
       floor: flag(overlays.floor, true),
@@ -538,6 +586,30 @@ function viewState(value: unknown): ViewState {
  * a collection that are named exist, a mesh an object points at exists, a material slot points at a
  * material, and a mesh is valid on its own terms.
  */
+/** Solid shading's own settings, each read the way the rest of the view is: a fallback, never a NaN. */
+function readSolid(value: unknown): NonNullable<ViewState['solid']> {
+  const source = (value ?? {}) as Partial<NonNullable<ViewState['solid']>>
+  const fallback = DEFAULT_VIEW.solid!
+  const one = <Option extends string>(given: unknown, options: readonly Option[], other: Option): Option => (
+    options.includes(given as Option) ? (given as Option) : other
+  )
+  return {
+    lighting: one(source.lighting, ['studio', 'matcap', 'flat'] as const, fallback.lighting),
+    matcap: typeof source.matcap === 'string' && source.matcap.length <= 60 ? source.matcap : fallback.matcap,
+    colour: one(source.colour, ['material', 'object', 'single', 'random', 'texture'] as const, fallback.colour),
+    single: typeof source.single === 'string' && source.single.length <= 32 ? source.single : fallback.single,
+    background: one(source.background, ['theme', 'world', 'viewport'] as const, fallback.background),
+    backfaceCulling: typeof source.backfaceCulling === 'boolean' ? source.backfaceCulling : fallback.backfaceCulling,
+    cavity: typeof source.cavity === 'boolean' ? source.cavity : fallback.cavity,
+    cavityStrength: typeof source.cavityStrength === 'number' && Number.isFinite(source.cavityStrength)
+      ? Math.min(2, Math.max(0, source.cavityStrength))
+      : fallback.cavityStrength,
+    shadow: typeof source.shadow === 'boolean' ? source.shadow : fallback.shadow,
+    outline: typeof source.outline === 'boolean' ? source.outline : fallback.outline,
+    specular: typeof source.specular === 'boolean' ? source.specular : fallback.specular,
+  }
+}
+
 export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const source = value as Partial<SceneDocument>
@@ -699,6 +771,18 @@ export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
       color: color(source.world?.color, DEFAULT_WORLD.color),
       strength: num(source.world?.strength, 1, 0, 100),
       ...(source.world?.environmentId === undefined ? {} : { environmentId: typeof source.world.environmentId === 'string' ? source.world.environmentId : null }),
+      ...(source.world?.environmentName === undefined ? {} : { environmentName: text(source.world.environmentName, '', 120) }),
+      ...(source.world?.environmentStrength === undefined ? {} : { environmentStrength: num(source.world.environmentStrength, 1, 0, 20) }),
+      ...(source.world?.environmentRotation === undefined ? {} : { environmentRotation: num(source.world.environmentRotation, 0, -Math.PI * 4, Math.PI * 4) }),
+      ...(source.world?.useForLighting === undefined ? {} : { useForLighting: !!source.world.useForLighting }),
+      ...(source.world?.visibleAsBackground === undefined ? {} : { visibleAsBackground: !!source.world.visibleAsBackground }),
+      ...(source.world?.fog === undefined ? {} : {
+        fog: {
+          enabled: !!source.world.fog?.enabled,
+          density: num(source.world.fog?.density, 0.02, 0, 10),
+          color: color(source.world.fog?.color, DEFAULT_WORLD.color),
+        },
+      }),
     },
     cursor: {
       position: vec3(source.cursor?.position, [0, 0, 0]),
@@ -709,6 +793,20 @@ export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
       system: pick(source.units?.system, ['metric', 'imperial', 'none'] as const, 'metric'),
       scale: num(source.units?.scale, 1, 1e-6, 1e6),
     },
+    ...(source.output === undefined ? {} : {
+      output: {
+        width: Math.round(num(source.output?.width, 1920, 4, 16384)),
+        height: Math.round(num(source.output?.height, 1080, 4, 16384)),
+        percentage: Math.round(num(source.output?.percentage, 100, 1, 400)),
+        transparent: !!source.output?.transparent,
+      },
+    }),
+    ...(source.colorManagement === undefined ? {} : {
+      colorManagement: {
+        exposure: num(source.colorManagement?.exposure, 0, -10, 10),
+        gamma: num(source.colorManagement?.gamma, 1, 0.1, 5),
+      },
+    }),
     ...(Array.isArray(source.annotations) && source.annotations.length
       ? {
         annotations: source.annotations.flatMap((entry) => {

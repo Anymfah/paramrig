@@ -10,6 +10,11 @@ import type { Vec3 } from '@/scene/types'
  * bars. Both live in Blender's Face menu and both answer the same question — what does this become
  * when it has to be a real object rather than a surface — so they are written together.
  *
+ * The geometry of each is an exported function over an `EditMesh` and a set of slots, because the
+ * modifiers of the same names are the same operation run over a whole mesh rather than over a
+ * selection: `modifiers/solidify.ts` and `modifiers/wireframe.ts` call the functions below, so
+ * there is one shell and one bar in the codebase and not two that drift apart.
+ *
  * Solidify is exact. Wireframe is not: Blender mitres the tubes where they meet at a vertex so the
  * frame is one continuous shell, and this builds one closed box per edge instead, set back from
  * each end so the boxes do not grow through each other. The frame reads right and every piece of it
@@ -25,14 +30,29 @@ const EVEN_FLOOR = 0.2
 
 /* -------------------------------------------------------------------- solidify */
 
+/** Everything Solidify can be asked for: the operator uses the first three, the modifier all of them. */
+export type SolidifyOptions = {
+  thickness: number
+  /** Where the surface sits between the two skins: −1 leaves it outside, 0 centres it, 1 inside. */
+  offset: number
+  even: boolean
+  /** Fill the border between the two skins. On unless it is said otherwise. */
+  rim?: boolean
+  /** Keep that border and drop both skins, which is Blender's Only rim. Needs `rim`. */
+  onlyRim?: boolean
+  flipNormals?: boolean
+  /** How many slots along the inner skin's material sits from the face it doubles. */
+  materialOffset?: number
+  /** The crease to write on the rim's edges, nought to one. */
+  crease?: number
+}
+
 /**
- * The direction a patch vertex is pushed along: the area-weighted average of the selected faces
- * around it, and not the mesh's own vertex normal — the faces that are not part of the selection
- * are not part of the shell, and letting them pull on the average tilts the shell away from the
- * surface it is meant to double.
+ * The direction a patch vertex is pushed along: the area-weighted average of the given faces around
+ * it, and not the mesh's own vertex normal — the faces that are not part of the shell are not part
+ * of it, and letting them pull on the average tilts the shell away from the surface it doubles.
  */
-function patchNormals(target: EditTarget, faces: number[]): Map<number, Vec3> {
-  const mesh = target.mesh
+function patchNormals(mesh: EditMesh, faces: number[]): Map<number, Vec3> {
   const sums = new Map<number, Vec3>()
   for (const face of faces) {
     const weighted = scale(mesh.faceNormal(face), mesh.faceArea(face))
@@ -48,8 +68,7 @@ function patchNormals(target: EditTarget, faces: number[]): Map<number, Vec3> {
  * At a fold the averaged normal leans away from both faces, so a push of exactly the thickness
  * leaves the shell thinner than asked for; dividing by the cosine of that lean puts it back.
  */
-function evenScales(target: EditTarget, faces: number[], normals: Map<number, Vec3>): Map<number, number> {
-  const mesh = target.mesh
+function evenScales(mesh: EditMesh, faces: number[], normals: Map<number, Vec3>): Map<number, number> {
   const worst = new Map<number, number>()
   for (const face of faces) {
     const normal = mesh.faceNormal(face)
@@ -63,17 +82,21 @@ function evenScales(target: EditTarget, faces: number[], normals: Map<number, Ve
   return scales
 }
 
-function solidify(target: EditTarget, thickness: number, offset: number, even: boolean): EditOutcome {
-  const mesh = target.mesh
-  const faces = [...target.faces].sort((first, second) => first - second)
-  if (faces.length === 0) return NO_FACES
-  if (thickness === 0) return NO_THICKNESS
-  const normals = patchNormals(target, faces)
-  const scales = even ? evenScales(target, faces, normals) : new Map<number, number>()
+/**
+ * A second skin under the given faces and a rim joining the two, answered as the slots of every
+ * face the shell is made of. The caller checks that there are faces and a thickness to build with:
+ * what counts as a refusal is different for a selection and for a whole mesh, and the sentence a
+ * person reads is different with it.
+ */
+export function solidifyFaces(mesh: EditMesh, faceSlots: Iterable<number>, options: SolidifyOptions): number[] {
+  const faces = [...new Set(faceSlots)].sort((first, second) => first - second)
+  if (faces.length === 0) return []
+  const normals = patchNormals(mesh, faces)
+  const scales = options.even ? evenScales(mesh, faces, normals) : new Map<number, number>()
   // Blender's offset says where the original surface sits between the two skins: −1 leaves it as
   // the outer one and grows the shell inwards, +1 does the opposite, 0 splits the difference.
-  const outward = (thickness * (Math.min(1, Math.max(-1, offset)) + 1)) / 2
-  const inward = outward - thickness
+  const outward = (options.thickness * (Math.min(1, Math.max(-1, options.offset)) + 1)) / 2
+  const inward = outward - options.thickness
   const inner = new Map<number, number>()
   for (const [slot, normal] of normals) {
     const stretch = scales.get(slot) ?? 1
@@ -84,29 +107,60 @@ function solidify(target: EditTarget, thickness: number, offset: number, even: b
     if (outward === 0) continue
     mesh.setPosition(slot, add(mesh.position(slot), scale(normal, outward * (scales.get(slot) ?? 1))))
   }
-  const built: number[] = [...faces]
-  for (const face of faces) {
-    // The inner skin faces the other way, or the shell would be inside out along the bottom of it.
-    const added = mesh.addFace([...mesh.faceVertices(face)].reverse().map((slot) => inner.get(slot)!))
-    if (added < 0) continue
-    mesh.copyFaceAttributes(face, added)
-    built.push(added)
-  }
-  for (const loop of mesh.boundaryLoops(faces)) {
-    for (let corner = 0; corner < loop.length; corner += 1) {
-      const from = loop[corner]!
-      const to = loop[(corner + 1) % loop.length]!
-      // Wound against the rim rather than with it: the second skin went the other way, so a rim
-      // quad that followed the first one would face into the shell.
-      const added = mesh.addFace([from, inner.get(from)!, inner.get(to)!, to])
+  // Only rim is Blender's `do_shell` read backwards: with the rim filled and only the rim wanted,
+  // neither skin is kept, and what is left is the band around the border.
+  const wantsRim = options.rim !== false
+  const wantsShell = !(wantsRim && options.onlyRim === true)
+  const materialOffset = Math.max(0, Math.round(options.materialOffset ?? 0))
+  const skins: number[] = []
+  if (wantsShell) {
+    for (const face of faces) {
+      // The inner skin faces the other way, or the shell would be inside out along the bottom of it.
+      const added = mesh.addFace([...mesh.faceVertices(face)].reverse().map((slot) => inner.get(slot)!))
       if (added < 0) continue
-      const edge = mesh.edgeSlot(from, to)
-      const owner = edge < 0 ? -1 : (mesh.edgeFaces(edge).find((face) => target.faces.has(face)) ?? -1)
-      if (owner >= 0) mesh.copyFaceAttributes(owner, added)
-      built.push(added)
+      mesh.copyFaceAttributes(face, added)
+      if (materialOffset > 0) mesh.setFaceMaterial(added, mesh.faceMaterial(added) + materialOffset)
+      skins.push(added)
     }
   }
-  return { select: { faces: built } }
+  const patch = new Set(faces)
+  const rim: number[] = []
+  if (wantsRim) {
+    for (const loop of mesh.boundaryLoops(faces)) {
+      for (let corner = 0; corner < loop.length; corner += 1) {
+        const from = loop[corner]!
+        const to = loop[(corner + 1) % loop.length]!
+        // Wound against the rim rather than with it: the second skin went the other way, so a rim
+        // quad that followed the first one would face into the shell.
+        const added = mesh.addFace([from, inner.get(from)!, inner.get(to)!, to])
+        if (added < 0) continue
+        const edge = mesh.edgeSlot(from, to)
+        const owner = edge < 0 ? -1 : (mesh.edgeFaces(edge).find((face) => patch.has(face)) ?? -1)
+        if (owner >= 0) mesh.copyFaceAttributes(owner, added)
+        rim.push(added)
+      }
+    }
+  }
+  const crease = Math.min(1, Math.max(0, options.crease ?? 0))
+  if (crease > 0) {
+    for (const face of rim) for (const edge of mesh.faceEdges(face)) mesh.setEdgeNumber(edge, 'crease', crease)
+  }
+  const built = wantsShell ? [...faces, ...skins, ...rim] : rim
+  if (options.flipNormals === true) for (const face of built) mesh.flipFace(face)
+  if (wantsShell) return built
+  // The skins were never built, so what is left of the original surface goes with everything under
+  // it that no rim quad uses: the band and nothing else.
+  const kept = rim.map((face) => mesh.faceId(face))
+  mesh.remove({ faces })
+  mesh.dropLoose()
+  return kept.map((id) => mesh.slotOfFace(id)).filter((slot) => slot >= 0)
+}
+
+function solidify(target: EditTarget, thickness: number, offset: number, even: boolean): EditOutcome {
+  const faces = [...target.faces].sort((first, second) => first - second)
+  if (faces.length === 0) return NO_FACES
+  if (thickness === 0) return NO_THICKNESS
+  return { select: { faces: solidifyFaces(target.mesh, faces, { thickness, offset, even }) } }
 }
 
 registerOperator<{ thickness: number; offset: number; even: boolean }>({
@@ -132,6 +186,17 @@ registerOperator<{ thickness: number; offset: number; even: boolean }>({
 
 /* ------------------------------------------------------------------- wireframe */
 
+/** Everything a bar can be asked for: the operator uses the first three, the modifier all of them. */
+export type WireframeOptions = {
+  thickness: number
+  offset: number
+  even: boolean
+  /** Scale each end's section by the length of the wired edges meeting there. */
+  relative?: boolean
+  /** How many slots along a bar's material sits from the face its edge was cut from. */
+  materialOffset?: number
+}
+
 /** Any unit vector square to `along`, for an edge with no face to take its bearings from. */
 function anyPerpendicular(along: Vec3): Vec3 {
   const axis: Vec3 = Math.abs(along[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
@@ -146,6 +211,25 @@ function section(mesh: EditMesh, edge: number, along: Vec3): [Vec3, Vec3] {
   const flattened = subtract(normal, scale(along, dot(normal, along)))
   const up = length(flattened) < 1e-9 ? anyPerpendicular(along) : normalize(flattened)
   return [normalize(cross(along, up)), up]
+}
+
+/**
+ * Half the section at one end of a bar.
+ *
+ * With Relative on, Blender scales the wire by how long the edges around it are, so that a frame
+ * over a coarse mesh and a frame over a fine one both read as a frame rather than as a slab and a
+ * hair. The mean of the wired edges at the vertex is what that scale is taken from.
+ */
+function halfAt(mesh: EditMesh, vertex: number, half: number, edges: Set<number>, relative: boolean): number {
+  if (!relative) return half
+  let total = 0
+  let count = 0
+  for (const edge of mesh.vertexEdges(vertex)) {
+    if (!edges.has(edge)) continue
+    total += mesh.edgeLength(edge)
+    count += 1
+  }
+  return count === 0 ? half : half * (total / count)
 }
 
 /**
@@ -173,7 +257,7 @@ function setback(mesh: EditMesh, vertex: number, along: Vec3, half: number, edge
 }
 
 /** One closed box along an edge, wound outwards, and the slots of its six faces. */
-function tube(mesh: EditMesh, edge: number, half: number, offset: number, edges: Set<number>, even: boolean): number[] {
+function tube(mesh: EditMesh, edge: number, half: number, edges: Set<number>, options: WireframeOptions): number[] {
   const [first, second] = mesh.edgeVertices(edge)
   const from = mesh.position(first)
   const to = mesh.position(second)
@@ -182,34 +266,64 @@ function tube(mesh: EditMesh, edge: number, half: number, offset: number, edges:
   if (reach < 1e-9) return []
   const along = scale(span, 1 / reach)
   const [across, up] = section(mesh, edge, along)
-  const start = Math.min(setback(mesh, first, along, half, edges, even), reach / 3)
-  const end = Math.min(setback(mesh, second, scale(along, -1), half, edges, even), reach / 3)
-  const shift = scale(up, offset * half)
-  const rings = [start, reach - end].map((distance) => {
-    const middle = add(add(from, scale(along, distance)), shift)
+  const relative = options.relative === true
+  const nearHalf = halfAt(mesh, first, half, edges, relative)
+  const farHalf = halfAt(mesh, second, half, edges, relative)
+  // Read before anything is minted: a bar takes the material of the face its edge was cut from,
+  // which is what makes a wireframe of a multi-material mesh come back in the right colours.
+  const source = mesh.edgeFaces(edge)[0] ?? -1
+  const start = Math.min(setback(mesh, first, along, nearHalf, edges, options.even), reach / 3)
+  const end = Math.min(setback(mesh, second, scale(along, -1), farHalf, edges, options.even), reach / 3)
+  const ring = (distance: number, width: number): number[] => {
+    const middle = add(add(from, scale(along, distance)), scale(up, options.offset * width))
     return [
-      add(add(middle, scale(across, half)), scale(up, half)),
-      add(subtract(middle, scale(across, half)), scale(up, half)),
-      subtract(subtract(middle, scale(across, half)), scale(up, half)),
-      subtract(add(middle, scale(across, half)), scale(up, half)),
+      add(add(middle, scale(across, width)), scale(up, width)),
+      add(subtract(middle, scale(across, width)), scale(up, width)),
+      subtract(subtract(middle, scale(across, width)), scale(up, width)),
+      subtract(add(middle, scale(across, width)), scale(up, width)),
     ].map((point) => mesh.addVertex(point))
-  })
-  const [near, far] = rings as [number[], number[]]
+  }
+  const near = ring(start, nearHalf)
+  const far = ring(reach - end, farHalf)
   const built: number[] = []
   const centre = mesh.median([...near, ...far])
   const loops = [near, [...far].reverse()]
   for (let corner = 0; corner < 4; corner += 1) {
     loops.push([near[corner]!, near[(corner + 1) % 4]!, far[(corner + 1) % 4]!, far[corner]!])
   }
+  const materialOffset = Math.max(0, Math.round(options.materialOffset ?? 0))
   for (const loop of loops) {
     const face = mesh.addFace(loop)
     if (face < 0) continue
     // A box is convex, so a face pointing back towards the middle of it is a face wound the wrong
     // way — cheaper and surer than reasoning about the section's handedness.
     if (dot(mesh.faceNormal(face), subtract(mesh.faceCentre(face), centre)) < 0) mesh.flipFace(face)
+    if (source >= 0) mesh.copyFaceAttributes(source, face)
+    if (materialOffset > 0) mesh.setFaceMaterial(face, mesh.faceMaterial(face) + materialOffset)
     built.push(face)
   }
   return built
+}
+
+/** The edges a wire is built along, with the ones on the rim left out when they were not wanted. */
+export function wireableEdges(mesh: EditMesh, edges: Iterable<number>, boundary: boolean): number[] {
+  const wanted = [...new Set(edges)].sort((first, second) => first - second)
+  return boundary ? wanted : wanted.filter((edge) => mesh.edgeFaces(edge).length >= 2)
+}
+
+/**
+ * A square bar along every edge given, answered as the slots of the faces minted. An edge too short
+ * to hold a bar is skipped rather than refused: on a whole mesh one degenerate edge is not a reason
+ * to give nothing back.
+ */
+export function wireframeBars(mesh: EditMesh, edges: Iterable<number>, options: WireframeOptions): number[] {
+  const wanted = new Set(edges)
+  const half = Math.abs(options.thickness) / 2
+  const minted: number[] = []
+  for (const edge of [...wanted].sort((first, second) => first - second)) {
+    minted.push(...tube(mesh, edge, half, wanted, options))
+  }
+  return minted
 }
 
 function wireframe(
@@ -231,15 +345,9 @@ function wireframe(
     }
   }
   if (wanted.size === 0) return 'Nothing is selected.'
-  if (!options.boundary) {
-    for (const edge of [...wanted]) if (mesh.edgeFaces(edge).length < 2) wanted.delete(edge)
-    if (wanted.size === 0) return 'Every selected edge is on the rim, and Boundary is switched off.'
-  }
-  const half = Math.abs(options.thickness) / 2
-  const minted: number[] = []
-  for (const edge of [...wanted].sort((first, second) => first - second)) {
-    minted.push(...tube(mesh, edge, half, options.offset, wanted, options.even))
-  }
+  const wired = wireableEdges(mesh, wanted, options.boundary)
+  if (wired.length === 0) return 'Every selected edge is on the rim, and Boundary is switched off.'
+  const minted = wireframeBars(mesh, wired, options)
   if (minted.length === 0) return 'The selected edges are too short to make a wire of.'
   const kept = minted.map((face) => mesh.faceId(face))
   if (options.replace) {

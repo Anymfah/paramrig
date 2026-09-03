@@ -1,4 +1,5 @@
 import type { ParamValue } from '@/rigs/types'
+import type { EditMesh } from '@/scene/mesh/editMesh'
 import { add, cross, dot, length, normalize, scale, subtract } from '@/scene/mesh/normals'
 import { requireEdit, runOnMeshes, selectedVertices, type EditOutcome, type EditTarget } from '@/scene/operators/edit'
 import { registerOperator } from '@/scene/operators/registry'
@@ -63,7 +64,14 @@ function centreOf(context: OperatorContext, params: OperatorParams): Vec3 {
 
 type Rail = { from: number; to: number; face: number | null }
 
-type SweepOptions = {
+/**
+ * What a sweep turns. An `EditTarget` is one of these, and so is a whole mesh with all of its slots
+ * in it: the Screw modifier hands over the second kind, which is why the sweep asks for no more of
+ * a target than the four things it actually reads.
+ */
+export type SweepTarget = Pick<EditTarget, 'mesh' | 'vertices' | 'edges' | 'faces'>
+
+export type SweepOptions = {
   steps: number
   /** The whole turn in radians, not one step's worth. */
   angle: number
@@ -73,6 +81,12 @@ type SweepOptions = {
   rise: number
   duplicates: boolean
   autoMerge: boolean
+  /**
+   * Whether a wire profile's edges are walked end to end before they are swept. Left off they are
+   * taken in the order the mesh holds them, which is Blender's Calculate order switched off:
+   * quicker on a big profile, and a wall here and there comes out inside out.
+   */
+  calcOrder?: boolean
 }
 
 /** Rodrigues' rotation about an axis through a point, with the screw's climb folded in. */
@@ -96,7 +110,7 @@ function turned(point: Vec3, centre: Vec3, axis: Vec3, angle: number, rise: numb
  * person drew them — so the chain is walked and re-wound, or a ring of four edges would come back
  * with one of its four walls inside out.
  */
-function railsOf(target: EditTarget, seeds: Set<number>): Rail[] {
+function railsOf(target: SweepTarget, seeds: Set<number>, calcOrder: boolean): Rail[] {
   const mesh = target.mesh
   if (target.faces.size > 0) {
     const rails: Rail[] = []
@@ -120,11 +134,19 @@ function railsOf(target: EditTarget, seeds: Set<number>): Rail[] {
       if (seeds.has(a) && seeds.has(b)) wanted.push(edge)
     }
   }
-  return chained(target, wanted)
+  return calcOrder ? chained(target, wanted) : stored(target, wanted)
+}
+
+/** The edges exactly as the mesh holds them, low slot first, with no walk over them at all. */
+function stored(target: SweepTarget, edges: number[]): Rail[] {
+  return edges.map((edge) => {
+    const [from, to] = target.mesh.edgeVertices(edge)
+    return { from, to, face: null }
+  })
 }
 
 /** A wire's edges walked end to end, so consecutive rails point the same way along it. */
-function chained(target: EditTarget, edges: number[]): Rail[] {
+function chained(target: SweepTarget, edges: number[]): Rail[] {
   const mesh = target.mesh
   const neighbours = new Map<number, number[]>()
   const pairs = edges.map((edge) => mesh.edgeVertices(edge))
@@ -136,7 +158,7 @@ function chained(target: EditTarget, edges: number[]): Rail[] {
   // A vertex where three edges meet has no single way round, so the whole selection is taken as it
   // is stored rather than half of it walked and half of it guessed.
   for (const list of neighbours.values()) {
-    if (list.length > 2) return pairs.map(([from, to]) => ({ from, to, face: null }))
+    if (list.length > 2) return stored(target, edges)
   }
   const used = new Set<string>()
   const key = (a: number, b: number): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
@@ -155,11 +177,19 @@ function chained(target: EditTarget, edges: number[]): Rail[] {
   return rails
 }
 
-function sweep(target: EditTarget, options: SweepOptions): EditOutcome {
+/** Every vertex a sweep turns: the corners of the edges and faces it was given, and its own. */
+function sweptVertices(target: SweepTarget): Set<number> {
+  const slots = new Set(target.vertices)
+  for (const edge of target.edges) for (const end of target.mesh.edgeVertices(edge)) if (end >= 0) slots.add(end)
+  for (const face of target.faces) for (const corner of target.mesh.faceVertices(face)) slots.add(corner)
+  return slots
+}
+
+export function sweep(target: SweepTarget, options: SweepOptions): EditOutcome {
   const mesh = target.mesh
-  const seeds = [...selectedVertices(target)].sort((first, second) => first - second)
+  const seeds = [...sweptVertices(target)].sort((first, second) => first - second)
   if (seeds.length === 0) return NOTHING_SELECTED
-  const rails = railsOf(target, new Set(seeds))
+  const rails = railsOf(target, new Set(seeds), options.calcOrder !== false)
   const faces = [...target.faces].sort((first, second) => first - second)
   const at = new Map(seeds.map((slot, index) => [slot, index]))
   // A whole turn that climbs nowhere comes back to where it started, so the last ring is the first
@@ -314,12 +344,18 @@ registerOperator<OperatorParams>({
 
 /* -------------------------------------------------------------------- smoothing */
 
-/** Which of the three axes a smoothing pass is allowed to move a vertex along. */
-type Axes = [boolean, boolean, boolean]
+/**
+ * Which of the three axes a smoothing pass is allowed to move a vertex along.
+ *
+ * Exported because the Smooth modifier is this operator run over a whole mesh rather than over a
+ * selection, and one algorithm written twice is two algorithms as soon as either is corrected.
+ */
+export type SmoothAxes = [boolean, boolean, boolean]
+
+type Axes = SmoothAxes
 
 /** The average of a vertex's neighbours, or null where it has none to average. */
-function neighbourhood(target: EditTarget, slot: number): Vec3 | null {
-  const mesh = target.mesh
+function neighbourhood(mesh: EditMesh, slot: number): Vec3 | null {
   const edges = mesh.vertexEdges(slot)
   if (edges.length === 0) return null
   let total: Vec3 = [0, 0, 0]
@@ -335,12 +371,12 @@ function neighbourhood(target: EditTarget, slot: number): Vec3 | null {
 }
 
 /** One pass of `position += factor · (average of the neighbours − position)`, over all of them at once. */
-function relax(target: EditTarget, slots: number[], factor: number, axes: Axes): void {
+function relax(mesh: EditMesh, slots: number[], factor: number, axes: Axes): void {
   const moved = new Map<number, Vec3>()
   for (const slot of slots) {
-    const average = neighbourhood(target, slot)
+    const average = neighbourhood(mesh, slot)
     if (!average) continue
-    const here = target.mesh.position(slot)
+    const here = mesh.position(slot)
     moved.set(slot, [
       axes[0] ? here[0] + (average[0] - here[0]) * factor : here[0],
       axes[1] ? here[1] + (average[1] - here[1]) * factor : here[1],
@@ -349,7 +385,21 @@ function relax(target: EditTarget, slots: number[], factor: number, axes: Axes):
   }
   // Every vertex is written after every average is read: a pass that wrote as it went would smooth
   // the low slots against positions the high slots had not reached yet, and depend on slot order.
-  for (const [slot, point] of moved) target.mesh.setPosition(slot, point)
+  for (const [slot, point] of moved) mesh.setPosition(slot, point)
+}
+
+/**
+ * Repeated relaxation of some vertices of a mesh, which is all Smooth is: the operator hands it a
+ * selection, the modifier of the same name hands it every vertex there is.
+ */
+export function smoothVertices(
+  mesh: EditMesh,
+  slots: Iterable<number>,
+  options: { factor: number; repeat: number; axes: SmoothAxes },
+): void {
+  const moving = [...slots]
+  if (moving.length === 0) return
+  for (let pass = 0; pass < options.repeat; pass += 1) relax(mesh, moving, options.factor, options.axes)
 }
 
 registerOperator<{ repeat: number; factor: number; axisX: boolean; axisY: boolean; axisZ: boolean }>({
@@ -373,9 +423,11 @@ registerOperator<{ repeat: number; factor: number; axisX: boolean; axisY: boolea
     if (slots.length === 0) return NOTHING_SELECTED
     const axes: Axes = [params.axisX, params.axisY, params.axisZ]
     if (!axes[0] && !axes[1] && !axes[2]) return 'Leave at least one axis on, or nothing can move.'
-    for (let pass = 0; pass < Math.max(1, Math.round(params.repeat)); pass += 1) {
-      relax(target, slots, params.factor, axes)
-    }
+    smoothVertices(target.mesh, slots, {
+      factor: params.factor,
+      repeat: Math.max(1, Math.round(params.repeat)),
+      axes,
+    })
     return {}
   }, { label: 'Smooth vertices' }),
 })
@@ -409,8 +461,8 @@ registerOperator<{ repeat: number; lambda: number; preserveVolume: boolean }>({
     const axes: Axes = [true, true, true]
     const mu = 1 / (PASS_BAND - 1 / lambda)
     for (let pass = 0; pass < Math.max(1, Math.round(params.repeat)); pass += 1) {
-      relax(target, slots, lambda, axes)
-      if (params.preserveVolume) relax(target, slots, mu, axes)
+      relax(target.mesh, slots, lambda, axes)
+      if (params.preserveVolume) relax(target.mesh, slots, mu, axes)
     }
     return {}
   }, { label: 'Laplacian smooth' }),

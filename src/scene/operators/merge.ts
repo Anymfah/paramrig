@@ -406,7 +406,7 @@ registerOperator<DistanceParams>({
  * The survivor keeps its own position rather than moving to the middle of its group: Blender welds
  * onto a vertex, and a merge meant to close a seam should not move the seam.
  */
-function withinDistance(mesh: EditMesh, selected: Set<number>, distance: number, unselected: boolean): WeldCluster[] {
+export function withinDistance(mesh: EditMesh, selected: Set<number>, distance: number, unselected: boolean): WeldCluster[] {
   const candidates: number[] = []
   for (let slot = 0; slot < mesh.vertexCount; slot += 1) {
     if (unselected || selected.has(slot)) candidates.push(slot)
