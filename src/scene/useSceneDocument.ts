@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/editor/history'
 import { getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
+import { cameraPlacement } from '@/scene/operators/view'
 import { runOperator as runRegisteredOperator } from '@/scene/operators/registry'
 import type { OperatorContext, OperatorParams } from '@/scene/operators/types'
 import { getOperator } from '@/scene/operators/registry'
@@ -124,7 +125,7 @@ export function useSceneDocument(documentId: string) {
   const replace = useCallback((update: (current: SceneDocument) => SceneDocument, record = true, label = DEFAULT_STEP_LABEL) => {
     const current = latest.current
     if (!current) return
-    const updated = update(current)
+    const updated = cameraFollows(current, update(current))
     if (updated === current || sameDocument(updated, current)) return
     const next = { ...updated, updatedAt: new Date().toISOString() }
     if (record && !gestureStart.current) {
@@ -143,7 +144,7 @@ export function useSceneDocument(documentId: string) {
     if (!current) return
     const view = typeof update === 'function' ? update(current.view) : update
     if (view === current.view) return
-    const next = { ...current, view }
+    const next = cameraFollows(current, { ...current, view })
     latest.current = next
     setDocumentState(next)
   }, [])
@@ -546,3 +547,39 @@ export function useSceneDocument(documentId: string) {
 }
 
 export type SceneEditor = ReturnType<typeof useSceneDocument>
+
+/**
+ * What navigating does while the view is looking through the camera.
+ *
+ * Two answers, and Blender's are both right. With the camera locked to the view, the camera *is*
+ * the view: turning, panning and zooming move the object, and the shot is framed by flying around
+ * in it. Without the lock, the view is a place a person has borrowed from the camera, and moving it
+ * means they no longer want to be there — so the camera view is left rather than silently ignored,
+ * which is the only alternative and reads as a bug.
+ *
+ * Changing a setting is not navigating: only the turntable's own numbers count.
+ */
+function cameraFollows(current: SceneDocument, updated: SceneDocument): SceneDocument {
+  const before = current.view
+  const view = updated.view
+  const looking = before.camera?.looking === true && view.camera?.looking !== false
+  const moved = view.yaw !== before.yaw
+    || view.pitch !== before.pitch
+    || view.distance !== before.distance
+    || view.target[0] !== before.target[0]
+    || view.target[1] !== before.target[1]
+    || view.target[2] !== before.target[2]
+  if (!looking || !moved) return updated
+  if (view.camera?.lock !== true) {
+    return { ...updated, view: { ...view, camera: { ...(view.camera ?? { looking: false }), looking: false } } }
+  }
+  const camera = updated.objects.find((object) => object.data.kind === 'camera' && object.data.active)
+  if (!camera) return updated
+  const placement = cameraPlacement(view)
+  return {
+    ...updated,
+    objects: updated.objects.map((object) => (
+      object.id === camera.id ? { ...object, transform: { ...object.transform, ...placement } } : object
+    )),
+  }
+}

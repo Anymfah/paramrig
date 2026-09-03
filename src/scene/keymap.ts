@@ -132,6 +132,7 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'Numpad4', action: operator('view.orbitLeft'), label: 'Orbit left' },
   { code: 'Numpad6', action: operator('view.orbitRight'), label: 'Orbit right' },
   { code: 'Numpad0', action: operator('view.camera'), label: 'Camera view' },
+  { code: 'Numpad0', ctrl: true, alt: true, action: operator('view.cameraToView'), label: 'Camera to view' },
   { code: 'NumpadDivide', action: operator('view.local'), label: 'Toggle local view' },
 
   /* view, on the top row, for a keyboard with no numeric keypad */
@@ -143,6 +144,7 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'Digit7', ctrl: true, alt: true, action: operator('view.bottom'), label: 'Bottom view', requires: 'numpadEmulation', note: NOTE_ALT_GR },
   { code: 'Digit5', alt: true, action: operator('view.togglePerspective'), label: 'Toggle perspective', requires: 'numpadEmulation', note: NOTE_NUMPAD_EMULATION },
   { code: 'Digit0', alt: true, action: operator('view.camera'), label: 'Camera view', requires: 'numpadEmulation', note: NOTE_NUMPAD_EMULATION },
+  { code: 'Digit0', ctrl: true, alt: true, action: operator('view.cameraToView'), label: 'Camera to view', requires: 'numpadEmulation', note: NOTE_ALT_GR },
   { code: 'Period', alt: true, action: operator('view.frameSelected'), label: 'Frame selected', requires: 'numpadEmulation', note: NOTE_NUMPAD_EMULATION },
 
   /* modes */

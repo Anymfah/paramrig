@@ -13,6 +13,21 @@ import type { SceneDocument, SceneObject, Transform, Vec3 } from '@/scene/types'
 export type Box = { min: Vec3; max: Vec3 }
 
 const scratchEuler = new Euler()
+
+/**
+ * Blender's Euler order in three's spelling, which is the same letters backwards.
+ *
+ * Blender turns about the *world's* axes in the order it names — XYZ means X first, then Y, then Z,
+ * so the matrix is Rz·Ry·Rx — while three's `Euler` names its rotations in the order they are
+ * applied to the object itself, so its 'XYZ' is Rx·Ry·Rz. The two spellings are reverses of each
+ * other. Handing Blender's straight to three left every compound rotation subtly wrong, and the
+ * startup camera — whose numbers are Blender's own — pointed somewhere other than at the cube.
+ */
+function threeOrder(order: string): 'XYZ' | 'XZY' | 'YXZ' | 'YZX' | 'ZXY' | 'ZYX' {
+  const reversed = [...order].reverse().join('')
+  const known = ['XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'] as const
+  return known.find((entry) => entry === reversed) ?? 'ZYX'
+}
 const scratchQuaternion = new Quaternion()
 
 /** One object's own transform, in the Euler order the object says it uses. */
@@ -25,7 +40,12 @@ export function localMatrix(object: Pick<SceneObject, 'transform' | 'origin'>): 
     scratchQuaternion.set(qx, qy, qz, qw)
   } else {
     const order = transform.rotationMode && transform.rotationMode !== 'quaternion' ? transform.rotationMode : 'XYZ'
-    scratchEuler.set((transform.rotation[0] * Math.PI) / 180, (transform.rotation[1] * Math.PI) / 180, (transform.rotation[2] * Math.PI) / 180, order)
+    scratchEuler.set(
+      (transform.rotation[0] * Math.PI) / 180,
+      (transform.rotation[1] * Math.PI) / 180,
+      (transform.rotation[2] * Math.PI) / 180,
+      threeOrder(order),
+    )
     scratchQuaternion.setFromEuler(scratchEuler)
   }
   // A zero scale would make the matrix singular and every child would collapse onto the origin.
@@ -137,7 +157,8 @@ export function decomposeMatrix(matrix: Matrix4, order: Transform['rotationMode'
   const quaternion = new Quaternion()
   const scale = new Vector3()
   matrix.decompose(position, quaternion, scale)
-  const euler = new Euler().setFromQuaternion(quaternion, order === 'quaternion' ? 'XYZ' : order)
+  // Read back in the same spelling it was composed in, or parenting would not be reversible.
+  const euler = new Euler().setFromQuaternion(quaternion, threeOrder(order === 'quaternion' ? 'XYZ' : order))
   return {
     position: [position.x, position.y, position.z],
     rotation: [(euler.x * 180) / Math.PI, (euler.y * 180) / Math.PI, (euler.z * 180) / Math.PI],

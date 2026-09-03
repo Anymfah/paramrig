@@ -216,7 +216,6 @@ export function SceneSidebar({
     scale: [false, false, false],
   }))
   const [mode, setMode] = useState<SelectionMode>('new')
-  const [cameraLocked, setCameraLocked] = useState(false)
 
   if (!open) return null
 
@@ -279,8 +278,8 @@ export function SceneSidebar({
         {tab === 'view' ? (
           <ViewTab
             document={document}
-            cameraLocked={cameraLocked}
-            onCameraLocked={setCameraLocked}
+            cameraLocked={document.view.camera?.lock === true}
+            onCameraLocked={(lock) => onView({ camera: { ...(document.view.camera ?? { looking: false }), lock } })}
             onView={onView}
             onEditDocument={onEditDocument}
             onGestureStart={onGestureStart}
@@ -868,8 +867,13 @@ function ViewTab({
         <SwitchField
           label="Lock camera to view"
           checked={cameraLocked}
+          defaultValue={false}
           onChange={onCameraLocked}
         />
+        <p className="scene-sidebar__note">
+          Locked, navigating moves the active camera itself. Unlocked, moving the view leaves the
+          camera view rather than pretending to be in it.
+        </p>
       </div>
 
       <AxisFields

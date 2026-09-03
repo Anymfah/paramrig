@@ -22,6 +22,8 @@ import type { TransformMode } from '@/scene/transform/session'
 import type { SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
+import { SceneCameraFrame } from '@/scene/SceneCameraFrame'
+import { SceneLightHandles } from '@/scene/SceneLightHandles'
 import { SceneMarquee } from '@/scene/SceneMarquee'
 import { ViewNavigator } from '@/scene/viewport/navigation'
 import type { OperatorParams } from '@/scene/operators'
@@ -957,6 +959,15 @@ export function SceneStage({
           if (event.shiftKey || modal.current?.active) return
           onMenuRef.current({ x: event.clientX, y: event.clientY })
         }}
+      />
+      <SceneCameraFrame document={document} />
+      <SceneLightHandles
+        document={document}
+        selection={selection}
+        viewport={viewport.current}
+        onEditDocument={(edit, label) => { void label; gestures.current.onEditDocument(edit) }}
+        onGestureStart={() => gestures.current.onGestureStart('Light')}
+        onGestureEnd={() => gestures.current.onGestureEnd('Light')}
       />
       <SceneMarquee channel={marquee} />
       <SceneToolPath channel={toolPath} />

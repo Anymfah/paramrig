@@ -1,8 +1,8 @@
 import { paddedBounds, sceneBounds } from '@/scene/objects'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, switchParam, type Operator, type OperatorContext, type OperatorParams, type OperatorResult } from '@/scene/operators/types'
-import type { SceneDocument, ViewState } from '@/scene/types'
-import { AXIS_VIEWS, clampPitch, fovFromFocalLength, frameBox, wrapYaw, type AxisView } from '@/scene/viewport/view'
+import type { SceneDocument, Vec3, ViewState } from '@/scene/types'
+import { AXIS_VIEWS, cameraPosition, clampPitch, fovFromFocalLength, frameBox, wrapYaw, type AxisView } from '@/scene/viewport/view'
 
 /**
  * Moving the view is an operator like any other, so it appears in the View menu, in the palette
@@ -171,22 +171,78 @@ registerOperator({
   run: (context) => {
     const camera = context.document.objects.find((object) => object.data.kind === 'camera' && object.data.active)
     if (!camera) return { error: 'This scene has no active camera.' }
-    // Standing where the camera stands is a first approximation; the passe-partout view that
-    // shows what the camera will render arrives with the camera prompt.
-    const [x, y, z] = camera.transform.position
-    const [rx, , rz] = camera.transform.rotation
+    const looking = context.document.view.camera?.looking === true
+    if (looking) {
+      /*
+       * Leaving puts the turntable where the camera was standing, so the view does not jump: the
+       * eye stays where it was and only the way it is steered changes. A camera aims down its own
+       * −Z, and the view's pitch is measured from the ground plane.
+       */
+      const [x, y, z] = camera.transform.position
+      const [rx, , rz] = camera.transform.rotation
+      return {
+        document: withView(context.document, {
+          camera: { ...(context.document.view.camera ?? { looking: false }), looking: false },
+          yaw: wrapYaw(180 - rz),
+          pitch: clampPitch(rx - 90),
+          target: [x, y, z],
+          distance: Math.max(context.document.view.distance, 0.01),
+        }),
+        label: 'Leave camera view',
+      }
+    }
     return {
       document: withView(context.document, {
-        // A camera aims down its own -Z; the view's pitch is measured from the ground plane.
-        yaw: wrapYaw(180 - rz),
-        pitch: clampPitch(rx - 90),
-        target: [x, y, z],
-        distance: Math.max(context.document.view.distance, 0.01),
+        camera: { ...(context.document.view.camera ?? {}), looking: true },
       }),
       label: 'Camera view',
     }
   },
 })
+
+/**
+ * Blender's ⌃⌥0: the active camera is moved to stand exactly where the view stands, and the view
+ * then looks through it. It is how a shot is framed — turn the view until it looks right, then give
+ * that to the camera — and it is the reason a camera hardly ever has to be placed by hand.
+ */
+registerOperator({
+  id: 'view.cameraToView',
+  label: 'Camera to view',
+  section: 'View',
+  shortcut: '⌃⌥Numpad 0',
+  description: 'Move the active camera to where the view is, and look through it.',
+  params: [],
+  defaults: {},
+  available: (context) => (context.document.objects.some((object) => object.data.kind === 'camera' && object.data.active)
+    ? true
+    : 'This scene has no active camera.'),
+  run: (context) => {
+    const camera = context.document.objects.find((object) => object.data.kind === 'camera' && object.data.active)
+    if (!camera) return { error: 'This scene has no active camera.' }
+    const view = context.document.view
+    return {
+      document: {
+        ...withView(context.document, { camera: { ...(view.camera ?? {}), looking: true } }),
+        objects: context.document.objects.map((object) => (
+          object.id === camera.id ? { ...object, transform: { ...object.transform, ...cameraPlacement(view) } } : object
+        )),
+      },
+      label: 'Camera to view',
+    }
+  },
+})
+
+/**
+ * Where an object has to stand, and how it has to be turned, to see what the view sees.
+ *
+ * The view is a turntable — a target, two angles and a distance — and an object is a position and
+ * three Euler angles. A camera looks down its own −Z with +Y up, so a pitch of nought (level with
+ * the ground) is a rotation of 90° about X, and the yaw is measured the other way round from Z.
+ */
+export function cameraPlacement(view: ViewState): { position: Vec3; rotation: Vec3 } {
+  const position = cameraPosition(view)
+  return { position, rotation: [view.pitch + 90, 0, 180 - view.yaw] }
+}
 
 registerOperator({
   id: 'view.local',

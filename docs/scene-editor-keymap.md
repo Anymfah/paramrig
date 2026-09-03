@@ -107,6 +107,7 @@ generated with the preferences at their defaults, which is where “Emulate Nump
 | `Numpad 4` | Orbit left |
 | `Numpad 6` | Orbit right |
 | `Numpad 0` | Camera view |
+| `⌃⌥Numpad 0` | Camera to view |
 | `Numpad /` | Toggle local view |
 | `⌥1` | Front view |
 | `⌃⌥1` | Back view |
@@ -116,13 +117,14 @@ generated with the preferences at their defaults, which is where “Emulate Nump
 | `⌃⌥7` | Bottom view |
 | `⌥5` | Toggle perspective |
 | `⌥0` | Camera view |
+| `⌃⌥0` | Camera to view |
 | `⌥.` | Frame selected |
 | `⌥Z` | X-ray |
 
 Where this differs from Blender:
 
 - `⌥1`, `⌥3`, `⌥7`, `⌥5`, `⌥0`, `⌥.` — A keyboard without a numeric keypad reaches the axis views on the top row, the way Blender’s “Emulate Numpad” preference does.
-- `⌃⌥1`, `⌃⌥3`, `⌃⌥7` — ⌃⌥ is AltGr on Windows, where some layouts type a character with it. Keys are ignored while a field has focus, so typing is left alone.
+- `⌃⌥1`, `⌃⌥3`, `⌃⌥7`, `⌃⌥0` — ⌃⌥ is AltGr on Windows, where some layouts type a character with it. Keys are ignored while a field has focus, so typing is left alone.
 
 ## Modes
 

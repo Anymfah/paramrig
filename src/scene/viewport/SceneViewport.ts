@@ -22,6 +22,7 @@ import {
   type Material,
 } from 'three'
 import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/environment'
+import { cameraFrame, type CameraFrame } from '@/scene/viewport/cameraFrame'
 import { solidColour } from '@/scene/viewport/solidColour'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
@@ -1096,9 +1097,46 @@ export class SceneViewport {
 
   /* -------------------------------------------------------------- the view */
 
+  /**
+   * The active camera, when the view is looking through it, with the frame it renders.
+   *
+   * The frame is worked out here as well as in the overlay that draws it, from the same pure
+   * function: the viewport needs its field of view and the overlay needs its rectangle, and they
+   * have to agree exactly or the passe-partout would be showing a different picture from the one
+   * the camera renders.
+   */
+  private lookingThrough(): { object: SceneObject; frame: CameraFrame } | null {
+    const view = this.view
+    const document = this.document
+    if (!view?.camera?.looking || !document) return null
+    const object = document.objects.find((entry) => entry.data.kind === 'camera' && entry.data.active)
+    if (!object || object.data.kind !== 'camera') return null
+    return {
+      object,
+      frame: cameraFrame({
+        viewport: { width: this.size.width, height: this.size.height },
+        camera: object.data,
+        output: document.output,
+      }),
+    }
+  }
+
+  /** Where the camera's frame is on screen, in device pixels, for the overlay that dims round it. */
+  cameraFrameRect(): CameraFrame | null {
+    return this.lookingThrough()?.frame ?? null
+  }
+
   private applyView(): void {
     const view = this.view
     if (!view) return
+    const through = this.lookingThrough()
+    if (through) {
+      this.applyCameraView(through.object, through.frame)
+      return
+    }
+    // Back on the turntable: both cameras place themselves from a position and a target again.
+    this.perspective.matrixAutoUpdate = true
+    this.orthographic.matrixAutoUpdate = true
     const position = cameraPosition(view)
     const basis = cameraBasis(view.yaw, view.pitch)
     const fov = fovFromFocalLength(view.focalLength)
@@ -1147,6 +1185,46 @@ export class SceneViewport {
       if (objectView.wire) objectView.wire.object.visible = view.shading === 'wireframe' || view.overlays.wireframe
     }
     this.applyShading()
+  }
+
+  /**
+   * Standing where the camera stands, seeing a little more than it does.
+   *
+   * The camera's own matrix places the viewport camera — position and rotation both, so a rolled
+   * camera rolls the view, which a turntable of yaw and pitch could never express. The field of
+   * view is the frame's rather than the camera's: the region shows more than the render, and the
+   * overlay dims the difference.
+   */
+  private applyCameraView(object: SceneObject, frame: CameraFrame): void {
+    const view = this.view
+    const document = this.document
+    if (!view || !document || object.data.kind !== 'camera') return
+    const matrix = worldMatrix(document, object)
+    const aspect = this.size.width / Math.max(1, this.size.height)
+    if (frame.viewOrthoHeight !== null) {
+      const height = frame.viewOrthoHeight / 2
+      this.orthographic.left = -height * aspect
+      this.orthographic.right = height * aspect
+      this.orthographic.top = height
+      this.orthographic.bottom = -height
+      this.orthographic.near = -Math.max(object.data.clipEnd, 1)
+      this.orthographic.far = Math.max(object.data.clipEnd, 1)
+      this.orthographic.matrixAutoUpdate = false
+      this.orthographic.matrix.copy(matrix)
+      this.orthographic.matrixWorldNeedsUpdate = true
+      this.orthographic.updateMatrixWorld(true)
+      this.orthographic.updateProjectionMatrix()
+      return
+    }
+    this.perspective.fov = frame.viewFov
+    this.perspective.aspect = aspect
+    this.perspective.near = object.data.clipStart
+    this.perspective.far = object.data.clipEnd
+    this.perspective.matrixAutoUpdate = false
+    this.perspective.matrix.copy(matrix)
+    this.perspective.matrixWorldNeedsUpdate = true
+    this.perspective.updateMatrixWorld(true)
+    this.perspective.updateProjectionMatrix()
   }
 
   /**
@@ -1265,6 +1343,11 @@ export class SceneViewport {
   }
 
   get camera(): Camera {
+    // Looking through a camera, it is that camera's own projection that decides — not the view's.
+    const through = this.lookingThrough()
+    if (through && through.object.data.kind === 'camera') {
+      return through.object.data.projection === 'orthographic' ? this.orthographic : this.perspective
+    }
     return this.view?.projection === 'orthographic' ? this.orthographic : this.perspective
   }
 

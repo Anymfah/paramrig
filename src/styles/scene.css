@@ -631,3 +631,65 @@
   border: 2px solid var(--scene-selected);
   border-radius: var(--radius-sm);
 }
+
+/*
+ * The camera's frame, drawn over the canvas rather than in it: crisp at any pixel ratio, and never
+ * part of what an F12 render would contain.
+ */
+.scene-camera-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.scene-camera-frame__svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.scene-camera-frame__mask { fill: #000; }
+.scene-camera-frame__border {
+  fill: none;
+  stroke: var(--scene-selected);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+.scene-camera-frame__marks {
+  fill: none;
+  stroke: var(--scene-selected);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (forced-colors: active) {
+  .scene-camera-frame__border,
+  .scene-camera-frame__marks { stroke: Highlight; }
+  .scene-camera-frame__mask { fill: Canvas; }
+}
+
+/*
+ * A light's own handle: the rim of a spot's cone, the corner of an area's rectangle. Sixteen pixels
+ * of radius is a thirty-two pixel target, which is what a pointer needs and more than a finger's
+ * accuracy demands — and the ring is drawn small inside it so the glyph stays readable.
+ */
+.scene-light-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.scene-light-handles__stem {
+  stroke: var(--scene-selected);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.7;
+}
+.scene-light-handles__grip {
+  pointer-events: auto;
+  cursor: grab;
+  fill: color-mix(in srgb, var(--scene-selected) 22%, transparent);
+  stroke: var(--scene-selected);
+  stroke-width: 1.5;
+  r: 8;
+}
+.scene-light-handles__grip:hover { fill: color-mix(in srgb, var(--scene-selected) 45%, transparent); }
+.scene-light-handles__grip[data-dragging] { cursor: grabbing; fill: var(--scene-selected); }
+
+@media (forced-colors: active) {
+  .scene-light-handles__grip { forced-color-adjust: none; fill: Highlight; stroke: CanvasText; }
+}

@@ -268,7 +268,7 @@ describe('the keymap sheet', () => {
     expect(on.map((entry) => entry.shortcut)).toContain('⌥1')
     expect(off.map((entry) => entry.shortcut)).not.toContain('⌥1')
     expect(off.map((entry) => entry.shortcut)).toContain('Numpad 1')
-    expect(off).toHaveLength(on.length - 9)
+    expect(off).toHaveLength(on.length - 10)
   })
 })
 
