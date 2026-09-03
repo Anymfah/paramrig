@@ -17,6 +17,7 @@ import {
   type Material,
 } from 'three'
 import { meshOf } from '@/scene/document'
+import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
 import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
@@ -209,7 +210,7 @@ export class SceneViewport {
   private gizmoBasis = { x: [1, 0, 0] as Vec3, y: [0, 1, 0] as Vec3, z: [0, 0, 1] as Vec3 }
   private views = new Map<string, ObjectView>()
   /** One per mesh open for editing, keyed by object id; the index is what its element ids carry. */
-  private editViews = new Map<string, { view: EditView; index: number }>()
+  private editViews = new Map<string, { view: EditView; index: number; cage?: MeshView }>()
   private editObjects: string[] = []
   /** Built the first time the face-orientation overlay is switched on, and kept for the session. */
   private orientationMaterial: Material | null = null
@@ -331,7 +332,10 @@ export class SceneViewport {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     for (const view of this.views.values()) this.disposeObjectView(view)
     this.views.clear()
-    for (const entry of this.editViews.values()) entry.view.dispose()
+    for (const entry of this.editViews.values()) {
+      entry.view.dispose()
+      entry.cage?.dispose()
+    }
     this.editViews.clear()
     this.cursor?.dispose()
     this.transform?.dispose()
@@ -373,7 +377,10 @@ export class SceneViewport {
     const document = this.document
     for (const view of this.views.values()) this.disposeObjectView(view)
     this.views.clear()
-    for (const entry of this.editViews.values()) entry.view.dispose()
+    for (const entry of this.editViews.values()) {
+      entry.view.dispose()
+      entry.cage?.dispose()
+    }
     this.editViews.clear()
     this.renderer?.resetState()
     this.applySize()
@@ -559,12 +566,29 @@ export class SceneViewport {
 
   /* --------------------------------------------------------------- objects */
 
+  /** Whether this object is one of the meshes open for editing, which some modifiers stand aside for. */
+  private isEditing(object: SceneObject): boolean {
+    return this.view?.mode === 'edit' && (this.selection.editObjectIds ?? []).includes(object.id)
+  }
+
+  /**
+   * What an object really looks like: its mesh with its modifier stack run over it. An object with
+   * no modifiers gets its own mesh back untouched, so a scene without any pays nothing for this.
+   */
+  private drawnMeshOf(object: SceneObject): MeshData | null {
+    if (!this.document) return null
+    return drawnMesh(this.document, object, { editing: this.isEditing(object) })
+  }
+
   private objectSignature(object: SceneObject): string {
-    const mesh = this.document ? meshOf(this.document, object) : null
+    const mesh = this.document ? this.drawnMeshOf(object) : null
     return JSON.stringify([
       object.kind,
       object.data.kind === 'mesh' ? object.data.meshId : object.data,
       mesh ? mesh.faces.length : 0,
+      // A stack that changed is a different shape, even when the face count happens to match.
+      object.modifiers.map((modifier) => [modifier.kind, modifier.enabled, modifier.params]),
+      this.isEditing(object),
       object.displayAs ?? 'textured',
       // An empty that stands in for a collection is rebuilt when that collection changes.
       object.data.kind === 'empty' && object.data.instanceCollectionId
@@ -600,7 +624,7 @@ export class SceneViewport {
         view = this.createObjectView(object, signature)
         this.views.set(object.id, view)
       } else if (object.data.kind === 'mesh' && view.meshView) {
-        const mesh = meshOf(document, object)
+        const mesh = this.drawnMeshOf(object)
         if (mesh && !meshViewIsCurrent(view.meshView, mesh)) {
           updateMeshPositions(view.meshView, mesh)
           refreshMeshBounds(view.meshView)
@@ -662,6 +686,7 @@ export class SceneViewport {
       this.overlayRoot.remove(entry.view.root)
       this.picking?.scene.remove(entry.view.pickRoot)
       entry.view.dispose()
+      entry.cage?.dispose()
       this.editViews.delete(id)
     }
     for (const [id, view] of this.views) {
@@ -672,8 +697,14 @@ export class SceneViewport {
     editing.forEach((id, index) => {
       const object = document.objects.find((candidate) => candidate.id === id)
       const objectView = this.views.get(id)
-      const data = object ? meshOf(document, object) : null
-      if (!object || !objectView?.meshView || !data) return
+      /*
+       * The overlay is drawn on the *cage* — the mesh a person is editing — and not on what the
+       * modifiers made of it. They can have different faces entirely, so the overlay carries its own
+       * geometry rather than borrowing the object's: a face tinted by the index of another mesh's
+       * face is a tint on the wrong face.
+       */
+      const data = object ? evaluateObject(document, object, { editing: true })?.cage ?? meshOf(document, object) : null
+      if (!object || !objectView || !data) return
       let entry = this.editViews.get(id)
       if (!entry) {
         entry = { view: createEditView(index, this.theme), index }
@@ -681,8 +712,12 @@ export class SceneViewport {
         this.overlayRoot.add(entry.view.root)
         this.picking?.scene.add(entry.view.pickRoot)
       }
+      if (!entry.cage || !meshViewIsCurrent(entry.cage, data)) {
+        entry.cage?.dispose()
+        entry.cage = buildMeshView(data)
+      }
       entry.view.setResolution(buffer.width, buffer.height, this.pixelRatio)
-      entry.view.setMesh(data, objectView.meshView)
+      entry.view.setMesh(data, entry.cage)
       entry.view.setSelectMode(this.view?.selectMode ?? ['vertex'])
       const overlays = this.view?.overlays
       entry.view.setOverlays({
@@ -816,7 +851,7 @@ export class SceneViewport {
     const view: ObjectView = { id: object.id, root, signature }
 
     if (object.data.kind === 'mesh' && this.document) {
-      const data = meshOf(this.document, object)
+      const data = this.drawnMeshOf(object)
       if (data) {
         const meshView = buildMeshView(data)
         const material = createSolidMaterial()
@@ -879,7 +914,7 @@ export class SceneViewport {
           if (member.collectionId !== collectionId || member.data.kind !== 'mesh') continue
           // A collection that contains this very empty would instance itself for ever.
           if (member.id === object.id) continue
-          const data = meshOf(this.document, member)
+          const data = drawnMesh(this.document, member)
           if (!data) continue
           const built = buildMeshView(data)
           const mesh = createMesh(built, material)
