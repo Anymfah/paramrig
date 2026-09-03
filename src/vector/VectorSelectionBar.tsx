@@ -3,13 +3,16 @@ import type { CSSProperties, ReactNode } from 'react'
 import { IconButton } from '@/ui/Button'
 import type { ContextMenuItem } from '@/ui/ContextMenu'
 import {
-  IconChevron, IconEye, IconEyeOff, IconFlipH, IconFlipV, IconGroup, IconLock, IconMore, IconNode,
-  IconRotate90, IconScissors, IconTrash, IconUngroup, IconUnlock,
+  IconAlignBottom, IconAlignCenterH, IconAlignCenterV, IconAlignLeft, IconAlignRight, IconAlignTop,
+  IconBringForward, IconChevron, IconDistributeH, IconDistributeV, IconEye, IconEyeOff, IconFlipH,
+  IconFlipV, IconGroup, IconLock, IconMore, IconNode, IconRotate90, IconScissors, IconTrash,
+  IconUngroup, IconUnlock,
 } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { VectorChip } from '@/vector/VectorChip'
 import { booleanLabel, BOOLEAN_OPERATIONS } from '@/vector/booleanGroups'
 import type { BooleanOperation } from '@/vector/booleans'
+import type { AlignMode, DistributeAxis } from '@/vector/align'
 import { SHORTCUTS, withShortcut } from '@/vector/commands'
 import type { SelectionBarPlacement } from '@/vector/VectorCanvas'
 
@@ -17,11 +20,22 @@ import type { SelectionBarPlacement } from '@/vector/VectorCanvas'
 export type SelectionBarActions = {
   canUngroup: boolean
   canCombine: boolean
+  canDistribute: boolean
+  canOutline: boolean
+  canFlatten: boolean
+  /** Aligning one object works against the page; several align to each other. */
+  alignsToPage: boolean
   locked: boolean
   hidden: boolean
   onGroup: () => void
   onUngroup: () => void
+  onAlign: (mode: AlignMode) => void
+  onDistribute: (axis: DistributeAxis) => void
+  onOrder: (mode: 'forward' | 'backward' | 'front' | 'back') => void
   onBoolean: (operation: BooleanOperation) => void
+  onCombine: () => void
+  onFlatten: () => void
+  onOutline: () => void
   onFlip: (axis: 'x' | 'y') => void
   onRotate90: () => void
   onLock: () => void
@@ -30,6 +44,15 @@ export type SelectionBarActions = {
   /** The rest of the canvas menu, behind the ⋯. */
   more: ContextMenuItem[]
 }
+
+const ALIGNMENTS: Array<{ mode: AlignMode; label: string; shortcut: string; icon: () => ReactNode }> = [
+  { mode: 'left', label: 'Align left', shortcut: '⌥A', icon: () => <IconAlignLeft /> },
+  { mode: 'centerX', label: 'Align horizontal centres', shortcut: '⌥H', icon: () => <IconAlignCenterH /> },
+  { mode: 'right', label: 'Align right', shortcut: '⌥D', icon: () => <IconAlignRight /> },
+  { mode: 'top', label: 'Align top', shortcut: '⌥W', icon: () => <IconAlignTop /> },
+  { mode: 'centerY', label: 'Align vertical centres', shortcut: '⌥V', icon: () => <IconAlignCenterV /> },
+  { mode: 'bottom', label: 'Align bottom', shortcut: '⌥S', icon: () => <IconAlignBottom /> },
+]
 
 /** What it does to the nodes under it, when the node tool is out. */
 export type NodeBarActions = {
@@ -99,29 +122,52 @@ function ObjectButtons({ actions }: { actions: SelectionBarActions }) {
       ) : (
         <BarButton label="Group" tip={withShortcut('Group', 'group')} onClick={actions.onGroup}><IconGroup /></BarButton>
       )}
-      <DropdownMenu.Root modal={false}>
-        <Tooltip content="Combine shapes">
-          <DropdownMenu.Trigger asChild>
-            <button type="button" className="vector-selection-bar__more" aria-label="Combine shapes" disabled={!actions.canCombine}>
-              <IconNode />
-              <IconChevron />
-            </button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu vector-selection-bar__menu" side="bottom" align="center" sideOffset={8} collisionPadding={8} aria-label="Combine shapes">
-            {BOOLEAN_OPERATIONS.map((operation) => (
-              <DropdownMenu.Item key={operation} className="menu__item" onSelect={() => actions.onBoolean(operation)}>
-                {booleanLabel(operation)}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+
+      <BarMenu label={actions.alignsToPage ? 'Align to page' : 'Align to selection'} icon={<IconAlignLeft />}>
+        <div className="vector-selection-bar__grid">
+          {ALIGNMENTS.map((item) => (
+            <DropdownMenu.Item key={item.mode} className="menu__item vector-selection-bar__cell" aria-label={item.label} onSelect={() => actions.onAlign(item.mode)}>
+              {item.icon()}
+            </DropdownMenu.Item>
+          ))}
+        </div>
+        {actions.canDistribute ? (
+          <>
+            <DropdownMenu.Separator className="menu__sep" />
+            <DropdownMenu.Item className="menu__item" onSelect={() => actions.onDistribute('x')}>
+              <IconDistributeH /><span>Distribute horizontally</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Item className="menu__item" onSelect={() => actions.onDistribute('y')}>
+              <IconDistributeV /><span>Distribute vertically</span>
+            </DropdownMenu.Item>
+          </>
+        ) : null}
+      </BarMenu>
+
+      <BarMenu label="Order" icon={<IconBringForward />}>
+        <MenuAction label="Bring to front" shortcut={SHORTCUTS.bringToFront} onSelect={() => actions.onOrder('front')} />
+        <MenuAction label="Bring forward" shortcut={SHORTCUTS.bringForward} onSelect={() => actions.onOrder('forward')} />
+        <MenuAction label="Send backward" shortcut={SHORTCUTS.sendBackward} onSelect={() => actions.onOrder('backward')} />
+        <MenuAction label="Send to back" shortcut={SHORTCUTS.sendToBack} onSelect={() => actions.onOrder('back')} />
+      </BarMenu>
+
+      <BarMenu label="Paths" icon={<IconNode />} disabled={!actions.canCombine && !actions.canOutline && !actions.canFlatten}>
+        {BOOLEAN_OPERATIONS.map((operation) => (
+          <DropdownMenu.Item key={operation} className="menu__item" disabled={!actions.canCombine} onSelect={() => actions.onBoolean(operation)}>
+            {booleanLabel(operation)}
+          </DropdownMenu.Item>
+        ))}
+        <DropdownMenu.Separator className="menu__sep" />
+        <MenuAction label="Combine paths" shortcut={SHORTCUTS.combine} disabled={!actions.canCombine} onSelect={actions.onCombine} />
+        <MenuAction label="Flatten" disabled={!actions.canFlatten} onSelect={actions.onFlatten} />
+        <MenuAction label="Outline stroke" disabled={!actions.canOutline} onSelect={actions.onOutline} />
+      </BarMenu>
+
       <span className="vector-selection-bar__sep" aria-hidden="true" />
       <BarButton label="Flip horizontal" tip={withShortcut('Flip horizontal', 'flipHorizontal')} onClick={() => actions.onFlip('x')}><IconFlipH /></BarButton>
       <BarButton label="Flip vertical" tip={withShortcut('Flip vertical', 'flipVertical')} onClick={() => actions.onFlip('y')}><IconFlipV /></BarButton>
       <BarButton label="Rotate 90 degrees" tip={withShortcut('Rotate 90°', 'rotate90')} onClick={actions.onRotate90}><IconRotate90 /></BarButton>
+      <span className="vector-selection-bar__sep" aria-hidden="true" />
       <BarButton label={actions.locked ? 'Unlock selection' : 'Lock selection'} tip={withShortcut(actions.locked ? 'Unlock' : 'Lock', 'lock')} pressed={actions.locked} onClick={actions.onLock}>
         {actions.locked ? <IconLock /> : <IconUnlock />}
       </BarButton>
@@ -130,23 +176,50 @@ function ObjectButtons({ actions }: { actions: SelectionBarActions }) {
       </BarButton>
       <BarButton label="Delete selection" tip={withShortcut('Delete', 'delete')} onClick={actions.onDelete}><IconTrash /></BarButton>
       <span className="vector-selection-bar__sep" aria-hidden="true" />
-      <DropdownMenu.Root modal={false}>
-        <Tooltip content="More actions">
-          <DropdownMenu.Trigger asChild>
-            <button type="button" className="vector-selection-bar__more" aria-label="More actions"><IconMore /></button>
-          </DropdownMenu.Trigger>
-        </Tooltip>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content className="menu vector-selection-bar__menu" side="bottom" align="end" sideOffset={8} collisionPadding={8} aria-label="More actions">
-            {actions.more.map((item, index) => (
-              <DropdownMenu.Item key={`${item.label}-${index}`} className="menu__item" disabled={item.disabled} onSelect={item.onSelect}>
-                {item.label}
-              </DropdownMenu.Item>
-            ))}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <BarMenu label="More actions" icon={<IconMore />} chevron={false}>
+        {actions.more.map((item, index) => (
+          <DropdownMenu.Item key={`${item.label}-${index}`} className="menu__item" disabled={item.disabled} onSelect={item.onSelect}>
+            {item.label}
+          </DropdownMenu.Item>
+        ))}
+      </BarMenu>
     </>
+  )
+}
+
+/** One button of the bar that opens a menu rather than acting. */
+function BarMenu({ label, icon, disabled, chevron = true, children }: {
+  label: string
+  icon: ReactNode
+  disabled?: boolean
+  chevron?: boolean
+  children: ReactNode
+}) {
+  return (
+    <DropdownMenu.Root modal={false}>
+      <Tooltip content={label}>
+        <DropdownMenu.Trigger asChild>
+          <button type="button" className="vector-selection-bar__more" aria-label={label} disabled={disabled}>
+            {icon}
+            {chevron ? <IconChevron /> : null}
+          </button>
+        </DropdownMenu.Trigger>
+      </Tooltip>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu vector-selection-bar__menu" side="top" align="center" sideOffset={8} collisionPadding={8} aria-label={label}>
+          {children}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+function MenuAction({ label, shortcut, disabled, onSelect }: { label: string; shortcut?: string; disabled?: boolean; onSelect: () => void }) {
+  return (
+    <DropdownMenu.Item className="menu__item" disabled={disabled} onSelect={onSelect}>
+      <span className="vector-selection-bar__label">{label}</span>
+      {shortcut ? <kbd>{shortcut}</kbd> : null}
+    </DropdownMenu.Item>
   )
 }
 

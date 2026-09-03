@@ -35,8 +35,8 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
   check('it stays inside the canvas', geometry.inside)
 
   const buttons = await bar.locator('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
-  check('it carries group, the flips, the rotation, lock, hide and delete', [
-    'Group', 'Combine shapes', 'Flip horizontal', 'Flip vertical', 'Rotate 90 degrees',
+  check('it carries grouping, align, order, paths, the flips, the rotation, lock, hide and delete', [
+    'Group', 'Align to page', 'Order', 'Paths', 'Flip horizontal', 'Flip vertical', 'Rotate 90 degrees',
     'Lock selection', 'Hide selection', 'Delete selection', 'More actions',
   ].every((label) => buttons.includes(label)), buttons.join(', '))
   const sizes = await bar.locator('button').evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)))
@@ -143,4 +143,68 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
   })
   log(`MEASURE chip: ${JSON.stringify(chips)}`)
   check('the bar is drawn on the chip surface', typeof chips.bar === 'string' && chips.bar.includes('px'))
+
+  // The three menus: aligning, stacking, and what a path can be turned into.
+  await helpers.newDocument()
+  await page.keyboard.press('r')
+  await helpers.drag({ x: 200, y: 200 }, { x: 340, y: 320 })
+  await page.waitForTimeout(200)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('r')
+  await helpers.drag({ x: 400, y: 260 }, { x: 560, y: 380 })
+  await page.waitForTimeout(200)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('r')
+  await helpers.drag({ x: 250, y: 420 }, { x: 380, y: 520 })
+  await page.waitForTimeout(200)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+a')
+  await page.waitForTimeout(400)
+
+  await page.click('.vector-selection-bar [aria-label="Align to selection"]')
+  await page.waitForSelector('.vector-selection-bar__menu')
+  const cells = await page.locator('.vector-selection-bar__cell').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
+  check('the align menu holds the six ways of lining things up', cells.length === 6, cells.join(', '))
+  check('and offers to distribute three or more', (await page.locator('.vector-selection-bar__menu .menu__item').allInnerTexts()).some((text) => text.startsWith('Distribute')))
+  const tops = async () => (await helpers.doc()).elements.map((element) => Math.round(element.y))
+  await page.click('.vector-selection-bar__cell[aria-label="Align top"]')
+  await page.waitForTimeout(400)
+  const aligned = await tops()
+  check('aligning from the bar moves the objects', new Set(aligned).size === 1, JSON.stringify(aligned))
+
+  await page.click('.vector-selection-bar [aria-label="Order"]')
+  await page.waitForSelector('.vector-selection-bar__menu')
+  const orders = await page.locator('.vector-selection-bar__menu .menu__item').allInnerTexts()
+  check('the order menu holds the four moves', orders.length === 4, orders.join(' / '))
+  await page.locator('#main').focus()
+  await page.keyboard.press('Escape')
+  await page.locator('.vector-layer__select').last().click()
+  await page.waitForTimeout(300)
+  const picked = await page.getAttribute('[data-vector-element][data-selected]', 'data-vector-element')
+  const wasLast = (await helpers.doc()).elements.at(-1)?.id === picked
+  await page.click('.vector-selection-bar [aria-label="Order"]')
+  await page.waitForSelector('.vector-selection-bar__menu')
+  await page.click('.vector-selection-bar__menu .menu__item:has-text("Bring to front")')
+  await page.waitForTimeout(400)
+  const stack = (await helpers.doc()).elements.map((element) => element.id)
+  check('bringing to front reorders the document', !wasLast && stack.at(-1) === picked, JSON.stringify({ picked: picked?.slice(0, 4), wasLast, stack: stack.map((id) => id.slice(0, 4)) }))
+
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+a')
+  await page.waitForTimeout(300)
+  await page.click('.vector-selection-bar [aria-label="Paths"]')
+  await page.waitForSelector('.vector-selection-bar__menu')
+  const paths = await page.locator('.vector-selection-bar__menu .menu__item').allInnerTexts()
+  check('the paths menu holds the booleans and the three ways of flattening', paths.length === 7, paths.join(' / '))
+  await page.click('.vector-selection-bar__menu .menu__item:has-text("Union")')
+  await page.waitForTimeout(500)
+  check('a boolean from the bar wraps the shapes', (await helpers.doc()).elements.some((element) => element.kind === 'boolean'), JSON.stringify((await helpers.doc()).elements.map((element) => element.kind)))
+
+  // The overflow menu no longer repeats what the bar itself offers.
+  await page.click('.vector-selection-bar [aria-label="More actions"]')
+  await page.waitForSelector('.vector-selection-bar__menu')
+  const more = await page.locator('.vector-selection-bar__menu .menu__item').allInnerTexts()
+  check('the overflow menu drops what the bar now carries', !more.some((text) => /Bring |Send |Combine paths|Flatten|Outline/.test(text)), more.join(' / '))
 })

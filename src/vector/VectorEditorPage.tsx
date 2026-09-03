@@ -16,7 +16,7 @@ import { importSvg } from '@/vector/svgImport'
 import { pastedBindings, readClipboardPayload, writeClipboardPayload } from '@/vector/clipboard'
 import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
-import { alignElements, type AlignMode, type ElementPatch } from '@/vector/align'
+import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorDocument, createVectorElement, MAX_EXPORT_PRESETS } from '@/vector/document'
 import { DEFAULT_EXPORT, embedFonts, exportBounds, exportFileName, exportMarkup, rasterize, type ExportSettings } from '@/vector/export'
 import { VectorExportMenu } from '@/vector/VectorExportMenu'
@@ -526,6 +526,13 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     const leaves = leafElements(doc.elements, current.selectedIds)
     const target = current.selectedElements.length > 1 && leaves.length ? inkSelectionBounds(leaves) : { x: 0, y: 0, width: doc.width, height: doc.height }
     current.updateElements(expandMoves(doc.elements, alignElements(current.selectedElements, mode, target)), true, 'Align')
+  }, [])
+
+  const distributeSelection = useCallback((axis: DistributeAxis) => {
+    const current = editorRef.current
+    const doc = current.document
+    if (!doc || current.selectedElements.length < 3) return
+    current.updateElements(expandMoves(doc.elements, distributeElements(current.selectedElements, axis)), true, countedLabel('Distribute', current.selectedElements.length))
   }, [])
 
   useEffect(() => {
@@ -1390,19 +1397,12 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     ...menuItem('hide', <IconEyeOff />, false),
   ]
 
-  /** What the bar's ⋯ holds: the canvas menu minus the eight actions already on the bar. */
+  /** What the bar's ⋯ holds: the canvas menu minus everything the bar itself already offers. */
   const barMenuItems: ContextMenuItem[] = [
     ...menuItem('copy'),
     ...menuItem('paste', undefined, false),
     ...menuItem('duplicate', undefined, false),
-    ...menuItem('bring-forward'),
-    ...menuItem('send-backward', undefined, false),
-    ...menuItem('bring-to-front', undefined, false),
-    ...menuItem('send-to-back', undefined, false),
-    ...menuItem('combine'),
-    ...menuItem('flatten', undefined, false),
-    ...menuItem('outline-stroke', undefined, false),
-    ...menuItem('mask', undefined, false),
+    ...menuItem('mask'),
     ...menuItem(single?.kind === 'text' ? 'edit-text' : 'edit-nodes', undefined, false),
     ...menuItem('same-fill'),
     ...menuItem('same-stroke', undefined, false),
@@ -1670,12 +1670,22 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
               placement={placement}
               actions={{
                 canUngroup,
-                canCombine: selectedElements.filter((element) => element.kind !== 'group').length > 1,
+                canCombine: ops.canCombine,
+                canDistribute: selectedElements.length > 2,
+                canOutline: ops.canOutline,
+                canFlatten: ops.canFlatten,
+                alignsToPage: selectedElements.length < 2,
                 locked: allLocked,
                 hidden: selectedElements.length > 0 && selectedElements.every((element) => !element.visible),
                 onGroup: group,
                 onUngroup: ungroup,
+                onAlign: alignSelection,
+                onDistribute: distributeSelection,
+                onOrder: order,
                 onBoolean: (operation) => booleanGroup(operation, selectedElements.filter((element) => element.kind !== 'group').map((element) => element.id)),
+                onCombine: ops.combine,
+                onFlatten: ops.flatten,
+                onOutline: ops.outline,
                 onFlip: (axis) => transformSelection((center) => flipAffine(axis, center), axis === 'x' ? 'Flip horizontal' : 'Flip vertical'),
                 onRotate90: () => transformSelection((center) => rotationAffine(90, center), 'Rotate 90°'),
                 onLock: toggleLock,

@@ -2047,6 +2047,27 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-selection-bar .icon-btn[aria-pressed='true'] { color: var(--text-primary); background: var(--surface-overlay); }
 .vector-selection-bar__more:disabled { color: var(--text-muted); opacity: 0.5; cursor: not-allowed; }
 .vector-selection-bar__menu { min-width: 12rem; }
+.vector-selection-bar__label { flex: 1; }
+.vector-selection-bar__menu kbd {
+  margin-inline-start: var(--space-4);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+/* The six ways of lining things up read as a block, not as six lines of a list. */
+.vector-selection-bar__grid {
+  display: grid;
+  grid-template-columns: repeat(3, var(--hit-target));
+  gap: 2px;
+}
+.vector-selection-bar__cell.menu__item {
+  display: grid;
+  place-items: center;
+  width: var(--hit-target);
+  height: var(--hit-target);
+  min-width: 0;
+  padding: 0;
+}
 @media (pointer: coarse) {
   .vector-selection-bar { height: 52px; }
   .vector-selection-bar .icon-btn,
