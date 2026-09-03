@@ -117,6 +117,7 @@ generated with the preferences at their defaults, which is where “Emulate Nump
 | `⌥5` | Toggle perspective |
 | `⌥0` | Camera view |
 | `⌥.` | Frame selected |
+| `⌥Z` | X-ray |
 
 Where this differs from Blender:
 
@@ -129,6 +130,12 @@ Where this differs from Blender:
 | --- | --- |
 | `Tab` | Toggle edit mode |
 | `⌃Tab` | Mode pie |
+| `1` | Vertex select (edit mode) |
+| `2` | Edge select (edit mode) |
+| `3` | Face select (edit mode) |
+| `⇧1` | Add vertex select (edit mode) |
+| `⇧2` | Add edge select (edit mode) |
+| `⇧3` | Add face select (edit mode) |
 
 Where this differs from Blender:
 
@@ -139,13 +146,15 @@ Where this differs from Blender:
 
 | Chord | Action |
 | --- | --- |
-| `A` | Select all |
-| `⌥A` | Select none |
-| `⌃I` | Invert selection |
+| `A` | Select all (object mode) |
+| `⌥A` | Select none (object mode) |
+| `⌃I` | Invert selection (object mode) |
 | `B` | Box select |
 | `C` | Circle select |
 | `W` | Cycle the select tool |
-| `⇧G` | Select similar |
+| `⇧G` | Select similar (object mode) |
+| `L` | Select linked under the pointer (edit mode) |
+| `K` | Knife (edit mode) |
 
 Every chord in this section is Blender’s own.
 
@@ -214,6 +223,51 @@ Every chord in this section is Blender’s own.
 
 | Chord | Action |
 | --- | --- |
+| `A` | Select all (edit mode) |
+| `⌥A` | Select none (edit mode) |
+| `⌃I` | Invert selection (edit mode) |
+| `⌃L` | Select linked (edit mode) |
+| `⇧G` | Select similar (edit mode) |
+| `⌃Numpad +` | Select more (edit mode) |
+| `⌃Numpad -` | Select less (edit mode) |
+| `⌃=` | Select more (edit mode) |
+| `⌃-` | Select less (edit mode) |
+| `E` | Extrude region (edit mode) |
+| `⌥E` | Extrude menu (edit mode) |
+| `I` | Inset faces (edit mode) |
+| `⌃B` | Bevel edges (edit mode) |
+| `⇧⌃B` | Bevel vertices (edit mode) |
+| `⌃R` | Loop cut (edit mode) |
+| `⇧⌃R` | Offset edge loop (edit mode) |
+| `⇧K` | Knife project (edit mode) |
+| `M` | Merge menu (edit mode) |
+| `⌥M` | Split menu (edit mode) |
+| `⌃M` | Mirror (edit mode) |
+| `X` | Delete menu (edit mode) |
+| `Delete` | Delete menu (edit mode) |
+| `F` | Make edge or face (edit mode) |
+| `⌥F` | Beauty fill (edit mode) |
+| `P` | Separate (edit mode) |
+| `V` | Rip (edit mode) |
+| `⌥V` | Rip fill (edit mode) |
+| `⇧V` | Vertex slide (edit mode) |
+| `⇧N` | Recalculate normals outside (edit mode) |
+| `⇧⌃N` | Recalculate normals inside (edit mode) |
+| `⇧E` | Edge crease (edit mode) |
+| `⇧⌃E` | Edge bevel weight (edit mode) |
+| `⌃T` | Triangulate faces (edit mode) |
+| `⌥J` | Tris to quads (edit mode) |
+| `⌥S` | Shrink or fatten (edit mode) |
+| `⇧⌥S` | To sphere (edit mode) |
+| `⇧⌃⌥S` | Shear (edit mode) |
+| `⌃V` | Vertex menu (edit mode) |
+| `⌃E` | Edge menu (edit mode) |
+| `⌃F` | Face menu (edit mode) |
+| `⇧D` | Duplicate (edit mode) |
+| `O` | Proportional editing (edit mode) |
+| `⇧O` | Proportional falloff pie (edit mode) |
+| `⌥O` | Proportional, connected only (edit mode) |
+| `⇧Tab` | Snapping |
 | `F3` | Command palette |
 | `⌃/` | Command palette |
 | `⌘/` | Command palette |
@@ -230,6 +284,7 @@ Every chord in this section is Blender’s own.
 
 Where this differs from Blender:
 
+- `⌃=`, `⌃-` — Blender grows and shrinks a selection with the keypad’s + and −. The top row’s own + and − are bound as well, for a keyboard that has no keypad.
 - `F3` — F3 is the browser’s own find on Windows and Linux, so ⌃/ and ⌘/ open the palette as well.
 - `F1` — Blender’s F1 opens the manual in a browser. The editor is already in one, so F1 shows the keymap itself.
 - `⌘Z`, `⇧⌘Z` — macOS spells undo ⌘Z and Blender spells it ⌃Z. Both are bound, so neither habit has to be unlearned.

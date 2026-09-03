@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { SceneCounts } from '@/scene/document'
+import { editStats } from '@/scene/editStats'
 import type { SceneDocument, SceneSelection } from '@/scene/types'
 
 /**
@@ -18,9 +19,12 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
   /** The one-line "press F1 for the keys" affordance, which stays after the hint chip has gone. */
   keymapHint?: ReactNode
 }) {
-  const hints = document.view.mode === 'edit'
-    ? [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Menu', 'right click']]
+  const editing = document.view.mode === 'edit'
+  const hints = editing
+    ? [['Select', 'click'], ['Extend', '⇧ click'], ['Loop', '⌥ click'], ['Path', '⌃ click'], ['Orbit', 'middle drag']]
     : [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Add', '⇧A']]
+  // Edit mode counts what is being edited, not the scene: that is the number a person is watching.
+  const stats = editing ? editStats(document, selection) : null
 
   return (
     <div className="scene-status" role="status">
@@ -36,11 +40,23 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
       </div>
       <p className="scene-status__message">{message ?? ''}</p>
       <div className="scene-status__stats">
-        <span>Objects {selection.objectIds.length}/{counts.objects}</span>
-        <span>Vertices {counts.vertices.toLocaleString()}</span>
-        <span>Edges {counts.edges.toLocaleString()}</span>
-        <span>Faces {counts.faces.toLocaleString()}</span>
-        <span>Triangles {counts.triangles.toLocaleString()}</span>
+        {stats ? (
+          <>
+            <span>Verts {stats.vertices.selected.toLocaleString()}/{stats.vertices.total.toLocaleString()}</span>
+            <span>Edges {stats.edges.selected.toLocaleString()}/{stats.edges.total.toLocaleString()}</span>
+            <span>Faces {stats.faces.selected.toLocaleString()}/{stats.faces.total.toLocaleString()}</span>
+            <span>Tris {stats.triangles.toLocaleString()}</span>
+            {stats.objects > 1 ? <span>Objects {stats.objects}</span> : null}
+          </>
+        ) : (
+          <>
+            <span>Objects {selection.objectIds.length}/{counts.objects}</span>
+            <span>Vertices {counts.vertices.toLocaleString()}</span>
+            <span>Edges {counts.edges.toLocaleString()}</span>
+            <span>Faces {counts.faces.toLocaleString()}</span>
+            <span>Triangles {counts.triangles.toLocaleString()}</span>
+          </>
+        )}
       </div>
     </div>
   )

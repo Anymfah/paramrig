@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Euler, Matrix4 } from 'three'
+import { ModalOperator, type ModalOperatorDeps } from '@/scene/modalOperator'
+import { modalSpecFor } from '@/scene/modalSpecs'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
+import { elementTargets } from '@/scene/transform/elements'
 import { orientationBasis } from '@/scene/transform/orientation'
 import { worldTransform } from '@/scene/objects'
 import { SceneHud } from '@/scene/SceneHud'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
-import type { SceneDocument, SceneObject, SceneSelection, Vec3, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneMarquee } from '@/scene/SceneMarquee'
 import { ViewNavigator } from '@/scene/viewport/navigation'
-import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
+import type { ElementHits, SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import { cameraBasis, type AxisView } from '@/scene/viewport/view'
 
 /**
@@ -39,6 +42,10 @@ export type SceneStageHandle = {
   startTransform: (mode: TransformMode) => boolean
   /** Offers a key to a running modal tool; true when it took it. */
   handleKey: (event: KeyboardEvent) => boolean
+  /** Opens a pointer-driven operator — an extrusion, a bevel, a loop cut. */
+  beginModalOperator: (operatorId: string, extra?: { edge?: number }) => boolean
+  /** The element the pointer is over in edit mode, for the tools that need one. */
+  hoveredElement: () => ElementPick | null
   transformActive: () => boolean
   /** Where the pointer last was, in page coordinates, for a menu that opens at it. */
   pointerPage: () => { x: number; y: number }
@@ -51,11 +58,15 @@ export function SceneStage({
   onView,
   onSelect,
   onRegionSelect,
+  operatorBridge,
+  onPickElement,
+  onRegionElements,
   onPlaceCursor,
   onContextMenu,
   onAnnotate,
   onMeasure,
   onTransform,
+  onEditDocument,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -72,6 +83,12 @@ export function SceneStage({
   onSelect: (ids: string[], active: string | null) => void
   /** What a box, lasso or circle covered, and how it should be combined with the selection. */
   onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
+  /** How a pointer-driven operator previews, keeps and abandons its work. */
+  operatorBridge: OperatorBridge
+  /** A click on an element in edit mode, with what the modifiers asked for. */
+  onPickElement: (hit: ElementPick | null, mode: ElementPickMode) => void
+  /** What a box, lasso or circle covered in edit mode, per object being edited. */
+  onRegionElements: (found: Map<string, ElementRegion>, mode: 'new' | 'extend' | 'subtract') => void
   /** Where a ⇧ right-click asks for the 3D cursor to go. */
   onPlaceCursor: (position: Vec3, normal: Vec3 | null) => void
   /** A plain right-click asks for the object menu at that point. */
@@ -82,6 +99,8 @@ export function SceneStage({
   onMeasure: (from: Vec3, to: Vec3) => void
   /** Writes transforms during a gesture, without recording each frame. */
   onTransform: (patches: Array<{ id: string; patch: Partial<SceneObject> }>) => void
+  /** The same for edit mode, where a gesture moves vertices rather than objects. */
+  onEditDocument: (edit: (current: SceneDocument) => SceneDocument) => void
   onGestureStart: (label: string) => void
   onGestureEnd: (label: string) => void
   onGestureCancel: () => void
@@ -111,14 +130,17 @@ export function SceneStage({
   onViewRef.current = onView
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
-  const gestures = useRef({ onTransform, onGestureStart, onGestureEnd, onGestureCancel })
-  gestures.current = { onTransform, onGestureStart, onGestureEnd, onGestureCancel }
+  const gestures = useRef({ onTransform, onEditDocument, onGestureStart, onGestureEnd, onGestureCancel })
+  gestures.current = { onTransform, onEditDocument, onGestureStart, onGestureEnd, onGestureCancel }
   const pointer = useRef<[number, number]>([0, 0])
   const hud = useMemo(() => new HudChannel(), [])
   const marquee = useMemo(() => new MarqueeChannel(), [])
   const region = useRef<{ kind: MarqueeKind; points: Array<[number, number]>; mode: 'new' | 'extend' | 'subtract'; radius: number } | null>(null)
   const onRegionRef = useRef(onRegionSelect)
   onRegionRef.current = onRegionSelect
+  const onElementRef = useRef({ onPickElement, onRegionElements })
+  onElementRef.current = { onPickElement, onRegionElements }
+  const hoveredElement = useRef<ElementPick | null>(null)
   const onPlaceRef = useRef(onPlaceCursor)
   onPlaceRef.current = onPlaceCursor
   const onMenuRef = useRef(onContextMenu)
@@ -126,6 +148,22 @@ export function SceneStage({
   const sketch = useRef<{ tool: 'annotate' | 'measure'; points: Vec3[] } | null>(null)
   const onDrawRef = useRef({ onAnnotate, onMeasure })
   onDrawRef.current = { onAnnotate, onMeasure }
+  const bridge = useRef(operatorBridge)
+  bridge.current = operatorBridge
+  const modalOp = useRef<ModalOperator | null>(null)
+  if (!modalOp.current) {
+    modalOp.current = new ModalOperator({
+      viewport: () => viewport.current,
+      document: () => latestDocument.current,
+      selection: () => latestSelection.current,
+      hud,
+      preview: (id, params, before, before2) => bridge.current.preview(id, params, before, before2),
+      commit: (id, params, before, before2) => bridge.current.commit(id, params, before, before2),
+      restore: (document, selection) => bridge.current.restore(document, selection),
+      message: (text) => bridge.current.message(text),
+      pointer: () => pointer.current,
+    })
+  }
   const modal = useRef<ModalTransform | null>(null)
   if (!modal.current) {
     modal.current = new ModalTransform({
@@ -135,6 +173,7 @@ export function SceneStage({
       hud,
       overlay: () => viewport.current?.transformOverlay ?? null,
       apply: (patches) => gestures.current.onTransform(patches),
+      applyDocument: (edit) => gestures.current.onEditDocument(edit),
       beginGesture: (label) => gestures.current.onGestureStart(label),
       endGesture: (label) => gestures.current.onGestureEnd(label),
       cancelGesture: () => gestures.current.onGestureCancel(),
@@ -169,6 +208,8 @@ export function SceneStage({
         step: () => undefined,
         startTransform: () => false,
         handleKey: () => false,
+        beginModalOperator: () => false,
+        hoveredElement: () => null,
         transformActive: () => false,
         pointerPage: () => ({ x: 0, y: 0 }),
       })
@@ -211,8 +252,20 @@ export function SceneStage({
         pump()
       },
       startTransform: (mode) => modal.current?.start(mode, surface.current, {}) ?? false,
-      handleKey: (event) => modal.current?.key(event) ?? false,
-      transformActive: () => modal.current?.active ?? false,
+      handleKey: (event) => (modalOp.current?.key(event) ?? false) || (modal.current?.key(event) ?? false),
+      beginModalOperator: (operatorId, extra) => {
+        const document = latestDocument.current
+        const spec = modalSpecFor(operatorId, {
+          normal: document.view.mode === 'edit'
+            ? elementTargets(document, latestSelection.current).normalBasis?.z ?? null
+            : null,
+          ...(extra?.edge !== undefined ? { edge: extra.edge } : {}),
+        })
+        if (!spec) return false
+        return modalOp.current?.begin(spec, surface.current, {}) ?? false
+      },
+      hoveredElement: () => hoveredElement.current,
+      transformActive: () => (modal.current?.active ?? false) || (modalOp.current?.running ?? false),
       pointerPage: () => {
         const box = surface.current?.getBoundingClientRect()
         return box
@@ -248,7 +301,8 @@ export function SceneStage({
     const basis = orientationBasis(document.view.orientation, {
       active: active ? worldTransform(document, active) : null,
       view: { ...camera, unitsPerPixel: instance.unitsPerPixelAt(pivot), pivotScreen: instance.project(pivot) ?? [0, 0] },
-      normal: null,
+      // Blender's Normal orientation is the frame of what is selected: only edit mode has one.
+      normal: document.view.mode === 'edit' ? elementTargets(document, selection).normalBasis : null,
       cursor: cursorBasis(document.cursor.rotation),
     })
     instance.setGizmos(kinds, pivot, basis)
@@ -286,6 +340,8 @@ export function SceneStage({
       const nav = navigator.current
       if (!nav) return
       event.preventDefault()
+      // A running bevel or loop cut takes the wheel for its segments; the view does not move.
+      if (modalOp.current?.wheel(event.deltaY)) return
       const box = element.getBoundingClientRect()
       nav.wheel(event, event.clientX - box.left, event.clientY - box.top)
       pump()
@@ -417,6 +473,11 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
+          const gesture = modalOp.current
+          if (gesture?.running) {
+            gesture.move({ x, y, dx: event.nativeEvent.movementX, dy: event.nativeEvent.movementY, shift: event.shiftKey })
+            return
+          }
           const running = modal.current
           if (running?.active) {
             running.move({
@@ -484,6 +545,18 @@ export function SceneStage({
             }
             return
           }
+          if (latestDocument.current.view.mode === 'edit') {
+            // In edit mode the pointer is over elements, not objects: one read of the id buffer
+            // answers for all three kinds and the priority picks between them.
+            const chosen = chooseElement(instance.pickElements(x, y, ELEMENT_RADIUS), latestDocument.current.view.selectMode)
+            hoveredElement.current = chosen
+            if (instance.setElementHover(chosen)) instance.invalidate()
+            if (hover.current !== null) {
+              hover.current = null
+              instance.setHover(null)
+            }
+            return
+          }
           // Hovering costs one small read of the id buffer, and never a React render. A gizmo
           // handle wins over the object behind it, which is the first rule of the click order.
           const picked = instance.pick(x, y, 8)
@@ -519,6 +592,12 @@ export function SceneStage({
           const held = press.current
           press.current = null
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+          // A click keeps a running gesture, whichever button opened it; the right button throws
+          // it away, which is handled where the context menu is.
+          if (modalOp.current?.running && event.button === 0) {
+            modalOp.current.confirm()
+            return
+          }
           // Letting go of a handle finishes the transform it started; a session begun from the
           // keyboard is not ended by a button coming back up.
           if (modal.current?.dragging) {
@@ -536,12 +615,26 @@ export function SceneStage({
           region.current = null
           marquee.clear()
           if (drawing && held.moved) {
+            if (latestDocument.current.view.mode === 'edit') {
+              onElementRef.current.onRegionElements(readElementRegion(instance, drawing), drawing.mode)
+              return
+            }
             const found = readRegion(instance, drawing)
             onRegionRef.current(found, drawing.mode)
             return
           }
           if (held.moved || held.button !== 0) return
           const box = event.currentTarget.getBoundingClientRect()
+          if (latestDocument.current.view.mode === 'edit') {
+            const hits = instance.pickElements(event.clientX - box.left, event.clientY - box.top, ELEMENT_RADIUS)
+            const chosen = chooseElement(hits, latestDocument.current.view.selectMode)
+            const mode: ElementPickMode = event.altKey && event.ctrlKey
+              ? 'ring'
+              : event.altKey ? 'loop' : event.ctrlKey ? 'path' : event.shiftKey ? 'toggle' : 'new'
+            if (!chosen && mode === 'new' && !preferences.deselectOnEmptyClick) return
+            onElementRef.current.onPickElement(chosen, mode)
+            return
+          }
           const found = instance.pickObject(event.clientX - box.left, event.clientY - box.top, 6)
           const current = latestSelection.current
           if (!found) {
@@ -581,6 +674,11 @@ export function SceneStage({
         ref={surface}
         onContextMenu={(event) => {
           event.preventDefault()
+          // The right button abandons a running gesture, as Blender's does, and asks for nothing.
+          if (modalOp.current?.running) {
+            modalOp.current.cancel()
+            return
+          }
           // ⇧ and the right button place the cursor instead; that is handled on the press.
           if (event.shiftKey || modal.current?.active) return
           onMenuRef.current({ x: event.clientX, y: event.clientY })
@@ -600,6 +698,58 @@ export function SceneStage({
  * that holds them and then keep only the pixels actually inside the shape. Reading a rectangle once
  * and filtering is far cheaper than asking the graphics card a question per pixel.
  */
+/** How a pointer-driven operator reaches the document: preview, keep, abandon, and say why not. */
+export type OperatorBridge = {
+  preview: ModalOperatorDeps['preview']
+  commit: ModalOperatorDeps['commit']
+  restore: ModalOperatorDeps['restore']
+  message: ModalOperatorDeps['message']
+}
+
+/** What a click in edit mode landed on, and what the modifiers asked to be done with it. */
+export type ElementPick = { objectId: string; kind: SelectMode; slot: number }
+export type ElementPickMode = 'new' | 'extend' | 'toggle' | 'loop' | 'ring' | 'path'
+export type ElementRegion = { vertices: Set<number>; edges: Set<number>; faces: Set<number> }
+
+/** How far from the pointer an element is still worth picking, in CSS pixels. Blender's is ten. */
+const ELEMENT_RADIUS = 10
+
+/**
+ * Blender's priority: a vertex beats an edge beats a face, within the radius, and only among the
+ * kinds being selected. It is a priority rather than a plain nearest-wins because a vertex sits on
+ * top of both the edges that meet at it — nearest alone would make a corner unreachable.
+ */
+function chooseElement(hits: ElementHits, modes: SelectMode[]): ElementPick | null {
+  const order: SelectMode[] = ['vertex', 'edge', 'face']
+  for (const kind of order) {
+    if (!modes.includes(kind)) continue
+    const hit = hits[kind]
+    if (hit) return { objectId: hit.objectId, kind, slot: hit.slot }
+  }
+  return null
+}
+
+function readElementRegion(
+  viewport: SceneViewport,
+  region: { kind: MarqueeKind; points: Array<[number, number]>; radius: number },
+): Map<string, ElementRegion> {
+  if (region.kind === 'box') {
+    const [a, b] = region.points
+    if (!a || !b) return new Map()
+    return viewport.pickElementRegion(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))
+  }
+  if (region.kind === 'circle') {
+    const centre = region.points[0]
+    if (!centre) return new Map()
+    const radius = region.radius
+    return viewport.pickElementRegion(centre[0] - radius, centre[1] - radius, radius * 2, radius * 2,
+      (x, y) => Math.hypot(x - centre[0], y - centre[1]) <= radius)
+  }
+  if (region.points.length < 3) return new Map()
+  const box = boundsOfPoints(region.points)
+  return viewport.pickElementRegion(box.x, box.y, box.width, box.height, (x, y) => insidePolygon(region.points, x, y))
+}
+
 function readRegion(
   viewport: SceneViewport,
   region: { kind: MarqueeKind; points: Array<[number, number]>; radius: number },

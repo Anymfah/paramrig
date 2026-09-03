@@ -236,12 +236,14 @@ describe('the scene editor header', () => {
     expect(within(menu).getByRole('menuitemcheckbox', { name: 'Normals' })).toBeInTheDocument()
   })
 
-  it('leaves an unbuilt menu empty rather than promising entries it has not got', () => {
+  it('fills the edit-mode menus from the registry', () => {
     renderHeader({ mode: 'edit' })
     const menu = openMenu('Vertex')
 
-    expect(within(menu).queryAllByRole('menuitem')).toHaveLength(0)
-    expect(within(menu).getByText('Nothing in this menu yet.')).toBeInTheDocument()
+    // The lists name operators from several families; what matters is that the ids in the list and
+    // the ids in the registry are the same ones, which is what an entry appearing proves.
+    expect(within(menu).getAllByRole('menuitem').length).toBeGreaterThan(4)
+    expect(within(menu).queryByText('Nothing in this menu yet.')).not.toBeInTheDocument()
   })
 
   it('sends the editor’s own actions on, rather than running them as operators', () => {

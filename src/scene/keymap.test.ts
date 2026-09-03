@@ -90,9 +90,13 @@ describe('the mode a binding belongs to', () => {
     expect(actionId(resolveKey(press('KeyK'), context(), table))).toBe('first')
   })
 
-  it('leaves an object-mode chord alone in a mode it does not belong to', () => {
+  it('gives one chord two meanings, one per mode', () => {
+    // ⇧D duplicates an object in object mode and the selected geometry in edit mode: the same
+    // habit, the right verb, which is exactly what scoping a binding to a mode is for.
     expect(actionId(resolveKey(press('KeyD', { shiftKey: true }), context({ mode: 'object' })))).toBe('object.duplicate')
-    expect(resolveKey(press('KeyD', { shiftKey: true }), context({ mode: 'edit' }))).toBeNull()
+    expect(actionId(resolveKey(press('KeyD', { shiftKey: true }), context({ mode: 'edit' })))).toBe('mesh.duplicate')
+    expect(actionId(resolveKey(press('KeyX'), context({ mode: 'object' })))).toBe('object.deleteConfirm')
+    expect(actionId(resolveKey(press('KeyX'), context({ mode: 'edit' })))).toBe('menu.delete')
     expect(resolveKey(press('KeyX'), context({ mode: 'sculpt' }))).toBeNull()
   })
 

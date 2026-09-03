@@ -29,6 +29,19 @@ const TOOL_ICONS: Record<SceneTool, string> = {
   transform: 'transform',
   annotate: 'annotate',
   measure: 'measure',
+  extrude: 'extrude',
+  inset: 'inset',
+  bevel: 'bevel',
+  'loop-cut': 'loop-cut',
+  knife: 'knife',
+  bisect: 'bisect',
+  'poly-build': 'poly-build',
+  spin: 'spin',
+  smooth: 'smooth',
+  'edge-slide': 'edge-slide',
+  'shrink-fatten': 'shrink-fatten',
+  shear: 'shear',
+  rip: 'rip',
 }
 
 const SELECT_MODE_ICONS: Record<SelectMode, string> = {

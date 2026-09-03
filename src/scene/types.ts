@@ -231,6 +231,13 @@ export type SnapTarget = 'closest' | 'center' | 'median' | 'active'
 export type SceneTool =
   | 'select-box' | 'select-circle' | 'select-lasso' | 'cursor'
   | 'move' | 'rotate' | 'scale' | 'transform' | 'annotate' | 'measure'
+  /*
+   * The edit-mode tools. Each is the interactive half of an operator of the same name; the
+   * variants of one — extrude along normals, extrude individual — are options of the tool rather
+   * than tools of their own, and are set in the sidebar's Tool tab.
+   */
+  | 'extrude' | 'inset' | 'bevel' | 'loop-cut' | 'knife' | 'bisect' | 'poly-build'
+  | 'spin' | 'smooth' | 'edge-slide' | 'shrink-fatten' | 'shear' | 'rip'
 
 export type OverlayFlags = {
   /** The floor grid and its axis lines. */

@@ -7,6 +7,7 @@ import {
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { EDGE_MENU, EDIT_SELECT_MENU, EDIT_VIEW_MENU, FACE_MENU, MESH_MENU, VERTEX_MENU } from '@/scene/editMenus'
 import { menuEntries } from '@/scene/commands'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
@@ -84,40 +85,6 @@ const OBJECT_MENU: Array<string | '-'> = [
   'object.rename', 'object.copy', 'object.paste', 'object.delete',
 ]
 
-const MESH_MENU: Array<string | '-'> = [
-  'transform.move', 'transform.rotate', 'transform.scale', '-',
-  'mesh.duplicate', 'mesh.extrudeRegion', 'mesh.merge', 'mesh.split', 'mesh.separate', '-',
-  'mesh.bisect', 'mesh.knife', 'mesh.symmetrize', 'mesh.snapToSymmetry', '-',
-  'mesh.normalsRecalculate', 'mesh.normalsFlip', '-',
-  'mesh.shadeSmooth', 'mesh.shadeFlat', '-',
-  'mesh.sortElements', 'mesh.delete',
-]
-
-const VERTEX_MENU: Array<string | '-'> = [
-  'vertex.extrude', 'vertex.bevel', 'vertex.newEdgeFace', '-',
-  'vertex.connect', 'vertex.rip', 'vertex.ripFill', 'vertex.slide', '-',
-  'vertex.smooth', 'vertex.smoothLaplacian', 'vertex.blendFromShape', '-',
-  'vertex.merge', 'vertex.dissolve',
-]
-
-const EDGE_MENU: Array<string | '-'> = [
-  'edge.extrude', 'edge.bevel', 'edge.bridge', '-',
-  'edge.subdivide', 'edge.unsubdivide', 'edge.loopCut', 'edge.offsetLoopCut', '-',
-  'edge.slide', 'edge.rotateClockwise', 'edge.rotateAnticlockwise', '-',
-  'edge.markSeam', 'edge.clearSeam', 'edge.markSharp', 'edge.clearSharp', '-',
-  'edge.crease', 'edge.bevelWeight', '-',
-  'edge.dissolve',
-]
-
-const FACE_MENU: Array<string | '-'> = [
-  'face.extrudeRegion', 'face.extrudeAlongNormals', 'face.extrudeIndividual', '-',
-  'face.inset', 'face.poke', 'face.triangulate', 'face.trisToQuads', '-',
-  'face.solidify', 'face.wireframe', 'face.intersectKnife', 'face.intersectBoolean', '-',
-  'face.fill', 'face.beautyFill', 'face.gridFill', '-',
-  'face.shadeSmooth', 'face.shadeFlat', '-',
-  'face.dissolve',
-]
-
 const OBJECT_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
   { label: 'View', ids: VIEW_MENU },
   { label: 'Select', ids: SELECT_MENU },
@@ -126,6 +93,8 @@ const OBJECT_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
 ]
 
 const EDIT_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
+  { label: 'View', ids: EDIT_VIEW_MENU },
+  { label: 'Select', ids: EDIT_SELECT_MENU },
   { label: 'Mesh', ids: MESH_MENU },
   { label: 'Vertex', ids: VERTEX_MENU },
   { label: 'Edge', ids: EDGE_MENU },

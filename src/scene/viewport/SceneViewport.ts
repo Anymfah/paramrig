@@ -17,14 +17,16 @@ import {
   type Material,
 } from 'three'
 import { meshOf } from '@/scene/document'
-import type { SceneDocument, SceneObject, SceneSelection, Vec3, ViewState } from '@/scene/types'
+import { parseEdgeKey } from '@/scene/mesh/data'
+import type { MeshData, SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
 import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, type MeshView } from '@/scene/viewport/meshView'
 import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/scene/viewport/overlays'
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
-import { createPickBuffer, createPickMaterial, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
+import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
+import { createPickBuffer, createPickMaterial, decodePick, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
 import { createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
 import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
 import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
@@ -109,6 +111,65 @@ type ObjectView = {
   signature: string
 }
 
+/** One element found under the pointer, and how far from it in pixels. */
+export type ElementHit = { objectId: string; slot: number; distance: number }
+export type ElementHits = { vertex: ElementHit | null; edge: ElementHit | null; face: ElementHit | null }
+
+/**
+ * The document's selection, in slots of one mesh.
+ *
+ * The document names elements by stable id and the viewport draws them by slot, so this is the one
+ * place the two meet on the drawing side. It walks the mesh once and looks nothing up twice, which
+ * matters: it runs on every click, and a click must never be the slow part of an editor.
+ */
+function editSlots(mesh: MeshData, selection: SceneSelection, objectId: string): EditSlots {
+  const stored = selection.elements?.[objectId]
+  const slots: EditSlots = { vertices: new Set(), edges: new Set(), faces: new Set(), active: null }
+  if (!stored) return slots
+  const vertexSlot = new Map<number, number>()
+  for (let slot = 0; slot < mesh.vertexIds.length; slot += 1) vertexSlot.set(mesh.vertexIds[slot]!, slot)
+  const faceSlot = new Map<number, number>()
+  for (let slot = 0; slot < mesh.faceIds.length; slot += 1) faceSlot.set(mesh.faceIds[slot]!, slot)
+  const edgeSlot = new Map<string, number>()
+  for (let slot = 0; slot < mesh.edges.length; slot += 1) {
+    const [a, b] = mesh.edges[slot]!
+    edgeSlot.set(pairKey(mesh.vertexIds[a] ?? -1, mesh.vertexIds[b] ?? -1), slot)
+  }
+  for (const id of stored.vertices) {
+    const slot = vertexSlot.get(Number(id))
+    if (slot !== undefined) slots.vertices.add(slot)
+  }
+  for (const id of stored.faces) {
+    const slot = faceSlot.get(Number(id))
+    if (slot !== undefined) slots.faces.add(slot)
+  }
+  for (const key of stored.edges) {
+    const pair = parseEdgeKey(key)
+    if (!pair) continue
+    const slot = edgeSlot.get(pairKey(pair[0], pair[1]))
+    if (slot !== undefined) slots.edges.add(slot)
+  }
+  const active = selection.active
+  if (active && active.objectId === objectId) {
+    if (active.kind === 'vertex') {
+      const slot = vertexSlot.get(Number(active.id))
+      if (slot !== undefined) slots.active = { kind: 'vertex', slot }
+    } else if (active.kind === 'face') {
+      const slot = faceSlot.get(Number(active.id))
+      if (slot !== undefined) slots.active = { kind: 'face', slot }
+    } else {
+      const pair = parseEdgeKey(active.id)
+      const slot = pair ? edgeSlot.get(pairKey(pair[0], pair[1])) : undefined
+      if (slot !== undefined) slots.active = { kind: 'edge', slot }
+    }
+  }
+  return slots
+}
+
+function pairKey(a: number, b: number): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`
+}
+
 const UP: Vec3 = [0, 0, 1]
 
 /** How many pixels across a glyph's grab area is, at any distance. */
@@ -137,6 +198,9 @@ export class SceneViewport {
   private gizmoPivot: Vec3 = [0, 0, 0]
   private gizmoBasis = { x: [1, 0, 0] as Vec3, y: [0, 1, 0] as Vec3, z: [0, 0, 1] as Vec3 }
   private views = new Map<string, ObjectView>()
+  /** One per mesh open for editing, keyed by object id; the index is what its element ids carry. */
+  private editViews = new Map<string, { view: EditView; index: number }>()
+  private editObjects: string[] = []
   private observer: ResizeObserver | null = null
   private frameHandle: number | null = null
   private disposed = false
@@ -255,6 +319,8 @@ export class SceneViewport {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored)
     for (const view of this.views.values()) this.disposeObjectView(view)
     this.views.clear()
+    for (const entry of this.editViews.values()) entry.view.dispose()
+    this.editViews.clear()
     this.cursor?.dispose()
     this.transform?.dispose()
     this.gizmos?.dispose()
@@ -295,6 +361,8 @@ export class SceneViewport {
     const document = this.document
     for (const view of this.views.values()) this.disposeObjectView(view)
     this.views.clear()
+    for (const entry of this.editViews.values()) entry.view.dispose()
+    this.editViews.clear()
     this.renderer?.resetState()
     this.applySize()
     if (document) this.setDocument(document)
@@ -326,6 +394,7 @@ export class SceneViewport {
     this.picking?.setSize(buffer.width, buffer.height)
     this.perspective.aspect = width / height
     this.perspective.updateProjectionMatrix()
+    for (const entry of this.editViews.values()) entry.view.setResolution(buffer.width, buffer.height, this.pixelRatio)
     for (const view of this.views.values()) {
       if (view.wire) setLineResolution(view.wire.material, buffer.width, buffer.height)
       if (!view.glyph) continue
@@ -345,6 +414,7 @@ export class SceneViewport {
 
   setTheme(): void {
     this.theme = readSceneTheme(this.container)
+    for (const entry of this.editViews.values()) entry.view.setTheme(this.theme)
     this.renderer?.setClearColor(new Color(splitAlpha(this.theme.viewport).colour), 1)
     this.grid?.update({
       line: this.theme.grid,
@@ -438,6 +508,7 @@ export class SceneViewport {
   setDocument(document: SceneDocument): void {
     this.document = document
     this.syncObjects()
+    this.syncEdit()
     this.syncCursor()
     this.notes?.setAnnotations(document.annotations ?? [])
     this.notes?.setMeasurements(document.measurements ?? [], null)
@@ -447,6 +518,7 @@ export class SceneViewport {
   setSelection(selection: SceneSelection): void {
     this.selection = selection
     this.syncOutlineScene()
+    this.syncEdit()
     this.invalidate()
   }
 
@@ -458,8 +530,12 @@ export class SceneViewport {
   }
 
   setView(view: ViewState): void {
+    const before = this.view
     this.view = view
     this.applyView()
+    if (!before || before.mode !== view.mode || before.xray !== view.xray || before.selectMode.join() !== view.selectMode.join()) {
+      this.syncEdit()
+    }
     this.invalidate()
   }
 
@@ -522,6 +598,135 @@ export class SceneViewport {
       this.views.delete(id)
     }
     this.syncOutlineScene()
+  }
+
+  /* ------------------------------------------------------------ edit mode */
+
+  /**
+   * The meshes open for editing get a second layer over them: dots, edges and face tints, and the
+   * same three again in the id buffer so that they can be clicked. The object's own pick mesh goes
+   * dark while it is being edited — a click in edit mode chooses a vertex, never the object it
+   * belongs to, and leaving both in the buffer would make the answer depend on which happened to
+   * be nearer the pointer.
+   */
+  private syncEdit(): void {
+    const document = this.document
+    const editing = this.view?.mode === 'edit'
+      ? (this.selection.editObjectIds ?? []).filter((id) => document?.objects.some((object) => object.id === id)).slice(0, MAX_EDITED_OBJECTS)
+      : []
+    this.editObjects = editing
+    for (const [id, entry] of [...this.editViews]) {
+      if (editing.includes(id) && editing.indexOf(id) === entry.index) continue
+      this.overlayRoot.remove(entry.view.root)
+      this.picking?.scene.remove(entry.view.pickRoot)
+      entry.view.dispose()
+      this.editViews.delete(id)
+    }
+    for (const [id, view] of this.views) {
+      if (view.pickMesh) view.pickMesh.visible = !editing.includes(id)
+    }
+    if (!document || editing.length === 0) return
+    const buffer = { width: Math.round(this.size.width * this.pixelRatio), height: Math.round(this.size.height * this.pixelRatio) }
+    editing.forEach((id, index) => {
+      const object = document.objects.find((candidate) => candidate.id === id)
+      const objectView = this.views.get(id)
+      const data = object ? meshOf(document, object) : null
+      if (!object || !objectView?.meshView || !data) return
+      let entry = this.editViews.get(id)
+      if (!entry) {
+        entry = { view: createEditView(index, this.theme), index }
+        this.editViews.set(id, entry)
+        this.overlayRoot.add(entry.view.root)
+        this.picking?.scene.add(entry.view.pickRoot)
+      }
+      entry.view.setResolution(buffer.width, buffer.height, this.pixelRatio)
+      entry.view.setMesh(data, objectView.meshView)
+      entry.view.setSelectMode(this.view?.selectMode ?? ['vertex'])
+      entry.view.setXray(this.view?.xray ?? false)
+      entry.view.setSelection(editSlots(data, this.selection, id))
+      entry.view.setMatrix(objectView.root.matrix)
+    })
+  }
+
+  /** Draws one element as being under the pointer. True when that changed anything. */
+  setElementHover(element: { objectId: string; kind: SelectMode; slot: number } | null): boolean {
+    let changed = false
+    for (const [id, entry] of this.editViews) {
+      const wanted = element && element.objectId === id ? { kind: element.kind, slot: element.slot } : null
+      if (entry.view.setHover(wanted)) changed = true
+    }
+    return changed
+  }
+
+  /**
+   * What is under the pointer, per kind, within a radius. One render and one read answer for all
+   * three: the caller applies Blender's priority — a vertex beats an edge beats a face — rather
+   * than this deciding for it, because the priority depends on which kinds are being selected.
+   */
+  pickElements(x: number, y: number, radius = 10): ElementHits {
+    const renderer = this.renderer
+    const hits: ElementHits = { vertex: null, edge: null, face: null }
+    if (!renderer || !this.picking || this.editObjects.length === 0) return hits
+    const ratio = this.pixelRatio
+    const half = Math.max(1, Math.round(radius * ratio))
+    const left = Math.round(x * ratio) - half
+    const top = Math.round(y * ratio) - half
+    const span = half * 2 + 1
+    const buffer = this.picking.region(renderer, this.camera, left, top + span, span, span)
+    for (let row = 0; row < span; row += 1) {
+      for (let column = 0; column < span; column += 1) {
+        const offset = (row * span + column) * 4
+        const found = decodePick(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!)
+        if (!found || (found.kind !== 'vertex' && found.kind !== 'edge' && found.kind !== 'face')) continue
+        const { objectIndex, elementIndex } = decodeElement(found.id)
+        const objectId = this.editObjects[objectIndex]
+        if (!objectId) continue
+        const dx = column - half
+        const dy = row - half
+        const distance = Math.sqrt(dx * dx + dy * dy) / ratio
+        const current = hits[found.kind]
+        if (current && current.distance <= distance) continue
+        hits[found.kind] = { objectId, slot: elementIndex, distance }
+      }
+    }
+    return hits
+  }
+
+  /** Every element whose pixels fall inside a rectangle, for the box, lasso and circle tools. */
+  pickElementRegion(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    inside?: (px: number, py: number) => boolean,
+  ): Map<string, { vertices: Set<number>; edges: Set<number>; faces: Set<number> }> {
+    const found = new Map<string, { vertices: Set<number>; edges: Set<number>; faces: Set<number> }>()
+    const renderer = this.renderer
+    if (!renderer || !this.picking || width < 1 || height < 1 || this.editObjects.length === 0) return found
+    const ratio = this.pixelRatio
+    const buffer = this.picking.region(renderer, this.camera, x * ratio, y * ratio, width * ratio, height * ratio)
+    const readWidth = Math.max(1, Math.round(width * ratio))
+    const readHeight = Math.max(1, Math.round(height * ratio))
+    for (let row = 0; row < readHeight; row += 1) {
+      for (let column = 0; column < readWidth; column += 1) {
+        const offset = (row * readWidth + column) * 4
+        const hit = decodePick(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!)
+        if (!hit || (hit.kind !== 'vertex' && hit.kind !== 'edge' && hit.kind !== 'face')) continue
+        if (inside && !inside(x + column / ratio, y + (readHeight - 1 - row) / ratio)) continue
+        const { objectIndex, elementIndex } = decodeElement(hit.id)
+        const objectId = this.editObjects[objectIndex]
+        if (!objectId) continue
+        let entry = found.get(objectId)
+        if (!entry) {
+          entry = { vertices: new Set(), edges: new Set(), faces: new Set() }
+          found.set(objectId, entry)
+        }
+        if (hit.kind === 'vertex') entry.vertices.add(elementIndex)
+        else if (hit.kind === 'edge') entry.edges.add(elementIndex)
+        else entry.faces.add(elementIndex)
+      }
+    }
+    return found
   }
 
   private createObjectView(object: SceneObject, signature: string): ObjectView {

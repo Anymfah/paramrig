@@ -94,6 +94,8 @@ export type KeymapSection = {
 // different decisions.
 const NOTE_NUMPAD_EMULATION =
   'A keyboard without a numeric keypad reaches the axis views on the top row, the way Blender’s “Emulate Numpad” preference does.'
+const NOTE_NO_KEYPAD =
+  'Blender grows and shrinks a selection with the keypad’s + and −. The top row’s own + and − are bound as well, for a keyboard that has no keypad.'
 const NOTE_ALT_GR =
   '⌃⌥ is AltGr on Windows, where some layouts type a character with it. Keys are ignored while a field has focus, so typing is left alone.'
 const NOTE_UNDO_ON_MACOS =
@@ -156,14 +158,78 @@ export const KEYMAP: KeyBinding[] = [
     note: 'Some browsers keep ⌃Tab for their own tabs. The mode selector in the header does the same job where they do.',
   },
 
-  /* select */
-  { code: 'KeyA', action: operator('select.all'), label: 'Select all' },
-  { code: 'KeyA', alt: true, action: operator('select.none'), label: 'Select none' },
-  { code: 'KeyI', ctrl: true, action: operator('select.invert'), label: 'Invert selection' },
+  /* select, in object mode */
+  { code: 'KeyA', mode: 'object', action: operator('select.all'), label: 'Select all' },
+  { code: 'KeyA', alt: true, mode: 'object', action: operator('select.none'), label: 'Select none' },
+  { code: 'KeyI', ctrl: true, mode: 'object', action: operator('select.invert'), label: 'Invert selection' },
   { code: 'KeyB', action: operator('select.box'), label: 'Box select' },
   { code: 'KeyC', action: operator('select.circle'), label: 'Circle select' },
   { code: 'KeyW', action: action('tool.cycleSelect'), label: 'Cycle the select tool' },
-  { code: 'KeyG', shift: true, action: operator('select.similar'), label: 'Select similar' },
+  { code: 'KeyG', shift: true, mode: 'object', action: operator('select.similar'), label: 'Select similar' },
+
+  /* select, in edit mode */
+  { code: 'KeyA', mode: 'edit', action: operator('mesh.selectAll'), label: 'Select all' },
+  { code: 'KeyA', alt: true, mode: 'edit', action: operator('mesh.selectNone'), label: 'Select none' },
+  { code: 'KeyI', ctrl: true, mode: 'edit', action: operator('mesh.selectInvert'), label: 'Invert selection' },
+  { code: 'KeyL', ctrl: true, mode: 'edit', action: operator('mesh.selectLinked'), label: 'Select linked' },
+  { code: 'KeyL', mode: 'edit', action: action('select.linkedPick'), label: 'Select linked under the pointer' },
+  { code: 'KeyG', shift: true, mode: 'edit', action: operator('mesh.selectSimilar'), label: 'Select similar' },
+  {
+    code: 'NumpadAdd',
+    ctrl: true,
+    mode: 'edit',
+    action: operator('mesh.selectMore'),
+    label: 'Select more',
+  },
+  {
+    code: 'NumpadSubtract',
+    ctrl: true,
+    mode: 'edit',
+    action: operator('mesh.selectLess'),
+    label: 'Select less',
+  },
+  {
+    code: 'Equal',
+    ctrl: true,
+    mode: 'edit',
+    action: operator('mesh.selectMore'),
+    label: 'Select more',
+    note: NOTE_NO_KEYPAD,
+  },
+  {
+    code: 'Minus',
+    ctrl: true,
+    mode: 'edit',
+    action: operator('mesh.selectLess'),
+    label: 'Select less',
+    note: NOTE_NO_KEYPAD,
+  },
+
+  /* the three element kinds */
+  { code: 'Digit1', mode: 'edit', action: operator('mode.selectVertex'), label: 'Vertex select' },
+  { code: 'Digit2', mode: 'edit', action: operator('mode.selectEdge'), label: 'Edge select' },
+  { code: 'Digit3', mode: 'edit', action: operator('mode.selectFace'), label: 'Face select' },
+  {
+    code: 'Digit1',
+    shift: true,
+    mode: 'edit',
+    action: { kind: 'operator', id: 'mode.selectVertex', params: { extend: true } },
+    label: 'Add vertex select',
+  },
+  {
+    code: 'Digit2',
+    shift: true,
+    mode: 'edit',
+    action: { kind: 'operator', id: 'mode.selectEdge', params: { extend: true } },
+    label: 'Add edge select',
+  },
+  {
+    code: 'Digit3',
+    shift: true,
+    mode: 'edit',
+    action: { kind: 'operator', id: 'mode.selectFace', params: { extend: true } },
+    label: 'Add face select',
+  },
 
   /* add, and the object mode */
   { code: 'KeyA', shift: true, action: action('add.menu'), label: 'Add' },
@@ -221,6 +287,63 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'KeyG', alt: true, mode: 'object', action: operator('object.clearLocation'), label: 'Clear location' },
   { code: 'KeyR', alt: true, mode: 'object', action: operator('object.clearRotation'), label: 'Clear rotation' },
   { code: 'KeyS', alt: true, mode: 'object', action: operator('object.clearScale'), label: 'Clear scale' },
+
+  /* modelling, in edit mode */
+  { code: 'KeyE', mode: 'edit', action: operator('mesh.extrudeRegion'), label: 'Extrude region' },
+  { code: 'KeyE', alt: true, mode: 'edit', action: action('menu.extrude'), label: 'Extrude menu' },
+  { code: 'KeyI', mode: 'edit', action: operator('mesh.inset'), label: 'Inset faces' },
+  { code: 'KeyB', ctrl: true, mode: 'edit', action: operator('mesh.bevelEdges'), label: 'Bevel edges' },
+  { code: 'KeyB', ctrl: true, shift: true, mode: 'edit', action: operator('mesh.bevelVertices'), label: 'Bevel vertices' },
+  { code: 'KeyR', ctrl: true, mode: 'edit', action: operator('mesh.loopCut'), label: 'Loop cut' },
+  { code: 'KeyR', ctrl: true, shift: true, mode: 'edit', action: operator('mesh.offsetEdgeLoop'), label: 'Offset edge loop' },
+  { code: 'KeyK', mode: 'edit', action: action('tool.knife'), label: 'Knife' },
+  { code: 'KeyK', shift: true, mode: 'edit', action: operator('mesh.knifeProject'), label: 'Knife project' },
+  { code: 'KeyM', mode: 'edit', action: action('menu.merge'), label: 'Merge menu' },
+  { code: 'KeyM', alt: true, mode: 'edit', action: action('menu.split'), label: 'Split menu' },
+  { code: 'KeyM', ctrl: true, mode: 'edit', action: operator('mesh.mirror'), label: 'Mirror' },
+  { code: 'KeyX', mode: 'edit', action: action('menu.delete'), label: 'Delete menu' },
+  { code: 'Delete', mode: 'edit', action: action('menu.delete'), label: 'Delete menu' },
+  { code: 'KeyF', mode: 'edit', action: operator('mesh.fill'), label: 'Make edge or face' },
+  { code: 'KeyF', alt: true, mode: 'edit', action: operator('mesh.beautyFill'), label: 'Beauty fill' },
+  { code: 'KeyP', mode: 'edit', action: action('menu.separate'), label: 'Separate' },
+  { code: 'KeyV', mode: 'edit', action: operator('mesh.rip'), label: 'Rip' },
+  { code: 'KeyV', alt: true, mode: 'edit', action: operator('mesh.ripFill'), label: 'Rip fill' },
+  { code: 'KeyV', shift: true, mode: 'edit', action: operator('mesh.vertexSlide'), label: 'Vertex slide' },
+  { code: 'KeyN', shift: true, mode: 'edit', action: operator('mesh.normalsRecalculate'), label: 'Recalculate normals outside' },
+  {
+    code: 'KeyN',
+    shift: true,
+    ctrl: true,
+    mode: 'edit',
+    action: { kind: 'operator', id: 'mesh.normalsRecalculate', params: { inside: true } },
+    label: 'Recalculate normals inside',
+  },
+  { code: 'KeyE', shift: true, mode: 'edit', action: operator('mesh.setCrease'), label: 'Edge crease' },
+  { code: 'KeyE', shift: true, ctrl: true, mode: 'edit', action: operator('mesh.setBevelWeight'), label: 'Edge bevel weight' },
+  { code: 'KeyT', ctrl: true, mode: 'edit', action: operator('mesh.triangulate'), label: 'Triangulate faces' },
+  { code: 'KeyJ', alt: true, mode: 'edit', action: operator('mesh.trisToQuads'), label: 'Tris to quads' },
+  { code: 'KeyS', alt: true, mode: 'edit', action: operator('mesh.shrinkFatten'), label: 'Shrink or fatten' },
+  { code: 'KeyS', alt: true, shift: true, mode: 'edit', action: operator('mesh.toSphere'), label: 'To sphere' },
+  {
+    code: 'KeyS',
+    alt: true,
+    shift: true,
+    ctrl: true,
+    mode: 'edit',
+    action: operator('mesh.shear'),
+    label: 'Shear',
+  },
+  { code: 'KeyV', ctrl: true, mode: 'edit', action: action('menu.vertex'), label: 'Vertex menu' },
+  { code: 'KeyE', ctrl: true, mode: 'edit', action: action('menu.edge'), label: 'Edge menu' },
+  { code: 'KeyF', ctrl: true, mode: 'edit', action: action('menu.face'), label: 'Face menu' },
+  { code: 'KeyD', shift: true, mode: 'edit', action: operator('mesh.duplicate'), label: 'Duplicate' },
+
+  /* what a transform does, in both modes */
+  { code: 'KeyO', mode: 'edit', action: action('proportional.toggle'), label: 'Proportional editing' },
+  { code: 'KeyO', shift: true, mode: 'edit', action: action('proportional.falloff'), label: 'Proportional falloff pie' },
+  { code: 'KeyO', alt: true, mode: 'edit', action: action('proportional.connected'), label: 'Proportional, connected only' },
+  { code: 'Tab', shift: true, action: action('snap.toggle'), label: 'Snapping' },
+  { code: 'KeyZ', alt: true, action: action('view.xray'), label: 'X-ray' },
 
   /* transform */
   { code: 'KeyG', action: operator('transform.move'), label: 'Move' },

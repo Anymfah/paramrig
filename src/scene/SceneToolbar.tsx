@@ -47,11 +47,8 @@ function toolLabel(tool: SceneTool): string {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-/**
- * The tools both modes share. Edit mode's own — extrude, inset, bevel, loop cut, knife — arrive
- * with the mesh prompt and join this list then.
- */
-const GROUPS: ToolGroup[] = [
+/** The tools both modes share: selecting, the cursor, the three transforms, notes and rulers. */
+const COMMON_GROUPS: ToolGroup[] = [
   { id: 'select', label: 'Select', tools: ['select-box', 'select-circle', 'select-lasso'], shortcut: chord('tool.cycleSelect') },
   { id: 'cursor', label: 'Cursor', tools: ['cursor'], shortcut: null },
   { id: 'move', label: 'Move', tools: ['move'], shortcut: chord('transform.move') },
@@ -61,6 +58,30 @@ const GROUPS: ToolGroup[] = [
   { id: 'annotate', label: 'Annotate', tools: ['annotate'], shortcut: null },
   { id: 'measure', label: 'Measure', tools: ['measure'], shortcut: null },
 ]
+
+/**
+ * Edit mode's own, in Blender's order. Each is the interactive half of the operator of the same
+ * name — pressing E and picking the extrude tool run exactly the same thing, which is why the
+ * F9 panel after either says the same words.
+ */
+const EDIT_GROUPS: ToolGroup[] = [
+  { id: 'extrude', label: 'Extrude region', tools: ['extrude'], shortcut: chord('mesh.extrudeRegion') },
+  { id: 'inset', label: 'Inset faces', tools: ['inset'], shortcut: chord('mesh.inset') },
+  { id: 'bevel', label: 'Bevel', tools: ['bevel'], shortcut: chord('mesh.bevelEdges') },
+  { id: 'loop-cut', label: 'Loop cut', tools: ['loop-cut'], shortcut: chord('mesh.loopCut') },
+  { id: 'knife', label: 'Knife', tools: ['knife', 'bisect'], shortcut: chord('tool.knife') },
+  { id: 'poly-build', label: 'Poly build', tools: ['poly-build'], shortcut: null },
+  { id: 'spin', label: 'Spin', tools: ['spin'], shortcut: null },
+  { id: 'smooth', label: 'Smooth', tools: ['smooth'], shortcut: null },
+  { id: 'edge-slide', label: 'Edge slide', tools: ['edge-slide'], shortcut: chord('mesh.edgeSlide') },
+  { id: 'shrink-fatten', label: 'Shrink or fatten', tools: ['shrink-fatten'], shortcut: chord('mesh.shrinkFatten') },
+  { id: 'shear', label: 'Shear', tools: ['shear'], shortcut: chord('mesh.shear') },
+  { id: 'rip', label: 'Rip region', tools: ['rip'], shortcut: chord('mesh.rip') },
+]
+
+function groupsFor(mode: EditorMode): ToolGroup[] {
+  return mode === 'edit' ? [...COMMON_GROUPS, ...EDIT_GROUPS] : COMMON_GROUPS
+}
 
 export function SceneToolbar({ open, tool, mode, onTool, onClose }: {
   open: boolean
@@ -103,7 +124,7 @@ function ToolbarStrip({ tool, mode, onTool, onClose }: {
       ref={bar}
       style={sizes}
     >
-      {GROUPS.map((group) => (
+      {groupsFor(mode).map((group) => (
         <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} />
       ))}
       <Tooltip content={binding ? `Close toolbar · ${shortcutLabel(binding)}` : 'Close toolbar'} side="right">

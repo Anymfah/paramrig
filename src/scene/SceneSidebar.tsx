@@ -1,4 +1,5 @@
 import { useId, useMemo, useRef, useState } from 'react'
+import { applyElementTargets, elementTargets } from '@/scene/transform/elements'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import { objectBounds } from '@/scene/objects'
 import type {
@@ -308,6 +309,70 @@ function SidebarTabs({ tab, onTab, panelId }: { tab: SidebarTab; onTab: (tab: Si
 
 /* ------------------------------------------------------------------- item */
 
+/**
+ * The Item tab in edit mode: where the selection is, and moving it by typing.
+ *
+ * Blender shows the median of the selected vertices, and a single vertex's own position when there
+ * is only one. Both are editable, and editing one moves the whole selection by the difference —
+ * which is what makes the panel a way of placing geometry exactly rather than a readout.
+ */
+function EditItemTab({ document, selection, onEditDocument, onGestureStart, onGestureEnd }: {
+  document: SceneDocument
+  selection: SceneSelection
+  onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
+  onGestureStart: () => void
+  onGestureEnd: () => void
+}) {
+  const targets = useMemo(() => elementTargets(document, selection).targets.filter((target) => (target.weight ?? 1) >= 1), [document, selection])
+  const median = useMemo((): Vec3 => {
+    if (targets.length === 0) return [0, 0, 0]
+    const sum = targets.reduce<Vec3>((total, target) => [
+      total[0] + target.centre[0],
+      total[1] + target.centre[1],
+      total[2] + target.centre[2],
+    ], [0, 0, 0])
+    return [sum[0] / targets.length, sum[1] / targets.length, sum[2] / targets.length]
+  }, [targets])
+
+  if (targets.length === 0) {
+    return <p className="scene-sidebar__empty">Nothing is selected. Click a vertex, an edge or a face to see where it is.</p>
+  }
+
+  const unit = lengthUnit(document.units)
+  const move = (axis: AxisIndex, value: number) => {
+    const delta = value - median[axis]
+    if (!Number.isFinite(delta) || delta === 0) return
+    const moved = targets.map((target) => {
+      const centre: Vec3 = [...target.centre]
+      centre[axis] += delta
+      return { id: target.id, transform: { ...target.transform, position: centre } }
+    })
+    onEditDocument((current) => applyElementTargets(current, moved), targets.length === 1 ? 'Vertex' : 'Median')
+  }
+
+  return (
+    <>
+      <p className="scene-sidebar__title">{targets.length === 1 ? 'Vertex' : `${targets.length} vertices`}</p>
+      <AxisFields
+        legend={targets.length === 1 ? 'Vertex' : 'Median'}
+        values={median}
+        mixed={[false, false, false]}
+        locked={[false, false, false]}
+        min={-FAR}
+        max={FAR}
+        step={LENGTH_STEP}
+        unit={unit}
+        onValue={(axis, value) => move(axis, value)}
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+      />
+      <p className="scene-sidebar__note">
+        The numbers are in world space. Moving one moves the whole selection by the difference.
+      </p>
+    </>
+  )
+}
+
 function ItemTab({
   document,
   selection,
@@ -340,6 +405,18 @@ function ItemTab({
     for (const object of targets) sizes.set(object.id, objectDimensions(document, object))
     return sizes
   }, [document, targets])
+
+  if (document.view.mode === 'edit') {
+    return (
+      <EditItemTab
+        document={document}
+        selection={selection}
+        onEditDocument={onEditDocument}
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+      />
+    )
+  }
 
   if (!activeObject) {
     return <p className="scene-sidebar__empty">Nothing is active. Select an object to see where it is.</p>

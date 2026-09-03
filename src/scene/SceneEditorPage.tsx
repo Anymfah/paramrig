@@ -39,10 +39,14 @@ import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { SceneTool, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneSelection, SceneTool, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/operators'
+import { operatorAvailability } from '@/scene/operators'
+import { isModalOperator } from '@/scene/modalSpecs'
+import { POINTER_MENUS, type MenuIds } from '@/scene/editMenus'
+import { FALLOFF_KINDS, type FalloffKind } from '@/scene/transform/proportional'
 
 /**
  * What a fresh annotation is drawn in. Notes are the person's own marks rather than part of the
@@ -95,6 +99,14 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [pie, setPie] = useState<Pie>(null)
   const [contextAt, setContextAt] = useState<{ x: number; y: number } | null>(null)
   const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  /** A menu of operators opened at the pointer: ⌃F, M, X and the rest of Blender's edit menus. */
+  const [pointerMenu, setPointerMenu] = useState<{ title: string; ids: MenuIds; at: { x: number; y: number } } | null>(null)
+  /** A menu of plain choices — the falloff curves — which are settings rather than operators. */
+  const [choiceMenu, setChoiceMenu] = useState<{
+    title: string
+    at: { x: number; y: number }
+    entries: Array<{ id: string; label: string; checked: boolean; run: () => void }>
+  } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
@@ -117,6 +129,21 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     const size = stage.current?.viewport?.pixelSize
     return size ? Math.max(0.1, size.width) / Math.max(0.1, size.height) : undefined
   }, [])
+
+  /**
+   * What a pointer-driven operator does to the document: every frame is the same operator run again
+   * from where the gesture opened, and the last one is the only entry the history keeps.
+   */
+  const operatorBridge = useMemo(() => ({
+    preview: editor.previewOperator,
+    commit: editor.commitOperator,
+    restore: (before: SceneDocument, beforeSelection: SceneSelection) => {
+      editor.editDocument(() => before, 'Cancel', false)
+      editor.setSelection(beforeSelection)
+      editor.setMessage(null)
+    },
+    message: (text: string | null) => editor.setMessage(text),
+  }), [editor])
 
   const run = useCallback((id: string, params: Record<string, unknown> = {}) => {
     const operator = getOperator(id)
@@ -220,6 +247,26 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         else setRenaming(active.name)
         return
       }
+      // A pointer-driven operator opens a gesture rather than running once: the key starts an
+      // extrusion, and the pointer says how far. The availability check still happens first, so a
+      // refused operator says why instead of opening a tool that can do nothing.
+      if (isModalOperator(action.id)) {
+        const here = editor.operatorContext()
+        const availability = here ? operatorAvailability(action.id, here) : true
+        if (availability !== true) {
+          editor.setMessage(availability)
+          return
+        }
+        const hovered = stage.current?.hoveredElement()
+        const started = stage.current?.beginModalOperator(
+          action.id,
+          hovered?.kind === 'edge' ? { edge: hovered.slot } : undefined,
+        )
+        if (started) {
+          setAnnouncement(binding.label)
+          return
+        }
+      }
       run(action.id, (action.params ?? {}) as Record<string, unknown>)
       setAnnouncement(binding.label)
       return
@@ -268,7 +315,52 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       }
       case 'mode.toggleEdit':
         event.preventDefault()
-        editor.setMessage('Edit mode arrives with the mesh editing prompt.')
+        run('mode.toggleEdit')
+        return
+      case 'view.xray':
+        event.preventDefault()
+        patchView({ xray: !document.view.xray })
+        return
+      case 'snap.toggle':
+        event.preventDefault()
+        patchView({ snapEnabled: !document.view.snapEnabled })
+        return
+      case 'proportional.toggle':
+        event.preventDefault()
+        patchView({ proportional: !document.view.proportional })
+        return
+      case 'proportional.connected':
+        event.preventDefault()
+        patchView({ proportional: true })
+        editor.setMessage('Proportional editing measures through the edges.')
+        return
+      case 'proportional.falloff':
+        event.preventDefault()
+        setChoiceMenu({
+          title: 'Falloff',
+          at: stage.current?.pointerPage() ?? pointerCentre(),
+          entries: FALLOFF_KINDS.map((kind) => ({
+            id: kind,
+            label: falloffLabel(kind),
+            checked: document.view.proportionalFalloff === kind,
+            run: () => patchView({ proportionalFalloff: kind }),
+          })),
+        })
+        return
+      case 'select.linkedPick': {
+        event.preventDefault()
+        const hovered = stage.current?.hoveredElement()
+        if (!hovered) {
+          editor.setMessage('Put the pointer over the part to select.')
+          return
+        }
+        run('mesh.selectPick', { kind: hovered.kind, slot: hovered.slot, objectId: hovered.objectId })
+        run('mesh.selectLinked')
+        return
+      }
+      case 'tool.knife':
+        event.preventDefault()
+        patchView({ tool: 'knife' })
         return
       case 'file.save':
         event.preventDefault()
@@ -296,6 +388,20 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           at: stage.current?.pointerPage() ?? pointerCentre(),
         })
         return
+      case 'menu.extrude':
+      case 'menu.merge':
+      case 'menu.delete':
+      case 'menu.split':
+      case 'menu.separate':
+      case 'menu.normals':
+      case 'menu.vertex':
+      case 'menu.edge':
+      case 'menu.face': {
+        event.preventDefault()
+        const menu = POINTER_MENUS[action.id]
+        if (menu) setPointerMenu({ title: menu.title, ids: menu.ids, at: stage.current?.pointerPage() ?? pointerCentre() })
+        return
+      }
       case 'add.menu':
         // ⇧A opens the Add menu where the pointer is, as Blender's does, filterable by typing.
         event.preventDefault()
@@ -449,7 +555,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               context={context}
               onRunOperator={run}
               onView={patchView}
-              onMode={() => editor.setMessage('Edit mode arrives with the mesh editing prompt.')}
+              onMode={(next) => run(next === 'edit' ? 'mode.edit' : next === 'sculpt' ? 'mode.sculpt' : 'mode.object')}
               onCommand={(id) => commands.find((command) => command.id === id)?.run()}
             />
           </div>
@@ -461,6 +567,33 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onView={setView}
               onSelect={selectObjects}
               onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
+              operatorBridge={operatorBridge}
+              onPickElement={(hit, pickMode) => {
+                if (!hit) {
+                  run('mesh.selectPick', { slot: -1, extend: pickMode !== 'new' })
+                  return
+                }
+                if (pickMode === 'loop' || pickMode === 'ring') {
+                  run(pickMode === 'loop' ? 'mesh.selectLoop' : 'mesh.selectRing', { edge: hit.slot, extend: false })
+                  return
+                }
+                run('mesh.selectPick', {
+                  kind: hit.kind,
+                  slot: hit.slot,
+                  objectId: hit.objectId,
+                  extend: pickMode === 'extend',
+                  toggle: pickMode === 'toggle',
+                })
+              }}
+              onRegionElements={(found, selectMode) => run('mesh.selectRegion', {
+                mode: selectMode,
+                found: [...found].map(([objectId, entry]) => ({
+                  objectId,
+                  vertices: [...entry.vertices],
+                  edges: [...entry.edges],
+                  faces: [...entry.faces],
+                })),
+              })}
               onPlaceCursor={(position, normal) => run('cursor.place', { position, ...(normal ? { normal } : {}) })}
               onContextMenu={setContextAt}
               onAnnotate={(points) => editor.editDocument((current) => ({
@@ -472,6 +605,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 measurements: [...(current.measurements ?? []), { id: crypto.randomUUID(), from, to }],
               }), 'Measure', false)}
               onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
+              onEditDocument={(edit) => editor.editDocument(edit, 'Transform', false)}
               onGestureStart={editor.beginGesture}
               onGestureEnd={editor.endGesture}
               onGestureCancel={editor.cancelGesture}
@@ -572,10 +706,36 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             if (pie.kind === 'pivot') patchView({ pivot: id as ViewState['pivot'] })
             else if (pie.kind === 'orientation') patchView({ orientation: id as ViewState['orientation'] })
             else if (pie.kind === 'shading') patchView({ shading: id as ViewState['shading'] })
-            else if (pie.kind === 'mode') editor.setMessage('Edit mode arrives with the mesh editing prompt.')
+            else if (pie.kind === 'mode') run(id === 'object' ? 'mode.object' : id === 'edit' ? 'mode.edit' : 'mode.sculpt')
             else run(id)
           }}
           onClose={() => setPie(null)}
+        />
+      ) : null}
+      {pointerMenu ? (
+        <SceneMenu
+          label={pointerMenu.title}
+          entries={menuEntries(pointerMenu.ids, context, (id) => run(id)) as SceneMenuEntry[]}
+          at={pointerMenu.at}
+          open
+          onOpenChange={(open) => { if (!open) setPointerMenu(null) }}
+        />
+      ) : null}
+      {choiceMenu ? (
+        <SceneMenu
+          label={choiceMenu.title}
+          entries={choiceMenu.entries.map((entry) => ({
+            id: entry.id,
+            label: entry.label,
+            checked: entry.checked,
+            run: () => {
+              entry.run()
+              setChoiceMenu(null)
+            },
+          }))}
+          at={choiceMenu.at}
+          open
+          onOpenChange={(open) => { if (!open) setChoiceMenu(null) }}
         />
       ) : null}
       {addAt ? (
@@ -599,6 +759,12 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       <LiveRegion name="scene" message={announcement} />
     </ContextMenuRoot>
   )
+}
+
+/** The falloff curves, as a person reads them in the ⇧O menu. */
+function falloffLabel(kind: FalloffKind): string {
+  if (kind === 'inverse-square') return 'Inverse square'
+  return kind.charAt(0).toUpperCase() + kind.slice(1)
 }
 
 function panelsOf(view: ViewState): NonNullable<ViewState['panels']> {
