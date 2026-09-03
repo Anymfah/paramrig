@@ -48,7 +48,15 @@ export function applyScrub(
   options: { min: number; max: number; step: number; fine: boolean },
 ): number {
   const pxPerStep = options.fine ? SCRUB_PX_PER_STEP_FINE : SCRUB_PX_PER_STEP
-  const rangeStep = (options.max - options.min) / 100
+  /*
+   * A bounded value scrubs by a hundredth of its range, so one sweep of the field crosses it. A
+   * value whose bounds are only there to stop an infinity — a world coordinate runs to ±1e6 —
+   * has no range worth crossing, and a hundredth of it would send the object out of the scene on
+   * the first pixel. Past ten thousand steps the range stops meaning anything, and the step wins.
+   */
+  const span = options.max - options.min
+  const bounded = Number.isFinite(span) && options.step > 0 && span / options.step <= 10_000
+  const rangeStep = bounded ? span / 100 : options.step
   const scrubStep = options.fine ? options.step : Math.max(options.step, rangeStep)
   const next = origin + (dx / pxPerStep) * scrubStep
   return clampNumber(snapToStep(next, options.min, options.step), options.min, options.max)
@@ -144,6 +152,31 @@ export function evaluateExpression(source: string): number | null {
   return result
 }
 
+/*
+ * The units a field understands without being told about them. A field measured in metres takes
+ * `40cm`, one measured in degrees takes `0.5turn`: the conversion is a fact about the units and
+ * not about the field, so it does not have to be declared parameter by parameter.
+ */
+const UNIT_FAMILIES: Array<Record<string, number>> = [
+  { m: 1, cm: 0.01, mm: 0.001, km: 1000, in: 0.0254, ft: 0.3048, yd: 0.9144 },
+  { '°': 1, deg: 1, degrees: 1, rad: 180 / Math.PI, turn: 360 },
+  { s: 1, ms: 0.001, min: 60 },
+]
+
+/** How many of `unit` one `suffix` is, when the two are the same kind of measurement. */
+function convertUnit(suffix: string, unit: string | undefined): number | null {
+  if (!unit) return null
+  const from = suffix.toLowerCase()
+  const to = unit.toLowerCase()
+  if (from === to) return 1
+  for (const family of UNIT_FAMILIES) {
+    const a = family[from]
+    const b = family[to]
+    if (a !== undefined && b !== undefined) return a / b
+  }
+  return null
+}
+
 export function evaluateNumberInput(
   raw: string,
   current: number,
@@ -165,7 +198,9 @@ export function evaluateNumberInput(
     if (suffix) {
       const known = options.units?.find((item) => item.value.toLowerCase() === suffix.toLowerCase())
       const currentUnit = options.units?.find((item) => item.value === options.unit)
+      const converted = convertUnit(suffix, options.unit)
       if (known && known.factor && currentUnit?.factor) scale = known.factor / currentUnit.factor
+      else if (converted !== null) scale = converted
       else if (suffix.toLowerCase() !== (options.unit ?? '').toLowerCase()) return null
       text = text.slice(0, -suffix.length)
     }

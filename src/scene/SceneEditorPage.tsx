@@ -146,6 +146,48 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     window.location.assign(`/r/${opened.id}`)
   }, [file])
 
+  /**
+   * What a drop in the outliner means. The operators say what happens to *the selection*, which is
+   * right for a keystroke and wrong for a drag: a drag names its own object and its own target. So
+   * the operator is run against a selection made for it, without disturbing the person's own.
+   */
+  const reparent = useCallback((
+    id: string,
+    target: { parentId?: string | null; collectionId?: string; index?: number },
+    keepTransform: boolean,
+  ) => {
+    if (target.parentId !== undefined) {
+      if (target.parentId === null) {
+        editor.runOperator('object.clearParent', { keepTransform }, { selection: { objectIds: [id], activeObjectId: id } })
+        return
+      }
+      editor.runOperator(
+        'object.parent',
+        { keepTransform },
+        { selection: { objectIds: [id, target.parentId], activeObjectId: target.parentId } },
+      )
+      return
+    }
+    if (target.collectionId !== undefined) {
+      editor.runOperator(
+        'object.moveToCollection',
+        { collectionId: target.collectionId },
+        { selection: { objectIds: [id], activeObjectId: id } },
+      )
+      return
+    }
+    if (target.index === undefined) return
+    // Reordering is the list's own business: the document has no order but the order of the array.
+    editor.editDocument((current) => {
+      const from = current.objects.findIndex((object) => object.id === id)
+      if (from < 0) return current
+      const objects = [...current.objects]
+      const [moved] = objects.splice(from, 1)
+      objects.splice(Math.max(0, Math.min(objects.length, target.index!)), 0, moved!)
+      return { ...current, objects }
+    }, 'Reorder')
+  }, [editor])
+
   /* --------------------------------------------------------------- keyboard */
 
   const onKeyDown = useCallback((event: KeyboardEvent) => {
@@ -331,7 +373,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               ...current,
               collections: current.collections.map((entry) => (entry.id === id ? { ...entry, name } : entry)),
             }), 'Rename collection')}
-            onReparent={(id, target, keepTransform) => run('object.parent', { id, ...target, keepTransform })}
+            onReparent={(id, target, keepTransform) => reparent(id, target, keepTransform)}
             onUpdateObject={(id, patch) => editor.updateObject(id, patch, 'Change object')}
             onUpdateCollection={(id, patch) => editor.editDocument((current) => ({
               ...current,

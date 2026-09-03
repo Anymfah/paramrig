@@ -6,7 +6,7 @@
 
 ParamRig a un éditeur vectoriel (`src/vector/`, 28 000 lignes, quatre prompts, livré) qui est un renderer parmi d'autres : un document vectoriel sans `rig` est un dessin, avec un `rig` c'est un rig réglé par des contrôleurs. On veut la même chose pour la 3D : un **éditeur de scène** qui reprend Blender, sa logique et ses touches, au point qu'un utilisateur de Blender s'y sente chez lui, et qu'une IA puisse écrire un rig 3D dont un humain règle les contrôleurs.
 
-Blender, c'est : un mode objet et un mode édition (Tab), trois modes de sélection en édition (1, 2, 3 : sommets, arêtes, faces), des transformations modales (G, R, S, contraintes X/Y/Z, saisie numérique), les opérateurs de modélisation (E, I, ⌃B, ⌃R, K, J, F, M, X…), un panneau « Adjust last operation », des modificateurs, des matériaux, des lumières, des caméras, un outliner, un éditeur de propriétés, quatre modes d'ombrage. Tout cela est dans le périmètre. Le rendu final Cycles, les nœuds de géométrie, la physique, le montage vidéo et Python n'y sont pas ; la section 10 donne la liste exacte.
+Blender, c'est : un mode objet et un mode édition (Tab), trois modes de sélection en édition (1, 2, 3 : sommets, arêtes, faces), des transformations modales (G, R, S, contraintes X/Y/Z, saisie numérique), les opérateurs de modélisation (E, I, ⌃B, ⌃R, K, J, F, M, X…), un panneau « Adjust last operation », des modificateurs, des matériaux, des lumières, des caméras, un outliner, un éditeur de propriétés, quatre modes d'ombrage. Tout cela est dans le périmètre. Le rendu final Cycles, les nœuds de géométrie, la physique, le montage vidéo et Python n'y sont pas ; l'éditeur de shader à nœuds y est, en horizon, grâce au moteur de Prismorphic ; la section 10 donne la liste exacte.
 
 Périmètre en une phrase : **tout ce qui sert à modéliser, habiller et exposer un objet, à la fidélité de Blender, dans le navigateur, avec three.js.**
 
@@ -20,6 +20,15 @@ Périmètre en une phrase : **tout ce qui sert à modéliser, habiller et expose
 - À réutiliser tel quel : le kit `src/ui/` (`Button`, `IconButton`, `Tooltip`, `NumberField`, `ColorField`, `SelectField`, `SwitchField`, `SliderField`, `GradientField`, `ContextMenu`, `ParameterField` et les contrôleurs, `hit-target.ts`, `useRovingFocus`), `src/vector/history.ts` (pur), le patron de `useVectorDocument` (gestes, libellés), `useProjectFile` (auto-save, File System Access, badge), `commands.ts` (`VectorCommand`, `filterCommands`), `VectorCommandPalette`, `VectorModal`, `VectorChip`, `inspectorPrefs.ts`, `announce.ts`, `fileHandles.ts`, la `RigSession` (`src/state/session.ts`) et `Inspector` du workbench. Les pièces génériques sont extraites dans `src/editor/` (chantier 1), l'éditeur vectoriel les ré-exporte sans changer de comportement.
 - Harnais e2e : `e2e/lib.mjs` (`run`, `helpers`), Chrome headless GPU sur `9223`, `docker compose run --rm app npm run e2e`. Le fichier Compose est `compose.yml`.
 - Tests : vitest + jsdom, `src/test/setup.ts` simule un contexte 2D vide pour paper.js ; **aucun mock WebGL ni `ResizeObserver`**.
+
+### Prismorphic (`/Users/soheil/Documents/repos/prismorphic`, React 19, pnpm)
+
+L'éditeur de matériaux à nœuds de Soheil. Deux moitiés très inégales :
+
+- **Le moteur est pur et réutilisable** : `types/material-graph.ts` (modèle de graphe, ports typés scalaire / vecteur / couleur / shader, évaluation CPU, sanitisation, diagnostics) et `types/material-graph-glsl.ts` (compilation en GLSL avec cache LRU, budgets, stratégie de patch uniforms / recompilation), greffés sur un `MeshPhysicalMaterial` par `onBeforeCompile` dans `packages/runtime-preview/src/injectCompiledGraphShader.ts`. Aucune dépendance aux nœuds TSL ni à WebGPU : compatible avec le `WebGLRenderer` du plan.
+- **L'interface ne l'est pas** : `NodeViewPane.tsx`, 3 145 lignes, nœuds positionnés en pourcentage de la scène et câbles mesurés au DOM, marges codées en dur, undo par `CustomEvent` sur `window`, 31 types de nœuds câblés dans des tables et deux `switch`, infobulles natives, ports de 20 px, couleurs hors tokens, tests qui cherchent des chaînes dans le source. Son design d'interaction (connexion au pointeur et au clavier, détachement par glisser, cadres, minimap, palette `/`) est bon et sert de cahier des charges.
+
+**Décision** : le prompt 5 (chantier U) copie le moteur avec sa provenance, le rend pilotable par un registre de nœuds, et écrit un `NodeGraphEditor` générique dans `src/editor/` à partir du design, pas du code. Le même composant servira plus tard à l'onglet Bindings des rigs.
 
 ### Helios (`/Users/soheil/Documents/repos/helios/frontend`, Angular)
 
@@ -111,6 +120,7 @@ type MeshData = {
 ```
 src/editor/                        pièces génériques extraites du vectoriel (chantier 1)
   history.ts commands.ts (types + filterCommands) chip / modal / saveBadge / commandPalette (composants)
+  nodeGraph/ (NodeGraphEditor générique, prompt 5, chantier U)
 src/scene/
   types.ts document.ts (sanitisation, stockage, sceneManifest, vignettes) project.ts (fichier .paramrig.json kind 'scene')
   keymap.ts (table Blender → actions, event.code, plateforme, préférences) commands.ts announce.ts prefs.ts
@@ -128,7 +138,7 @@ src/scene/
     stack.ts subsurf.ts mirror.ts array.ts solidify.ts bevel.ts boolean.ts decimate.ts screw.ts triangulate.ts
     weld.ts wireframe.ts smooth.ts simpleDeform.ts cast.ts edgeSplit.ts displace.ts
   io/  gltf.ts obj.ts stl.ts render.ts thumbnail.ts
-  textures/procedural.ts (bruit, nuages, voronoï pour Displace)   uv/ sculpt/ curves/ (prompt 5)
+  textures/procedural.ts (bruit, nuages, voronoï pour Displace)   uv/ sculpt/ curves/ shader/ (prompt 5 ; shader/prismorphic/ = moteur copié avec provenance)
   rig.ts (liaisons, résolution pure, mémoïsée)
   viewport/                        three.js, non testé en jsdom, testé en e2e
     SceneViewport.ts navigation.ts meshView.ts overlays.ts outline.ts picking.ts gizmo.ts navGizmo.ts
@@ -241,6 +251,7 @@ Comme pour le vectoriel (`src/vector/rig.ts`), `SceneDocument.rig` porte `groups
 - `materials[id].baseColor|metallic|roughness|emission|emissionStrength|alpha|transmission`
 - `lights[id].color|power|radius|spotAngle|spotBlur`, `cameras[id].focalLength|orthoScale`
 - `shapeKeys[name].value` (phase 5 : la façon propre de déformer une géométrie par un contrôleur)
+- `materials[id].nodes[nodeId].<setting>` (phase 5 : un réglage d'un nœud de shader)
 - `mesh.vertices[id].x|y|z` (déformation directe, pour les petits rigs)
 - `world.color|strength`, `cursor.position.x|y|z`
 
@@ -291,11 +302,11 @@ Colonnes : fonctionnalité · touche Blender · prompt. « — » = hors périm�
 
 **Modificateurs** (P3) : Subdivision surface (Catmull-Clark, simple, creases), Mirror (axes, bisect, merge, clipping, mirror object), Array (count, fit length, relative / constant offset, merge, object offset), Solidify (épaisseur, offset, even, rim), Bevel, Boolean (union / difference / intersect, objet ou collection), Decimate, Screw, Triangulate, Weld, Wireframe, Smooth, Simple deform (twist, bend, taper, stretch), Cast, Edge split, Displace (texture procédurale ou image, strength, midlevel). Apply, dupliquer, ordre, activation viewport / edit / on cage, copier vers la sélection. Hors périmètre : lattice, shrinkwrap, geometry nodes, particules, cloth, fluid, ocean, remesh voxel (P5 pour remesh).
 
-**Matériaux, lumières, caméras, rendu** (P3) : slots de matériaux, assignation par face, Principled subset, textures depuis les ressources, world (couleur, HDRI depuis ressource, force), quatre ombrages (wireframe, solid avec studio light / matcap / flat et options cavité, outline, couleur objet / matériau / aléatoire / attribut ; material preview avec environnement ; rendered avec les lumières et le monde), X-ray ⌥Z, overlays complets, lumières avec ombres, caméra avec focale et profondeur de champ indicative, export d'image PNG à la résolution de la caméra (F12) et export glTF / OBJ / STL, import glTF / OBJ / STL. Hors périmètre : Cycles, EEVEE tels quels, nœuds de shader (le Principled suffit pour un rig), compositor.
+**Matériaux, lumières, caméras, rendu** (P3) : slots de matériaux, assignation par face, Principled subset, textures depuis les ressources, world (couleur, HDRI depuis ressource, force), quatre ombrages (wireframe, solid avec studio light / matcap / flat et options cavité, outline, couleur objet / matériau / aléatoire / attribut ; material preview avec environnement ; rendered avec les lumières et le monde), X-ray ⌥Z, overlays complets, lumières avec ombres, caméra avec focale et profondeur de champ indicative, export d'image PNG à la résolution de la caméra (F12) et export glTF / OBJ / STL, import glTF / OBJ / STL. Hors périmètre : Cycles, EEVEE tels quels, compositor. Les nœuds de shader arrivent en horizon (P5, chantier U).
 
 **Rigs et finitions** (P4) : liaisons et mode Tune, ◇ partout, documentation `/docs/scene-rigs`, exemple embarqué, vignettes, palette F3, camemberts, préférences (émulation 3 boutons, pavé numérique, clic droit pour sélectionner, thème de sélection), quad view, mobile, accessibilité (clavier, `aria-live`, contraste), performance mesurée, cohérence des panneaux.
 
-**Horizon** (P5) : édition UV (seams, unwrap LSCM et angle-based, projection cube / cylinder / sphere / from view, éditeur UV 2D, pack, pin, live unwrap), mode Sculpt (draw, clay, smooth, grab, inflate, flatten, crease, pinch, mask, symétrie, dyntopo non : remesh voxel à la place), shape keys et animation sur la `Timeline` ParamRig, objets courbe et texte (Bézier, extrude / bevel vers maillage, texte par `opentype.js` déjà présent), peinture de sommets. Hors périmètre définitif : armatures et skinning, grease pencil, VSE, physique, Python, rendu Cycles, geometry nodes, texture painting (revisitable).
+**Horizon** (P5) : édition UV (seams, unwrap LSCM et angle-based, projection cube / cylinder / sphere / from view, éditeur UV 2D, pack, pin, live unwrap), mode Sculpt (draw, clay, smooth, grab, inflate, flatten, crease, pinch, mask, symétrie, dyntopo non : remesh voxel à la place), shape keys et animation sur la `Timeline` ParamRig, objets courbe et texte (Bézier, extrude / bevel vers maillage, texte par `opentype.js` déjà présent), peinture de sommets, éditeur de shader à nœuds (moteur de Prismorphic, `NodeGraphEditor` générique, « Use nodes » par matériau, liaisons de rig sur les réglages des nœuds, glTF avec le Principled équivalent). Hors périmètre définitif : armatures et skinning, grease pencil, VSE, physique, Python, rendu Cycles, geometry nodes, texture painting (revisitable).
 
 ## 11. Les cinq prompts
 
@@ -303,6 +314,6 @@ Colonnes : fonctionnalité · touche Blender · prompt. « — » = hors périm�
 2. **Le mode édition** (`-2-`) : `EditMesh`, trois modes de sélection et toutes les sélections, extrude, inset, bevel, loop cut, knife, subdivide, merge, dissolve, delete, fill, bridge, slide, normales, édition proportionnelle, aimantation, symétrie, overlays d'édition.
 3. **Modificateurs, matériaux, éclairage, ombrage, fichiers** (`-3-`) : pile de modificateurs, matériaux et slots, monde, lumières, caméras, quatre ombrages, overlays, rendu d'image, import / export.
 4. **Contrôleurs, finitions et mobile** (`-4-`) : rig et liaisons, Tune, documentation, exemple, palette et camemberts, préférences, accessibilité, mobile, performance, rangement.
-5. **Horizon** (`-5-`) : UV, sculpt, shape keys et animation, courbes et texte, peinture de sommets.
+5. **Horizon** (`-5-`) : UV, sculpt, shape keys et animation, courbes et texte, peinture de sommets, éditeur de shader.
 
 Chaque prompt est autonome, indique l'état de départ à vérifier, ses chantiers dans l'ordre, ses tests et ses scripts e2e, et exige un bilan honnête : fait et vérifié, partiel, laissé de côté et pourquoi.
