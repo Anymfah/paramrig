@@ -303,6 +303,12 @@ export type ViewState = {
   snapEnabled: boolean
   snapMode: SnapMode
   snapTarget: SnapTarget
+  /**
+   * Mirror editing: an axis that is on makes each moved vertex's partner on the other side move
+   * with it, found by position within a tolerance. It is how a face is modelled once rather than
+   * twice, and it is a way of editing rather than a modifier — nothing is added to the mesh.
+   */
+  symmetry?: { x: boolean; y: boolean; z: boolean }
   proportional: boolean
   proportionalFalloff: 'smooth' | 'sphere' | 'root' | 'inverse-square' | 'sharp' | 'linear' | 'constant' | 'random'
   proportionalSize: number

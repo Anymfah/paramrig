@@ -15,11 +15,15 @@ import {
 } from '@/scene/transform/session'
 import type { AxisConstraint } from '@/scene/transform/constraints'
 import type { ViewBasis } from '@/scene/transform/math'
-import type { SceneDocument, SceneObject, SceneSelection, Vec3 } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, Transform, Vec3 } from '@/scene/types'
+import { elementWorldPoints } from '@/scene/toolPreview'
 import { chipSide, type HudChannel } from '@/scene/viewport/hud'
 import type { SceneViewport } from '@/scene/viewport/SceneViewport'
 import type { TransformOverlay } from '@/scene/viewport/transformOverlay'
 import { cameraBasis, fovFromFocalLength } from '@/scene/viewport/view'
+
+/** How far from the pointer a snap target may be, in pixels: Blender's tolerance, near enough. */
+const SNAP_RADIUS_PX = 14
 
 /** The pivot for the current selection, without opening a session: what the gizmos are drawn at. */
 export function selectionPivot(document: SceneDocument, selection: SceneSelection): Vec3 | null {
@@ -60,6 +64,8 @@ export type ModalTransformDeps = {
   apply: (patches: Array<{ id: string; patch: Partial<SceneObject> }>) => void
   /** The same, for edit mode: the document with every moved vertex written back. */
   applyDocument: (edit: (current: SceneDocument) => SceneDocument) => void
+  /** The wheel's answer while proportional editing is on: how far the falloff reaches. */
+  setProportionalSize: (size: number) => void
   beginGesture: (label: string) => void
   endGesture: (label: string) => void
   cancelGesture: () => void
@@ -79,6 +85,8 @@ export class ModalTransform {
   private fromDrag = false
   /** Whether the running session moves vertices rather than objects. */
   private editing = false
+  /** Where the selection has been asked to land exactly, when snapping found something. */
+  private snapped: Vec3 | null = null
   /** ⌥O during a session: proportional editing measured through the edges rather than the air. */
   private connectedProportional = false
 
@@ -210,7 +218,22 @@ export class ModalTransform {
       cursor: this.cursor,
       modifiers: { shift: input.shift, ctrl: input.ctrl, alt: input.alt },
     })
+    this.snapped = this.elementUnderPointer(input.x, input.y)
     this.draw()
+  }
+
+  /**
+   * The wheel during a session sets how far proportional editing reaches, as Blender's does. It is
+   * the only thing the wheel may do while a transform is running: zooming mid-drag would move the
+   * scene out from under the very thing being placed.
+   */
+  wheel(delta: number): boolean {
+    if (!this.session || !this.editing) return false
+    const document = this.deps.document()
+    if (!document?.view.proportional) return false
+    const step = delta < 0 ? 1.1 : 1 / 1.1
+    this.deps.setProportionalSize(Math.min(1e4, Math.max(1e-3, document.view.proportionalSize * step)))
+    return true
   }
 
   /**
@@ -253,6 +276,7 @@ export class ModalTransform {
     if (!session) return
     const results = confirmTransform(session)
     this.write(results)
+    this.snapped = null
     const moved = transformChanged(session)
     this.close()
     // A press and release that moved nothing is not an edit, and leaves no step in the history.
@@ -263,6 +287,7 @@ export class ModalTransform {
   cancel(): void {
     const session = this.session
     if (!session) return
+    this.snapped = null
     this.write(cancelTransform(session))
     this.close()
     this.deps.cancelGesture()
@@ -313,11 +338,66 @@ export class ModalTransform {
     this.deps.invalidate()
   }
 
+  /**
+   * What the pointer is over that the selection could land on, when snapping is on.
+   *
+   * Blender's vertex, edge and face snapping is not arithmetic on the drag: it is a question about
+   * what is under the pointer, answered by the same id buffer that answers a click. The element it
+   * finds becomes the exact place the selection is put, which is the whole point — a vertex snapped
+   * onto another has to be *on* it, not a thousandth of a millimetre from it.
+   */
+  private elementUnderPointer(x: number, y: number): Vec3 | null {
+    const document = this.deps.document()
+    const viewport = this.deps.viewport()
+    if (!document || !viewport || !this.editing) return null
+    if (!document.view.snapEnabled || document.view.snapMode === 'increment') return null
+    if (this.session?.mode !== 'move') return null
+    const hits = viewport.pickElements(x, y, SNAP_RADIUS_PX)
+    const wanted = document.view.snapMode === 'face' ? hits.face : document.view.snapMode === 'edge' ? hits.edge : hits.vertex
+    if (!wanted) return null
+    const kind = document.view.snapMode === 'face' ? 'face' : document.view.snapMode === 'edge' ? 'edge' : 'vertex'
+    const points = elementWorldPoints(document, wanted.objectId, kind, wanted.slot)
+    if (points.length === 0) return null
+    if (points.length === 1) return points[0]!
+    // An edge or a face snaps to its middle, which is the "center" target of Blender's menu; the
+    // other targets need a projection this build does not do, and the header says which is in use.
+    const sum = points.reduce<Vec3>((total, point) => [total[0] + point[0], total[1] + point[1], total[2] + point[2]], [0, 0, 0])
+    return [sum[0] / points.length, sum[1] / points.length, sum[2] / points.length]
+  }
+
+  /** The results moved bodily so that the selection's own middle lands on the snapped point. */
+  private withSnap(results: Array<{ id: string; transform: Transform }>): Array<{ id: string; transform: Transform }> {
+    const target = this.snapped
+    if (!target || results.length === 0) return results
+    let x = 0
+    let y = 0
+    let z = 0
+    for (const result of results) {
+      x += result.transform.position[0]
+      y += result.transform.position[1]
+      z += result.transform.position[2]
+    }
+    const count = results.length
+    const shift: Vec3 = [target[0] - x / count, target[1] - y / count, target[2] - z / count]
+    return results.map((result) => ({
+      id: result.id,
+      transform: {
+        ...result.transform,
+        position: [
+          result.transform.position[0] + shift[0],
+          result.transform.position[1] + shift[1],
+          result.transform.position[2] + shift[2],
+        ] as Vec3,
+      },
+    }))
+  }
+
   private write(results: Array<{ id: string; transform: import('@/scene/types').Transform }>): void {
     const document = this.deps.document()
     if (!document) return
     if (this.editing) {
-      this.deps.applyDocument((current) => applyElementTargets(current, results))
+      const symmetry = document.view.symmetry
+      this.deps.applyDocument((current) => applyElementTargets(current, this.withSnap(results), symmetry))
       return
     }
     const patches = results.flatMap((result) => {
@@ -352,6 +432,11 @@ export class ModalTransform {
       overlay.setMeasureLine(
         session.mode === 'move' ? null : world,
         session.mode === 'move' ? null : viewport.unproject(this.cursor[0], this.cursor[1], 0.5),
+      )
+      const view = this.deps.document()?.view
+      overlay.setProportional(
+        this.editing && view?.proportional ? world : null,
+        view?.proportionalSize ?? 0,
       )
     }
     this.deps.invalidate()

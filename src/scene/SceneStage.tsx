@@ -206,6 +206,7 @@ export function SceneStage({
       overlay: () => viewport.current?.transformOverlay ?? null,
       apply: (patches) => gestures.current.onTransform(patches),
       applyDocument: (edit) => gestures.current.onEditDocument(edit),
+      setProportionalSize: (size) => onViewRef.current({ ...latestDocument.current.view, proportionalSize: size }),
       beginGesture: (label) => gestures.current.onGestureStart(label),
       endGesture: (label) => gestures.current.onGestureEnd(label),
       cancelGesture: () => gestures.current.onGestureCancel(),
@@ -411,8 +412,10 @@ export function SceneStage({
       const nav = navigator.current
       if (!nav) return
       event.preventDefault()
-      // A running bevel or loop cut takes the wheel for its segments; the view does not move.
+      // A running bevel or loop cut takes the wheel for its segments, and a running transform takes
+      // it for the proportional radius; the view does not move under either.
       if (modalOp.current?.wheel(event.deltaY)) return
+      if (modal.current?.wheel(event.deltaY)) return
       const box = element.getBoundingClientRect()
       nav.wheel(event, event.clientX - box.left, event.clientY - box.top)
       pump()

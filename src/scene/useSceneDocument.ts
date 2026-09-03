@@ -226,6 +226,9 @@ export function useSceneDocument(documentId: string) {
     }
     const label = result.label ?? operator?.label ?? DEFAULT_STEP_LABEL
     const record = operator?.history !== false
+    // An operator that named its own step said something a person should read — "Removed 7
+    // vertices", "the patch could not be merged" — and the status bar is where that goes.
+    if (result.label && operator && result.label !== operator.label) setMessage(result.label)
     if (result.document) {
       replace(() => result.document!, record, label)
       // A view move is not an edit: it leaves no history entry and nothing for F9 to adjust.

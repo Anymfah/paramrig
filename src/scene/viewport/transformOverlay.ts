@@ -21,6 +21,8 @@ export type TransformOverlay = {
   setAxes: (axes: Array<'x' | 'y' | 'z'>, pivot: Vec3, reach: number) => void
   /** The dashed line a rotation or a scale is measured along. */
   setMeasureLine: (from: Vec3 | null, to: Vec3 | null) => void
+  /** Proportional editing's circle: how far the movement reaches, drawn where it is measured from. */
+  setProportional: (centre: Vec3 | null, radius: number) => void
   setTheme: (theme: SceneTheme) => void
   setResolution: (width: number, height: number) => void
   clear: () => void
@@ -36,7 +38,9 @@ export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
     z: createLines({ colour: splitAlpha(theme.axisZ).colour, width: 1.4, alwaysVisible: true }),
   }
   const measure = createLines({ colour: splitAlpha(theme.gizmoView).colour, width: 1.2, alwaysVisible: true, dashed: true, dashSize: 0.25, gapSize: 0.18 })
-  for (const line of [axisLines.x, axisLines.y, axisLines.z, measure]) {
+  const circle = createLines({ colour: splitAlpha(theme.proportional).colour, width: 1.4, alwaysVisible: true })
+  circle.object.visible = false
+  for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) {
     line.object.visible = false
     line.object.renderOrder = 900
     group.add(line.object)
@@ -67,20 +71,44 @@ export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
       measure.setPositions([from[0], from[1], from[2], to[0], to[1], to[2]])
       measure.object.visible = true
     },
+    setProportional: (centre, radius) => {
+      if (!centre || !(radius > 0)) {
+        circle.object.visible = false
+        return
+      }
+      /*
+       * A ring on the plane the view looks at, so the circle reads as a circle from wherever the
+       * scene is being seen. Blender draws it the same way: the falloff is measured in space, but
+       * what a person needs to see is how far it reaches on screen.
+       */
+      const points: number[] = []
+      const steps = 64
+      for (let step = 0; step < steps; step += 1) {
+        const from = (step / steps) * Math.PI * 2
+        const to = ((step + 1) / steps) * Math.PI * 2
+        points.push(
+          centre[0] + Math.cos(from) * radius, centre[1] + Math.sin(from) * radius, centre[2],
+          centre[0] + Math.cos(to) * radius, centre[1] + Math.sin(to) * radius, centre[2],
+        )
+      }
+      circle.setPositions(points)
+      circle.object.visible = true
+    },
     setTheme: (next) => {
+      circle.setColour(splitAlpha(next.proportional).colour)
       axisLines.x.setColour(splitAlpha(next.axisX).colour)
       axisLines.y.setColour(splitAlpha(next.axisY).colour)
       axisLines.z.setColour(splitAlpha(next.axisZ).colour)
       measure.setColour(splitAlpha(next.gizmoView).colour)
     },
     setResolution: (width, height) => {
-      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure]) line.material.resolution.set(width, height)
+      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.material.resolution.set(width, height)
     },
     clear: () => {
-      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure]) line.object.visible = false
+      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.object.visible = false
     },
     dispose: () => {
-      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure]) line.dispose()
+      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.dispose()
       group.clear()
     },
   }

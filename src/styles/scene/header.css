@@ -93,3 +93,13 @@
   .scene-header { min-height: calc(var(--hit-target-coarse) + var(--space-2)); }
   .scene-header__button { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
 }
+
+/*
+ * The mirror-editing axes are letters rather than glyphs: X, Y and Z already mean something exact
+ * in a 3D editor, and a drawn symbol for them would be a worse label than the letter itself.
+ */
+.scene-header__axis span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}

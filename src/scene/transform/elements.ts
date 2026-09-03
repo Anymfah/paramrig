@@ -5,6 +5,7 @@ import { add, cross, length, normalize, scale, subtract } from '@/scene/mesh/nor
 import { editedObjectIds, toElements } from '@/scene/mesh/selection'
 import { elementSlot } from '@/scene/operators/edit'
 import { localFromWorldPoint, worldMatrix, worldPointOf } from '@/scene/objects'
+import { symmetryMap } from '@/scene/operators/symmetry'
 import { proportionalWeights, type FalloffKind } from '@/scene/transform/proportional'
 import type { Basis } from '@/scene/transform/math'
 import type { TransformResult, TransformTarget } from '@/scene/transform/session'
@@ -23,6 +24,9 @@ import type { SceneDocument, SceneSelection, Vec3 } from '@/scene/types'
  * orientation, because Blender's normal frame is the average normal of what is selected with the
  * active edge as its tangent — which is a question about a mesh as well.
  */
+
+/** How near the plane two vertices have to be to count as each other's mirror, in metres. */
+const SYMMETRY_TOLERANCE = 1e-4
 
 /** A target's id: which object, and which vertex of it, by stable id. */
 export function elementTargetId(objectId: string, vertexId: number): string {
@@ -134,8 +138,19 @@ export function elementTargets(
   return { targets, normalBasis: basisOf(normals, tangent), islands }
 }
 
-/** The document with every moved vertex written back, in the object's own space. */
-export function applyElementTargets(document: SceneDocument, results: TransformResult[]): SceneDocument {
+/**
+ * The document with every moved vertex written back, in the object's own space.
+ *
+ * Mirror editing happens here, at the last moment, because it is a rule about *positions* rather
+ * than about the transform: whatever moved a vertex — a drag, a typed number, a field in the
+ * sidebar — its partner across the plane follows it, and doing it in one place means every one of
+ * those routes gets it.
+ */
+export function applyElementTargets(
+  document: SceneDocument,
+  results: TransformResult[],
+  symmetry?: { x: boolean; y: boolean; z: boolean },
+): SceneDocument {
   const byObject = new Map<string, Array<{ vertexId: number; point: Vec3 }>>()
   for (const result of results) {
     const parsed = parseElementTargetId(result.id)
@@ -154,10 +169,29 @@ export function applyElementTargets(document: SceneDocument, results: TransformR
     const slotOf = new Map<number, number>()
     for (let slot = 0; slot < mesh.vertexIds.length; slot += 1) slotOf.set(mesh.vertexIds[slot]!, slot)
     const matrix = worldMatrix(next, object)
+    const moved = new Map<number, Vec3>()
     for (const { vertexId, point } of points) {
       const slot = slotOf.get(vertexId)
       if (slot === undefined) continue
-      setVertexPosition(mesh, slot, localFromWorldPoint(matrix, point))
+      const local = localFromWorldPoint(matrix, point)
+      setVertexPosition(mesh, slot, local)
+      moved.set(slot, local)
+    }
+    const axes: Array<0 | 1 | 2> = []
+    if (symmetry?.x) axes.push(0)
+    if (symmetry?.y) axes.push(1)
+    if (symmetry?.z) axes.push(2)
+    for (const axis of axes) {
+      // The map is built from the mesh as it was, so a partner is found by where it started rather
+      // than by where the drag has just put it — which is what keeps a pair together.
+      const partners = symmetryMap(EditMesh.from(data), axis, SYMMETRY_TOLERANCE)
+      for (const [slot, local] of moved) {
+        const partner = partners.get(slot)
+        if (partner === undefined || moved.has(partner)) continue
+        const mirrored: Vec3 = [...local]
+        mirrored[axis] = -mirrored[axis]
+        setVertexPosition(mesh, partner, mirrored)
+      }
     }
     next = withMesh(next, object.data.meshId, mesh)
   }

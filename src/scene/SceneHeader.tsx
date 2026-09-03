@@ -534,6 +534,29 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
         entries={modeEntries}
       />
       {mode === 'edit' ? (
+        <div className="scene-header__group" role="group" aria-label="Mirror editing">
+          {(['x', 'y', 'z'] as const).map((axis) => (
+            <Tooltip key={axis} content={`Mirror editing on ${axis.toUpperCase()}`}>
+              <IconButton
+                label={`Mirror ${axis.toUpperCase()}`}
+                className="scene-header__button scene-header__axis"
+                aria-pressed={view.symmetry?.[axis] === true}
+                onClick={() => onView({
+                  symmetry: {
+                    x: view.symmetry?.x === true,
+                    y: view.symmetry?.y === true,
+                    z: view.symmetry?.z === true,
+                    [axis]: !(view.symmetry?.[axis] === true),
+                  },
+                })}
+              >
+                <span aria-hidden="true">{axis.toUpperCase()}</span>
+              </IconButton>
+            </Tooltip>
+          ))}
+        </div>
+      ) : null}
+      {mode === 'edit' ? (
         <div className="scene-header__group" role="group" aria-label="Selection mode">
           {SELECT_MODES.map((entry) => (
             <Tooltip key={entry.value} content={entry.label}>
