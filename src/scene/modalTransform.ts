@@ -1,4 +1,6 @@
 import { localFromWorld, objectBounds, worldPosition, worldTransform } from '@/scene/objects'
+import { applyElementTargets, elementTargetId, elementTargets } from '@/scene/transform/elements'
+import { basisFromRotation } from '@/scene/transform/orientation'
 import {
   beginTransform,
   cancelTransform,
@@ -21,6 +23,11 @@ import { cameraBasis, fovFromFocalLength } from '@/scene/viewport/view'
 
 /** The pivot for the current selection, without opening a session: what the gizmos are drawn at. */
 export function selectionPivot(document: SceneDocument, selection: SceneSelection): Vec3 | null {
+  if (document.view.mode === 'edit') {
+    const found = elementTargets(document, selection)
+    if (found.targets.length === 0) return null
+    return pivotOf(document, found.targets, selection)
+  }
   const objects = document.objects.filter((object) => selection.objectIds.includes(object.id))
   if (objects.length === 0) return null
   const targets: TransformTarget[] = objects.map((object) => ({
@@ -51,6 +58,8 @@ export type ModalTransformDeps = {
   overlay: () => TransformOverlay | null
   /** Writes the transforms without recording; the gesture's single entry comes at the end. */
   apply: (patches: Array<{ id: string; patch: Partial<SceneObject> }>) => void
+  /** The same, for edit mode: the document with every moved vertex written back. */
+  applyDocument: (edit: (current: SceneDocument) => SceneDocument) => void
   beginGesture: (label: string) => void
   endGesture: (label: string) => void
   cancelGesture: () => void
@@ -68,6 +77,10 @@ export class ModalTransform {
   private element: HTMLElement | null = null
   /** Whether the session was opened by dragging a handle, in which case letting go confirms it. */
   private fromDrag = false
+  /** Whether the running session moves vertices rather than objects. */
+  private editing = false
+  /** ⌥O during a session: proportional editing measured through the edges rather than the air. */
+  private connectedProportional = false
 
   constructor(deps: ModalTransformDeps) {
     this.deps = deps
@@ -98,15 +111,36 @@ export class ModalTransform {
     const viewport = this.deps.viewport()
     if (!document || !viewport) return false
     const selection = this.deps.selection()
-    const objects = document.objects.filter((object) => selection.objectIds.includes(object.id))
-    if (objects.length === 0) return false
-
-    const targets: TransformTarget[] = objects.map((object) => ({
-      id: object.id,
-      transform: worldTransform(document, object),
-      centre: worldPosition(document, object),
-      ...(objectBounds(document, object) ? { bounds: objectBounds(document, object)! } : {}),
-    }))
+    const editing = document.view.mode === 'edit'
+    let targets: TransformTarget[]
+    let normalBasis: ReturnType<typeof elementTargets>['normalBasis'] = null
+    let activeId: string | null = selection.activeObjectId
+    if (editing) {
+      const found = elementTargets(document, selection, {
+        enabled: document.view.proportional,
+        size: document.view.proportionalSize,
+        falloff: document.view.proportionalFalloff,
+        connected: this.connectedProportional,
+      })
+      if (found.targets.length === 0) return false
+      targets = document.view.pivot === 'individual'
+        // Individual origins turns each island of the selection about its own middle, not each
+        // vertex about itself — a vertex turned about itself does not move at all.
+        ? found.targets.map((target) => ({ ...target, centre: found.islands.get(target.id) ?? target.centre }))
+        : found.targets
+      normalBasis = found.normalBasis
+      activeId = activeElementTarget(document, selection)
+    } else {
+      const objects = document.objects.filter((object) => selection.objectIds.includes(object.id))
+      if (objects.length === 0) return false
+      targets = objects.map((object) => ({
+        id: object.id,
+        transform: worldTransform(document, object),
+        centre: worldPosition(document, object),
+        ...(objectBounds(document, object) ? { bounds: objectBounds(document, object)! } : {}),
+      }))
+    }
+    this.editing = editing
     const pointer = options.pointer ?? this.deps.pointer()
     const pivot = pivotOf(document, targets, selection)
     const view = this.viewBasis(viewport, document, pivot)
@@ -119,9 +153,11 @@ export class ModalTransform {
       view,
       pointer,
       sceneCursor: document.cursor.position,
-      activeId: selection.activeObjectId,
+      activeId,
       units: document.units,
       snap: document.view.snapEnabled,
+      normalBasis,
+      cursorBasis: basisFromRotation(document.cursor.rotation),
       ...(options.constraint ? { constraint: options.constraint } : {}),
     })
     this.cursor = pointer
@@ -280,6 +316,10 @@ export class ModalTransform {
   private write(results: Array<{ id: string; transform: import('@/scene/types').Transform }>): void {
     const document = this.deps.document()
     if (!document) return
+    if (this.editing) {
+      this.deps.applyDocument((current) => applyElementTargets(current, results))
+      return
+    }
     const patches = results.flatMap((result) => {
       const object = document.objects.find((entry) => entry.id === result.id)
       if (!object) return []
@@ -343,6 +383,31 @@ function distanceAlong(forward: Vec3, viewport: SceneViewport, pivot: Vec3, docu
 }
 
 /** Where a transform turns and scales about, which is also where the gizmos are drawn. */
+/**
+ * Which target the active pivot turns about, in edit mode.
+ *
+ * The active element may be an edge or a face, and a pivot has to be one point; Blender uses the
+ * element's median, and the nearest thing to that expressible as a target is its first corner. It
+ * differs from Blender by half an edge on an active edge, which is written here rather than left
+ * to be discovered.
+ */
+function activeElementTarget(document: SceneDocument, selection: SceneSelection): string | null {
+  const active = selection.active
+  if (!active) return null
+  if (active.kind === 'vertex') return elementTargetId(active.objectId, Number(active.id))
+  const object = document.objects.find((candidate) => candidate.id === active.objectId)
+  const mesh = object && object.data.kind === 'mesh' ? document.meshes[object.data.meshId] : null
+  if (!mesh) return null
+  if (active.kind === 'edge') {
+    const first = Number(active.id.split(':')[0])
+    return Number.isInteger(first) ? elementTargetId(active.objectId, first) : null
+  }
+  const slot = mesh.faceIds.indexOf(Number(active.id))
+  const corner = slot >= 0 ? mesh.faces[slot]?.[0] : undefined
+  const vertexId = corner === undefined ? undefined : mesh.vertexIds[corner]
+  return vertexId === undefined ? null : elementTargetId(active.objectId, vertexId)
+}
+
 export function pivotOf(document: SceneDocument, targets: TransformTarget[], selection: SceneSelection): Vec3 {
   if (document.view.pivot === 'cursor') return document.cursor.position
   if (document.view.pivot === 'active') {

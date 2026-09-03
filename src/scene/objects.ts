@@ -54,6 +54,19 @@ export function worldMatrix(document: SceneDocument, object: SceneObject): Matri
   return matrix
 }
 
+/** A point of an object's own data, in the world. */
+export function worldPointOf(matrix: Matrix4, point: Vec3): Vec3 {
+  const vector = new Vector3(point[0], point[1], point[2]).applyMatrix4(matrix)
+  return [vector.x, vector.y, vector.z]
+}
+
+/** The same point coming back: what a vertex dragged in the world is, inside its own mesh. */
+export function localFromWorldPoint(matrix: Matrix4, point: Vec3): Vec3 {
+  const inverse = new Matrix4().copy(matrix).invert()
+  const vector = new Vector3(point[0], point[1], point[2]).applyMatrix4(inverse)
+  return [vector.x, vector.y, vector.z]
+}
+
 export function worldPosition(document: SceneDocument, object: SceneObject): Vec3 {
   const position = new Vector3().setFromMatrixPosition(worldMatrix(document, object))
   return [position.x, position.y, position.z]

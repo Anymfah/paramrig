@@ -268,6 +268,63 @@ export function useSceneDocument(documentId: string) {
     setLastOperation({ ...last, params, label })
   }, [lastOperation, operatorContext, setSelection])
 
+  /**
+   * A modal operator, running.
+   *
+   * Every frame of an extrusion, a bevel or a loop cut is the *same* operator run again against the
+   * document as it was when the gesture opened, with a different number: that is what makes the
+   * preview exactly what the result will be, and what makes the F9 panel afterwards a replay of the
+   * same call rather than a second implementation of it. `preview` writes without history;
+   * `commit` writes the one entry the whole gesture leaves behind.
+   */
+  const previewOperator = useCallback((
+    operatorId: string,
+    params: OperatorParams,
+    before: SceneDocument,
+    beforeSelection: SceneSelection,
+  ): string | null => {
+    const context = operatorContext(before, beforeSelection)
+    if (!context) return 'There is no scene open.'
+    const result = runRegisteredOperator(operatorId, context, params)
+    if (result.error) return result.error
+    if (!result.document) return null
+    latest.current = result.document
+    setDocumentState(result.document)
+    if (result.selection) setSelection(result.selection)
+    return null
+  }, [operatorContext, setSelection])
+
+  const commitOperator = useCallback((
+    operatorId: string,
+    params: OperatorParams,
+    before: SceneDocument,
+    beforeSelection: SceneSelection,
+  ): string | null => {
+    const context = operatorContext(before, beforeSelection)
+    if (!context) return 'There is no scene open.'
+    const result = runRegisteredOperator(operatorId, context, params)
+    if (result.error) {
+      // The preview is undone by putting back what was there before the gesture opened.
+      latest.current = before
+      setDocumentState(before)
+      setSelection(beforeSelection)
+      return result.error
+    }
+    if (!result.document) return null
+    const operator = getOperator(operatorId)
+    const label = result.label ?? operator?.label ?? DEFAULT_STEP_LABEL
+    // The history entry is written against the document as it was before the gesture, so undo goes
+    // back past the whole drag rather than past its last frame.
+    latest.current = before
+    replace(() => result.document!, operator?.history !== false, label)
+    if (result.selection) setSelection(result.selection)
+    if (operator?.history !== false) {
+      setLastOperation({ operatorId, params, before, beforeSelection, label })
+    }
+    setMessage(null)
+    return null
+  }, [operatorContext, replace, setSelection])
+
   const repeatLastOperation = useCallback(() => {
     const last = lastOperation
     if (!last) return
@@ -443,6 +500,8 @@ export function useSceneDocument(documentId: string) {
     operatorContext,
     lastOperation,
     adjustLastOperation,
+    previewOperator,
+    commitOperator,
     repeatLastOperation,
     clearLastOperation,
     saveVersion,
