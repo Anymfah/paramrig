@@ -1,0 +1,14 @@
+# What edit mode costs, measured through the editor
+# Chrome 151 headless with the GPU, 1440 x 900, 2026-09-03.
+
+Tab on 19,881 vertices: 256 ms
+a box over a quarter of the heavy mesh: 59 ms — Verts 3 671/19 881Edges 7 173/39 480Faces 3 503/19 600Tris 39 200
+  budget 50 ms — over by 9 ms
+a box over the whole heavy mesh: 112 ms — Verts 10 848/19 881Edges 21 436/39 480Faces 10 587/19 600Tris 39 200
+G over 200 pointer moves on 19,881 vertices: 0.64 ms mean, 1.20 ms p95
+Tab on 99,856 vertices: 615 ms
+  budget 300 ms — over by 315 ms
+hover over 10000 faces: 1.01 ms mean, 0.90 ms p95
+loop cut preview over 10000 faces: 1.26 ms mean, 2.30 ms p95
+smallest control on the edit bar at 320: 44 px
+at 320: the corner answers a vertex 7.3 px from the pointer; over the mesh an element is found 20 px in every direction tried
