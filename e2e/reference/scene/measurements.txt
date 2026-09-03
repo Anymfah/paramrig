@@ -1,30 +1,30 @@
-time to the first frame: 1180 ms
+time to the first frame: 1158 ms
 header controls at 1440: 8
 header controls within the window at 1440: 8
 header width at 1440: 527px
 header view settings folded at 1440: yes
-startup scene draw calls: 4
+startup scene draw calls: 10
 startup scene triangles: 12
 object properties content height: 1190px
 object properties visible height: 900px
 object properties sections: 4
-hover pick mean over 100 picks: 0.39 ms
-hover pick p95 over 100 picks: 0.80 ms
+hover pick mean over 100 picks: 0.37 ms
+hover pick p95 over 100 picks: 0.70 ms
 hover picks that landed on the cube: 100/100
 header controls at 320: 8
 header controls within the window at 320: 1
 header width at 320: 553px
 header view settings folded at 320: yes
 history steps after a hundred moves: 101
-heap before a hundred history steps: 78.4 MB
-heap after a hundred history steps: 90.5 MB
-heap growth over a hundred history steps: 12.1 MB
+heap before a hundred history steps: 83.1 MB
+heap after a hundred history steps: 89.6 MB
+heap growth over a hundred history steps: 6.5 MB
 heavy scene triangles: 100364
-heavy scene draw calls: 4
+heavy scene draw calls: 11
 orbit frames drawn over 200 moves: 401
-orbit frame time mean: 0.13 ms
-orbit frame time p95: 0.30 ms
+orbit frame time mean: 0.17 ms
+orbit frame time p95: 0.40 ms
 orbit frame interval mean: 8.33 ms
 orbit frame interval p95: 8.40 ms
 orbit move-to-move mean over 200 moves: 8.30 ms
-orbit move-to-move p95 over 200 moves: 9.03 ms
+orbit move-to-move p95 over 200 moves: 9.06 ms

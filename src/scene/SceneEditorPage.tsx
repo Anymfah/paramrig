@@ -4,6 +4,7 @@ import { EditorModal } from '@/editor/EditorModal'
 import { LiveRegion } from '@/editor/LiveRegion'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { Button } from '@/ui/Button'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { ContextMenuRoot } from '@/ui/ContextMenu'
 import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
@@ -94,6 +95,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [pie, setPie] = useState<Pie>(null)
   const [contextAt, setContextAt] = useState<{ x: number; y: number } | null>(null)
   const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
   const preferences = prefs.preferences ?? DEFAULT_PREFERENCES
@@ -211,6 +213,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
 
     if (action.kind === 'operator') {
       event.preventDefault()
+      // Renaming needs a name, and a key cannot supply one: F2 asks for it.
+      if (action.id === 'object.rename') {
+        const active = editor.activeObject
+        if (!active) editor.setMessage('Select an object first.')
+        else setRenaming(active.name)
+        return
+      }
       run(action.id, (action.params ?? {}) as Record<string, unknown>)
       setAnnouncement(binding.label)
       return
@@ -526,6 +535,31 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       <EditorCommandPalette prefix="scene" commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <EditorModal prefix="scene" label="Keyboard" open={keymapOpen} onClose={() => setKeymapOpen(false)}>
         <KeymapSheet />
+      </EditorModal>
+      <EditorModal prefix="scene" label="Rename object" open={renaming !== null} onClose={() => setRenaming(null)}>
+        <form
+          className="scene-rename"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const name = renaming?.trim()
+            setRenaming(null)
+            if (name) run('object.rename', { name })
+          }}
+        >
+          <label className="scene-rename__label" htmlFor="scene-rename-field">Name</label>
+          <input
+            id="scene-rename-field"
+            className="scene-palette__input"
+            value={renaming ?? ''}
+            maxLength={120}
+            autoFocus
+            onChange={(event) => setRenaming(event.currentTarget.value)}
+          />
+          <div className="scene-rename__actions">
+            <Button variant="ghost" onClick={() => setRenaming(null)}>Cancel</Button>
+            <Button type="submit">Rename</Button>
+          </div>
+        </form>
       </EditorModal>
       {pie ? (
         <ScenePieMenu

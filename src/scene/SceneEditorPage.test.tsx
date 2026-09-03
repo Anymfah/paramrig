@@ -57,7 +57,7 @@ function createViewportDouble(recorded: Recorded): (container: HTMLElement) => S
       annotations: null,
       transformOverlay: null,
       stats: () => ({
-        objects: 3, meshes: 1, vertices: 8, edges: 12, faces: 6, triangles: 12,
+        objects: 3, meshes: 1, vertices: 8, edges: 12, faces: 6, triangles: 12, renderedTriangles: 12,
         drawCalls: 0, frames: 0, invalidateCount: 0, geometries: 0, textures: 0, samples: 4, contextLost: 0,
       }),
     }

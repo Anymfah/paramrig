@@ -2,24 +2,25 @@ import {
   Box3,
   Color,
   Group,
-  Matrix4,
-  Object3D,
   OrthographicCamera,
   PerspectiveCamera,
-  Quaternion,
   Raycaster,
   Scene,
+  SphereGeometry,
+  Matrix4,
+  Mesh,
   Vector2,
   Vector3,
   WebGLRenderer,
+  type BufferGeometry,
   type Camera,
   type Material,
-  type Mesh,
 } from 'three'
 import { meshOf } from '@/scene/document'
 import type { SceneDocument, SceneObject, SceneSelection, Vec3, ViewState } from '@/scene/types'
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
+import { localMatrix, worldMatrix } from '@/scene/objects'
 import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, type MeshView } from '@/scene/viewport/meshView'
 import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/scene/viewport/overlays'
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
@@ -63,7 +64,10 @@ export type ViewportStats = {
   vertices: number
   edges: number
   faces: number
+  /** Triangles in the document. */
   triangles: number
+  /** Triangles the last frame actually drew, which includes what an instance drew twice. */
+  renderedTriangles: number
   drawCalls: number
   /** How many frames have been drawn since the viewport was created. */
   frames: number
@@ -89,11 +93,26 @@ type ObjectView = {
   maskMesh?: Mesh
   maskMaterial?: Material
   material?: Material
+  /** The meshes an empty draws on behalf of the collection it stands in for. */
+  instances?: MeshView[]
+  /** Their counterparts in the id buffer, so an instance can be clicked where it is drawn. */
+  instancePicks?: Mesh[]
+  /**
+   * A geometry this view made for the id buffer alone. A mesh object's pick mesh shares the
+   * geometry the object is drawn from and is given back with it; a glyph's proxy sphere has no
+   * other owner, so this is what remembers to give it back.
+   */
+  pickGeometry?: BufferGeometry
+  /** Whether the pick mesh is a glyph's proxy, which is sized in pixels rather than in metres. */
+  glyphPick?: boolean
   /** What the view was built from, so a rebuild only happens when it has to. */
   signature: string
 }
 
 const UP: Vec3 = [0, 0, 1]
+
+/** How many pixels across a glyph's grab area is, at any distance. */
+const GLYPH_PICK_PX = 11
 
 export class SceneViewport {
   readonly canvas: HTMLCanvasElement
@@ -163,6 +182,9 @@ export class SceneViewport {
       return
     }
     this.renderer.autoClear = false
+    // A frame is four passes, and `info` resets itself on every one of them: left alone it would
+    // report the overlay's triangles as the frame's, which is neither the truth nor useful.
+    this.renderer.info.autoReset = false
     this.renderer.setClearColor(new Color(splitAlpha(this.theme.viewport).colour), 1)
 
     this.studio = createStudioLights()
@@ -450,7 +472,21 @@ export class SceneViewport {
       object.data.kind === 'mesh' ? object.data.meshId : object.data,
       mesh ? mesh.faces.length : 0,
       object.displayAs ?? 'textured',
+      // An empty that stands in for a collection is rebuilt when that collection changes.
+      object.data.kind === 'empty' && object.data.instanceCollectionId
+        ? this.collectionSignature(object.data.instanceCollectionId)
+        : null,
     ])
+  }
+
+  /** What a collection holds, as far as an instance of it is concerned. */
+  private collectionSignature(collectionId: string): string {
+    const document = this.document
+    if (!document) return ''
+    return document.objects
+      .filter((object) => object.collectionId === collectionId && object.data.kind === 'mesh')
+      .map((object) => `${object.id}:${(object.data as { meshId: string }).meshId}:${JSON.stringify(object.transform)}`)
+      .join('|')
   }
 
   private syncObjects(): void {
@@ -529,6 +565,53 @@ export class SceneViewport {
     } else {
       view.glyph = this.buildGlyph(object)
       if (view.glyph) root.add(view.glyph.object)
+      /*
+       * A light, a camera and an empty are glyphs, and a glyph is lines: the id buffer would find
+       * nothing under the pointer, and neither would a click. Each gets an invisible solid at its
+       * origin, sized to the glyph it stands behind, so it is as clickable as anything else.
+       */
+      const pickMaterial = createPickMaterial('object', this.objectIndex(object.id))
+      const proxyGeometry = new SphereGeometry(1, 12, 8)
+      const proxy = new Mesh(proxyGeometry, pickMaterial)
+      proxy.matrixAutoUpdate = false
+      view.pickMesh = proxy
+      view.pickMaterial = pickMaterial
+      view.pickGeometry = proxyGeometry
+      view.glyphPick = true
+      this.picking?.scene.add(proxy)
+      /*
+       * An empty may stand in for a whole collection. Blender draws the collection's contents at
+       * the empty, without copying them into the document — so this builds a second set of meshes
+       * from the same `MeshData`, parented to the empty, and nothing else in the editor has to know
+       * that they are not objects.
+       */
+      if (object.data.kind === 'empty' && object.data.instanceCollectionId && this.document) {
+        const collectionId = object.data.instanceCollectionId
+        const material = createSolidMaterial()
+        view.material = material
+        view.instances = []
+        for (const member of this.document.objects) {
+          if (member.collectionId !== collectionId || member.data.kind !== 'mesh') continue
+          // A collection that contains this very empty would instance itself for ever.
+          if (member.id === object.id) continue
+          const data = meshOf(this.document, member)
+          if (!data) continue
+          const built = buildMeshView(data)
+          const mesh = createMesh(built, material)
+          mesh.matrix.copy(localMatrix(member))
+          mesh.matrixAutoUpdate = false
+          mesh.matrixWorldNeedsUpdate = true
+          root.add(mesh)
+          view.instances.push(built)
+          const proxyMaterial = createPickMaterial('object', this.objectIndex(object.id))
+          const proxy = createMesh(built, proxyMaterial)
+          proxy.matrixAutoUpdate = false
+          proxy.userData.local = localMatrix(member)
+          view.instancePicks = view.instancePicks ?? []
+          view.instancePicks.push(proxy)
+          this.picking?.scene.add(proxy)
+        }
+      }
     }
     const buffer = { width: Math.round(this.size.width * this.pixelRatio), height: Math.round(this.size.height * this.pixelRatio) }
     if (view.wire) setLineResolution(view.wire.material, buffer.width, buffer.height)
@@ -561,7 +644,7 @@ export class SceneViewport {
   }
 
   private placeObject(view: ObjectView, object: SceneObject): void {
-    const matrix = this.worldMatrix(object)
+    const matrix = this.document ? worldMatrix(this.document, object) : localMatrix(object)
     view.root.matrix.copy(matrix)
     view.root.matrixWorldNeedsUpdate = true
     const visible = this.isVisible(object)
@@ -570,6 +653,15 @@ export class SceneViewport {
       view.pickMesh.matrix.copy(matrix)
       view.pickMesh.matrixWorldNeedsUpdate = true
       view.pickMesh.visible = visible && object.selectable
+      if (view.glyphPick) {
+        view.pickMesh.userData.world = matrix.clone()
+        this.sizeGlyphPick(view)
+      }
+    }
+    for (const proxy of view.instancePicks ?? []) {
+      proxy.matrix.multiplyMatrices(matrix, proxy.userData.local as Matrix4)
+      proxy.matrixWorldNeedsUpdate = true
+      proxy.visible = visible && object.selectable
     }
     if (view.maskMesh) {
       view.maskMesh.matrix.copy(matrix)
@@ -587,22 +679,13 @@ export class SceneViewport {
     return true
   }
 
-  /** An object's place in the world, with its parents' transforms applied above it. */
-  private worldMatrix(object: SceneObject): Matrix4 {
-    const matrix = localMatrix(object)
-    let parentId = object.parentId
-    const seen = new Set<string>([object.id])
-    while (parentId && !seen.has(parentId)) {
-      seen.add(parentId)
-      const parent = this.document?.objects.find((entry) => entry.id === parentId)
-      if (!parent) break
-      matrix.premultiply(localMatrix(parent))
-      parentId = parent.parentId
-    }
-    return matrix
-  }
-
   private disposeObjectView(view: ObjectView): void {
+    for (const instance of view.instances ?? []) instance.dispose()
+    for (const proxy of view.instancePicks ?? []) {
+      this.picking?.scene.remove(proxy)
+      disposeMaterial(proxy.material as Material)
+    }
+    view.pickGeometry?.dispose()
     view.meshView?.dispose()
     view.wire?.dispose()
     view.glyph?.dispose()
@@ -719,9 +802,11 @@ export class SceneViewport {
     const renderer = this.renderer
     if (!renderer || this.disposed || this.failed) return
     const started = typeof performance !== 'undefined' ? performance.now() : 0
+    renderer.info.reset()
     const camera = this.camera
     this.keepScreenSizedThingsSized(camera)
     this.placeGizmos()
+    for (const view of this.views.values()) if (view.glyphPick) this.sizeGlyphPick(view)
 
     renderer.autoClear = false
     renderer.clear(true, true, false)
@@ -738,6 +823,24 @@ export class SceneViewport {
     this.counters.triangles = renderer.info.render.triangles
     const duration = (typeof performance !== 'undefined' ? performance.now() : 0) - started
     this.options.onFrame?.({ duration, triangles: renderer.info.render.triangles, calls: renderer.info.render.calls })
+  }
+
+  /**
+   * A glyph's grab area, in pixels rather than in metres.
+   *
+   * A light or a camera is drawn as lines, and lines are not in the id buffer, so each carries an
+   * invisible solid to be clicked. Sized in world units that solid is a trap: a camera near the
+   * viewer would reach half way across the screen and swallow clicks meant for the object behind
+   * it. Sized in pixels it is what it looks like — a small target on the glyph's own centre.
+   */
+  private sizeGlyphPick(view: ObjectView): void {
+    const proxy = view.pickMesh
+    const world = proxy?.userData.world as Matrix4 | undefined
+    if (!proxy || !world) return
+    const origin = new Vector3().setFromMatrixPosition(world)
+    const radius = Math.max(1e-5, this.unitsPerPixelAt([origin.x, origin.y, origin.z]) * GLYPH_PICK_PX)
+    proxy.matrix.makeTranslation(origin.x, origin.y, origin.z).scale(new Vector3(radius, radius, radius))
+    proxy.matrixWorldNeedsUpdate = true
   }
 
   /** The cursor, and anything else that must not grow with the distance to it. */
@@ -950,6 +1053,7 @@ export class SceneViewport {
       edges,
       faces,
       triangles,
+      renderedTriangles: this.counters.triangles,
       drawCalls: this.counters.drawCalls,
       frames: this.counters.frames,
       invalidateCount: this.counters.invalidate,
@@ -959,32 +1063,4 @@ export class SceneViewport {
       contextLost: this.counters.contextLost,
     }
   }
-}
-
-const scratchQuaternion = new Quaternion()
-const scratchEuler = new Object3D()
-
-/** One object's own transform as a matrix, in the Euler order the object says it uses. */
-function localMatrix(object: SceneObject): Matrix4 {
-  const [x, y, z] = object.transform.position
-  const [rx, ry, rz] = object.transform.rotation
-  const [sx, sy, sz] = object.transform.scale
-  const matrix = new Matrix4()
-  if (object.transform.rotationMode === 'quaternion' && object.transform.quaternion) {
-    const [qx, qy, qz, qw] = object.transform.quaternion
-    scratchQuaternion.set(qx, qy, qz, qw)
-  } else {
-    const order = object.transform.rotationMode && object.transform.rotationMode !== 'quaternion'
-      ? object.transform.rotationMode
-      : 'XYZ'
-    scratchEuler.rotation.set((rx * Math.PI) / 180, (ry * Math.PI) / 180, (rz * Math.PI) / 180, order)
-    scratchQuaternion.setFromEuler(scratchEuler.rotation)
-  }
-  matrix.compose(new Vector3(x, y, z), scratchQuaternion, new Vector3(sx || 1e-6, sy || 1e-6, sz || 1e-6))
-  // An origin offset moves the data inside the object, not the object itself.
-  if (object.origin) {
-    const offset = new Matrix4().makeTranslation(-object.origin[0], -object.origin[1], -object.origin[2])
-    matrix.multiply(offset)
-  }
-  return matrix
 }

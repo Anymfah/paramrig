@@ -13,8 +13,10 @@ export default run('scene-transform', async ({ page, check, log, helpers, shot }
   }
 
   await page.mouse.click(centre.x, centre.y)
-  await page.waitForTimeout(200)
-  check('the cube is selected to work on', (await helpers.scene()).objects.length === 3)
+  await page.waitForTimeout(300)
+  // Not "there are three objects": which one the click landed on is the whole premise of the rest.
+  const selected = await page.locator('.scene-properties input[type="text"]').first().inputValue().catch(() => '')
+  check('the click landed on the cube, and not on a glyph in front of it', selected === 'Cube', selected || 'nothing selected')
 
   // G X 2 Enter moves exactly two metres along X, whatever the pointer did.
   await page.locator('#main').focus()

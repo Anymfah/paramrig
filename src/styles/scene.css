@@ -544,3 +544,14 @@
  */
 .scene-redo { max-width: 15rem; }
 .scene-redo__body { max-height: min(48vh, 380px); overflow-y: auto; }
+
+/* F2: the one thing a key cannot say on its own is what to call something. */
+.scene-rename { display: grid; gap: var(--space-2); padding: var(--space-4); }
+.scene-rename__label { color: var(--text-secondary); font-size: var(--text-xs); }
+.scene-rename .scene-palette__input {
+  min-height: 36px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+.scene-rename__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
