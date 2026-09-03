@@ -1,5 +1,6 @@
-import { selectionBounds, type Bounds } from '@/vector/geometry'
+import type { Bounds } from '@/vector/geometry'
 import type { VectorElement } from '@/vector/types'
+import { inkSelectionBounds } from '@/vector/ink'
 
 export type AlignMode = 'left' | 'centerX' | 'right' | 'top' | 'centerY' | 'bottom'
 export type DistributeAxis = 'x' | 'y'
@@ -8,7 +9,7 @@ export type ElementPatch = { id: string; patch: Partial<VectorElement> }
 /** Moves each element so its rotated bounding box lines up with `target` on `mode`. */
 export function alignElements(elements: VectorElement[], mode: AlignMode, target: Bounds): ElementPatch[] {
   return elements.flatMap((element) => {
-    const bounds = selectionBounds([element])
+    const bounds = inkSelectionBounds([element])
     let dx = 0
     let dy = 0
     switch (mode) {
@@ -27,7 +28,7 @@ export function alignElements(elements: VectorElement[], mode: AlignMode, target
 /** Spaces three or more elements so the gaps between their bounding boxes are equal; outer elements stay put. */
 export function distributeElements(elements: VectorElement[], axis: DistributeAxis): ElementPatch[] {
   if (elements.length < 3) return []
-  const items = elements.map((element) => ({ element, bounds: selectionBounds([element]) }))
+  const items = elements.map((element) => ({ element, bounds: inkSelectionBounds([element]) }))
   const start = axis === 'x' ? 'x' : 'y'
   const size = axis === 'x' ? 'width' : 'height'
   items.sort((a, b) => (a.bounds[start] + a.bounds[size] / 2) - (b.bounds[start] + b.bounds[size] / 2))

@@ -112,4 +112,74 @@ export default run('chantier-q', async ({ page, check, log, helpers }) => {
   })
   log(`MEASURE polygon handle: ${JSON.stringify(onShape)}`)
   check('the sides handle sits on the top point of the star', onShape?.onTop === true && onShape.centred === true, JSON.stringify(onShape))
+
+  // 6. An arc is selected by the slice it draws, not by the ellipse's frame.
+  await helpers.newDocument()
+  await page.keyboard.press('o')
+  await helpers.drag({ x: 200, y: 150 }, { x: 500, y: 450 })
+  await page.waitForTimeout(300)
+  const sweep = page.locator('[data-section="position"]').getByLabel('Arc sweep', { exact: true })
+  await sweep.fill('90')
+  await sweep.press('Enter')
+  await page.waitForTimeout(500)
+
+  const arcFit = await page.evaluate(() => {
+    const box = document.querySelector('.vector-selection > rect').getBoundingClientRect()
+    const ink = document.querySelector('[data-vector-element] path').getBoundingClientRect()
+    return {
+      dx: Math.abs(box.width - ink.width),
+      dy: Math.abs(box.height - ink.height),
+      offset: Math.hypot(box.left - ink.left, box.top - ink.top),
+      quarter: Math.round(box.width),
+    }
+  })
+  log(`MEASURE arc selection against the ink: ${JSON.stringify(arcFit)}`)
+  check('the selection hugs the slice, not the ellipse it came from', arcFit.dx <= 1 && arcFit.dy <= 1 && arcFit.offset <= 1.5, JSON.stringify(arcFit))
+  const framed = (await helpers.doc()).elements[0]
+  check('and the frame behind it is still the whole ellipse', Math.round(framed.width) === 300 && Math.round(framed.height) === 300, JSON.stringify([framed.width, framed.height]))
+
+  // Dragging a handle resizes the slice; the frame follows. The north-east corner is the one the
+  // arc's own handles do not sit on: the other three land on the ellipse's ends and its centre.
+  const handle = await page.evaluate(() => {
+    const node = document.querySelector('[data-vector-handle="ne"]')
+    const box = node.getBoundingClientRect()
+    return { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+  })
+  await page.mouse.move(handle.x, handle.y)
+  await page.mouse.down()
+  await page.mouse.move(handle.x + 80, handle.y - 80, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  const resized = await page.evaluate(() => {
+    const box = document.querySelector('.vector-selection > rect').getBoundingClientRect()
+    const ink = document.querySelector('[data-vector-element] path').getBoundingClientRect()
+    return { dx: Math.abs(box.width - ink.width), dy: Math.abs(box.height - ink.height), width: Math.round(box.width) }
+  })
+  log(`MEASURE arc after a resize: ${JSON.stringify(resized)}`)
+  check('dragging a corner resizes the slice itself', resized.width > arcFit.quarter + 40, `${arcFit.quarter} → ${resized.width}`)
+  check('and the box still hugs it afterwards', resized.dx <= 1 && resized.dy <= 1, JSON.stringify(resized))
+
+  // A slice turns about the centre of the ellipse it was cut from; the box keeps hugging it.
+  const rotation = page.locator('[data-section="position"]').getByLabel('Rotation', { exact: true })
+  await rotation.fill('45')
+  await rotation.press('Enter')
+  await page.waitForTimeout(400)
+  check('the selection follows the slice once it is turned', await page.evaluate(() => {
+    const box = document.querySelector('.vector-selection > rect').getBoundingClientRect()
+    const ink = document.querySelector('[data-vector-element] path').getBoundingClientRect()
+    return Math.abs(box.width - ink.width) <= 2 && Math.abs(box.height - ink.height) <= 2
+  }))
+
+  // A marquee over the empty quarter of the frame catches nothing.
+  await page.locator('#main').focus()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  await sweepMarquee(page, helpers)
+  check('a marquee over the empty part of the frame catches nothing', await page.locator('[data-vector-element][data-selected]').count() === 0)
 })
+
+/** Drags a marquee across the corner of the page the arc's frame covers but its ink does not. */
+async function sweepMarquee(page, helpers) {
+  await helpers.drag({ x: 205, y: 400 }, { x: 260, y: 445 })
+  await page.waitForTimeout(300)
+}

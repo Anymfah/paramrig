@@ -67,6 +67,7 @@ import type { PaintPalette } from '@/vector/VectorPaintPanel'
 import { VectorSaveBadge } from '@/vector/VectorSaveBadge'
 import { useProjectFile } from '@/vector/useProjectFile'
 import { selectionBounds } from '@/vector/geometry'
+import { inkSelectionBounds } from '@/vector/ink'
 import { booleanLabel, BOOLEAN_OPERATIONS, maskPatch } from '@/vector/booleanGroups'
 import type { BooleanOperation } from '@/vector/booleans'
 import { ancestorIds, childrenOf, descendantIds, groupElements, isContainer, leafElements, transformLeaves } from '@/vector/tree'
@@ -516,7 +517,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     const doc = current.document
     if (!doc || current.selectedElements.length === 0) return
     const leaves = leafElements(doc.elements, current.selectedIds)
-    const target = current.selectedElements.length > 1 && leaves.length ? selectionBounds(leaves) : { x: 0, y: 0, width: doc.width, height: doc.height }
+    const target = current.selectedElements.length > 1 && leaves.length ? inkSelectionBounds(leaves) : { x: 0, y: 0, width: doc.width, height: doc.height }
     current.updateElements(expandMoves(doc.elements, alignElements(current.selectedElements, mode, target)), true, 'Align')
   }, [])
 
@@ -682,7 +683,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
         else if (event.code === 'Digit1') controller.current?.fit(null)
         else if (event.code === 'Digit2' && doc) {
           const leaves = leafElements(doc.elements, current.selectedIds)
-          controller.current?.fit(leaves.length ? selectionBounds(leaves) : null, 96)
+          controller.current?.fit(leaves.length ? inkSelectionBounds(leaves) : null, 96)
         }
         return
       }
@@ -1344,7 +1345,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     { id: 'fullscreen', label: fullscreen ? 'Leave full screen' : 'Full screen canvas', section: 'View', shortcut: SHORTCUTS.fullscreen, run: toggleFullscreen },
     { id: 'zoom-reset', label: 'Zoom to 100%', section: 'View', shortcut: SHORTCUTS.zoomReset, run: () => controller.current?.zoomTo(1) },
     { id: 'zoom-fit', label: 'Fit page', section: 'View', shortcut: SHORTCUTS.zoomFit, run: () => controller.current?.fit(null) },
-    { id: 'zoom-selection', label: 'Fit selection', section: 'View', shortcut: SHORTCUTS.zoomSelection, disabled: !hasSelection, run: () => controller.current?.fit(selectionBounds(leafElements(document.elements, selectedIds)), 96) },
+    { id: 'zoom-selection', label: 'Fit selection', section: 'View', shortcut: SHORTCUTS.zoomSelection, disabled: !hasSelection, run: () => controller.current?.fit(inkSelectionBounds(leafElements(document.elements, selectedIds)), 96) },
   ]
 
   const byId = new Map(commands.map((command) => [command.id, command]))

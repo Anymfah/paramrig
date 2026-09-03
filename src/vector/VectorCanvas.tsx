@@ -3,6 +3,7 @@ import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '
 import { createVectorElement } from '@/vector/document'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
+import { boxForInk, inkBox, inkSelectionBounds } from '@/vector/ink'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
@@ -1053,7 +1054,7 @@ export function VectorCanvas({
       const candidates = bounds.width < 2 && bounds.height < 2 ? [] : childrenOf(elements, scope).filter((element) => element.visible && !element.locked)
       const hits = candidates.filter((element) => {
         const leaves = isContainer(element) ? leafElements(elements, [element.id]).filter((leaf) => leaf.visible) : [element]
-        return leaves.some((leaf) => intersects(bounds, selectionBounds([leaf])))
+        return leaves.some((leaf) => intersects(bounds, inkSelectionBounds([leaf])))
       }).map((element) => element.id)
       onSelectIds(active.additive ? [...new Set([...selectedIds, ...hits])] : hits)
       setMarqueeBounds(null)
@@ -1187,7 +1188,7 @@ export function VectorCanvas({
     const ids = single ? [single.id] : selectedIds
     interaction.current = {
       kind: 'resize', pointerId: event.pointerId, start: point(event.nativeEvent),
-      elements: structuredClone(leaves), bounds: selectionBounds(leaves), handle, single: single ? structuredClone(single) : null, targets: snapTargetsFor(ids),
+      elements: structuredClone(leaves), bounds: inkSelectionBounds(leaves), handle, single: single ? structuredClone(single) : null, targets: snapTargetsFor(ids),
     }
     setDirectCursor(resizeCursor(handle, single?.rotation ?? 0))
     svgRef.current?.setPointerCapture(event.pointerId)
@@ -1661,12 +1662,15 @@ export function VectorCanvas({
       if (active.single) {
         // A picture keeps its shape unless Shift says otherwise; everything else is the reverse.
         const lockRatio = active.single.kind === 'image' ? !event.shiftKey : tool === 'scale' ? true : event.shiftKey
-        const patch = resizeElement(active.single, active.handle, pointer, { lockRatio, fromCenter: event.altKey })
+        // The handles are on the ink, so that is what the drag resizes; the frame is derived back.
+        const ink = inkBox(active.single)
+        const dragged = resizeElement({ ...active.single, ...ink }, active.handle, pointer, { lockRatio, fromCenter: event.altKey })
+        const patch = boxForInk(active.single, dragged)
         const styled = tool === 'scale'
           ? { ...patch, ...scaleStylePatch(active.single, uniformFactor(active.single, { width: patch.width ?? active.single.width, height: patch.height ?? active.single.height })) }
           : patch
         onUpdate(active.single.id, viewOptions.snapToPixelGrid ? snapGeometryPatch(styled) : styled, false)
-        showHud(`${round(patch.width)} × ${round(patch.height)}`, event.nativeEvent)
+        showHud(`${round(dragged.width)} × ${round(dragged.height)}`, event.nativeEvent)
       } else {
         const next = resizeBounds(active.bounds, active.handle, pointer, { lockRatio: event.shiftKey, fromCenter: event.altKey })
         const map = boxMap(active.bounds, next)
@@ -2050,7 +2054,7 @@ export function VectorCanvas({
     busy: busy || panning || !!transformStatus || !!textEditId || !!cropId || dropping,
     bounds: tool === 'node'
       ? (editing ? nodeBox ?? nodeBoundsOf(editingWorld!, selectedNodeIds) ?? selectionBounds([editing]) : null)
-      : (selectedLeaves.length ? selectionBounds(selectedLeaves) : null),
+      : (selectedLeaves.length ? inkSelectionBounds(selectedLeaves) : null),
     viewport: viewportSize,
     zoom,
     pan,
@@ -2060,7 +2064,7 @@ export function VectorCanvas({
   // Cropping owns the overlay: the ordinary resize handles would sit on top of the crop ones.
   const showHandles = (tool === 'select' || tool === 'scale') && selectedLeaves.length > 0 && !editing && !cropping
   const singleDirect = showHandles && selectedElements.length === 1 && selected && selected.kind !== 'group' && selected.kind !== 'boolean' ? selected : null
-  const multiBounds = showHandles && !singleDirect ? selectionBounds(selectedLeaves) : null
+  const multiBounds = showHandles && !singleDirect ? inkSelectionBounds(selectedLeaves) : null
   const enteredGroup = enteredGroupId ? elements.find((element) => element.id === enteredGroupId) ?? null : null
   const shapePointerDown = useRef(onShapePointerDown)
   shapePointerDown.current = onShapePointerDown
@@ -2288,7 +2292,7 @@ export function VectorCanvas({
               onPointerDown={onGuidePointerDown}
             />
           ) : null}
-          {transformStatus?.axis && selectedLeaves.length ? <AxisGuide bounds={selectionBounds(selectedLeaves)} axis={transformStatus.axis} /> : null}
+          {transformStatus?.axis && selectedLeaves.length ? <AxisGuide bounds={inkSelectionBounds(selectedLeaves)} axis={transformStatus.axis} /> : null}
           {(tool === 'transform') && selectedLeaves.length > 0 ? selectedLeaves.map((element) => <OutlineOnly key={element.id} element={element} />) : null}
           {editing && editingWorld ? (
             <VectorNodes
@@ -2336,7 +2340,7 @@ export function VectorCanvas({
             />
           ) : null}
           {altDown && selectedLeaves.length > 0 && (tool === 'select' || tool === 'transform') && !interaction.current ? (
-            <Measurements from={selectionBounds(selectedLeaves)} to={hoverOutline && !selectedIds.includes(hoverOutline.id) ? selectionBounds(leafElements(elements, [hoverOutline.id])) : { x: 0, y: 0, width: document.width, height: document.height }} zoom={zoom} />
+            <Measurements from={inkSelectionBounds(selectedLeaves)} to={hoverOutline && !selectedIds.includes(hoverOutline.id) ? inkSelectionBounds(leafElements(elements, [hoverOutline.id])) : { x: 0, y: 0, width: document.width, height: document.height }} zoom={zoom} />
           ) : null}
           {singleDirect ? (
             <Selection
@@ -2412,7 +2416,7 @@ export function VectorCanvas({
           viewport={viewportSize}
           pan={pan}
           zoom={zoom}
-          selection={selectedLeaves.length ? selectionBounds(selectedLeaves) : null}
+          selection={selectedLeaves.length ? inkSelectionBounds(selectedLeaves) : null}
           interactive={viewOptions.guides}
           onPointerDown={onRulerPointerDown}
           onPointerMove={onRulerPointerMove}
@@ -3350,10 +3354,13 @@ function Selection({ element, zoom, onResize, onRotate }: {
 }) {
   const cx = element.x + element.width / 2
   const cy = element.y + element.height / 2
+  // The box is drawn on what the element draws, not on the frame it lives in: a slice of an
+  // ellipse would otherwise be selected by a rectangle three quarters empty.
+  const box = inkBox(element)
   return (
     <g className="vector-selection" transform={`rotate(${element.rotation} ${cx} ${cy})`}>
-      <rect x={element.x} y={element.y} width={element.width} height={element.height} />
-      <Handles bounds={element} zoom={zoom} rotation={element.rotation} onResize={onResize} onRotate={onRotate} />
+      <rect x={box.x} y={box.y} width={box.width} height={box.height} />
+      <Handles bounds={box} zoom={zoom} rotation={element.rotation} onResize={onResize} onRotate={onRotate} />
     </g>
   )
 }

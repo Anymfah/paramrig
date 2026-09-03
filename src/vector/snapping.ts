@@ -1,6 +1,7 @@
-import { selectionBounds, type Bounds } from '@/vector/geometry'
+import type { Bounds } from '@/vector/geometry'
 import type { VectorElement, VectorGuide, VectorPoint } from '@/vector/types'
 import { worldNetwork } from '@/vector/network'
+import { inkSelectionBounds } from '@/vector/ink'
 
 export type SnapAxis = 'x' | 'y'
 export type SnapKind = 'edge' | 'center' | 'page' | 'guide' | 'node'
@@ -35,7 +36,7 @@ export function collectSnapTargets(
     for (const element of elements) {
       if (excluded.has(element.id) || !element.visible || element.kind === 'group') continue
       if (element.parentId && excluded.has(element.parentId)) continue
-      const bounds = selectionBounds([element])
+      const bounds = inkSelectionBounds([element])
       pushBounds(targets, bounds, 'edge', 'center')
       if (options.nodes && element.network && element.network.nodes.length <= 512) {
         const world = worldNetwork(element)

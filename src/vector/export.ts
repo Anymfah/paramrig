@@ -2,7 +2,8 @@ import { serializeVectorMarkup } from '@/vector/document'
 import { boundsWithEffects } from '@/vector/effects'
 import { fontFaceRule } from '@/vector/fonts'
 import { fontData } from '@/vector/fontLoader'
-import { selectionBounds, type Bounds } from '@/vector/geometry'
+import type { Bounds } from '@/vector/geometry'
+import { inkSelectionBounds } from '@/vector/ink'
 import { descendantIds } from '@/vector/tree'
 import type { VectorColorSpace, VectorDocument, VectorElement, VectorFont } from '@/vector/types'
 
@@ -44,11 +45,11 @@ export function exportBounds(document: VectorDocument, target: ExportTargetKind,
   if (target === 'document') return { x: 0, y: 0, width: document.width, height: document.height }
   if (target === 'frame') {
     const frame = document.elements.find((element) => element.id === selection.frameId && element.kind === 'frame')
-    return frame ? selectionBounds([frame]) : null
+    return frame ? inkSelectionBounds([frame]) : null
   }
   const elements = document.elements.filter((element) => selection.selectedIds.includes(element.id))
   if (elements.length === 0) return null
-  const bounds = selectionBounds(elements)
+  const bounds = inkSelectionBounds(elements)
   if (bounds.width <= 0 || bounds.height <= 0) return null
   // A shadow or a blur paints outside the box; the export box grows so nothing is cut off.
   return boundsWithEffects(bounds, elements)
