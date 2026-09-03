@@ -247,9 +247,15 @@ describe('the tabs', () => {
     expect(onTab).toHaveBeenCalledWith('world')
   })
 
-  it('says what the tabs that are not written yet are waiting for', () => {
+  it('shows the modifier stack, empty, with the way to start one', () => {
     show({ tab: 'modifiers' })
-    expect(screen.getByText('No modifiers. They arrive with the modifier prompt.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add modifier' })).toBeInTheDocument()
+    expect(screen.getByText(/No modifiers/)).toBeInTheDocument()
+  })
+
+  it('says what the tabs that are not written yet are waiting for', () => {
+    show({ tab: 'material' })
+    expect(screen.getByText('No materials. They arrive with the material prompt.')).toBeInTheDocument()
   })
 
   it('says what the Controls tab is for before a rig exists', () => {

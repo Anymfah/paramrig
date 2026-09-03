@@ -528,6 +528,16 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     // of four unpacks its rows shifted, and every face after the first row would read its
     // neighbour's state.
     const data = new Uint8Array(width * height * 4)
+    /*
+     * Freed before it is re-described, and not merely marked dirty.
+     *
+     * WebGL 2 gives a texture immutable storage the first time it is uploaded, and three then keeps
+     * it up to date with `texSubImage2D`. Handing the same texture a larger image would therefore
+     * write past the storage it was given — `GL_INVALID_VALUE: Offset overflows texture dimensions`
+     * in the console, and a selection that stops updating on a mesh that has grown. Disposing drops
+     * the allocation, so the next frame allocates one of the new size.
+     */
+    if (faceStates.image.width !== width || faceStates.image.height !== height) faceStates.dispose()
     faceStates.image = { data, width, height } as unknown as typeof faceStates.image
     faceStates.needsUpdate = true
     faceMaterial.uniforms.uStateSize!.value = [width, height]

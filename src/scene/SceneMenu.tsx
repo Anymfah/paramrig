@@ -50,7 +50,12 @@ export type SceneMenuCommand = {
   run: () => void
 }
 
-export type SceneMenuEntry = SceneMenuCommand | { separator: true }
+/**
+ * A rule between groups, or a name over one. A heading is not focusable and disappears while the
+ * menu is being filtered, for the same reason a separator does: once the list has been cut down to
+ * what matches, the groups it named are no longer the groups on screen.
+ */
+export type SceneMenuEntry = SceneMenuCommand | { separator: true } | { heading: string }
 
 /** How the trigger draws: a named menu, an icon that shows the current choice, or a lone chevron. */
 export type SceneMenuVariant = 'text' | 'icon' | 'chevron'
@@ -58,7 +63,7 @@ export type SceneMenuVariant = 'text' | 'icon' | 'chevron'
 const EDGE_PADDING = 8
 
 function isCommand(entry: SceneMenuEntry): entry is SceneMenuCommand {
-  return !('separator' in entry)
+  return !('separator' in entry) && !('heading' in entry)
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -331,7 +336,9 @@ export function SceneMenu({
               onRun={run}
             />
           )
-          : <div key={`separator-${position}`} className="menu__sep" role="separator" />
+          : 'heading' in entry
+            ? <p key={`heading-${entry.heading}`} className="scene-menu__heading" role="presentation">{entry.heading}</p>
+            : <div key={`separator-${position}`} className="menu__sep" role="separator" />
       ))}
     </div>
   )

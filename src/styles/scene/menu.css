@@ -236,3 +236,18 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/*
+ * The name over a group of entries. It is not a command and never takes the highlight, so it is
+ * drawn quieter than one and indented to the same place as their labels.
+ */
+.scene-menu__heading {
+  margin: var(--space-1) 0 2px;
+  padding-inline: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.scene-menu__heading:first-child { margin-top: 0; }

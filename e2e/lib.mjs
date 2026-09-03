@@ -42,7 +42,7 @@ export async function run(name, body) {
     const url = stale.url()
     if (url === 'about:blank' || url.startsWith(BASE)) await stale.close().catch(() => undefined)
   }
-  const page = context.pages()[0] ?? await context.newPage()
+  let page = context.pages()[0] ?? await context.newPage()
   page.removeAllListeners('console')
   page.removeAllListeners('pageerror')
   const errors = []
@@ -52,20 +52,36 @@ export async function run(name, body) {
     mkdirSync(OUTPUT, { recursive: true })
     await page.screenshot({ path: join(OUTPUT, file), ...options })
   }
+  /** How many frames the page draws in 400 ms. Nought means it is not being drawn at all. */
+  const frameCount = (target) => target.evaluate(() => new Promise((resolve) => {
+    let frames = 0
+    const step = () => { frames += 1; requestAnimationFrame(step) }
+    requestAnimationFrame(step)
+    setTimeout(() => resolve(frames), 400)
+  }))
   try {
     await page.setViewportSize({ width: 1440, height: 900 })
     /*
      * The canary. A shared headless browser sometimes stops drawing — an occluded window, a page
-     * left behind by a killed run — and every symptom of that is a thirty-second timeout on an
-     * element that is perfectly still. One frame asked for up front turns a mystery into a sentence.
+     * left behind by a killed run, a 3D page whose context was lost — and every symptom of that is
+     * a thirty-second timeout on an element that is perfectly still. One frame asked for up front
+     * turns a mystery into a sentence.
+     *
+     * A page that has stopped is worth one attempt at replacing before the run is given up on: a
+     * fresh page in front of the old one usually draws again, and the alternative is a whole
+     * campaign failing because the script before this one left its WebGL context behind.
      */
-    const drawing = await page.evaluate(() => new Promise((resolve) => {
-      let frames = 0
-      const step = () => { frames += 1; requestAnimationFrame(step) }
-      requestAnimationFrame(step)
-      setTimeout(() => resolve(frames), 400)
-    }))
-    if (drawing === 0) {
+    if (await frameCount(page) === 0) {
+      const fresh = await context.newPage()
+      await fresh.bringToFront().catch(() => undefined)
+      if (context.pages().length > 1) await page.close().catch(() => undefined)
+      page = fresh
+      page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
+      page.on('pageerror', (error) => errors.push(String(error)))
+      await page.setViewportSize({ width: 1440, height: 900 })
+      log('NOTE the page had stopped drawing and was replaced with a fresh one')
+    }
+    if (await frameCount(page) === 0) {
       throw new Error('The QA browser has stopped drawing: no frames in 400 ms, so nothing can be'
         + ' clicked. Restart it with --disable-backgrounding-occluded-windows'
         + ' --disable-renderer-backgrounding --disable-background-timer-throttling'

@@ -2,12 +2,12 @@ import {
   ACESFilmicToneMapping,
   Box3,
   Color,
+  FogExp2,
   Group,
   NoToneMapping,
   OrthographicCamera,
   PCFSoftShadowMap,
   PerspectiveCamera,
-  PMREMGenerator,
   Raycaster,
   Scene,
   SphereGeometry,
@@ -19,13 +19,12 @@ import {
   type BufferGeometry,
   type Camera,
   type Material,
-  type Texture,
 } from 'three'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/environment'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
-import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, ShadingMode, Vec3, ViewState } from '@/scene/types'
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
@@ -217,9 +216,8 @@ export class SceneViewport {
   private studio: StudioLights | null = null
   private sceneLights: SceneLights | null = null
   private materials: MaterialLibrary | null = null
-  /** The studio environment material preview reflects, built the first time it is asked for. */
-  private studioEnvironment: Texture | null = null
-  private environmentMaker: PMREMGenerator | null = null
+  /** What surfaces reflect: the studio, or the world's own image once it has loaded. */
+  private environments: SceneEnvironment | null = null
   private grid: ViewportGrid | null = null
   private outline: OutlinePass | null = null
   private picking: PickBuffer | null = null
@@ -1146,7 +1144,8 @@ export class SceneViewport {
 
     if (shading === 'rendered') {
       renderer.toneMapping = ACESFilmicToneMapping
-      renderer.toneMappingExposure = 1
+      // Scene · Colour management: a stop of light before the film curve, as Blender has it.
+      renderer.toneMappingExposure = Math.pow(2, this.document?.colorManagement?.exposure ?? 0)
       renderer.shadowMap.enabled = true
       renderer.shadowMap.type = PCFSoftShadowMap
     } else {
@@ -1169,7 +1168,7 @@ export class SceneViewport {
       this.sceneLights.group.visible = false
     }
 
-    this.scene.environment = lit ? this.environment() : null
+    this.applyEnvironment(shading)
     for (const [id, objectView] of this.views) {
       if (!objectView.mesh) continue
       const object = this.document?.objects.find((entry) => entry.id === id)
@@ -1177,6 +1176,9 @@ export class SceneViewport {
       if (!object) continue
       objectView.mesh.material = lit ? this.materialsFor(object) : objectView.material ?? objectView.mesh.material
     }
+    // Last, and after the materials have been chosen: face orientation replaces whichever of them
+    // an object ended up with, and choosing a material afterwards would quietly undo the overlay.
+    this.applyFaceOrientation()
   }
 
   /** The materials a mesh is drawn with, one per slot, in the order its groups name them. */
@@ -1196,22 +1198,45 @@ export class SceneViewport {
   }
 
   /**
-   * What a material reflects. Three's own room, pre-filtered once and kept: it is a few hundred
-   * kilobytes of texture and a second of setup, and building it per frame would be neither.
+   * What a material reflects, and what is drawn behind it.
+   *
+   * Material preview always reflects the studio, so a surface can be judged before the scene has a
+   * world worth reflecting. Rendered reflects the world's own environment when it has one — and
+   * shows it behind the objects, unless the world says to light with it and not show it.
    */
-  private environment(): Texture | null {
+  private applyEnvironment(shading: ShadingMode): void {
     const renderer = this.renderer
-    if (!renderer) return null
-    if (this.studioEnvironment) return this.studioEnvironment
-    this.environmentMaker = new PMREMGenerator(renderer)
-    const room = new RoomEnvironment()
-    this.studioEnvironment = this.environmentMaker.fromScene(room, 0.04).texture
-    room.dispose?.()
-    this.disposables.push(() => {
-      this.studioEnvironment?.dispose()
-      this.environmentMaker?.dispose()
-    })
-    return this.studioEnvironment
+    if (!renderer) return
+    if (!this.environments) {
+      this.environments = createSceneEnvironment(renderer, { onLoaded: () => this.invalidate() })
+      this.disposables.push(() => this.environments?.dispose())
+    }
+    const world = this.document?.world
+    const lit = shading === 'material' || shading === 'rendered'
+    if (!world || !lit) {
+      this.scene.environment = null
+      this.scene.background = null
+      this.scene.fog = null
+      return
+    }
+    // Material preview keeps the studio whatever the world holds: it is a way of looking at a
+    // surface rather than at a scene, and a dark world would leave every material unreadable.
+    this.scene.environment = shading === 'rendered'
+      ? this.environments.forWorld(world, false)
+      : this.environments.forWorld({ ...world, environmentId: null }, true)
+    this.scene.environmentIntensity = Math.max(0, world.environmentStrength ?? 1)
+    this.scene.environmentRotation.set(0, world.environmentRotation ?? 0, 0)
+    if (shading !== 'rendered') {
+      this.scene.background = null
+      this.scene.fog = null
+      return
+    }
+    const background = this.environments.backgroundFor(world)
+    this.scene.background = background ?? new Color(world.color)
+    this.scene.backgroundIntensity = Math.max(0, world.strength)
+    this.scene.backgroundRotation.set(0, world.environmentRotation ?? 0, 0)
+    const fog = world.fog
+    this.scene.fog = fog?.enabled ? new FogExp2(new Color(fog.color).getHex(), Math.max(0, fog.density)) : null
   }
 
   get camera(): Camera {
@@ -1468,7 +1493,9 @@ export class SceneViewport {
     let meshes = 0
     if (document) {
       for (const object of document.objects) {
-        const mesh = meshOf(document, object)
+        // The mesh as it is drawn, stack and all: the statistics overlay is a count of what is on
+        // screen, and a subdivided cube reads as its subdivision rather than as its cage.
+        const mesh = this.drawnMeshOf(object)
         if (!mesh) continue
         meshes += 1
         vertices += mesh.vertexIds.length

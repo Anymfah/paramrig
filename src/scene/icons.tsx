@@ -702,6 +702,88 @@ export function IconSimpleDeform({ className }: SceneIconProps) {
   )
 }
 
+export function IconBevelModifier({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M2.5 13.5V5.5L5.5 2.5h8" />
+      <path d="M2.5 5.5h3v-3" strokeDasharray="1.5 1.5" />
+    </Glyph>
+  )
+}
+
+export function IconTriangulate({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="0.75" />
+      <path d="M2.25 13.75 13.75 2.25" />
+    </Glyph>
+  )
+}
+
+export function IconWeld({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M2 4.5 6.5 8 2 11.5" />
+      <path d="M14 4.5 9.5 8 14 11.5" />
+      <Dot cx={8} cy={8} r={1.6} />
+    </Glyph>
+  )
+}
+
+export function IconSmoothModifier({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 11.5 4 5l2.5 4L9 3.5l2.5 5 3-2" strokeDasharray="1.5 1.5" />
+      <path d="M1.5 11.5C4.5 7.5 9.5 6 14.5 7" />
+    </Glyph>
+  )
+}
+
+export function IconCast({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" strokeDasharray="1.5 1.5" />
+      <circle cx="8" cy="8" r="4.75" />
+    </Glyph>
+  )
+}
+
+export function IconEdgeSplit({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M2 12.5 7 3.5" />
+      <path d="M9 3.5 14 12.5" />
+      <path d="M7 7.5h2M6.2 10h3.6" strokeDasharray="1.5 1.5" />
+    </Glyph>
+  )
+}
+
+/** A modifier shown while the mesh is open for editing: the cage, with its points on it. */
+export function IconInEditMode({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="3.5" y="3.5" width="9" height="9" />
+      <Dot cx={3.5} cy={3.5} r={1.5} />
+      <Dot cx={12.5} cy={3.5} r={1.5} />
+      <Dot cx={3.5} cy={12.5} r={1.5} />
+      <Dot cx={12.5} cy={12.5} r={1.5} />
+    </Glyph>
+  )
+}
+
+/** Editing on the result rather than on the mesh: the points have moved onto the rounded shape. */
+export function IconOnCage({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="3.5" y="3.5" width="9" height="9" rx="4.5" />
+      <Dot cx={3.5} cy={8} r={1.5} />
+      <Dot cx={12.5} cy={8} r={1.5} />
+      <Dot cx={8} cy={3.5} r={1.5} />
+      <Dot cx={8} cy={12.5} r={1.5} />
+    </Glyph>
+  )
+}
+
 /* -------------------------------------------------------------- properties tabs */
 
 export function IconTabScene({ className }: SceneIconProps) {

@@ -358,3 +358,139 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/*
+ * The modifier stack.
+ *
+ * A card per modifier, in the order they run, and the order is the whole point — so the list reads
+ * top to bottom with a grip on the left and the four switches on the right, exactly where Blender
+ * puts them. Folded, a card is one 44-pixel row: a stack of six has to fit in a panel that is also
+ * showing the parameters of one of them.
+ */
+.scene-modifiers {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+.scene-modifiers__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scene-modifier {
+  position: relative;
+  min-width: 0;
+}
+/* The line a dragged card would land at. Drawn on the card it is landing beside, not on the drag. */
+.scene-modifier[data-drop]::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--scene-selected);
+  z-index: 2;
+}
+.scene-modifier[data-drop='before']::before { top: -4px; }
+.scene-modifier[data-drop='after']::before { bottom: -4px; }
+
+.scene-modifier__card {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-inset) 55%, transparent);
+  overflow: hidden;
+}
+.scene-modifier__card[data-open='true'] {
+  border-color: var(--border-default);
+  background: var(--surface-inset);
+}
+.scene-modifier__head {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  padding-inline: 4px 6px;
+}
+.scene-modifier__head:not(:has(.scene-modifier__grip)) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.scene-modifier__head[draggable='true'] { cursor: grab; }
+.scene-modifier__head[draggable='true']:active { cursor: grabbing; }
+.scene-modifier__grip {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.scene-modifier__toggle,
+.scene-modifier__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: start;
+  cursor: pointer;
+}
+.scene-modifier__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-modifier__toggle:hover,
+.scene-modifier__label:hover { color: var(--text-primary); }
+.scene-modifier__toggle:focus-visible,
+.scene-modifier__label:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+  border-radius: var(--radius-xs);
+}
+.scene-modifier__glyph { display: inline-flex; color: var(--text-muted); }
+.scene-modifier__name {
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+.scene-modifier__switches {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+/*
+ * A switch that is off is drawn muted rather than hidden: the four of them are a row a person
+ * learns the shape of, and a row that changes width as things are switched off cannot be learnt.
+ */
+.scene-modifier__switch { color: var(--text-muted); }
+.scene-modifier__switch[data-on] { color: var(--text-primary); }
+.scene-modifier__body {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-top: 1px solid var(--border-hairline);
+}
+.scene-modifier__error {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--danger) 50%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+}
+
+@media (forced-colors: active) {
+  .scene-modifier__card { border-color: CanvasText; }
+  .scene-modifier__switch[data-on] { forced-color-adjust: none; color: Highlight; }
+  .scene-modifier[data-drop]::before { background: Highlight; }
+}

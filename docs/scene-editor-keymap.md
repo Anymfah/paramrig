@@ -232,6 +232,12 @@ Every chord in this section is Blender’s own.
 | `⌃Numpad -` | Select less (edit mode) |
 | `⌃=` | Select more (edit mode) |
 | `⌃-` | Select less (edit mode) |
+| `⌃0` | Subdivision level 0 (object mode) |
+| `⌃1` | Subdivision level 1 (object mode) |
+| `⌃2` | Subdivision level 2 (object mode) |
+| `⌃3` | Subdivision level 3 (object mode) |
+| `⌃4` | Subdivision level 4 (object mode) |
+| `⌃5` | Subdivision level 5 (object mode) |
 | `E` | Extrude region (edit mode) |
 | `⌥E` | Extrude menu (edit mode) |
 | `I` | Inset faces (edit mode) |
@@ -285,6 +291,7 @@ Every chord in this section is Blender’s own.
 Where this differs from Blender:
 
 - `⌃=`, `⌃-` — Blender grows and shrinks a selection with the keypad’s + and −. The top row’s own + and − are bound as well, for a keyboard that has no keypad.
+- `⌃0` — Level nought takes the subdivision modifier off again, so the chords are a round trip rather than a one-way street.
 - `F3` — F3 is the browser’s own find on Windows and Linux, so ⌃/ and ⌘/ open the palette as well.
 - `F1` — Blender’s F1 opens the manual in a browser. The editor is already in one, so F1 shows the keymap itself.
 - `⌘Z`, `⇧⌘Z` — macOS spells undo ⌘Z and Blender spells it ⌃Z. Both are bound, so neither habit has to be unlearned.

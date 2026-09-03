@@ -3,9 +3,11 @@ import type { HistoryStep } from '@/editor/history'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { DataPanel } from '@/scene/panels/DataPanel'
 import { HistoryPanel } from '@/scene/panels/HistoryPanel'
+import { ModifiersPanel } from '@/scene/panels/ModifiersPanel'
 import { ObjectPanel } from '@/scene/panels/ObjectPanel'
 import { ScenePanel } from '@/scene/panels/ScenePanel'
 import { WorldPanel } from '@/scene/panels/WorldPanel'
+import { evaluateObject } from '@/scene/modifiers/stack'
 import { PROPERTIES_TABS, type PropertiesTab } from '@/scene/prefs'
 import type { SceneDocument, SceneObject, SceneSelection, SceneVersion } from '@/scene/types'
 import { IconButton } from '@/ui/Button'
@@ -152,9 +154,17 @@ export function SceneProperties({
           />
         ) : null}
         {tab === 'modifiers' ? (
-          <div className="scene-properties__notice">
-            <SceneEmpty>No modifiers. They arrive with the modifier prompt.</SceneEmpty>
-          </div>
+          <ModifiersPanel
+            document={document}
+            activeObject={activeObject}
+            selectedObjects={selectedObjects}
+            errors={stackErrors(document, activeObject)}
+            onUpdateObject={onUpdateObject}
+            onUpdateObjects={onUpdateObjects}
+            onApply={(modifierId) => onRunOperator('modifier.apply', { modifierId })}
+            {...gesture}
+            {...folds}
+          />
         ) : null}
         {tab === 'material' ? (
           <div className="scene-properties__notice">
@@ -193,6 +203,18 @@ export function SceneProperties({
       </div>
     </aside>
   )
+}
+
+/**
+ * What the stack refused to do, for the panel to write under the modifier that refused.
+ *
+ * Read from the evaluation rather than kept in state: the evaluation is cached on everything the
+ * answer depends on, so asking it here costs a map lookup and cannot disagree with what the
+ * viewport is drawing.
+ */
+function stackErrors(document: SceneDocument, object: SceneObject | null): Array<{ modifierId: string; message: string }> {
+  if (!object || object.kind !== 'mesh' || object.modifiers.length === 0) return []
+  return evaluateObject(document, object)?.errors ?? []
 }
 
 /**

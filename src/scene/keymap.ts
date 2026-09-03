@@ -100,6 +100,8 @@ const NOTE_ALT_GR =
   '⌃⌥ is AltGr on Windows, where some layouts type a character with it. Keys are ignored while a field has focus, so typing is left alone.'
 const NOTE_UNDO_ON_MACOS =
   'macOS spells undo ⌘Z and Blender spells it ⌃Z. Both are bound, so neither habit has to be unlearned.'
+const NOTE_SUBDIVISION =
+  'Level nought takes the subdivision modifier off again, so the chords are a round trip rather than a one-way street.'
 const NOTE_BROWSER_FILE =
   'The browser would save or open a page of its own. The editor takes the chord for the document and stops it there.'
 
@@ -287,6 +289,14 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'KeyG', alt: true, mode: 'object', action: operator('object.clearLocation'), label: 'Clear location' },
   { code: 'KeyR', alt: true, mode: 'object', action: operator('object.clearRotation'), label: 'Clear rotation' },
   { code: 'KeyS', alt: true, mode: 'object', action: operator('object.clearScale'), label: 'Clear scale' },
+
+  /* subdivision, as Blender binds it: the level a person changes most, on one chord */
+  { code: 'Digit0', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 0 } }, label: 'Subdivision level 0', note: NOTE_SUBDIVISION },
+  { code: 'Digit1', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 1 } }, label: 'Subdivision level 1' },
+  { code: 'Digit2', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 2 } }, label: 'Subdivision level 2' },
+  { code: 'Digit3', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 3 } }, label: 'Subdivision level 3' },
+  { code: 'Digit4', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 4 } }, label: 'Subdivision level 4' },
+  { code: 'Digit5', ctrl: true, mode: 'object', action: { kind: 'operator', id: 'modifier.subdivisionSet', params: { level: 5 } }, label: 'Subdivision level 5' },
 
   /* modelling, in edit mode */
   { code: 'KeyE', mode: 'edit', action: operator('mesh.extrudeRegion'), label: 'Extrude region' },
