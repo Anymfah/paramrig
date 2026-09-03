@@ -186,6 +186,39 @@ export default run('scene-extrude-bevel', async ({ page, check, log, helpers, sh
   check('and the readout is gone', (await page.locator('.scene-hud').count()) === 0 || !(await hud()),
     String(await page.locator('.scene-hud').count()))
 
+  /* ------------------------------------------------- the tool's own settings */
+
+  // The sidebar's Tool tab shows the settings of the operator the tool is the interactive half of,
+  // and what is set there is what the next drag starts from.
+  await page.locator('.scene-toolbar button[aria-label="Bevel"]').click({ force: true })
+  await page.waitForTimeout(300)
+  await page.locator('#main').focus()
+  await page.keyboard.press('KeyN')
+  await page.waitForTimeout(400)
+  await page.locator('.scene-sidebar__tab', { hasText: 'Tool' }).click()
+  await page.waitForTimeout(300)
+  const settings = page.locator('[aria-label="Tool settings"]')
+  check('the Tool tab shows the bevel’s own settings', await settings.isVisible(),
+    (await settings.textContent()) ?? 'no settings')
+  const toolSegments = settings.locator('.control', { hasText: 'Segments' }).locator('input').first()
+  await toolSegments.fill('4')
+  await toolSegments.press('Enter')
+  await page.waitForTimeout(300)
+
+  await page.keyboard.press('KeyN')
+  await page.waitForTimeout(300)
+  await page.mouse.move(edgeAt.x, edgeAt.y)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Digit2')
+  await page.mouse.click(edgeAt.x, edgeAt.y)
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Control+KeyB')
+  await page.waitForTimeout(300)
+  const withSettings = await hud()
+  check('and ⌃B starts from them rather than from the defaults', withSettings.includes('Segments 4'), withSettings)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(250)
+
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))
 })

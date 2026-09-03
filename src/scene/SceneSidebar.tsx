@@ -1,6 +1,9 @@
 import { useId, useMemo, useRef, useState } from 'react'
 import { applyElementTargets, elementTargets } from '@/scene/transform/elements'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
+import { getOperator, type OperatorParams } from '@/scene/operators'
+import { TOOL_OPERATORS } from '@/scene/toolOperators'
+import { ParameterField } from '@/ui/ParameterField'
 import { objectBounds } from '@/scene/objects'
 import type {
   SceneDocument,
@@ -182,6 +185,8 @@ export function SceneSidebar({
   onView,
   onGestureStart,
   onGestureEnd,
+  toolParams,
+  onToolParams,
 }: {
   open: boolean
   tab: SidebarTab
@@ -194,6 +199,9 @@ export function SceneSidebar({
   onUpdateObject: (id: string, patch: Partial<SceneObject>, label?: string) => void
   onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
   onView: (patch: Partial<ViewState>) => void
+  /** What the current tool is set to, and how to change it. Empty for a tool that has no options. */
+  toolParams: OperatorParams
+  onToolParams: (params: OperatorParams) => void
   onGestureStart: () => void
   onGestureEnd: () => void
 }) {
@@ -258,6 +266,8 @@ export function SceneSidebar({
             mode={mode}
             onMode={setMode}
             onView={onView}
+            toolParams={toolParams}
+            onToolParams={onToolParams}
             onGestureStart={onGestureStart}
             onGestureEnd={onGestureEnd}
           />
@@ -655,6 +665,8 @@ function ToolTab({
   mode,
   onMode,
   onView,
+  toolParams,
+  onToolParams,
   onGestureStart,
   onGestureEnd,
 }: {
@@ -662,12 +674,38 @@ function ToolTab({
   mode: SelectionMode
   onMode: (mode: SelectionMode) => void
   onView: (patch: Partial<ViewState>) => void
+  toolParams: OperatorParams
+  onToolParams: (params: OperatorParams) => void
   onGestureStart: () => void
   onGestureEnd: () => void
 }) {
+  /*
+   * A tool's own settings, which are the parameters of the operator it is the interactive half of.
+   * They are what the next drag starts from — Blender's Tool tab does the same — so changing the
+   * number of segments here and then dragging a bevel gives that many, without a trip through F9.
+   */
+  const operatorId = TOOL_OPERATORS[view.tool]
+  const operator = operatorId ? getOperator(operatorId) : undefined
+
   return (
     <>
       <p className="scene-sidebar__title">{toolLabel(view.tool)}</p>
+
+      {operator && operator.params.length > 0 ? (
+        <div className="scene-sidebar__section" role="group" aria-label="Tool settings">
+          <span className="scene-sidebar__legend">{operator.label}</span>
+          {operator.params.map((param) => (
+            <ParameterField
+              key={param.id}
+              param={param}
+              value={toolParams[param.id] === undefined ? param.defaultValue : toolParams[param.id]!}
+              onChange={(next) => onToolParams({ ...toolParams, [param.id]: next })}
+              onGestureStart={onGestureStart}
+              onGestureEnd={onGestureEnd}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <div className="scene-sidebar__section" role="group" aria-label="Selection">
         <span className="scene-sidebar__legend">Selection</span>

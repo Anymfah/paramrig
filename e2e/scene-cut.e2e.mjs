@@ -240,6 +240,60 @@ export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
   check('one undo takes the whole cut back', JSON.stringify(await counts()) === JSON.stringify(beforeKnife),
     JSON.stringify(await counts()))
 
+  /* ----------------------------------------------------------- poly build */
+
+  await helpers.newScene()
+  await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
+  await page.mouse.click(centre.x, centre.y)
+  await page.waitForTimeout(250)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(400)
+  await page.keyboard.press('Digit3')
+  await page.mouse.click(centre.x, centre.y)
+  await page.waitForTimeout(300)
+  await page.keyboard.press('KeyX')
+  await page.waitForSelector('.scene-menu[role="menu"]')
+  await page.locator('.scene-menu[role="menu"] [role="menuitem"]', { hasText: 'Faces' }).first().click()
+  await page.waitForTimeout(400)
+  const holed = await counts()
+  check('a face is taken off the cube to build against', holed.faces === 5, JSON.stringify(holed))
+
+  // Poly build from the T bar, on one of the border edges the hole left.
+  await page.locator('.scene-toolbar button[aria-label="Poly build"]').click({ force: true })
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Digit2')
+  await page.waitForTimeout(200)
+  const open = await meshOf()
+  let borderAt = null
+  for (let edge = 0; edge < open.edges.length && !borderAt; edge += 1) {
+    const users = open.faces.filter((loop) => {
+      const [a, b] = open.edges[edge]
+      const at = loop.indexOf(a)
+      return at >= 0 && (loop[(at + 1) % loop.length] === b || loop[(at + loop.length - 1) % loop.length] === b)
+    })
+    if (users.length !== 1) continue
+    const [a, b] = open.edges[edge]
+    const middle = [0, 1, 2].map((axis) => (open.vertices[a * 3 + axis] + open.vertices[b * 3 + axis]) / 2)
+    const where = await helpers.project3d(middle)
+    if (!where) continue
+    const found = await page.evaluate(([x, y]) => window.__paramrigScene.pickElements(x, y, 8), where.local)
+    if (found.edge) borderAt = where
+  }
+  check('a border edge is under the pointer', borderAt !== null)
+  await page.mouse.move(borderAt.x, borderAt.y)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(500)
+  const built = await counts()
+  check('poly build pulls a face out of it', built.faces === holed.faces + 1 && built.vertices === holed.vertices + 1,
+    `${JSON.stringify(holed)} → ${JSON.stringify(built)} — ${await page.locator('.scene-status__message').textContent()}`)
+  await shot('scene-cut-poly-build.png')
+
+  await page.keyboard.press('Control+KeyZ')
+  await page.waitForTimeout(400)
+  check('and one undo takes it back', (await counts()).faces === holed.faces, JSON.stringify(await counts()))
+
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))
 })

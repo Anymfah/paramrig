@@ -4,20 +4,26 @@ import { ModalOperator, type ModalOperatorDeps } from '@/scene/modalOperator'
 import { modalSpecFor } from '@/scene/modalSpecs'
 import { elementWorldPoints, loopCutPolylines } from '@/scene/toolPreview'
 import { SceneToolPath } from '@/scene/SceneToolPath'
+import { SceneLabels } from '@/scene/SceneLabels'
+import { editLabels, type EditLabel } from '@/scene/editLabels'
+import { LabelChannel, type ViewportLabel } from '@/scene/viewport/labels'
 import { ToolPathChannel } from '@/scene/viewport/toolPath'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
 import { elementTargets } from '@/scene/transform/elements'
+import { TOOL_OPERATORS } from '@/scene/toolOperators'
+import { localFromWorldPoint, worldMatrix } from '@/scene/objects'
 import { orientationBasis } from '@/scene/transform/orientation'
 import { worldTransform } from '@/scene/objects'
 import { SceneHud } from '@/scene/SceneHud'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
-import type { SceneDocument, SceneObject, SceneSelection, SceneTool, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneMarquee } from '@/scene/SceneMarquee'
 import { ViewNavigator } from '@/scene/viewport/navigation'
+import type { OperatorParams } from '@/scene/operators'
 import type { ElementHits, SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import { cameraBasis, type AxisView } from '@/scene/viewport/view'
 
@@ -64,8 +70,10 @@ export function SceneStage({
   onSelect,
   onRegionSelect,
   operatorBridge,
+  toolOptions,
   onPickElement,
   onRegionElements,
+  onPolyBuild,
   onPlaceCursor,
   onContextMenu,
   onAnnotate,
@@ -90,10 +98,14 @@ export function SceneStage({
   onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
   /** How a pointer-driven operator previews, keeps and abandons its work. */
   operatorBridge: OperatorBridge
+  /** What each tool is set to in the sidebar; a gesture starts from its own operator's entry. */
+  toolOptions: Record<string, OperatorParams>
   /** A click on an element in edit mode, with what the modifiers asked for. */
   onPickElement: (hit: ElementPick | null, mode: ElementPickMode) => void
   /** What a box, lasso or circle covered in edit mode, per object being edited. */
   onRegionElements: (found: Map<string, ElementRegion>, mode: 'new' | 'extend' | 'subtract') => void
+  /** A press with the poly build tool: what was under the pointer, and what to do with it. */
+  onPolyBuild: (request: { action: string; kind: string; slot: number; point: Vec3 }) => void
   /** Where a ⇧ right-click asks for the 3D cursor to go. */
   onPlaceCursor: (position: Vec3, normal: Vec3 | null) => void
   /** A plain right-click asks for the object menu at that point. */
@@ -152,11 +164,14 @@ export function SceneStage({
   const hud = useMemo(() => new HudChannel(), [])
   const marquee = useMemo(() => new MarqueeChannel(), [])
   const toolPath = useMemo(() => new ToolPathChannel(), [])
+  const labels = useMemo(() => new LabelChannel(), [])
+  /** The measurement overlays in world space; the projection is redone whenever the view moves. */
+  const worldLabels = useRef<EditLabel[]>([])
   const region = useRef<{ kind: MarqueeKind; points: Array<[number, number]>; mode: 'new' | 'extend' | 'subtract'; radius: number } | null>(null)
   const onRegionRef = useRef(onRegionSelect)
   onRegionRef.current = onRegionSelect
-  const onElementRef = useRef({ onPickElement, onRegionElements })
-  onElementRef.current = { onPickElement, onRegionElements }
+  const onElementRef = useRef({ onPickElement, onRegionElements, onPolyBuild })
+  onElementRef.current = { onPickElement, onRegionElements, onPolyBuild }
   const hoveredElement = useRef<ElementPick | null>(null)
   const onPlaceRef = useRef(onPlaceCursor)
   onPlaceRef.current = onPlaceCursor
@@ -169,6 +184,8 @@ export function SceneStage({
   onDrawRef.current = { onAnnotate, onMeasure }
   const bridge = useRef(operatorBridge)
   bridge.current = operatorBridge
+  const toolSettings = useRef(toolOptions)
+  toolSettings.current = toolOptions
   const modalOp = useRef<ModalOperator | null>(null)
   if (!modalOp.current) {
     modalOp.current = new ModalOperator({
@@ -219,6 +236,21 @@ export function SceneStage({
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
 
+  /** The world-space labels put where the camera currently sees them. */
+  const projectLabels = useCallback(() => {
+    const instance = viewport.current
+    if (!instance || worldLabels.current.length === 0) {
+      labels.clear()
+      return
+    }
+    const placed: ViewportLabel[] = []
+    for (const label of worldLabels.current) {
+      const at = instance.project(label.at)
+      if (at) placed.push({ x: at[0], y: at[1], text: label.text, kind: label.kind })
+    }
+    labels.set(placed)
+  }, [labels])
+
   const pump = useCallback(() => {
     if (frameHandle.current !== null) return
     frameHandle.current = requestAnimationFrame(() => {
@@ -255,6 +287,7 @@ export function SceneStage({
       apply: (view) => {
         instance.setView(view)
         instance.invalidate()
+        projectLabels()
         pump()
       },
       commit: (view) => onViewRef.current(view),
@@ -335,7 +368,9 @@ export function SceneStage({
           ...(extra?.edge !== undefined ? { edge: extra.edge } : {}),
         })
         if (!spec) return false
-        return modalOp.current?.begin(spec, surface.current, {}) ?? false
+        const settings = toolSettings.current[operatorId]
+        const withSettings = settings ? { ...spec, fixed: { ...spec.fixed, ...settings } } : spec
+        return modalOp.current?.begin(withSettings, surface.current, {}) ?? false
       },
       hoveredElement: () => hoveredElement.current,
       knifeActive: () => knife.current !== null,
@@ -347,7 +382,7 @@ export function SceneStage({
           : { x: pointer.current[0], y: pointer.current[1] }
       },
     })
-  }, [preferences, pump, toolPath])
+  }, [preferences, projectLabels, pump, toolPath])
 
   useEffect(() => {
     navigator.current?.setPreferences(preferences)
@@ -402,6 +437,17 @@ export function SceneStage({
   }, [])
 
   const threshold = () => (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches ? COARSE_DRAG_THRESHOLD_PX : DRAG_THRESHOLD_PX)
+
+
+  /*
+   * What is measured changes with the document and the selection; where it is drawn changes with
+   * the camera. The two are kept apart so that an orbit reprojects a handful of points instead of
+   * measuring the mesh again sixty times a second.
+   */
+  useEffect(() => {
+    worldLabels.current = editLabels(document, selection, document.view.overlays, document.units)
+    projectLabels()
+  }, [document, selection, projectLabels])
 
   /**
    * React attaches its wheel handler passively at the root, where `preventDefault` is refused and
@@ -549,6 +595,25 @@ export function SceneStage({
               return
             }
           }
+          /*
+           * Poly build acts on the press: what is under the pointer says which verb, the modifiers
+           * say which of the four, and the point is where the view plane is — which is where a
+           * person building a surface expects a new vertex to land.
+           */
+          if (event.button === 0 && latestDocument.current.view.mode === 'edit' && latestDocument.current.view.tool === 'poly-build') {
+            event.preventDefault()
+            press.current = null
+            const hits = instance.pickElements(x, y, ELEMENT_RADIUS)
+            const under = hits.vertex ?? hits.edge ?? hits.face
+            const kind = hits.vertex ? 'vertex' : hits.edge ? 'edge' : hits.face ? 'face' : 'none'
+            const object = latestDocument.current.objects.find((candidate) => candidate.id === (under?.objectId ?? latestSelection.current.activeObjectId))
+            const world = instance.pointOnViewPlane(x, y)
+            // The operator works in the mesh's own space; only the viewport can do the conversion.
+            const local = object ? localFromWorldPoint(worldMatrix(latestDocument.current, object), world) : world
+            const action = event.shiftKey ? 'delete' : event.ctrlKey ? 'dissolve' : kind === 'none' ? 'add' : 'extend'
+            onElementRef.current.onPolyBuild({ action, kind, slot: under?.slot ?? -1, point: local })
+            return
+          }
           // The knife places a point where the pointer is, snapped to whatever it is over.
           if (event.button === 0 && latestDocument.current.view.mode === 'edit' && latestDocument.current.view.tool === 'knife') {
             event.preventDefault()
@@ -608,7 +673,14 @@ export function SceneStage({
                 Number(params.factor ?? 0),
               ),
             })
-            if (spec) modalOp.current?.begin(spec, surface.current, { pointer: [waiting.x, waiting.y], fromDrag: true })
+            const settings = toolSettings.current[waiting.tool]
+            if (spec) {
+              modalOp.current?.begin(
+                settings ? { ...spec, fixed: { ...spec.fixed, ...settings } } : spec,
+                surface.current,
+                { pointer: [waiting.x, waiting.y], fromDrag: true },
+              )
+            }
           }
           const gesture = modalOp.current
           if (gesture?.running) {
@@ -855,6 +927,7 @@ export function SceneStage({
       />
       <SceneMarquee channel={marquee} />
       <SceneToolPath channel={toolPath} />
+      <SceneLabels channel={labels} />
       <SceneHud channel={hud} />
       {children}
     </SceneViewportHost>
@@ -880,26 +953,6 @@ export type OperatorBridge = {
 export type ElementPick = { objectId: string; kind: SelectMode; slot: number }
 export type ElementPickMode = 'new' | 'extend' | 'toggle' | 'loop' | 'ring' | 'path'
 export type ElementRegion = { vertices: Set<number>; edges: Set<number>; faces: Set<number> }
-
-/**
- * Which operator each edit-mode tool is the interactive half of.
- *
- * The tools that draw a line rather than drag a number — the knife, bisect, poly build — are not
- * here: they take the press themselves, because a click of theirs places a point rather than
- * opening a gesture.
- */
-const TOOL_OPERATORS: Partial<Record<SceneTool, string>> = {
-  extrude: 'mesh.extrudeRegion',
-  inset: 'mesh.inset',
-  bevel: 'mesh.bevelEdges',
-  'loop-cut': 'mesh.loopCut',
-  spin: 'mesh.spin',
-  smooth: 'mesh.smoothVertices',
-  'edge-slide': 'mesh.edgeSlide',
-  'shrink-fatten': 'mesh.shrinkFatten',
-  shear: 'mesh.shear',
-  rip: 'mesh.rip',
-}
 
 /** How far from the pointer an element is still worth picking, in CSS pixels. Blender's is ten. */
 const ELEMENT_RADIUS = 10

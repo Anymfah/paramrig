@@ -264,6 +264,11 @@ export type OverlayFlags = {
   bevelWeight: boolean
   /** The dot at the middle of a face, which face mode draws whether or not this is on. */
   faceCentres: boolean
+  /** Blender's measurement overlays: the ids, and the size of what is selected. */
+  indices: boolean
+  edgeLength: boolean
+  edgeAngle: boolean
+  faceArea: boolean
 }
 
 export type GizmoFlags = {

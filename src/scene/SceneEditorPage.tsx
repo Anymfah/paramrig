@@ -46,6 +46,8 @@ import '@/scene/operators'
 import { operatorAvailability } from '@/scene/operators'
 import { isModalOperator } from '@/scene/modalSpecs'
 import { MESH_MENU, POINTER_MENUS, type MenuIds } from '@/scene/editMenus'
+import { TOOL_OPERATORS } from '@/scene/toolOperators'
+import type { OperatorParams } from '@/scene/operators'
 import { SceneTouchBar } from '@/scene/SceneTouchBar'
 import { FALLOFF_KINDS, type FalloffKind } from '@/scene/transform/proportional'
 
@@ -109,6 +111,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
   /** A menu of operators opened at the pointer: ⌃F, M, X and the rest of Blender's edit menus. */
   const [pointerMenu, setPointerMenu] = useState<{ title: string; ids: MenuIds; at: { x: number; y: number } } | null>(null)
+  /**
+   * What each tool is set to, kept per operator. Blender's Tool tab does the same: the numbers in
+   * it are what the *next* drag starts from, so a bevel set to three segments stays at three.
+   */
+  const [toolOptions, setToolOptions] = useState<Record<string, OperatorParams>>({})
   /** A menu of plain choices — the falloff curves — which are settings rather than operators. */
   const [choiceMenu, setChoiceMenu] = useState<{
     title: string
@@ -591,6 +598,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onSelect={selectObjects}
               onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
               operatorBridge={operatorBridge}
+              toolOptions={toolOptions}
               onPickElement={(hit, pickMode) => {
                 if (!hit) {
                   run('mesh.selectPick', { slot: -1, extend: pickMode !== 'new' })
@@ -608,6 +616,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                   toggle: pickMode === 'toggle',
                 })
               }}
+              onPolyBuild={(request) => run('mesh.polyBuild', request)}
               onRegionElements={(found, selectMode) => run('mesh.selectRegion', {
                 mode: selectMode,
                 found: [...found].map(([objectId, entry]) => ({
@@ -666,6 +675,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onUpdateObject={editor.updateObject}
               onEditDocument={editor.editDocument}
               onView={patchView}
+              toolParams={toolOptions[TOOL_OPERATORS[document.view.tool] ?? ''] ?? {}}
+              onToolParams={(params) => {
+                const id = TOOL_OPERATORS[document.view.tool]
+                if (id) setToolOptions((current) => ({ ...current, [id]: params }))
+              }}
               onGestureStart={() => editor.beginGesture('Change value')}
               onGestureEnd={() => editor.endGesture('Change value')}
             />

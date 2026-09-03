@@ -194,6 +194,10 @@ const EDIT_OVERLAYS: Array<{ key: OverlaySwitch; label: string }> = [
   { key: 'sharp', label: 'Sharp edges' },
   { key: 'creases', label: 'Creases' },
   { key: 'bevelWeight', label: 'Bevel weight' },
+  { key: 'indices', label: 'Indices' },
+  { key: 'edgeLength', label: 'Edge length' },
+  { key: 'edgeAngle', label: 'Edge angle' },
+  { key: 'faceArea', label: 'Face area' },
 ]
 
 const GIZMOS: Array<{ key: keyof GizmoFlags; label: string }> = [

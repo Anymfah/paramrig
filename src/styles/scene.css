@@ -494,6 +494,34 @@
   stroke-width: 2;
 }
 
+/*
+ * The measurement overlays. Each number is placed by a transform rather than by `left`/`top`, so
+ * moving them all as the camera turns is one paint rather than a layout a frame; and each is
+ * translated by minus half its own size so that it sits *on* its element rather than beside it.
+ */
+.scene-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+.scene-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--scene-viewport) 72%, transparent);
+  color: var(--scene-measure);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  white-space: nowrap;
+  translate: -50% -50%;
+}
+.scene-label[data-kind='index'] { color: var(--scene-gizmo-view); }
+.scene-label[data-kind='area'] { color: var(--scene-face-selected); }
+
 /* ------------------------------------------------------- the stage's layout */
 
 /*

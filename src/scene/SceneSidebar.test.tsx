@@ -65,6 +65,8 @@ function setup(overrides: Partial<SidebarProps> = {}) {
     onUpdateObject: vi.fn(),
     onEditDocument: vi.fn(),
     onView: vi.fn(),
+    toolParams: {},
+    onToolParams: vi.fn(),
     onGestureStart: vi.fn(),
     onGestureEnd: vi.fn(),
     ...overrides,

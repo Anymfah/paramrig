@@ -1,4 +1,4 @@
-import { run } from './lib.mjs'
+import { headerControl, run } from './lib.mjs'
 
 /**
  * Chantier A3: Tab, the three element kinds, and what a click reaches.
@@ -201,6 +201,39 @@ export default run('scene-edit-mode', async ({ page, check, log, helpers, shot }
   await page.waitForTimeout(400)
   const back = await page.locator('.scene-status__stats').textContent()
   check('and the element selection is still there on the way back', back.includes('Verts 26/26'), back)
+
+  /* --------------------------------------------------- the measurement overlays */
+
+  await page.keyboard.press('Digit3')
+  await page.waitForTimeout(200)
+  const faceCentre = await helpers.project3d([0, 0, 1])
+  await page.mouse.click(faceCentre.x, faceCentre.y)
+  await page.waitForTimeout(300)
+  const overlaysMenu = await headerControl(page, 'button[aria-label="Overlays"]')
+  await overlaysMenu.dispatchEvent('click')
+  await page.waitForSelector('[role="menu"][aria-label="Overlays"]')
+  await page.locator('[role="menu"][aria-label="Overlays"] [role^="menuitem"]', { hasText: 'Face area' })
+    .first()
+    .dispatchEvent('click')
+  await page.waitForTimeout(400)
+  const measured = await page.locator('.scene-label').allTextContents()
+  check('Face area writes the size of the selected face over it', measured.length === 1 && /m²$/.test(measured[0] ?? ''),
+    measured.join(', '))
+  await shot('scene-edit-mode-measured.png')
+
+  // The number follows the camera without being measured again.
+  const before = await page.locator('.scene-label').first().getAttribute('style')
+  await page.keyboard.press('Numpad1')
+  await page.waitForTimeout(600)
+  const after = await page.locator('.scene-label').first().getAttribute('style')
+  check('and it follows the camera when the view changes', before !== after, `${before} → ${after}`)
+
+  await page.keyboard.press('Digit1')
+  await page.keyboard.down('Alt')
+  await page.keyboard.press('KeyA')
+  await page.keyboard.up('Alt')
+  await page.waitForTimeout(300)
+  check('and goes when nothing is selected', (await page.locator('.scene-label').count()) === 0)
 
   /* ---------------------------------------------------------------- overlays */
 
