@@ -41,6 +41,7 @@
 .scene-hints__keymap {
   display: inline-flex;
   align-items: center;
+  flex: none;
   gap: var(--space-1);
   min-block-size: var(--hit-target);
   padding-inline: var(--space-2);
@@ -84,3 +85,10 @@
 @media (forced-colors: active) {
   .scene-hints__keymap:focus-visible { outline-color: CanvasText; }
 }
+
+/*
+ * The tooltip wraps its child in an anchor, and it is the anchor the status bar's row lays out.
+ * Without this the anchor shrinks and the hint reads "Press F1 for the", which is worse than not
+ * offering it: the one thing in the row that must never be clipped is the way to the keys.
+ */
+.scene-status__hints .tt__anchor:has(.scene-hints__keymap) { flex: none; }

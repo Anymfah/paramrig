@@ -123,11 +123,20 @@ export function IconFaceMode({ className }: SceneIconProps) {
 
 /* ----------------------------------------------------------------- object kinds */
 
+/*
+ * A quad with its diagonal and its four corners: a polygon mesh, and nothing else. The first
+ * drawing was Blender's triangle-inside-a-triangle, which at sixteen pixels in a list of rows is
+ * indistinguishable from a warning sign.
+ */
 export function IconMeshObject({ className }: SceneIconProps) {
   return (
     <Glyph className={className}>
-      <path d="M8 2.25 14.25 13.5H1.75z" />
-      <path d="M4.9 7.9h6.2L8 13.5z" />
+      <path d="M3 3.5h10v9H3z" />
+      <path d="M3 12.5 13 3.5" />
+      <Dot cx={3} cy={3.5} r={1.15} />
+      <Dot cx={13} cy={3.5} r={1.15} />
+      <Dot cx={3} cy={12.5} r={1.15} />
+      <Dot cx={13} cy={12.5} r={1.15} />
     </Glyph>
   )
 }

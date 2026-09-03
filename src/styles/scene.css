@@ -247,6 +247,13 @@
   font: inherit;
   font-size: 11px;
 }
+/* The keys and the gestures are two lists; a rule between them says so. */
+.scene-status__rule {
+  width: 1px;
+  height: 14px;
+  background: var(--rule);
+}
+
 .scene-status__message {
   flex: 1;
   min-width: 0;

@@ -26,6 +26,7 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
     <div className="scene-status" role="status">
       <div className="scene-status__hints">
         {keymapHint}
+        {keymapHint ? <span className="scene-status__rule" aria-hidden="true" /> : null}
         {hints.map(([label, gesture]) => (
           <span key={label} className="scene-status__hint">
             <kbd>{gesture}</kbd>
