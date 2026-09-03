@@ -42,7 +42,19 @@
 /* The spacer is what pushes the view's own settings to the right, as Blender does. */
 .scene-header__spacer { flex: 1 1 auto; min-width: var(--space-2); }
 
-.scene-header__mode { min-width: 8.5rem; }
+/*
+ * The header is a flex row that runs out of width before its contents do, and it hides what does
+ * not fit. A control that shrinks below its label therefore does not get smaller — it draws that
+ * label straight over its neighbour, which is how "Object mode" came to overlap "View".
+ *
+ * So nothing here shrinks: not the triggers, and not the tooltip anchors several of them sit in,
+ * which are `inline-flex` and would otherwise be squeezed while the button inside them keeps its
+ * size. The header folds its right-hand controls into a menu when it is short of room, which is a
+ * decision rather than an accident.
+ */
+.scene-header > .tt__anchor,
+.scene-header .scene-header__group > .tt__anchor,
+.scene-header .scene-menu__trigger { flex: none; }
 .scene-header__mode .scene-menu__name { flex: 1; text-align: start; }
 
 .scene-header__button {
