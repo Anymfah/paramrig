@@ -1,0 +1,211 @@
+/* The scene editor's sidebar. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * Two panels that float over the viewport: the N sidebar on the right, and “Adjust last operation”
+ * in the bottom left corner.
+ *
+ * Both are positioned against the viewport, which is the nearest positioned ancestor, and neither
+ * takes part in the layout: opening a panel must never resize the viewport, or the model would move
+ * out from under the pointer at the very moment a person reached for it. That is the whole reason
+ * these are absolute rather than a column of the grid.
+ */
+
+.scene-sidebar {
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-end: var(--space-2);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  inline-size: 17rem;
+  max-inline-size: calc(100% - var(--space-4));
+  max-block-size: calc(100% - var(--space-4));
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  background: var(--scene-panel);
+  border: 1px solid var(--scene-panel-border);
+  border-radius: var(--scene-panel-radius);
+  box-shadow: var(--elevation-overlay);
+  /* The viewport shows through, so the panel is legible over a dark model and a light one alike. */
+  backdrop-filter: blur(12px);
+}
+
+.scene-sidebar__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) 0;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.scene-sidebar__tabs {
+  display: flex;
+  flex: 1;
+  min-inline-size: 0;
+  gap: var(--space-1);
+}
+
+.scene-sidebar__tab {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: var(--hit-target);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--duration-instant) var(--ease-out), background var(--duration-instant) var(--ease-out);
+}
+.scene-sidebar__tab:hover { color: var(--text-primary); background: var(--accent-subtle); }
+.scene-sidebar__tab:active { transform: scale(0.98); }
+.scene-sidebar__tab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-sidebar__tab[aria-selected='true'] {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  box-shadow: inset 0 -2px 0 0 var(--text-primary);
+}
+
+.scene-sidebar__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-block-size: 0;
+  padding: var(--space-3);
+}
+.scene-sidebar__body:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.scene-sidebar__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-sidebar__note,
+.scene-sidebar__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-wrap: pretty;
+}
+
+.scene-sidebar__vector,
+.scene-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.scene-sidebar__legend {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+}
+
+/* The padlock sits in the row rather than beside the group, so an axis is locked where it is read. */
+.scene-sidebar__row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+.scene-sidebar__row .control { flex: 1; min-inline-size: 0; }
+.scene-sidebar__lock {
+  inline-size: var(--hit-target);
+  block-size: var(--hit-target);
+  color: var(--text-muted);
+}
+.scene-sidebar__lock[aria-pressed='true'] { color: var(--scene-selected); }
+.scene-sidebar__lock-spacer {
+  inline-size: var(--hit-target);
+  block-size: var(--hit-target);
+}
+
+/* ------------------------------------------- adjust last operation (F9) */
+
+.scene-redo {
+  position: absolute;
+  inset-block-end: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-overlay);
+  inline-size: 15rem;
+  max-inline-size: calc(100% - var(--space-4));
+  max-block-size: calc(100% - var(--space-4));
+  display: flex;
+  /* It grows upwards from its corner: the summary line stays put while the fields appear above it. */
+  flex-direction: column-reverse;
+  overflow: hidden auto;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  background: var(--scene-panel);
+  border: 1px solid var(--scene-panel-border);
+  border-radius: var(--scene-panel-radius);
+  box-shadow: var(--elevation-overlay);
+  backdrop-filter: blur(12px);
+}
+
+.scene-redo__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-block-size: var(--hit-target);
+  padding: 0 var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.scene-redo__summary:hover { background: var(--accent-subtle); }
+.scene-redo__summary:active { transform: scale(0.99); }
+.scene-redo__summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-redo__summary svg { flex: none; color: var(--text-muted); }
+.scene-redo__label {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-redo__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border-hairline);
+}
+.scene-redo__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* A coarse pointer gets the larger target everywhere something is pressed. */
+@media (pointer: coarse) {
+  .scene-sidebar__tab,
+  .scene-redo__summary { min-block-size: var(--hit-target-coarse); }
+  .scene-sidebar__lock,
+  .scene-sidebar__lock-spacer {
+    inline-size: var(--hit-target-coarse);
+    block-size: var(--hit-target-coarse);
+  }
+}
+
+/*
+ * Narrow: the toolbar takes the foot of the viewport as a row, so the sidebar becomes a sheet
+ * across the head of it and the redo panel steps up over that row rather than under it.
+ */
+@media (max-width: 64em) {
+  .scene-sidebar {
+    inset: var(--space-2) var(--space-2) auto;
+    inline-size: auto;
+    max-block-size: 55%;
+  }
+  .scene-redo {
+    inset-block-end: calc(var(--space-2) + var(--scene-toolbar-strip, 3.5rem) + var(--space-2));
+  }
+}

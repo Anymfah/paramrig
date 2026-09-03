@@ -1,0 +1,107 @@
+/* The scene editor's toolbar. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * The T bar: a strip of icons over the left of the viewport.
+ *
+ * It floats, so opening it never resizes the viewport, and it stays one icon wide, so it hides as
+ * little of the model as a toolbar can. The two hit sizes arrive as custom properties set by the
+ * component from `src/ui/hit-target.ts`, so the stylesheet and the constants cannot disagree about
+ * how big a tool is.
+ */
+
+.scene-toolbar {
+  --scene-toolbar-strip: 3.5rem;
+  position: absolute;
+  inset-block-start: var(--space-2);
+  inset-inline-start: var(--space-2);
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  max-block-size: calc(100% - var(--space-4));
+  overflow: hidden auto;
+  background: var(--scene-panel);
+  border: 1px solid var(--scene-panel-border);
+  border-radius: var(--scene-panel-radius);
+  box-shadow: var(--elevation-overlay);
+  backdrop-filter: blur(12px);
+}
+
+.scene-toolbar__group { position: relative; display: flex; }
+
+.scene-toolbar__tool,
+.scene-toolbar__close {
+  inline-size: var(--scene-tool-size, 32px);
+  block-size: var(--scene-tool-size, 32px);
+  border-radius: var(--radius-sm);
+}
+.scene-toolbar__tool[aria-pressed='true'] {
+  color: var(--text-on-accent);
+  background: var(--scene-selected);
+}
+.scene-toolbar__tool[aria-pressed='true']:hover { background: var(--scene-active); }
+.scene-toolbar__close { color: var(--text-muted); }
+
+/* The corner mark that says this button is a group with more behind it. */
+.scene-toolbar__more {
+  position: absolute;
+  inset-block-end: 3px;
+  inset-inline-end: 3px;
+  inline-size: 0;
+  block-size: 0;
+  border-block-end: 4px solid currentColor;
+  border-inline-start: 4px solid transparent;
+  opacity: 0.6;
+}
+
+.scene-toolbar__menu {
+  position: fixed;
+  min-inline-size: 11rem;
+}
+.scene-toolbar__menu .menu__item {
+  inline-size: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: start;
+}
+.scene-toolbar__menu .menu__item:hover { background: var(--accent-subtle); }
+.scene-toolbar__menu .menu__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-toolbar__menu .menu__item[aria-checked='true'] { color: var(--text-primary); background: var(--accent-subtle); }
+.scene-toolbar__menu-label { flex: 1; min-inline-size: 0; }
+.scene-toolbar__menu kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+}
+
+@media (pointer: coarse) {
+  .scene-toolbar__tool,
+  .scene-toolbar__close {
+    inline-size: var(--scene-tool-size-coarse, 44px);
+    block-size: var(--scene-tool-size-coarse, 44px);
+  }
+}
+
+/*
+ * Narrow: the column becomes a row along the foot of the viewport, scrolling sideways rather than
+ * wrapping — a wrapped toolbar changes height as tools are added, and a bar that changes height
+ * moves the model. `sidebar.css` reads the row's height to park the redo panel above it.
+ */
+@media (max-width: 64em) {
+  .scene-toolbar {
+    inset: auto var(--space-2) var(--space-2);
+    flex-direction: row;
+    align-items: center;
+    block-size: var(--scene-toolbar-strip);
+    max-block-size: none;
+    overflow: auto hidden;
+  }
+  .scene-toolbar__group { flex: none; }
+  .scene-toolbar__close { margin-inline-start: auto; }
+}

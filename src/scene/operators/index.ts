@@ -7,6 +7,7 @@
  * this once.
  */
 import '@/scene/operators/select'
+import '@/scene/operators/transform'
 import '@/scene/operators/view'
 
 export { getOperator, listOperators, operatorAvailability, operatorCount, runOperator } from '@/scene/operators/registry'

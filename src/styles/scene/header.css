@@ -1,0 +1,95 @@
+/* The scene editor's header. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * One strip, one line, never wrapping. The header is the only chrome that sits above the viewport
+ * rather than over it, so anything that made it grow would take height from the 3D view; and a
+ * control that moved to a second row between two frames of a gesture would be worse than one that
+ * has to be opened. Under 60em the right-hand half is therefore folded into a single popover by
+ * `SceneHeader` itself, and the rules below only have to keep the strip tidy on either side of
+ * that width.
+ */
+
+.scene-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: nowrap;
+  min-height: 40px;
+  padding: var(--space-1) var(--space-2);
+  overflow: hidden;
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.scene-header__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+/* A hairline between groups reads as a division without spending the width a rule would. */
+.scene-header__group + .scene-header__group {
+  margin-inline-start: var(--space-2);
+  padding-inline-start: var(--space-2);
+  border-inline-start: 1px solid var(--border-hairline);
+}
+
+.scene-header__menus { gap: 0; }
+
+/* The spacer is what pushes the view's own settings to the right, as Blender does. */
+.scene-header__spacer { flex: 1 1 auto; min-width: var(--space-2); }
+
+.scene-header__mode { min-width: 8.5rem; }
+.scene-header__mode .scene-menu__name { flex: 1; text-align: start; }
+
+.scene-header__button {
+  width: var(--hit-target);
+  height: var(--hit-target);
+  flex: none;
+}
+.scene-header__button[aria-pressed='true'] {
+  background: var(--accent-subtle);
+  color: var(--text-primary);
+}
+.scene-header__glyph { width: 16px; height: 16px; }
+
+/* A toggle and the menu of what it toggles between, joined so they read as one control. */
+.scene-header__pair {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+.scene-header__pair .scene-header__button { border-radius: var(--radius-sm) 0 0 var(--radius-sm); }
+.scene-header__pair .scene-menu__trigger { border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+
+/* The folded right-hand half. Placed by script, so it only needs its shape here. */
+.scene-header__settings {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: min(22rem, calc(100vw - 16px));
+  padding: var(--space-2);
+  opacity: 0;
+}
+.scene-header__settings[data-placed] { opacity: 1; }
+.scene-header__settings:focus-visible { outline: none; }
+.scene-header__settings .scene-header__group {
+  flex-wrap: wrap;
+  margin-inline-start: 0;
+  padding-inline-start: 0;
+  border-inline-start: 0;
+}
+.scene-header__settings .scene-header__group + .scene-header__group {
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid var(--border-hairline);
+}
+
+@media (pointer: coarse) {
+  .scene-header { min-height: calc(var(--hit-target-coarse) + var(--space-2)); }
+  .scene-header__button { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
+}

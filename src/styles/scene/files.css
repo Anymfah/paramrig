@@ -1,0 +1,193 @@
+/* The scene editor's files. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * The left end of the header: the mark, the scene's name, the autosave badge and the File menu.
+ * The name is the part that gives way when the window narrows — it shrinks and ellipsises rather
+ * than pushing the badge and the menu off the end of the bar.
+ */
+.scene-file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.scene-file__mark {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-secondary);
+}
+.scene-file__mark svg {
+  width: 16px;
+  height: 14px;
+}
+
+.scene-file__name {
+  flex: 0 1 auto;
+  width: 16ch;
+  min-width: 6ch;
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+.scene-file__name:hover,
+.scene-file__name:focus { background: var(--surface-inset); }
+.scene-file__name:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.scene-file__button {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  min-height: 32px;
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.scene-file__button:hover { background: var(--surface-inset); color: var(--text-primary); }
+.scene-file__button:active { transform: scale(0.98); }
+.scene-file__button[data-state='open'] { background: var(--surface-inset); color: var(--text-primary); }
+.scene-file__button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.scene-file__button:disabled { color: var(--text-muted); cursor: not-allowed; }
+
+.scene-file-menu { min-width: 16rem; }
+.scene-file-menu__item { padding-inline: var(--space-2); }
+.scene-file-menu__glyph {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+.scene-file-menu__label { flex: 1; }
+.scene-file-menu__detail,
+.scene-file-menu__item kbd {
+  margin-inline-start: var(--space-4);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.scene-file-menu__path {
+  margin: 0;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.scene-file-menu__name {
+  color: var(--text-secondary);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* --- The versions dialog: what is kept, and the list of what has been kept so far --- */
+
+.scene-versions {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: var(--space-4);
+  gap: var(--space-3);
+}
+.scene-versions__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 500;
+}
+.scene-versions__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.scene-versions__save {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.scene-versions__field {
+  flex: 1;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+.scene-versions__field::placeholder { color: var(--text-muted); }
+.scene-versions__field:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.scene-versions__empty {
+  margin: 0;
+  padding: var(--space-4) 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+.scene-versions__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scene-versions__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-xs);
+}
+.scene-versions__item + .scene-versions__item { border-top: 1px solid var(--border-hairline); }
+.scene-versions__item:hover { background: var(--surface-inset); }
+.scene-versions__label {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.scene-versions__name {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-versions__stamp {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.scene-versions__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* A finger needs more room than a pointer, and this cluster is the first thing a thumb reaches. */
+@media (pointer: coarse) {
+  .scene-file__name,
+  .scene-file__button,
+  .scene-versions__field { min-height: 44px; }
+  .scene-versions__item { min-height: 52px; }
+}

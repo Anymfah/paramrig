@@ -51,8 +51,15 @@ export function WorkspacePage() {
     return () => document.removeEventListener('visibilitychange', onVis)
   }, [session])
 
+  // A document editor has its own history and its own ⌘Z. This page's listener is registered
+  // before a lazily-loaded editor's, so without this guard it would answer first and swallow the
+  // key on its way to the editor that actually owns the document.
+  const editing = !!manifest
+    && (manifest.renderer === 'vector' || manifest.renderer === 'scene')
+    && (mode === 'edit' || manifest.parameters.length === 0)
+
   useEffect(() => {
-    if (!session) return
+    if (!session || editing) return
     const onKey = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey
       if (event.defaultPrevented || !meta || !['z', 'y'].includes(event.key.toLowerCase())) return
@@ -67,7 +74,7 @@ export function WorkspacePage() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [session])
+  }, [editing, session])
 
   if (!manifest) {
     return <UnknownRig />

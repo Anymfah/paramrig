@@ -1,0 +1,225 @@
+/* The scene editor's menu. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * Two menus live here, and they are the same list drawn two ways. The dropdown is the one the
+ * header and the right-click open; the pie is the one a key opens at the pointer. Both wear the
+ * application's `menu` and `popover` skins so that a menu in the 3D editor cannot drift away from
+ * every other menu in ParamRig, and both are placed by script, which is why every rule below is
+ * about size, rhythm and state rather than about where the panel sits.
+ */
+
+/* --------------------------------------------------------- the trigger */
+
+.scene-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--hit-target);
+  min-width: var(--hit-target);
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 1;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.scene-menu__trigger--icon,
+.scene-menu__trigger--chevron { padding: 0 var(--space-1); }
+.scene-menu__trigger--chevron { min-width: 20px; }
+.scene-menu__trigger:hover { background: var(--surface-overlay); color: var(--text-primary); }
+.scene-menu__trigger:active { background: var(--surface-inset); }
+.scene-menu__trigger[data-open] {
+  background: var(--accent-subtle);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+.scene-menu__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
+.scene-menu__trigger .scene-menu__glyph { width: 16px; height: 16px; flex: none; }
+.scene-menu__chevron { width: 12px; height: 12px; flex: none; opacity: 0.7; }
+.scene-menu__name { white-space: nowrap; }
+
+/* --------------------------------------------------------- the dropdown */
+
+.scene-menu {
+  position: fixed;
+  /* Transparent rather than hidden until it has been measured: a hidden panel cannot take the
+     focus, and the focus lands on the highlighted entry in the same frame. */
+  opacity: 0;
+  pointer-events: none;
+}
+.scene-menu[data-placed] { opacity: 1; pointer-events: auto; }
+.scene-menu:focus-visible { outline: none; }
+
+.scene-menu__item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+}
+.scene-menu__item .scene-menu__label { flex: 1; white-space: nowrap; }
+.scene-menu__glyph { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+.scene-menu__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  color: var(--accent);
+}
+.scene-menu__mark svg { width: 14px; height: 14px; }
+.scene-menu__key {
+  flex: none;
+  margin-inline-start: var(--space-4);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.scene-menu__item[data-highlighted] .scene-menu__key { color: var(--text-secondary); }
+
+/* What was typed, shown the way Blender shows it: above the list it has cut down. */
+.scene-menu__filter {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--border-hairline);
+  font-size: var(--text-xs);
+}
+.scene-menu__filter-name {
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.scene-menu__filter-text { color: var(--text-primary); }
+.scene-menu__filter-text::after {
+  content: '';
+  display: inline-block;
+  width: 1px;
+  height: 0.9em;
+  margin-inline-start: 1px;
+  vertical-align: text-bottom;
+  background: var(--accent);
+}
+
+.scene-menu__empty {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* ---------------------------------------------------------- the pie menu */
+
+/*
+ * The field catches the pointer over the whole window: a pie is chosen by direction, so the
+ * movement that chooses it must be seen wherever it happens, not only over the ring.
+ */
+.scene-pie__field {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-popover);
+  touch-action: none;
+}
+
+.scene-pie {
+  position: absolute;
+  width: 0;
+  height: 0;
+  animation: scene-pie-in var(--duration-fast) var(--ease-out);
+}
+
+.scene-pie__centre {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: var(--space-1) var(--space-3);
+  translate: -50% -50%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-overlay);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.scene-pie__title {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.scene-pie__reading {
+  min-height: 1em;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.scene-pie__item {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--hit-target);
+  max-width: 11rem;
+  padding: 0 var(--space-3);
+  translate: -50% -50%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-overlay);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+.scene-pie__item:hover { color: var(--text-primary); border-color: var(--border-strong); }
+.scene-pie__item[data-highlighted] {
+  background: var(--accent-subtle);
+  border-color: var(--focus-ring);
+  color: var(--text-primary);
+}
+.scene-pie__item[data-disabled] { color: var(--text-muted); cursor: not-allowed; }
+.scene-pie__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.scene-pie__glyph { width: 16px; height: 16px; flex: none; }
+.scene-pie__label { overflow: hidden; text-overflow: ellipsis; }
+
+@keyframes scene-pie-in {
+  from { opacity: 0; scale: 0.9; }
+  to { opacity: 1; scale: 1; }
+}
+
+@media (pointer: coarse) {
+  .scene-menu__trigger { height: var(--hit-target-coarse); min-width: var(--hit-target-coarse); }
+  .scene-menu__item { min-height: var(--hit-target-coarse); }
+  .scene-pie__item { min-height: var(--hit-target-coarse); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-menu__trigger,
+  .scene-pie__item { transition: none; }
+  .scene-pie { animation: none; }
+}

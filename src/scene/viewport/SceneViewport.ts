@@ -25,6 +25,8 @@ import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createPickBuffer, createPickMaterial, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
 import { createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
+import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
+import { createTransformOverlay, type TransformOverlay } from '@/scene/viewport/transformOverlay'
 import { readSceneTheme, splitAlpha, type SceneTheme } from '@/scene/viewport/theme'
 import { cameraBasis, cameraPosition, fovFromFocalLength, isAxisView, orthoHeight } from '@/scene/viewport/view'
 import { createLines, type ViewportLines } from '@/scene/viewport/lines'
@@ -107,6 +109,11 @@ export class SceneViewport {
   private outline: OutlinePass | null = null
   private picking: PickBuffer | null = null
   private cursor: (Glyph & { setScreenScale: (scale: number) => void }) | null = null
+  private transform: TransformOverlay | null = null
+  private gizmos: GizmoSet | null = null
+  private gizmoKinds: GizmoKind[] = []
+  private gizmoPivot: Vec3 = [0, 0, 0]
+  private gizmoBasis = { x: [1, 0, 0] as Vec3, y: [0, 1, 0] as Vec3, z: [0, 0, 1] as Vec3 }
   private views = new Map<string, ObjectView>()
   private observer: ResizeObserver | null = null
   private frameHandle: number | null = null
@@ -176,6 +183,12 @@ export class SceneViewport {
     this.picking = createPickBuffer()
     this.cursor = cursorGlyph({ ring: splitAlpha(this.theme.cursorRing).colour, ground: splitAlpha(this.theme.cursorGround).colour })
     this.overlayRoot.add(this.cursor.object)
+    this.transform = createTransformOverlay(this.theme)
+    this.overlayRoot.add(this.transform.group)
+    this.gizmos = createGizmos(this.theme)
+    this.overlayRoot.add(this.gizmos.group)
+    this.picking.scene.add(this.gizmos.pickGroup)
+    this.gizmos.setVisible(false)
 
     this.canvas.addEventListener('webglcontextlost', this.onContextLost)
     this.canvas.addEventListener('webglcontextrestored', this.onContextRestored)
@@ -210,6 +223,8 @@ export class SceneViewport {
     for (const view of this.views.values()) this.disposeObjectView(view)
     this.views.clear()
     this.cursor?.dispose()
+    this.transform?.dispose()
+    this.gizmos?.dispose()
     this.grid?.dispose()
     this.outline?.dispose()
     this.picking?.dispose()
@@ -274,6 +289,8 @@ export class SceneViewport {
       for (const line of view.glyph.lines) setLineResolution(line.material, buffer.width, buffer.height)
     }
     if (this.cursor) for (const line of this.cursor.lines) setLineResolution(line.material, buffer.width, buffer.height)
+    this.transform?.setResolution(buffer.width, buffer.height)
+    this.gizmos?.setResolution(buffer.width, buffer.height)
   }
 
   get pixelSize(): { width: number; height: number } {
@@ -303,11 +320,68 @@ export class SceneViewport {
       this.cursor.lines[2]?.setColour(splitAlpha(this.theme.cursorGround).colour)
       this.cursor.lines[3]?.setColour(splitAlpha(this.theme.cursorRing).colour)
     }
+    this.transform?.setTheme(this.theme)
+    this.gizmos?.setTheme(this.theme)
     for (const view of this.views.values()) {
       const object = this.document?.objects.find((entry) => entry.id === view.id)
       if (object) this.paintGlyph(view, object)
     }
     this.invalidate()
+  }
+
+  /** The lines a modal transform draws: its constraint axes and its measuring line. */
+  get transformOverlay(): TransformOverlay | null {
+    return this.transform
+  }
+
+  /**
+   * Where the gizmos are and which of them are shown. Called when the selection or the header
+   * changes, not every frame — but their screen size is recomputed on every frame, in `render`.
+   */
+  setGizmos(kinds: GizmoKind[], pivot: Vec3, basis: { x: Vec3; y: Vec3; z: Vec3 }): void {
+    this.gizmoKinds = kinds
+    this.gizmoPivot = pivot
+    this.gizmoBasis = basis
+    this.gizmos?.setVisible(kinds.length > 0)
+    this.placeGizmos()
+    this.invalidate()
+  }
+
+  setGizmoHover(id: number | null): void {
+    this.gizmos?.setHover(id)
+    this.invalidate()
+  }
+
+  gizmoHandle(pick: PickResult): GizmoHandle | null {
+    return this.gizmos?.handleOf(pick) ?? null
+  }
+
+  /** The world size of a screen pixel at a point, which is what keeps a gizmo one size. */
+  unitsPerPixelAt(point: Vec3): number {
+    const view = this.view
+    if (!view) return 1
+    const forward = cameraBasis(view.yaw, view.pitch).forward
+    const camera: Vec3 = [
+      view.target[0] - forward[0] * view.distance,
+      view.target[1] - forward[1] * view.distance,
+      view.target[2] - forward[2] * view.distance,
+    ]
+    const depth = view.projection === 'orthographic'
+      ? view.distance
+      : Math.max(1e-4, (point[0] - camera[0]) * forward[0] + (point[1] - camera[1]) * forward[1] + (point[2] - camera[2]) * forward[2])
+    const fov = (fovFromFocalLength(view.focalLength) * Math.PI) / 180
+    return (2 * Math.tan(fov / 2) * depth) / Math.max(1, this.size.height)
+  }
+
+  private placeGizmos(): void {
+    if (!this.gizmos || this.gizmoKinds.length === 0) return
+    this.gizmos.update({
+      kinds: this.gizmoKinds,
+      pivot: this.gizmoPivot,
+      basis: this.gizmoBasis,
+      unitsPerPixel: this.unitsPerPixelAt(this.gizmoPivot),
+      camera: this.camera,
+    })
   }
 
   setDocument(document: SceneDocument): void {
@@ -616,6 +690,7 @@ export class SceneViewport {
     const started = typeof performance !== 'undefined' ? performance.now() : 0
     const camera = this.camera
     this.keepScreenSizedThingsSized(camera)
+    this.placeGizmos()
 
     renderer.autoClear = false
     renderer.clear(true, true, false)

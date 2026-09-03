@@ -1,0 +1,250 @@
+/* The scene editor's outliner. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * The outliner is a tree in a 220-pixel column, so everything here fights for width: the indent is
+ * six pixels a level rather than the sixteen a wide panel could afford, the name is the only part
+ * allowed to grow, and the three switches at the end keep their own fixed strip so a long name can
+ * never push them off the edge. The row is one element — the drop target, the focus target and the
+ * drag handle are all the same box — which is why the switches inside it stop their own clicks.
+ */
+
+.scene-outliner {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.scene-outliner__search {
+  flex: none;
+  min-height: 32px;
+  margin: var(--space-2) var(--space-3) 0;
+  padding: 0 var(--space-2);
+}
+.scene-outliner__search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.scene-outliner__search input:focus { outline: none; }
+.scene-outliner__search:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+.scene-outliner .nav-rail__body { padding: var(--space-2) var(--space-2) var(--space-3); }
+.scene-outliner__context { display: block; }
+.scene-outliner__tree {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------------- rows */
+
+.scene-outliner__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 28px;
+  padding-inline-end: var(--space-1);
+  padding-inline-start: calc(var(--depth, 0) * 6px);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: default;
+  touch-action: none;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+.scene-outliner__row:hover { color: var(--text-primary); background: var(--surface-overlay); }
+.scene-outliner__row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+/* The selection is the viewport's amber, so that one selection reads the same in both places. */
+.scene-outliner__row[data-selected] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--scene-selected) 18%, transparent);
+}
+.scene-outliner__row[data-active] {
+  box-shadow: inset 2px 0 0 var(--scene-active);
+}
+.scene-outliner__row[data-kind='collection'] { color: var(--text-primary); font-weight: 500; }
+.scene-outliner__row[data-kind='data'] { color: var(--text-muted); font-size: var(--text-xs); }
+.scene-outliner__row[data-hidden] { opacity: 0.55; }
+.scene-outliner__row[data-dragging] { opacity: 0.45; }
+
+.scene-outliner__row[data-drop-edge='before']::after,
+.scene-outliner__row[data-drop-edge='after']::after {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.scene-outliner__row[data-drop-edge='before']::after { top: -1px; }
+.scene-outliner__row[data-drop-edge='after']::after { bottom: -1px; }
+.scene-outliner__row[data-drop-edge='into'] { box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* ---------------------------------------------------------- row contents */
+
+.scene-outliner__chevron {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+}
+.scene-outliner__chevron svg {
+  width: 10px;
+  height: 10px;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+.scene-outliner__row[aria-expanded='false'] .scene-outliner__chevron svg { transform: rotate(-90deg); }
+.scene-outliner__chevron:hover,
+.scene-outliner__chevron:focus-visible { color: var(--text-primary); background: var(--accent-subtle); }
+.scene-outliner__chevron:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-outliner__chevron:active { transform: scale(0.94); }
+.scene-outliner__chevron--spacer { pointer-events: none; }
+
+.scene-outliner__row > .tt__anchor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+.scene-outliner__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+.scene-outliner__label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-outliner__icon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+.scene-outliner__row[data-selected] .scene-outliner__icon { color: var(--scene-selected); }
+
+.scene-outliner__edit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+.scene-outliner__edit input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: 1px var(--space-1);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font: inherit;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.scene-outliner__edit input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+/* --------------------------------------------------------- the switches */
+
+.scene-outliner__toggles {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+.scene-outliner__toggle {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.scene-outliner__toggle svg { width: 13px; height: 13px; }
+/* A switch that is off stays visible: it is the reason the row looks the way it does. */
+.scene-outliner__toggle[data-active],
+.scene-outliner__row:hover .scene-outliner__toggle,
+.scene-outliner__row:focus-within .scene-outliner__toggle,
+.scene-outliner__row[data-selected] .scene-outliner__toggle { opacity: 1; }
+.scene-outliner__toggle[data-active] { color: var(--text-secondary); }
+.scene-outliner__toggle:hover,
+.scene-outliner__toggle:focus-visible { color: var(--text-primary); background: var(--accent-subtle); }
+.scene-outliner__toggle:focus-visible { opacity: 1; outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-outliner__toggle:active { transform: scale(0.94); }
+.scene-outliner__toggle:disabled { opacity: 0.4; }
+
+.scene-outliner__box {
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 2px;
+  background: transparent;
+}
+.scene-outliner__exclude { opacity: 1; }
+.scene-outliner__exclude[aria-checked='true'] .scene-outliner__box {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* --------------------------------------------------------- what is said */
+
+.scene-outliner__empty {
+  margin: var(--space-3) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+.scene-outliner__drop-hint {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-outliner__drop-hint:empty { display: none; }
+
+/* ------------------------------------------------------------- compact */
+
+.scene-outliner[data-compact] .scene-outliner__row {
+  justify-content: center;
+  padding-inline-start: 0;
+}
+.scene-outliner[data-compact] .scene-outliner__label > span { display: none; }
+.scene-outliner[data-compact] .scene-outliner__label { flex: none; justify-content: center; }
+.scene-outliner[data-compact] .scene-outliner__row > .tt__anchor { flex: none; }
+
+@media (pointer: coarse) {
+  .scene-outliner__row { min-height: 44px; }
+  .scene-outliner__toggle { width: 32px; height: 44px; }
+  .scene-outliner__chevron { width: 24px; height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-outliner__row,
+  .scene-outliner__toggle,
+  .scene-outliner__chevron svg { transition: none; }
+  .scene-outliner__toggle:active,
+  .scene-outliner__chevron:active { transform: none; }
+}

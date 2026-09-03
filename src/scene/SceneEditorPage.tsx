@@ -5,12 +5,21 @@ import { StatusMessage } from '@/ui/StatusMessage'
 import { LiveRegion } from '@/editor/LiveRegion'
 import { getSceneDocument, sceneCounts } from '@/scene/document'
 import { resolveKey } from '@/scene/keymap'
+import { getOperator } from '@/scene/operators/registry'
+import type { TransformMode } from '@/scene/transform/session'
 import { DEFAULT_PREFERENCES, readScenePrefs, type SceneMode } from '@/scene/prefs'
 import { SceneStage, type SceneStageHandle } from '@/scene/SceneStage'
 import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/operators'
+
+/** Which modal session each modal operator opens. */
+const MODAL_MODES: Record<string, TransformMode> = {
+  'transform.move': 'move',
+  'transform.rotate': 'rotate',
+  'transform.scale': 'scale',
+}
 
 /**
  * The 3D editor: the outliner on the left, the viewport in the middle, the properties on the right.
@@ -48,6 +57,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
 
   const onKeyDown = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || !document) return
+    // A running modal tool gets first refusal on every key: X constrains an axis, it does not delete.
+    if (stage.current?.handleKey(event)) {
+      event.preventDefault()
+      return
+    }
     const target = event.target
     const typing = target instanceof HTMLElement
       && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
@@ -61,6 +75,21 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     const action = binding.action
 
     if (action.kind === 'operator') {
+      // A modal operator is a viewport session, not a pure function of the document.
+      const operator = getOperator(action.id)
+      if (operator?.modal) {
+        event.preventDefault()
+        const mode = MODAL_MODES[action.id]
+        const context = editor.operatorContext()
+        const available = context ? operator.available(context) : 'There is no scene open.'
+        if (!mode || available !== true) {
+          editor.setMessage(available === true ? 'That tool is not available here.' : available)
+          return
+        }
+        if (!stage.current?.startTransform(mode)) editor.setMessage('Select something to move first.')
+        else setAnnouncement(binding.label)
+        return
+      }
       event.preventDefault()
       const aspect = viewportAspect()
       runOperator(action.id, { ...(action.params as Record<string, never> | undefined), ...(aspect ? { aspect } : {}) })
@@ -83,7 +112,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       default:
         return
     }
-  }, [document, preferences, redo, runOperator, undo, viewportAspect])
+  }, [document, editor, preferences, redo, runOperator, undo, viewportAspect])
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
@@ -128,6 +157,10 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           preferences={preferences}
           onView={setView}
           onSelect={(ids, active) => selectObjects(ids, active)}
+          onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
+          onGestureStart={(label) => editor.beginGesture(label)}
+          onGestureEnd={(label) => editor.endGesture(label)}
+          onGestureCancel={() => editor.cancelGesture()}
           onReady={(handle) => { stage.current = handle }}
           createViewport={createViewport}
           options={viewportOptions}

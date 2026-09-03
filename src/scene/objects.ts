@@ -117,3 +117,44 @@ export function paddedBounds(box: Box, minimum = 0.5): Box {
     max: [box.max[0] + pad[0], box.max[1] + pad[1], box.max[2] + pad[2]],
   }
 }
+
+/** A matrix read back as the transform a document stores, in the Euler order it asks for. */
+export function decomposeMatrix(matrix: Matrix4, order: Transform['rotationMode'] = 'XYZ'): Transform {
+  const position = new Vector3()
+  const quaternion = new Quaternion()
+  const scale = new Vector3()
+  matrix.decompose(position, quaternion, scale)
+  const euler = new Euler().setFromQuaternion(quaternion, order === 'quaternion' ? 'XYZ' : order)
+  return {
+    position: [position.x, position.y, position.z],
+    rotation: [(euler.x * 180) / Math.PI, (euler.y * 180) / Math.PI, (euler.z * 180) / Math.PI],
+    scale: [scale.x, scale.y, scale.z],
+    rotationMode: order,
+  }
+}
+
+/** An object's transform in world space, which is what a transform session works in. */
+export function worldTransform(document: SceneDocument, object: SceneObject): Transform {
+  const order = object.transform.rotationMode === 'quaternion' ? 'XYZ' : object.transform.rotationMode ?? 'XYZ'
+  return decomposeMatrix(worldMatrix(document, object), order)
+}
+
+/**
+ * The other direction: a world transform written back as the object's own, with whatever its
+ * parents do taken out again. A child moved in world space must end up where the pointer left it,
+ * not where its parent's rotation would have taken it.
+ */
+export function localFromWorld(document: SceneDocument, object: SceneObject, world: Transform): Transform {
+  const order = object.transform.rotationMode === 'quaternion' ? 'XYZ' : object.transform.rotationMode ?? 'XYZ'
+  const matrix = localMatrix({ transform: world })
+  if (!object.parentId) {
+    // The origin offset is part of the object's own matrix, so it has to come back out.
+    if (object.origin) matrix.multiply(new Matrix4().makeTranslation(object.origin[0], object.origin[1], object.origin[2]))
+    return decomposeMatrix(matrix, order)
+  }
+  const parent = document.objects.find((entry) => entry.id === object.parentId)
+  if (!parent) return decomposeMatrix(matrix, order)
+  matrix.premultiply(worldMatrix(document, parent).invert())
+  if (object.origin) matrix.multiply(new Matrix4().makeTranslation(object.origin[0], object.origin[1], object.origin[2]))
+  return decomposeMatrix(matrix, order)
+}

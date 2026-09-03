@@ -221,10 +221,40 @@ export function pageHelpers(page) {
   })
 
   /**
+   * Replaces parts of the stored scene and reloads, for states too tedious to build by hand.
+   * `build` is serialised into the page: it is given the stored document and returns the patch.
+   */
+  const seedScene = async (build) => {
+    await page.evaluate((source) => {
+      const key = 'paramrig.scene-documents.v1'
+      const all = JSON.parse(localStorage.getItem(key) ?? '{}')
+      const id = location.pathname.split('/r/')[1]
+      // eslint-disable-next-line no-new-func
+      all[id] = { ...all[id], ...new Function(`return (${source})`)()(all[id]) }
+      localStorage.setItem(key, JSON.stringify(all))
+    }, build.toString())
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.waitForSelector('.scene-stage')
+    await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+    await page.locator('#main').focus()
+  }
+
+  /** Where a world point lands on screen, in page coordinates as well as the canvas's own. */
+  const project3d = async (point) => {
+    const local = await page.evaluate((value) => window.__paramrigScene.project(value), point)
+    if (!local) return null
+    const box = await page.locator('.scene-viewport').boundingBox()
+    return { x: box.x + local[0], y: box.y + local[1], local }
+  }
+
+  /** What the id buffer says is under a point, in canvas coordinates. */
+  const pick = (x, y) => page.evaluate(([px, py]) => window.__paramrigScene.pick(px, py), [x, y])
+
+  /**
    * The canvas's box on screen, for placing a pointer without guessing. It is the canvas and not
    * the stage: `project()` answers in canvas coordinates, and the stage also holds the status bar.
    */
   const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, viewportBox, captureExport, openPaint, closePaint, openSection }
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, openPaint, closePaint, openSection }
 }

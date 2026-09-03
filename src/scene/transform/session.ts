@@ -126,6 +126,11 @@ export type BeginTransformOptions = {
   units?: SceneUnits
   /** Whether the header's snap toggle is on; holding control does the same while it is held. */
   snap?: boolean
+  /**
+   * A constraint the session starts with rather than waiting for a key. Dragging a gizmo's X arrow
+   * is the same session as pressing G then X, and this is how the arrow says so.
+   */
+  constraint?: AxisConstraint
 }
 
 export type TransformSession = {
@@ -193,7 +198,7 @@ export function beginTransform(options: BeginTransformOptions): TransformSession
     start: [options.pointer[0], options.pointer[1]],
     pointer: [options.pointer[0], options.pointer[1]],
     effective: [options.pointer[0], options.pointer[1]],
-    constraint: NO_CONSTRAINT,
+    constraint: options.constraint ?? NO_CONSTRAINT,
     numeric: EMPTY_NUMERIC_ENTRY,
     modifiers: { shift: false, ctrl: false, alt: false },
     snap: options.snap ?? false,
