@@ -271,6 +271,34 @@ export function shapePoint(element: VectorElement, normalized: Point): Point {
 
 const SIDES_PER_PIXEL = 14
 
+/**
+ * How far an arc's own handles keep from the rim and from the centre, in screen pixels. The two
+ * ends of a slice and the middle of its frame are exactly where the selection puts its corner
+ * handles — the ends of the arc are the corners of what it draws — so they step aside far enough
+ * for a corner to stay grabbable, and no further.
+ */
+const ARC_HANDLE_CLEARANCE_PX = 18
+
+function halfExtent(box: Pick<VectorElement, 'width' | 'height'>): number {
+  return Math.min(box.width, box.height) / 2
+}
+
+/** The radius the end handles of an arc sit at, as a fraction of the box: just inside the rim. */
+export function arcHandleRadius(box: Pick<VectorElement, 'width' | 'height'>, zoom: number): number {
+  const half = halfExtent(box)
+  if (half <= 0) return 0.5
+  // Never more than a third of the way in, so a small shape does not fold its handles to the middle.
+  const inset = Math.min(half / 3, ARC_HANDLE_CLEARANCE_PX / Math.max(1e-6, zoom))
+  return 0.5 * (1 - inset / half)
+}
+
+/** The smallest ring the inner-radius handle shows, so it never sits on the centre of the box. */
+export function arcRatioFloor(box: Pick<VectorElement, 'width' | 'height'>, zoom: number): number {
+  const half = halfExtent(box)
+  if (half <= 0) return 0
+  return Math.min(0.5, ARC_HANDLE_CLEARANCE_PX / Math.max(1e-6, zoom) / half)
+}
+
 /** What dragging a shape handle does to the element it belongs to. */
 export function shapePatch(element: VectorElement, handle: ShapeHandle, at: Point, start: Point, zoom: number): Partial<VectorElement> {
   if (handle === 'polygon-sides') {
@@ -283,7 +311,12 @@ export function shapePatch(element: VectorElement, handle: ShapeHandle, at: Poin
     return { innerRatio: Math.min(1, Math.max(0, polygonRadius(element, at, polygonFill(sides)))) }
   }
   const arc = arcProperties(element)
-  if (handle === 'arc-ratio') return { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: Math.min(0.99, shapeRadius(element, at)) }
+  if (handle === 'arc-ratio') {
+    // Dragging back into the floor the handle rests on closes the hole rather than leaving a sliver.
+    const radius = shapeRadius(element, at)
+    const floor = arcRatioFloor(element, zoom)
+    return { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: radius <= floor ? 0 : Math.min(0.99, radius) }
+  }
   const angle = shapeAngle(element, at)
   if (handle === 'arc-start') {
     const end = arc.start + arc.sweep

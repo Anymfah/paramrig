@@ -7,7 +7,7 @@ import { boxForInk, inkBox, inkSelectionBounds } from '@/vector/ink'
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
-import { anglePoint, arcProperties, DEFAULT_INNER_RATIO, DEFAULT_SIDES, fillPoint, isFullEllipse, localPoint, polygonFill, polygonPathData, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type PolygonProperties, type ShapeHandle } from '@/vector/shapes'
+import { anglePoint, arcHandleRadius, arcProperties, arcRatioFloor, DEFAULT_INNER_RATIO, DEFAULT_SIDES, fillPoint, isFullEllipse, localPoint, polygonFill, polygonPathData, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type PolygonProperties, type ShapeHandle } from '@/vector/shapes'
 import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, CORNERS, maxNodeRadius, nodeCorner, nodeRadiusAt, nodeRadiusHandle, type CornerName, type NodeCorner } from '@/vector/corners'
 import { addStop, dropStop, gradientCircle, gradientLine, linearPatch, moveStop, pointAt, projectOnLine, radialPatch, STOP_DROP_PX } from '@/vector/gradient'
 import { fillsOf, fillsPatch } from '@/vector/paints'
@@ -2052,8 +2052,10 @@ export function VectorCanvas({
   const selectionAnchor = selectionAnchorFor({
     tool,
     busy: busy || panning || !!transformStatus || !!textEditId || !!cropId || dropping,
+    // In node mode the bar hangs off the whole path, not off the nodes: anchored on a node it lands
+    // on top of the very points it is there to act on.
     bounds: tool === 'node'
-      ? (editing ? nodeBox ?? nodeBoundsOf(editingWorld!, selectedNodeIds) ?? selectionBounds([editing]) : null)
+      ? (editing ? inkSelectionBounds([editing]) : null)
       : (selectedLeaves.length ? inkSelectionBounds(selectedLeaves) : null),
     viewport: viewportSize,
     zoom,
@@ -2767,9 +2769,12 @@ function ShapeHandles({ element, zoom, coarse, onStart }: {
   } else {
     const arc = arcProperties(element)
     const full = isFullEllipse(arc)
-    if (!full) spots.push({ handle: 'arc-start', at: shapePoint(element, anglePoint(arc.start)), label: 'Arc start' })
-    spots.push({ handle: 'arc-end', at: shapePoint(element, anglePoint(full ? 0 : arc.start + arc.sweep)), label: full ? 'Open an arc' : 'Arc end' })
-    spots.push({ handle: 'arc-ratio', at: shapePoint(element, anglePoint(full ? 90 : arc.start + arc.sweep / 2, arc.ratio * 0.5)), label: 'Inner radius' })
+    // Set in from the rim and out from the centre, where the selection's own corners already are.
+    const rim = arcHandleRadius(element, zoom)
+    const ring = Math.max(arc.ratio, arcRatioFloor(element, zoom)) * 0.5
+    if (!full) spots.push({ handle: 'arc-start', at: shapePoint(element, anglePoint(arc.start, rim)), label: 'Arc start' })
+    spots.push({ handle: 'arc-end', at: shapePoint(element, anglePoint(full ? 0 : arc.start + arc.sweep, rim)), label: full ? 'Open an arc' : 'Arc end' })
+    spots.push({ handle: 'arc-ratio', at: shapePoint(element, anglePoint(full ? 90 : arc.start + arc.sweep / 2, ring)), label: 'Inner radius' })
   }
   return (
     <g className="vector-shape-handles" aria-hidden="true">

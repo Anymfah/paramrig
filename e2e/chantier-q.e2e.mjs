@@ -138,8 +138,38 @@ export default run('chantier-q', async ({ page, check, log, helpers }) => {
   const framed = (await helpers.doc()).elements[0]
   check('and the frame behind it is still the whole ellipse', Math.round(framed.width) === 300 && Math.round(framed.height) === 300, JSON.stringify([framed.width, framed.height]))
 
-  // Dragging a handle resizes the slice; the frame follows. The north-east corner is the one the
-  // arc's own handles do not sit on: the other three land on the ellipse's ends and its centre.
+  // The arc's own handles step in from the rim and out from the centre, so no corner is buried.
+  const gaps = await page.evaluate(() => {
+    const middle = (node) => { const r = node.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 } }
+    const shapes = [...document.querySelectorAll('[data-vector-shape-handle]')].map(middle)
+    return [...document.querySelectorAll('[data-vector-handle]')]
+      .filter((node) => ['nw', 'ne', 'se', 'sw'].includes(node.dataset.vectorHandle))
+      .map((node) => {
+        const at = middle(node)
+        return Math.round(Math.min(...shapes.map((spot) => Math.hypot(spot.x - at.x, spot.y - at.y))))
+      })
+  })
+  log(`MEASURE corner to nearest arc handle: ${JSON.stringify(gaps)}`)
+  check('every corner of the box clears the arc handles', gaps.length === 4 && gaps.every((gap) => gap >= 17), JSON.stringify(gaps))
+
+  for (const corner of ['nw', 'ne', 'se', 'sw']) {
+    const before = (await helpers.doc()).elements[0]
+    const spot = await page.evaluate((name) => {
+      const r = document.querySelector(`[data-vector-handle="${name}"]`).getBoundingClientRect()
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+    }, corner)
+    await page.mouse.move(spot.x, spot.y)
+    await page.mouse.down()
+    await page.mouse.move(spot.x + (corner.includes('w') ? -30 : 30), spot.y + (corner.includes('n') ? -30 : 30), { steps: 6 })
+    await page.mouse.up()
+    await page.waitForTimeout(250)
+    const after = (await helpers.doc()).elements[0]
+    check(`the ${corner} corner resizes rather than reshaping the arc`,
+      after.width > before.width && Math.round(after.arcSweep ?? 360) === 90 && (after.arcRatio ?? 0) === 0,
+      JSON.stringify({ width: [Math.round(before.width), Math.round(after.width)], sweep: after.arcSweep, ratio: after.arcRatio ?? 0 }))
+  }
+
+  // Dragging a handle resizes the slice; the frame follows.
   const handle = await page.evaluate(() => {
     const node = document.querySelector('[data-vector-handle="ne"]')
     const box = node.getBoundingClientRect()
@@ -156,8 +186,7 @@ export default run('chantier-q', async ({ page, check, log, helpers }) => {
     return { dx: Math.abs(box.width - ink.width), dy: Math.abs(box.height - ink.height), width: Math.round(box.width) }
   })
   log(`MEASURE arc after a resize: ${JSON.stringify(resized)}`)
-  check('dragging a corner resizes the slice itself', resized.width > arcFit.quarter + 40, `${arcFit.quarter} → ${resized.width}`)
-  check('and the box still hugs it afterwards', resized.dx <= 1 && resized.dy <= 1, JSON.stringify(resized))
+  check('the box still hugs the slice after a resize', resized.dx <= 1 && resized.dy <= 1, JSON.stringify(resized))
 
   // A slice turns about the centre of the ellipse it was cut from; the box keeps hugging it.
   const rotation = page.locator('[data-section="position"]').getByLabel('Rotation', { exact: true })
@@ -176,6 +205,34 @@ export default run('chantier-q', async ({ page, check, log, helpers }) => {
   await page.waitForTimeout(200)
   await sweepMarquee(page, helpers)
   check('a marquee over the empty part of the frame catches nothing', await page.locator('[data-vector-element][data-selected]').count() === 0)
+
+  // 7. The node bar hangs off the path, not off the points it acts on.
+  await helpers.newDocument()
+  await page.click('[aria-label="Shape tools"]')
+  await page.waitForSelector('.vector-tool-menu__content')
+  await page.click('.vector-tool-menu__item:has-text("Star")')
+  await page.waitForTimeout(250)
+  await helpers.drag({ x: 180, y: 140 }, { x: 620, y: 540 })
+  await page.waitForTimeout(300)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(400)
+  await page.click('.vector-nodes__point >> nth=0', { force: true })
+  await page.waitForTimeout(400)
+  const nodeBar = await page.evaluate(() => {
+    const bar = document.querySelector('.vector-selection-bar').getBoundingClientRect()
+    const shape = document.querySelector('[data-vector-element] path').getBoundingClientRect()
+    const covered = [...document.querySelectorAll('.vector-nodes__point')]
+      .filter((node) => {
+        const r = node.getBoundingClientRect()
+        return r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top
+      })
+    return { covered: covered.length, above: bar.bottom <= shape.top + 1 }
+  })
+  log(`MEASURE node bar: ${JSON.stringify(nodeBar)}`)
+  check('the node bar covers no node', nodeBar.covered === 0, JSON.stringify(nodeBar))
+  check('and hangs off the path instead', nodeBar.above, JSON.stringify(nodeBar))
+
 })
 
 /** Drags a marquee across the corner of the page the arc's frame covers but its ink does not. */
