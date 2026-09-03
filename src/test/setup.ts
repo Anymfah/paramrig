@@ -29,3 +29,21 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   }
   globalThis.ResizeObserver = TestResizeObserver
 }
+
+/*
+ * jsdom has no `matchMedia`. Anything that asks the platform a question — a reduced-motion
+ * preference, a coarse pointer, a colour scheme — gets "no" from this, which is the answer that
+ * makes a test render the ordinary case rather than the exception.
+ */
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  window.matchMedia = ((query: string) => ({
+    media: query,
+    matches: false,
+    onchange: null,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia
+}
