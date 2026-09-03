@@ -56,3 +56,36 @@ export function loopCutPolylines(
   const matrix = worldMatrix(document, object)
   return loopCutPreview(mesh, edge, cuts, factor).map((line) => line.map((point) => worldPointOf(matrix, point)))
 }
+
+/**
+ * Where an element is in the world, for the tools that snap to one.
+ *
+ * A knife point that lands on a vertex has to land on it exactly, or the cut mints a second vertex
+ * a hair away from the first and the mesh gains a crack nobody can see and everybody trips over.
+ * So the snap works from the geometry rather than from the pixels: the id buffer says which element
+ * the pointer is over, and this says where that element actually is.
+ */
+export function elementWorldPoints(
+  document: SceneDocument,
+  objectId: string,
+  kind: 'vertex' | 'edge' | 'face',
+  slot: number,
+): Vec3[] {
+  const object = document.objects.find((candidate) => candidate.id === objectId)
+  if (!object || object.data.kind !== 'mesh') return []
+  const data = meshOf(document, object)
+  if (!data) return []
+  const matrix = worldMatrix(document, object)
+  const at = (corner: number): Vec3 => worldPointOf(matrix, [
+    data.vertices[corner * 3] ?? 0,
+    data.vertices[corner * 3 + 1] ?? 0,
+    data.vertices[corner * 3 + 2] ?? 0,
+  ])
+  if (kind === 'vertex') return slot >= 0 && slot < data.vertexIds.length ? [at(slot)] : []
+  if (kind === 'edge') {
+    const edge = data.edges[slot]
+    return edge ? [at(edge[0]), at(edge[1])] : []
+  }
+  const loop = data.faces[slot]
+  return loop ? loop.map(at) : []
+}

@@ -188,6 +188,58 @@ export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
   await page.waitForTimeout(250)
   check('Escape leaves the grid uncut', (await counts()).faces === heavy.faces, JSON.stringify(await counts()))
 
+  /* ---------------------------------------------------------------- the knife */
+
+  await helpers.newScene()
+  await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
+  await page.mouse.click(centre.x, centre.y)
+  await page.waitForTimeout(250)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(400)
+  await page.keyboard.press('Digit3')
+  await page.keyboard.press('KeyA')
+  await page.waitForTimeout(250)
+  const beforeKnife = await counts()
+
+  await page.keyboard.press('KeyK')
+  await page.waitForTimeout(250)
+  // The stored copy is written on a debounce; the bar is the live answer.
+  const pressed = await page.locator('.scene-toolbar button[aria-pressed="true"]').first().getAttribute('aria-label')
+  check('K picks up the knife', (pressed ?? '').includes('Knife'), pressed ?? 'nothing pressed')
+
+  // A line straight across the cube, placed with two clicks and confirmed with Enter.
+  await page.mouse.move(centre.x - 200, centre.y)
+  await page.waitForTimeout(120)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+  await page.mouse.move(centre.x, centre.y)
+  await page.waitForTimeout(150)
+  const drawnKnife = await page.locator('.scene-tool-path[data-kind="knife"] .scene-tool-path__line').count()
+  check('the line follows the pointer from the point that was placed', drawnKnife > 0, `${drawnKnife} lines`)
+  const snapping = await page.locator('.scene-tool-path__snap').count()
+  check('and it shows where it would snap when it is over the mesh', snapping > 0, `${snapping} markers`)
+  await shot('scene-cut-knife.png')
+  await page.mouse.move(centre.x + 200, centre.y)
+  await page.waitForTimeout(120)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(200)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(500)
+  const knifed = await counts()
+  check('Enter cuts along the line, and the faces it crossed are split',
+    knifed.faces > beforeKnife.faces && knifed.vertices > beforeKnife.vertices,
+    JSON.stringify({ before: beforeKnife, after: knifed }))
+  check('and the line is gone from the screen', (await page.locator('.scene-tool-path__line').count()) === 0)
+
+  await page.keyboard.press('Control+KeyZ')
+  await page.waitForTimeout(400)
+  check('one undo takes the whole cut back', JSON.stringify(await counts()) === JSON.stringify(beforeKnife),
+    JSON.stringify(await counts()))
+
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))
 })

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Euler, Matrix4 } from 'three'
 import { ModalOperator, type ModalOperatorDeps } from '@/scene/modalOperator'
 import { modalSpecFor } from '@/scene/modalSpecs'
-import { loopCutPolylines } from '@/scene/toolPreview'
+import { elementWorldPoints, loopCutPolylines } from '@/scene/toolPreview'
 import { SceneToolPath } from '@/scene/SceneToolPath'
 import { ToolPathChannel } from '@/scene/viewport/toolPath'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
@@ -49,6 +49,8 @@ export type SceneStageHandle = {
   beginModalOperator: (operatorId: string, extra?: { edge?: number }) => boolean
   /** The element the pointer is over in edit mode, for the tools that need one. */
   hoveredElement: () => ElementPick | null
+  /** Whether the knife has a line on the go, which the status bar says. */
+  knifeActive: () => boolean
   transformActive: () => boolean
   /** Where the pointer last was, in page coordinates, for a menu that opens at it. */
   pointerPage: () => { x: number; y: number }
@@ -159,6 +161,8 @@ export function SceneStage({
   const onMenuRef = useRef(onContextMenu)
   onMenuRef.current = onContextMenu
   const sketch = useRef<{ tool: 'annotate' | 'measure'; points: Vec3[] } | null>(null)
+  /** The knife's line so far, in world metres, and where it would put the next point. */
+  const knife = useRef<{ points: Vec3[]; next: Vec3 | null } | null>(null)
   const onDrawRef = useRef({ onAnnotate, onMeasure })
   onDrawRef.current = { onAnnotate, onMeasure }
   const bridge = useRef(operatorBridge)
@@ -238,6 +242,7 @@ export function SceneStage({
         handleKey: () => false,
         beginModalOperator: () => false,
         hoveredElement: () => null,
+        knifeActive: () => false,
         transformActive: () => false,
         pointerPage: () => ({ x: 0, y: 0 }),
       })
@@ -280,7 +285,37 @@ export function SceneStage({
         pump()
       },
       startTransform: (mode) => modal.current?.start(mode, surface.current, {}) ?? false,
-      handleKey: (event) => (modalOp.current?.key(event) ?? false) || (modal.current?.key(event) ?? false),
+      handleKey: (event) => {
+        // The knife owns the keyboard while a line is being drawn: Enter cuts, Escape throws the
+        // line away, and nothing else may run — X would delete the selection mid-cut.
+        const line = knife.current
+        if (line) {
+          if (event.key === 'Escape') {
+            knife.current = null
+            toolPath.clear()
+            return true
+          }
+          if (event.key === 'Enter' || event.key === ' ' || event.code === 'Space') {
+            const points = line.points
+            knife.current = null
+            toolPath.clear()
+            if (points.length < 2) {
+              bridge.current.message('A knife cut needs at least two points.')
+              return true
+            }
+            const error = bridge.current.commit(
+              'mesh.knife',
+              { path: JSON.stringify(points), cutThrough: event.shiftKey, occlude: true, midpointSnap: false, angleConstrain: false },
+              latestDocument.current,
+              latestSelection.current,
+            )
+            if (error) bridge.current.message(error)
+            return true
+          }
+          return true
+        }
+        return (modalOp.current?.key(event) ?? false) || (modal.current?.key(event) ?? false)
+      },
       beginModalOperator: (operatorId, extra) => {
         const document = latestDocument.current
         const spec = modalSpecFor(operatorId, {
@@ -300,6 +335,7 @@ export function SceneStage({
         return modalOp.current?.begin(spec, surface.current, {}) ?? false
       },
       hoveredElement: () => hoveredElement.current,
+      knifeActive: () => knife.current !== null,
       transformActive: () => (modal.current?.active ?? false) || (modalOp.current?.running ?? false),
       pointerPage: () => {
         const box = surface.current?.getBoundingClientRect()
@@ -308,7 +344,7 @@ export function SceneStage({
           : { x: pointer.current[0], y: pointer.current[1] }
       },
     })
-  }, [preferences, pump])
+  }, [preferences, pump, toolPath])
 
   useEffect(() => {
     navigator.current?.setPreferences(preferences)
@@ -490,6 +526,18 @@ export function SceneStage({
             nav.begin(gesture, event.pointerId, x, y)
             return
           }
+          // The knife places a point where the pointer is, snapped to whatever it is over.
+          if (event.button === 0 && latestDocument.current.view.mode === 'edit' && latestDocument.current.view.tool === 'knife') {
+            event.preventDefault()
+            const found = knifePoint(instance, latestDocument.current, x, y, { shift: event.shiftKey, ctrl: event.ctrlKey })
+            const line = knife.current ?? { points: [], next: null }
+            line.points = [...line.points, found.world]
+            line.next = found.world
+            knife.current = line
+            drawKnife(instance, line, found, toolPath)
+            press.current = null
+            return
+          }
           // The two tools that draw on the scene take the press before the marquee does.
           if (event.button === 0 && (latestDocument.current.view.tool === 'annotate' || latestDocument.current.view.tool === 'measure')) {
             const tool = latestDocument.current.view.tool as 'annotate' | 'measure'
@@ -594,6 +642,13 @@ export function SceneStage({
               else drawing.points = [[x, y]]
               marquee.set({ kind: drawing.kind, points: [...drawing.points], radius: drawing.radius })
             }
+            return
+          }
+          const drawing = knife.current
+          if (drawing) {
+            const found = knifePoint(instance, latestDocument.current, x, y, { shift: event.shiftKey, ctrl: event.ctrlKey })
+            drawing.next = found.world
+            drawKnife(instance, drawing, found, toolPath)
             return
           }
           if (latestDocument.current.view.mode === 'edit') {
@@ -731,6 +786,22 @@ export function SceneStage({
         ref={surface}
         onContextMenu={(event) => {
           event.preventDefault()
+          // The right button ends the knife's line and cuts with it, as Blender's does.
+          if (knife.current) {
+            const points = knife.current.points
+            knife.current = null
+            toolPath.clear()
+            if (points.length >= 2) {
+              const error = bridge.current.commit(
+                'mesh.knife',
+                { path: JSON.stringify(points), cutThrough: false, occlude: true, midpointSnap: false, angleConstrain: false },
+                latestDocument.current,
+                latestSelection.current,
+              )
+              if (error) bridge.current.message(error)
+            }
+            return
+          }
           // The right button abandons a running gesture, as Blender's does, and asks for nothing.
           if (modalOp.current?.running) {
             modalOp.current.cancel()
@@ -785,6 +856,77 @@ function chooseElement(hits: ElementHits, modes: SelectMode[]): ElementPick | nu
     if (hit) return { objectId: hit.objectId, kind, slot: hit.slot }
   }
   return null
+}
+
+/**
+ * Where the knife would put a point, and whether it is snapping to something.
+ *
+ * Blender snaps to the vertices and the edges the line passes over, and holding shift turns that
+ * off. It matters more than it looks: a cut that lands a hair off a vertex leaves two vertices
+ * where there should be one, and the crack it opens is invisible until something else fails.
+ */
+function knifePoint(
+  viewport: SceneViewport,
+  document: SceneDocument,
+  x: number,
+  y: number,
+  modifiers: { shift: boolean; ctrl: boolean },
+): { world: Vec3; screen: [number, number]; snapped: boolean } {
+  const free = { world: viewport.pointOnViewPlane(x, y), screen: [x, y] as [number, number], snapped: false }
+  if (modifiers.shift) return free
+  const hits = viewport.pickElements(x, y, ELEMENT_RADIUS)
+  if (hits.vertex) {
+    const [point] = elementWorldPoints(document, hits.vertex.objectId, 'vertex', hits.vertex.slot)
+    const screen = point ? viewport.project(point) : null
+    if (point && screen) return { world: point, screen, snapped: true }
+  }
+  if (hits.edge) {
+    const ends = elementWorldPoints(document, hits.edge.objectId, 'edge', hits.edge.slot)
+    const a = ends[0]
+    const b = ends[1]
+    const first = a ? viewport.project(a) : null
+    const second = b ? viewport.project(b) : null
+    if (a && b && first && second) {
+      // ⌃ takes the middle of the edge; otherwise the point nearest the pointer along it.
+      const along = modifiers.ctrl ? 0.5 : closestOnSegment(first, second, [x, y])
+      const world: Vec3 = [
+        a[0] + (b[0] - a[0]) * along,
+        a[1] + (b[1] - a[1]) * along,
+        a[2] + (b[2] - a[2]) * along,
+      ]
+      const screen = viewport.project(world)
+      if (screen) return { world, screen, snapped: true }
+    }
+  }
+  return free
+}
+
+/** The knife's line as it stands, projected and handed to the overlay. */
+function drawKnife(
+  viewport: SceneViewport,
+  line: { points: Vec3[]; next: Vec3 | null },
+  found: { screen: [number, number]; snapped: boolean },
+  channel: ToolPathChannel,
+): void {
+  const placed = line.points
+    .map((point) => viewport.project(point))
+    .filter((point): point is [number, number] => point !== null)
+  const path = line.next ? [...placed, found.screen] : placed
+  channel.set({
+    kind: 'knife',
+    lines: path.length > 1 ? [path] : [],
+    placed,
+    snap: found.snapped ? found.screen : null,
+  })
+}
+
+/** How far along a screen segment the nearest point to a pointer is, from 0 to 1. */
+function closestOnSegment(a: [number, number], b: [number, number], point: [number, number]): number {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  const length = dx * dx + dy * dy
+  if (length < 1e-9) return 0
+  return Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length))
 }
 
 function readElementRegion(
