@@ -16,6 +16,16 @@ const TidalPlanetPreview = lazy(() =>
 
 type PreviewProps = { values: Record<string, ParamValue> }
 
+type ScenePreviewProps = { session: RigSession; values: Record<string, ParamValue> }
+
+/**
+ * The three.js example rigs, by id. A renderer is not a component: two rigs can both be three.js
+ * and draw nothing alike, so the table says which one, rather than the renderer name deciding.
+ */
+const THREE_PREVIEWS: Record<string, ComponentType<ScenePreviewProps>> = {
+  'tidal-planet': TidalPlanetPreview,
+}
+
 const PREVIEWS: Record<string, ComponentType<PreviewProps>> = {
   'contour-bloom': ContourBloomPreview,
   'long-name-study': ContourBloomPreview,
@@ -34,6 +44,7 @@ type RigPreviewProps = {
 
 export function RigPreview({ rigId, renderer, values, name, session }: RigPreviewProps) {
   const Preview = PREVIEWS[rigId]
+  const ThreePreview = THREE_PREVIEWS[rigId]
   return (
     <RendererErrorBoundary
       fallback={
@@ -46,9 +57,11 @@ export function RigPreview({ rigId, renderer, values, name, session }: RigPrevie
     >
       {renderer === 'vector' ? (
         <VectorRigPreview documentId={rigId} values={session?.previewValues() ?? values} name={name} />
-      ) : renderer === 'three' && session ? (
+      ) : renderer === 'scene' ? (
+        <StatusMessage>Tune mode arrives with the scene rig prompt. Open this scene from the library to edit it.</StatusMessage>
+      ) : renderer === 'three' && session && ThreePreview ? (
         <Suspense fallback={<p className="status-msg">Starting the 3D view</p>}>
-          <TidalPlanetPreview session={session} values={values} />
+          <ThreePreview session={session} values={values} />
         </Suspense>
       ) : Preview ? (
         <LivePreview Preview={Preview} values={values} session={session} />

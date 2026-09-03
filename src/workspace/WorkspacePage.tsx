@@ -1,5 +1,5 @@
 import { useNavColumn } from '@/shell/useLayout'
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRig, listRigs } from '@/rigs/registry'
 import { RigNavigation } from '@/shell/RigNavigation'
@@ -15,18 +15,26 @@ import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
 import { VectorEditorPage } from '@/vector/VectorEditorPage'
 import { modeOf, readInspectorPrefs, withMode, writeInspectorPrefs, type VectorMode } from '@/vector/inspectorPrefs'
+import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, writeScenePrefs } from '@/scene/prefs'
+
+const SceneEditorPage = lazy(() => import('@/scene/SceneEditorPage').then((mod) => ({ default: mod.SceneEditorPage })))
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
   const manifest = getRig(rigId)
   const { session, snapshot } = useSession(manifest?.id)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
-  const [mode, setModeState] = useState<VectorMode>(() => modeOf(readInspectorPrefs(), rigId))
-  useEffect(() => { setModeState(modeOf(readInspectorPrefs(), rigId)) }, [rigId])
+  // A scene remembers Edit or Tune in its own store, a vector document in the inspector's.
+  const isScene = manifest?.renderer === 'scene'
+  const [mode, setModeState] = useState<VectorMode>(() => (isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId)))
+  useEffect(() => {
+    setModeState(isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId))
+  }, [isScene, rigId])
   const setMode = useCallback((next: VectorMode) => {
     setModeState(next)
-    writeInspectorPrefs(withMode(readInspectorPrefs(), rigId, next))
-  }, [rigId])
+    if (isScene) writeScenePrefs(withSceneMode(readScenePrefs(), rigId, next))
+    else writeInspectorPrefs(withMode(readInspectorPrefs(), rigId, next))
+  }, [isScene, rigId])
   useEffect(() => { setMobilePanel('main') }, [rigId])
 
   useEffect(() => {
@@ -68,6 +76,15 @@ export function WorkspacePage() {
   // A drawing opens in the editor; a document that exposes controls opens the way it was left.
   if (manifest.renderer === 'vector' && (mode === 'edit' || manifest.parameters.length === 0)) {
     return <VectorEditorPage manifest={manifest} mode={mode} onMode={setMode} />
+  }
+
+  // The same rule for a scene: no controls, or last left on Edit, and it opens in the 3D editor.
+  if (manifest.renderer === 'scene' && (mode === 'edit' || manifest.parameters.length === 0)) {
+    return (
+      <Suspense fallback={<p className="status-msg">Opening the scene editor</p>}>
+        <SceneEditorPage documentId={manifest.id} mode={mode} onMode={setMode} />
+      </Suspense>
+    )
   }
 
   if (!session || !snapshot) return null

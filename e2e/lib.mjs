@@ -195,5 +195,33 @@ export function pageHelpers(page) {
     }
   }
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, captureExport, openPaint, closePaint, openSection }
+  /**
+   * A new scene, focused, ready for tool keys. Stored documents are cleared first: a run that
+   * starts on a library of two hundred leftovers is a run whose clicks land on a page still
+   * settling.
+   */
+  const newScene = async () => {
+    await page.goto(`${BASE}/`, { waitUntil: 'networkidle' })
+    await page.evaluate(() => {
+      localStorage.removeItem('paramrig.scene-documents.v1')
+      localStorage.removeItem('paramrig.vector-documents.v1')
+      localStorage.removeItem('paramrig.drafts.v1')
+      localStorage.removeItem('paramrig.tabs.v1')
+    })
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.click('[aria-label="New scene"]')
+    await page.waitForSelector('.scene-stage')
+    await page.locator('#main').focus()
+  }
+
+  /** The stored scene, which is what the editor persists. */
+  const scene = () => page.evaluate(() => {
+    const all = JSON.parse(localStorage.getItem('paramrig.scene-documents.v1') ?? '{}')
+    return all[location.pathname.split('/r/')[1]]
+  })
+
+  /** The viewport's box on screen, for placing a pointer without guessing. */
+  const viewportBox = () => page.locator('.scene-stage').boundingBox()
+
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, viewportBox, captureExport, openPaint, closePaint, openSection }
 }

@@ -134,7 +134,7 @@ export type InspectorCategory = {
   label: string
 }
 
-export type RendererKind = 'svg' | 'three' | 'html' | 'vector'
+export type RendererKind = 'svg' | 'three' | 'html' | 'vector' | 'scene'
 
 export type RigManifest = {
   id: string

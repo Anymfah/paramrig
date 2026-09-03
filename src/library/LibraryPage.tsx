@@ -6,13 +6,16 @@ import { ShellNavResize } from '@/shell/ResizeHandle'
 import { loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
-import { IconPlus, IconSearch } from '@/ui/icons'
+import { IconCube, IconPlus, IconSearch } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
 import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
+import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
+import { importProject as importSceneProject } from '@/scene/project'
+import { SceneThumb } from '@/scene/SceneThumb'
 import { createVectorDocument, documentThumbnail, getVectorDocument, saveVectorDocument } from '@/vector/document'
 import { resolveRigValues, rigDefaults } from '@/vector/rig'
 import { getProjectHandle, listRecentProjects, type RecentProject } from '@/vector/fileHandles'
@@ -44,7 +47,7 @@ export function LibraryPage() {
 
   const openRecent = async (entry: RecentProject) => {
     setRecentError(null)
-    if (getVectorDocument(entry.id)) {
+    if (getVectorDocument(entry.id) || getSceneDocument(entry.id)) {
       navigate(`/r/${entry.id}`)
       return
     }
@@ -58,13 +61,12 @@ export function LibraryPage() {
       setRecentError(`Reading “${entry.fileName ?? entry.name}” was not allowed.`)
       return
     }
-    const result = importProject(await (await handle.getFile()).text())
-    if (!result.ok) {
-      setRecentError(result.error)
+    const opened = openFileText(await (await handle.getFile()).text())
+    if (!opened.ok) {
+      setRecentError(opened.error)
       return
     }
-    saveVectorDocument(result.project.document)
-    navigate(`/r/${result.project.document.id}`)
+    navigate(`/r/${opened.id}`)
   }
 
   useEffect(() => {
@@ -90,14 +92,13 @@ export function LibraryPage() {
   const openDropped = async (file: File) => {
     setRecentError(null)
     setNote(null)
-    const result = importProject(await file.text())
-    if (!result.ok) {
-      setRecentError(result.error)
+    const opened = openFileText(await file.text())
+    if (!opened.ok) {
+      setRecentError(opened.error)
       return
     }
-    saveVectorDocument(result.project.document)
-    if (result.note) setNote(result.note)
-    navigate(`/r/${result.project.document.id}`)
+    if (opened.note) setNote(opened.note)
+    navigate(`/r/${opened.id}`)
   }
 
   const { dataNav, style, compact } = useNavColumn()
@@ -132,19 +133,34 @@ export function LibraryPage() {
       <main id="main" className="library-main scroll-area">
         <div className="library-titlebar">
           <h1>Your rigs</h1>
-          <Tooltip content="New vector document">
-            <button
-              type="button"
-              className="icon-btn icon-btn--solid library-create"
-              aria-label="New vector document"
-              onClick={() => {
-                const document = createVectorDocument()
-                navigate(`/r/${document.id}`)
-              }}
-            >
-              <IconPlus />
-            </button>
-          </Tooltip>
+          <div className="library-titlebar__actions">
+            <Tooltip content="New scene">
+              <button
+                type="button"
+                className="icon-btn library-create"
+                aria-label="New scene"
+                onClick={() => {
+                  const document = createSceneDocument()
+                  navigate(`/r/${document.id}`)
+                }}
+              >
+                <IconCube />
+              </button>
+            </Tooltip>
+            <Tooltip content="New vector document">
+              <button
+                type="button"
+                className="icon-btn icon-btn--solid library-create"
+                aria-label="New vector document"
+                onClick={() => {
+                  const document = createVectorDocument()
+                  navigate(`/r/${document.id}`)
+                }}
+              >
+                <IconPlus />
+              </button>
+            </Tooltip>
+          </div>
         </div>
         {import.meta.env.MODE === 'demo' && (
           <p className="status-msg" role="note">
@@ -261,8 +277,31 @@ function SkeletonCard() {
   )
 }
 
+/**
+ * Reads a dropped or reopened project file with whichever editor claims it, stores it, and gives
+ * back the id to open. A file that names neither format comes back with the reason.
+ */
+function openFileText(text: string): { ok: true; id: string; note?: string } | { ok: false; error: string } {
+  const asScene = importSceneProject(text)
+  if (asScene.ok) {
+    saveSceneDocument(asScene.project.document)
+    return { ok: true, id: asScene.project.document.id, ...(asScene.note ? { note: asScene.note } : {}) }
+  }
+  const asVector = importProject(text)
+  if (asVector.ok) {
+    saveVectorDocument(asVector.project.document)
+    return { ok: true, id: asVector.project.document.id, ...(asVector.note ? { note: asVector.note } : {}) }
+  }
+  // The file said which editor it belongs to, so its own reader gives the better message.
+  return { ok: false, error: text.includes('"paramrig.scene"') ? asScene.error : asVector.error }
+}
+
 function RigThumb({ rig }: { rig: RigManifest }) {
   const id = rig.id
+  if (rig.renderer === 'scene') {
+    const stored = getSceneDocument(id)
+    return stored ? <SceneThumb document={stored} /> : null
+  }
   if (rig.renderer === 'vector') {
     const stored = getVectorDocument(id)
     if (!stored) return null

@@ -19,3 +19,13 @@ if (typeof HTMLCanvasElement !== 'undefined') {
     return new Proxy({ canvas: this }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => undefined }) as unknown as CanvasRenderingContext2D
   } as typeof HTMLCanvasElement.prototype.getContext
 }
+
+// jsdom has no ResizeObserver; the viewport host asks for one the moment it mounts.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class TestResizeObserver implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = TestResizeObserver
+}

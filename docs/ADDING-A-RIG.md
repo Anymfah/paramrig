@@ -63,3 +63,21 @@ then `endGesture()` once. Escape, pointer cancellation and unmount during a
 drag must call `cancelGesture()`. Playback and scrubbing do not enter history.
 Snapshot capture, rename, restore, removal, and loop settings do enter history.
 Snapshot restore also restores its reference; undo restores the previous one.
+
+## Scene documents
+
+A scene is the second kind of document the workbench stores itself, next to a vector document.
+`createSceneDocument()` writes one under `paramrig.scene-documents.v1` and `sceneManifest(document)`
+presents it to the rest of the app as a `RigManifest` with `renderer: 'scene'`, so it appears in the
+library and in the navigation beside the example rigs with no registry entry to write.
+
+- **New scene** in the library titlebar makes one — a cube, a point light and a camera, the way
+  Blender opens — and navigates to `/r/<id>`.
+- `/r/<id>` opens the 3D editor while the scene carries no controls, or while it was last left on
+  Edit; once it exposes controls, Tune shows it as a rig like any other. The choice is remembered
+  per document in `paramrig.scene-inspector.v1`.
+- A scene saved to disk is a `.paramrig.json` file marked `"format": "paramrig.scene"`. The library
+  accepts one dropped on it, and refuses a vector document by name rather than failing obscurely.
+- The mesh a person edits is not a soup of triangles: `MeshData` keeps polygons with stable vertex
+  and face ids, so a selection survives an edit that renumbers everything. `src/scene/types.ts` is
+  the contract, `sanitizeSceneDocument` is what enforces it on the way in.

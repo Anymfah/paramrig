@@ -1,0 +1,181 @@
+/*
+ * The 3D editor's own colours, and the chrome around its viewport.
+ *
+ * Two rules govern this file. The viewport is not the interface: it has its own ground, and a
+ * colour that reads on the chrome may vanish on it, so every viewport role is defined against
+ * `--scene-viewport` rather than against `--surface`. And the selection is amber, not the app's
+ * turquoise accent: the accent is everywhere in the chrome, and what is selected in three
+ * dimensions has to win against it — as it does in Blender, which is where the eye expects it.
+ */
+:root {
+  /* The ground everything in the viewport is measured against. */
+  --scene-viewport: #1b1f1e;
+  --scene-viewport-gradient: #141817;
+
+  --scene-selected: #f0a02e;
+  --scene-active: #ffce6a;
+  --scene-hover: #f0a02e80;
+
+  --scene-vertex: #101211;
+  --scene-vertex-selected: #f0a02e;
+  --scene-edge: #14171680;
+  --scene-edge-selected: #f0a02e;
+  --scene-face-selected: #f0a02e4d;
+  --scene-face-active: #ffce6a66;
+
+  --scene-axis-x: #d1495b;
+  --scene-axis-y: #77b255;
+  --scene-axis-z: #4a86c8;
+  --scene-grid: #ffffff14;
+  --scene-grid-major: #ffffff26;
+  --scene-floor: #ffffff0f;
+
+  --scene-cursor-ring: #e04c4c;
+  --scene-cursor-ground: #f2f4f3;
+  --scene-gizmo-view: #f2f4f3;
+  --scene-gizmo-plane: #ffffff2e;
+  --scene-snap: #c8e05a;
+  --scene-proportional: #dfe6e3;
+  --scene-loop-cut: #f2d34a;
+  --scene-knife: #f7f9f8;
+  --scene-knife-snap: #7fd67f;
+  --scene-measure: #7fd6c8;
+  --scene-face-front: #3a6ea5;
+  --scene-face-back: #a53a3a;
+  --scene-normal: #5ad2e0;
+  --scene-seam: #e05a5a;
+  --scene-sharp: #5ad2e0;
+  --scene-crease: #d45ad2;
+
+  /* The chrome that floats over the viewport: headers, the T bar, the N sidebar, the status bar. */
+  --scene-panel: color-mix(in srgb, var(--surface-raised) 92%, transparent);
+  --scene-panel-border: var(--border-default);
+  --scene-panel-radius: var(--radius-md);
+}
+
+/*
+ * The light theme is not the dark one lightened. The viewport keeps a mid ground — a near-white
+ * one would blow out every overlay — and the warm roles darken so they still carry 3:1 on it.
+ */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --scene-viewport: #b9c0be;
+    --scene-viewport-gradient: #a8b0ae;
+    --scene-selected: #9c5405;
+    --scene-active: #7a3f02;
+    --scene-hover: #9c540580;
+    --scene-vertex: #22201d;
+    --scene-vertex-selected: #9c5405;
+    --scene-edge: #2b2b2b8c;
+    --scene-edge-selected: #9c5405;
+    --scene-face-selected: #9c54054d;
+    --scene-face-active: #7a3f0266;
+    --scene-axis-x: #9c2437;
+    --scene-axis-y: #3d6b23;
+    --scene-axis-z: #24508c;
+    --scene-grid: #00000021;
+    --scene-grid-major: #00000038;
+    --scene-floor: #0000001a;
+    --scene-cursor-ring: #a81f1f;
+    --scene-cursor-ground: #14100f;
+    --scene-gizmo-view: #14100f;
+    --scene-gizmo-plane: #0000002e;
+    --scene-snap: #4d6b06;
+    --scene-proportional: #3a423f;
+    --scene-loop-cut: #7d6403;
+    --scene-knife: #14100f;
+    --scene-knife-snap: #1d6b1d;
+    --scene-measure: #0a5d51;
+    --scene-face-front: #1d4a7d;
+    --scene-face-back: #7d1d1d;
+    --scene-normal: #06616b;
+    --scene-seam: #96201f;
+    --scene-sharp: #06616b;
+    --scene-crease: #7d0d7a;
+  }
+}
+:root[data-theme='light'] {
+  --scene-viewport: #b9c0be;
+  --scene-viewport-gradient: #a8b0ae;
+  --scene-selected: #9c5405;
+  --scene-active: #7a3f02;
+  --scene-hover: #9c540580;
+  --scene-vertex: #22201d;
+  --scene-vertex-selected: #9c5405;
+  --scene-edge: #2b2b2b8c;
+  --scene-edge-selected: #9c5405;
+  --scene-face-selected: #9c54054d;
+  --scene-face-active: #7a3f0266;
+  --scene-axis-x: #9c2437;
+  --scene-axis-y: #3d6b23;
+  --scene-axis-z: #24508c;
+  --scene-grid: #00000021;
+  --scene-grid-major: #00000038;
+  --scene-floor: #0000001a;
+  --scene-cursor-ring: #a81f1f;
+  --scene-cursor-ground: #14100f;
+  --scene-gizmo-view: #14100f;
+  --scene-gizmo-plane: #0000002e;
+  --scene-snap: #4d6b06;
+  --scene-proportional: #3a423f;
+  --scene-loop-cut: #7d6403;
+  --scene-knife: #14100f;
+  --scene-knife-snap: #1d6b1d;
+  --scene-measure: #0a5d51;
+  --scene-face-front: #1d4a7d;
+  --scene-face-back: #7d1d1d;
+  --scene-normal: #06616b;
+  --scene-seam: #96201f;
+  --scene-sharp: #06616b;
+  --scene-crease: #7d0d7a;
+}
+
+/* The Blender preset only replaces the tokens; nothing below reads a colour any other way. */
+[data-scene-theme='blender-classic'] {
+  --scene-viewport: #393939;
+  --scene-viewport-gradient: #393939;
+  --scene-selected: #ed9e5c;
+  --scene-active: #ffffff;
+  --scene-hover: #ed9e5c80;
+  --scene-vertex: #000000;
+  --scene-vertex-selected: #ff8500;
+  --scene-edge-selected: #ed9e5c;
+  --scene-face-selected: #ff85004d;
+  --scene-grid: #ffffff1f;
+  --scene-grid-major: #ffffff33;
+}
+
+/* -------------------------------------------------------------- the stage */
+
+.scene-stage {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--scene-viewport);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+
+/* ---------------------------------------------------------- library card */
+
+.scene-thumb {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-primary) 55%, transparent);
+  stroke-linejoin: round;
+}
+.scene-thumb__face { fill: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.scene-thumb__face--top { fill: color-mix(in srgb, var(--text-primary) 18%, transparent); }
+.scene-thumb__face--right { fill: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+
+.library-titlebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
