@@ -753,12 +753,26 @@ export class SceneViewport {
     const buffer = this.picking.region(renderer, this.camera, x * ratio, y * ratio, width * ratio, height * ratio)
     const readWidth = Math.max(1, Math.round(width * ratio))
     const readHeight = Math.max(1, Math.round(height * ratio))
+    /*
+     * A face covers thousands of pixels and they all say the same thing. Comparing the four bytes
+     * with the last pixel's is two comparisons; decoding them and touching three sets is not, and
+     * over a million pixels the difference is the whole cost of a box selection.
+     */
+    let lastKey = -1
+    let lastInside = true
     for (let row = 0; row < readHeight; row += 1) {
       for (let column = 0; column < readWidth; column += 1) {
         const offset = (row * readWidth + column) * 4
+        const alpha = buffer[offset + 3]!
+        if (alpha === 0) continue
+        const key = (alpha << 24) | (buffer[offset]! << 16) | (buffer[offset + 1]! << 8) | buffer[offset + 2]!
+        const shape = inside ? inside(x + column / ratio, y + (readHeight - 1 - row) / ratio) : true
+        if (key === lastKey && shape === lastInside) continue
+        lastKey = key
+        lastInside = shape
+        if (!shape) continue
         const hit = decodePick(buffer[offset]!, buffer[offset + 1]!, buffer[offset + 2]!, buffer[offset + 3]!)
         if (!hit || (hit.kind !== 'vertex' && hit.kind !== 'edge' && hit.kind !== 'face')) continue
-        if (inside && !inside(x + column / ratio, y + (readHeight - 1 - row) / ratio)) continue
         const { objectIndex, elementIndex } = decodeElement(hit.id)
         const objectId = this.editObjects[objectIndex]
         if (!objectId) continue

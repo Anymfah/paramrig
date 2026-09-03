@@ -3,6 +3,7 @@ import { meshCounts } from '@/scene/mesh/data'
 import { SceneEmpty, SceneSection } from '@/scene/SceneProperties'
 import type { AreaShape, CameraData, EmptyData, EmptyDisplay, LightData, LightKind, MeshData, SceneDocument, SceneObject, Vec2 } from '@/scene/types'
 import { BarField } from '@/ui/BarField'
+import { Tooltip } from '@/ui/Tooltip'
 import { ColorField } from '@/ui/ColorField'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
@@ -48,11 +49,24 @@ const EMPTY_DISPLAYS: Array<{ value: EmptyDisplay; label: string }> = [
   { value: 'image', label: 'Image' },
 ]
 
-export function DataPanel({ document, activeObject, unit, onUpdateObject, onGestureStart, onGestureEnd, isOpen, onSection }: {
+export function DataPanel({
+  document,
+  activeObject,
+  unit,
+  onUpdateObject,
+  onEditDocument,
+  onRunOperator,
+  onGestureStart,
+  onGestureEnd,
+  isOpen,
+  onSection,
+}: {
   document: SceneDocument
   activeObject: SceneObject | null
   unit: string | undefined
   onUpdateObject: (id: string, patch: Partial<SceneObject>, label?: string) => void
+  onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
+  onRunOperator: (id: string, params?: Record<string, unknown>) => void
   onGestureStart: () => void
   onGestureEnd: () => void
 } & Folds) {
@@ -71,7 +85,17 @@ export function DataPanel({ document, activeObject, unit, onUpdateObject, onGest
   if (data.kind === 'mesh') {
     const mesh = meshOf(document, activeObject)
     return mesh
-      ? <MeshFields mesh={mesh} {...folds} />
+      ? (
+        <MeshFields
+          mesh={mesh}
+          meshId={data.meshId}
+          editing={document.view.mode === 'edit'}
+          onEditDocument={onEditDocument}
+          onRunOperator={onRunOperator}
+          {...gesture}
+          {...folds}
+        />
+      )
       : (
         <div className="scene-properties__notice">
           <SceneEmpty>This object points at a mesh the document no longer holds.</SceneEmpty>
@@ -111,9 +135,34 @@ export function DataPanel({ document, activeObject, unit, onUpdateObject, onGest
   )
 }
 
-function MeshFields({ mesh, isOpen, onSection }: { mesh: MeshData } & Folds) {
+/**
+ * A mesh's own data: how much of it there is, how it is shaded, and what it carries.
+ *
+ * The attributes are listed rather than edited. A seam, a crease and a sharp flag are put on by the
+ * operators that mean something — Mark seam, ⇧E — and a list that let you tick them one at a time
+ * would be a second way of doing the same thing with none of the context. What the list does offer
+ * is the one thing the operators cannot: clearing a whole attribute at once.
+ */
+function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGestureStart, onGestureEnd, isOpen, onSection }: {
+  mesh: MeshData
+  meshId: string
+  editing: boolean
+  onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
+  onRunOperator: (id: string, params?: Record<string, unknown>) => void
+} & Gesture & Folds) {
   const counts = meshCounts(mesh)
   const smooth = mesh.autoSmooth
+  const setAutoSmooth = (patch: { enabled?: boolean; angle?: number }, label: string) => {
+    onEditDocument((current) => {
+      const data = current.meshes[meshId]
+      if (!data) return current
+      const next = { enabled: smooth?.enabled ?? false, angle: smooth?.angle ?? 30, ...patch }
+      return { ...current, meshes: { ...current.meshes, [meshId]: { ...data, autoSmooth: next } } }
+    }, label)
+  }
+  const attributes = listAttributes(mesh)
+  const reason = editing ? undefined : 'Open the mesh for editing to clear an attribute.'
+
   return (
     <>
       <SceneSection id="data-mesh" title="Mesh" meta={`${counts.vertices.toLocaleString()} vertices`} isOpen={isOpen} onSection={onSection}>
@@ -125,7 +174,11 @@ function MeshFields({ mesh, isOpen, onSection }: { mesh: MeshData } & Folds) {
         </dl>
       </SceneSection>
       <SceneSection id="data-mesh-normals" title="Normals" isOpen={isOpen} onSection={onSection}>
-        <SwitchField label="Auto smooth" checked={smooth?.enabled ?? false} disabled onChange={() => undefined} />
+        <SwitchField
+          label="Auto smooth"
+          checked={smooth?.enabled ?? false}
+          onChange={(value) => setAutoSmooth({ enabled: value }, 'Auto smooth')}
+        />
         <NumberField
           label="Angle"
           value={smooth?.angle ?? 30}
@@ -134,13 +187,72 @@ function MeshFields({ mesh, isOpen, onSection }: { mesh: MeshData } & Folds) {
           step={1}
           unit="°"
           variant="field"
-          disabled
-          onChange={() => undefined}
+          disabled={!(smooth?.enabled ?? false)}
+          onGestureStart={onGestureStart}
+          onGestureEnd={onGestureEnd}
+          onChange={(value) => setAutoSmooth({ angle: value }, 'Auto smooth angle')}
         />
-        <SceneEmpty>Read only for now. The mesh editing tools are what will set them.</SceneEmpty>
+      </SceneSection>
+      <SceneSection id="data-mesh-attributes" title="Attributes" meta={`${attributes.length}`} isOpen={isOpen} onSection={onSection}>
+        {attributes.length === 0 ? (
+          <SceneEmpty>This mesh carries no attributes yet. Marking a seam or a sharp edge makes one.</SceneEmpty>
+        ) : (
+          <dl className="scene-readout">
+            {attributes.map((attribute) => (
+              <div key={attribute.name} className="scene-readout__row">
+                <dt>{attribute.name}</dt>
+                <dd>{attribute.domain} · {attribute.type} · {attribute.count.toLocaleString()}</dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </SceneSection>
+      <SceneSection id="data-mesh-geometry" title="Geometry data" isOpen={isOpen} onSection={onSection}>
+        <div className="scene-buttons">
+          {[
+            { id: 'mesh.clearSharp', label: 'Clear sharp' },
+            { id: 'mesh.clearSeam', label: 'Clear seam' },
+            { id: 'mesh.setCrease', label: 'Clear crease', params: { value: 0 } },
+            { id: 'mesh.setBevelWeight', label: 'Clear bevel weight', params: { value: 0 } },
+          ].map((entry) => (
+            <Tooltip key={entry.id} content={reason ?? entry.label}>
+              <button
+                type="button"
+                className="scene-button"
+                disabled={!editing}
+                onClick={() => onRunOperator(entry.id, entry.params)}
+              >
+                {entry.label}
+              </button>
+            </Tooltip>
+          ))}
+        </div>
+        {editing ? null : <SceneEmpty>{reason}</SceneEmpty>}
       </SceneSection>
     </>
   )
+}
+
+/** What a mesh carries beyond its geometry, in the form the Data tab lists it. */
+function listAttributes(mesh: MeshData): Array<{ name: string; domain: string; type: string; count: number }> {
+  const found: Array<{ name: string; domain: string; type: string; count: number }> = []
+  const edge = mesh.attributes.edge
+  if (mesh.attributes.vertex.uv) found.push({ name: 'UVMap', domain: 'corner', type: '2D vector', count: mesh.faces.length })
+  if (mesh.attributes.vertex.color) {
+    found.push({ name: 'Color', domain: 'point', type: 'colour', count: mesh.vertexIds.length })
+  }
+  if (edge.seam?.some(Boolean)) found.push({ name: 'Seam', domain: 'edge', type: 'boolean', count: edge.seam.filter(Boolean).length })
+  if (edge.sharp?.some(Boolean)) found.push({ name: 'Sharp', domain: 'edge', type: 'boolean', count: edge.sharp.filter(Boolean).length })
+  if (edge.crease?.some((value) => value > 0)) {
+    found.push({ name: 'Crease', domain: 'edge', type: 'float', count: edge.crease.filter((value) => value > 0).length })
+  }
+  if (edge.bevelWeight?.some((value) => value > 0)) {
+    found.push({ name: 'Bevel weight', domain: 'edge', type: 'float', count: edge.bevelWeight.filter((value) => value > 0).length })
+  }
+  if (mesh.attributes.face.smooth.some(Boolean)) {
+    found.push({ name: 'Shade smooth', domain: 'face', type: 'boolean', count: mesh.attributes.face.smooth.filter(Boolean).length })
+  }
+  return found
 }
 
 function LightFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpen, onSection }: {

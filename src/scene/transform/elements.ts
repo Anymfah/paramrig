@@ -1,5 +1,6 @@
 import { meshOf, withMesh } from '@/scene/document'
 import { setVertexPosition, vertexPosition } from '@/scene/mesh/data'
+import { readOnlyAdjacency } from '@/scene/mesh/adjacency'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { add, cross, length, normalize, scale, subtract } from '@/scene/mesh/normals'
 import { editedObjectIds, toElements } from '@/scene/mesh/selection'
@@ -77,7 +78,8 @@ export function elementTargets(
     if (!object || object.data.kind !== 'mesh') continue
     const data = meshOf(document, object)
     if (!data) continue
-    const mesh = EditMesh.from(data)
+    // Read only: the targets are measured from the mesh, never written to it.
+    const mesh = readOnlyAdjacency(data)
     const elements = toElements(selection, objectId)
     const chosen = new Set<number>()
     for (const id of elements.vertices) {

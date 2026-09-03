@@ -42,6 +42,7 @@ export function SceneProperties({
   onUpdateObject,
   onUpdateObjects,
   onEditDocument,
+  onRunOperator,
   onGestureStart,
   onGestureEnd,
   isOpen,
@@ -57,6 +58,8 @@ export function SceneProperties({
   onUpdateObject: (id: string, patch: Partial<SceneObject>, label?: string) => void
   onUpdateObjects: (patches: Array<{ id: string; patch: Partial<SceneObject> }>, label?: string) => void
   onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
+  /** Runs an operator by id, for the panel buttons that stand for one. */
+  onRunOperator: (id: string, params?: Record<string, unknown>) => void
   onGestureStart: () => void
   onGestureEnd: () => void
   /** Section fold state, remembered per person rather than per document. */
@@ -164,6 +167,8 @@ export function SceneProperties({
             activeObject={activeObject}
             unit={unit}
             onUpdateObject={onUpdateObject}
+            onEditDocument={onEditDocument}
+            onRunOperator={onRunOperator}
             {...gesture}
             {...folds}
           />

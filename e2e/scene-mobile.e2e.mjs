@@ -332,6 +332,86 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
   })
   check('nothing in the editor reaches over the dock', overlap.length === 0, JSON.stringify(overlap))
 
+  /* ------------------------------------------------------- the edit-mode bar */
+
+  // Edit mode has no keyboard here, so the bar is the whole of it: eight things at forty-four
+  // pixels, and a way to the rest of the mesh menu.
+  await page.locator('#main').focus()
+  await tap(160, 300)
+  await page.waitForTimeout(300)
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(600)
+
+  const bar = page.locator('.scene-touchbar')
+  check('the edit bar appears at 320 px', await bar.isVisible())
+  const barButtons = await bar.locator('button').count()
+  check('and it holds the eight things a finger cannot do without', barButtons >= 8, `${barButtons} buttons`)
+  const barSizes = await bar.locator('button').evaluateAll((nodes) => nodes.map((node) => {
+    const rect = node.getBoundingClientRect()
+    return Math.round(Math.min(rect.width, rect.height))
+  }))
+  const smallestOnBar = Math.min(...barSizes)
+  log(`MEASURE smallest control on the edit bar at 320: ${smallestOnBar} px`)
+  check('every one of them is at least forty-four pixels', smallestOnBar >= 44, `${smallestOnBar} px`)
+  check('and the floating tool strip stands aside for it',
+    !(await page.locator('.scene-toolbar[data-mode="edit"]').isVisible()))
+
+  /*
+   * The events are dispatched rather than tapped: the bar scrolls sideways, so a control can be off
+   * the visible run of it and a synthetic tap at its centre would land outside the window. Its size
+   * is asserted above, which is the check that matters; what is proved here is that the handler
+   * behind it does the right thing.
+   */
+  await page.locator('.scene-touchbar button[aria-label="Face select"]').dispatchEvent('click')
+  await page.waitForTimeout(400)
+  check('the bar switches to faces',
+    await page.locator('.scene-touchbar button[aria-label="Face select"]').getAttribute('aria-pressed') === 'true',
+    await page.locator('.scene-status__stats').textContent())
+  check('and the kind it left is no longer marked',
+    await page.locator('.scene-touchbar button[aria-label="Vertex select"]').getAttribute('aria-pressed') === 'false')
+  await shot('scene-mobile-320-edit.png')
+
+  await page.locator('.scene-touchbar__more').dispatchEvent('click')
+  await page.waitForSelector('.scene-menu[role="menu"]')
+  const meshEntries = await page.locator('.scene-menu[role="menu"] [role="menuitem"]').count()
+  check('More opens the Mesh menu', meshEntries > 5, `${meshEntries} entries`)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(250)
+
+  // An element is still reachable under a finger: ten pixels is the radius a click reads.
+  await page.locator('.scene-touchbar button[aria-label="Vertex select"]').dispatchEvent('click')
+  await page.waitForTimeout(400)
+  const scene = await helpers.scene()
+  const editedMesh = scene.meshes[scene.objects.find((object) => object.data.kind === 'mesh').data.meshId]
+  const corner = [editedMesh.vertices[0], editedMesh.vertices[1], editedMesh.vertices[2]]
+  const cornerAt = await helpers.project3d(corner)
+  // The middle of the cube, which is over the mesh whichever way the pointer strays from it — a
+  // corner sits on the silhouette, and a few pixels past it there is nothing to find by design.
+  const middleAt = await helpers.project3d([0, 0, 0])
+  const reach = await page.evaluate(([corner, middle]) => {
+    const api = window.__paramrigScene
+    const onCorner = api.pickElements(corner[0], corner[1], 10)
+    let overMesh = 0
+    for (let offset = 2; offset <= 20; offset += 2) {
+      const away = api.pickElements(middle[0] + offset, middle[1], 10)
+      if ((away.vertex || away.edge || away.face) && overMesh === offset - 2) overMesh = offset
+    }
+    return { vertex: !!onCorner.vertex, distance: onCorner.vertex?.distance ?? -1, overMesh }
+  }, [cornerAt.local, middleAt.local])
+  log(`MEASURE at 320: the corner answers a vertex ${reach.distance.toFixed(1)} px from the pointer;`
+    + ` over the mesh an element is found ${reach.overMesh} px in every direction tried`)
+  /*
+   * Two things a finger needs, and neither is the size of the drawn dot: that a tap on a vertex
+   * finds that vertex, and that a tap that strays over the mesh finds something to work with rather
+   * than nothing. A corner sits on the silhouette, so straying *off* it finds nothing by design —
+   * which is why the second number is measured from the middle.
+   */
+  check('a tap on a corner finds the vertex, and a tap over the mesh always finds something',
+    reach.vertex && reach.overMesh >= 20, `${reach.distance.toFixed(1)} px, ${reach.overMesh} px over the mesh`)
+
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(400)
+
   /* ------------------------------------------------------------ the record */
 
   // The two rows were scrolled by the checks above; a QA frame should start where a person would.

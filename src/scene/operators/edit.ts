@@ -64,7 +64,7 @@ export type EditOutcome =
 
 /** Whether the editor is in edit mode at all, which is what an edit-mode operator asks first. */
 export function inEditMode(context: OperatorContext): boolean {
-  return context.mode === 'edit' && editTargets(context).length > 0
+  return requireEdit(context) === true
 }
 
 /**
@@ -119,19 +119,33 @@ export function hasSelection(target: EditTarget): boolean {
  */
 export function requireEdit(context: OperatorContext, needs?: SelectMode | 'any'): Availability {
   if (context.mode !== 'edit') return 'This works in edit mode. Press Tab.'
-  const targets = editTargets(context)
-  if (targets.length === 0) return 'Open a mesh for editing first.'
+  /*
+   * Answered from the document and the selection, without building a single adjacency.
+   *
+   * Every menu, the palette and the command list ask every operator whether it can run, on every
+   * render — two hundred questions a keystroke. Building a mesh's adjacency to answer one of them
+   * turned Tab on a twenty-thousand-vertex grid into ten seconds of nothing happening. Nothing here
+   * needs the topology: whether a mesh is open, and whether anything is selected, are both written
+   * down already.
+   */
+  const objects = editedObjectIds(context.selection).filter((id) => {
+    const object = context.document.objects.find((candidate) => candidate.id === id)
+    return object?.data.kind === 'mesh' && context.document.meshes[object.data.meshId] !== undefined
+  })
+  if (objects.length === 0) return 'Open a mesh for editing first.'
   if (!needs) return true
-  const some = targets.some((target) => (needs === 'any' ? hasSelection(target) : count(target, needs) > 0))
+  const some = objects.some((id) => {
+    const stored = context.selection.elements?.[id]
+    if (!stored) return false
+    // A selected face or edge carries its corners, so anything selected is vertices selected.
+    if (needs === 'vertex' || needs === 'any') {
+      return stored.vertices.length > 0 || stored.edges.length > 0 || stored.faces.length > 0
+    }
+    return needs === 'edge' ? stored.edges.length > 0 : stored.faces.length > 0
+  })
   if (some) return true
   if (needs === 'any') return 'Nothing is selected.'
   return needs === 'vertex' ? 'No vertices are selected.' : needs === 'edge' ? 'No edges are selected.' : 'No faces are selected.'
-}
-
-function count(target: EditTarget, kind: SelectMode): number {
-  if (kind === 'vertex') return selectedVertices(target).size
-  if (kind === 'edge') return target.edges.size
-  return target.faces.size
 }
 
 /* ------------------------------------------------------------- running them */

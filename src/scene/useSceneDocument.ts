@@ -40,9 +40,29 @@ function sameSelection(a: SceneSelection, b: SceneSelection): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
-/** Two documents that would draw the same. The timestamp is not part of what a person changed. */
+/**
+ * Two documents that would draw the same. The timestamp is not part of what a person changed.
+ *
+ * Compared piece by piece rather than by serialising both: a document holding a twenty-thousand
+ * vertex mesh is ten megabytes of JSON, and this is asked on every edit. Everything in a document
+ * is replaced rather than mutated, so a piece that has not changed is the same object — and the
+ * view, which is small and is rebuilt from parts, is the one worth looking inside.
+ */
 function sameDocument(a: SceneDocument, b: SceneDocument): boolean {
-  return JSON.stringify({ ...a, updatedAt: '' }) === JSON.stringify({ ...b, updatedAt: '' })
+  if (a === b) return true
+  return a.objects === b.objects
+    && a.meshes === b.meshes
+    && a.collections === b.collections
+    && a.materials === b.materials
+    && a.world === b.world
+    && a.cursor === b.cursor
+    && a.units === b.units
+    && a.name === b.name
+    && a.annotations === b.annotations
+    && a.measurements === b.measurements
+    && a.rig === b.rig
+    && a.versions === b.versions
+    && JSON.stringify(a.view) === JSON.stringify(b.view)
 }
 
 export function useSceneDocument(documentId: string) {
@@ -121,7 +141,10 @@ export function useSceneDocument(documentId: string) {
 
   const beginGesture = useCallback((label = DEFAULT_STEP_LABEL) => {
     if (gestureStart.current || !latest.current) return
-    gestureStart.current = clone(latest.current)
+    // The document as it stands, not a copy of it: nothing in the editor writes into a document,
+    // so the reference *is* the state before the gesture — and copying a mesh of a hundred thousand
+    // vertices at the start of every drag is a cost nobody asked for.
+    gestureStart.current = latest.current
     gestureLabel.current = label
   }, [])
 

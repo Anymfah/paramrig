@@ -655,11 +655,17 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       applyModes()
     },
     setOverlays: (next) => {
-      const same = overlays.normals === next.normals && overlays.normalLength === next.normalLength
+      const drawnNormals = overlays.normals === next.normals && overlays.normalLength === next.normalLength
+      // The colours are only worth rewriting when something that paints an edge has changed: on a
+      // mesh of two hundred thousand edges that walk is most of a frame.
+      const paintedEdges = overlays.seams === next.seams
+        && overlays.sharp === next.sharp
+        && overlays.creases === next.creases
+        && overlays.bevelWeight === next.bevelWeight
       overlays = next
-      if (!same) writeNormals()
+      if (!drawnNormals) writeNormals()
       applyModes()
-      writeEdgeColours()
+      if (!paintedEdges) writeEdgeColours()
     },
     setXray: (next) => {
       xray = next

@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { HistoryStep } from '@/editor/history'
@@ -98,6 +98,7 @@ function show(options: {
       onTab={spies.onTab}
       onUpdateObject={spies.onUpdateObject}
       onUpdateObjects={spies.onUpdateObjects}
+      onRunOperator={() => undefined}
       onEditDocument={spies.onEditDocument}
       onGestureStart={spies.onGestureStart}
       onGestureEnd={spies.onGestureEnd}
@@ -277,12 +278,26 @@ describe('the scene, world and data tabs', () => {
     expect(next.objects.map((object) => object.data.kind === 'camera' && object.data.active === true)).toEqual([false, true])
   })
 
-  it('reads out the mesh counts without offering to change them', () => {
-    show({ tab: 'data' })
+  it('reads out the mesh counts and lets auto smooth be set', () => {
+    const { onEditDocument, document: scene } = show({ tab: 'data' })
     const mesh = window.document.querySelector('[data-section="data-mesh"]')
     expect(mesh?.textContent).toContain('Vertices')
     expect(mesh?.textContent).toContain('8')
-    expect(screen.getByRole('switch', { name: 'Auto smooth' })).toHaveAttribute('aria-disabled', 'true')
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Auto smooth' }))
+
+    const edit = onEditDocument.mock.calls[0]?.[0] as (current: SceneDocument) => SceneDocument
+    const data = scene.objects.find((object) => object.data.kind === 'mesh')?.data
+    const id = data && data.kind === 'mesh' ? data.meshId : ''
+    expect(edit(scene).meshes[id]?.autoSmooth).toEqual({ enabled: true, angle: 30 })
+  })
+
+  it('says why an attribute cannot be cleared outside edit mode', () => {
+    show({ tab: 'data' })
+    const clear = screen.getByRole('button', { name: 'Clear seam' })
+    expect(clear).toBeDisabled()
+    expect(window.document.querySelector('[data-section="data-mesh-geometry"]')?.textContent)
+      .toContain('Open the mesh for editing')
   })
 
   it('edits a light where it is editable', async () => {

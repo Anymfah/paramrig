@@ -232,3 +232,60 @@
    */
   .scene-body .number-value__input { min-inline-size: var(--hit-target-coarse); }
 }
+
+/* ------------------------------------------------------- the edit-mode bar */
+
+/*
+ * Almost everything in a modelling editor is a key, and a phone has no keys. The bar sits above the
+ * status line, holds the eight things a person cannot work without, and exists only where the
+ * layout has already folded — on a wide screen the keyboard does this job better than any strip of
+ * buttons could.
+ */
+.scene-touchbar { display: none; }
+
+@media (max-width: 64em), (pointer: coarse) {
+  .scene-touchbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    border-top: 1px solid var(--border-hairline);
+    background: var(--surface-raised);
+  }
+  .scene-touchbar::-webkit-scrollbar { display: none; }
+
+  /*
+   * The edit bar replaces the T bar rather than joining it. Both at once would leave two rows of
+   * tools on a screen that has none to spare, and the floating one would sit over the fixed one.
+   */
+  .scene-toolbar[data-mode='edit'] { display: none; }
+  .scene-touchbar__button {
+    flex: 0 0 auto;
+    inline-size: var(--hit-target-coarse);
+    block-size: var(--hit-target-coarse);
+  }
+  .scene-touchbar__rule {
+    flex: 0 0 auto;
+    inline-size: 1px;
+    block-size: 24px;
+    background: var(--border-hairline);
+  }
+  .scene-touchbar__more {
+    flex: 0 0 auto;
+    min-block-size: var(--hit-target-coarse);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-hairline);
+    border-radius: var(--radius-xs);
+    background: var(--surface-inset);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+  }
+  .scene-touchbar__more:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+}

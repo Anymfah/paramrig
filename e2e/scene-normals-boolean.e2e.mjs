@@ -1,4 +1,4 @@
-import { run } from './lib.mjs'
+import { headerControl, run } from './lib.mjs'
 
 /**
  * Chantier F in the browser: the overlays that show a mesh's winding, and the operators that fix it.
@@ -8,9 +8,6 @@ import { run } from './lib.mjs'
  * in one script, and the check that matters is that the picture changes when the winding does.
  */
 export default run('scene-normals-boolean', async ({ page, check, log, helpers, shot }) => {
-  // Wide enough that the header keeps its own row: the overlays menu is what this script is about,
-  // and reaching it through the folded popover would be testing the folding instead.
-  await page.setViewportSize({ width: 1800, height: 900 })
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
   const box = await helpers.viewportBox()
@@ -67,10 +64,13 @@ export default run('scene-normals-boolean', async ({ page, check, log, helpers, 
   /* ------------------------------------------------------- the orientation overlay */
 
   const solid = await middleColour()
-  await page.click('button[aria-label="Overlays"]')
+  const overlays = await headerControl(page, 'button[aria-label="Overlays"]')
+  await overlays.dispatchEvent('click')
   await page.waitForSelector('[role="menu"][aria-label="Overlays"]')
-  await page.locator('[role="menu"][aria-label="Overlays"] [role^="menuitem"]', { hasText: 'Face orientation' }).first().click()
-  await page.waitForTimeout(450)
+  await page.locator('[role="menu"][aria-label="Overlays"] [role^="menuitem"]', { hasText: 'Face orientation' })
+    .first()
+    .dispatchEvent('click')
+  await page.waitForTimeout(500)
   const oriented = await middleColour()
   check('face orientation paints the front faces blue',
     oriented[2] > oriented[0] && JSON.stringify(oriented) !== JSON.stringify(solid),

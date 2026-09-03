@@ -325,3 +325,36 @@
   .scene-properties__tab:active,
   .scene-history__step:active { transform: none; }
 }
+
+/*
+ * A row of plain buttons in a panel: clearing an attribute, and anything else a panel offers that
+ * is a verb rather than a value. They wrap rather than scroll, because a panel is narrow and a
+ * button that has gone off the side is a button nobody finds.
+ */
+.scene-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.scene-button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+.scene-button:hover:not(:disabled) {
+  background: var(--surface-overlay);
+}
+.scene-button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.scene-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

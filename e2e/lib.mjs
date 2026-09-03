@@ -26,7 +26,25 @@ export async function run(name, body) {
     log(`${ok ? 'PASS' : 'FAIL'} · ${label}${extra ? ` — ${extra}` : ''}`)
   }
   const browser = await connect()
-  const page = await browser.contexts()[0].newPage()
+  const context = browser.contexts()[0]
+  /*
+   * One page, borrowed and given back — never a new one each time.
+   *
+   * The QA browser is shared and headless, and only its front tab is drawn. Opening a page per
+   * script leaves the new one behind the old, and a page that is not drawn produces no frames: no
+   * `requestAnimationFrame`, and every Playwright actionability check waits for ever on an element
+   * it will never see settle. So the run takes the page that is already there, hands it back
+   * pointing at nothing, and closes anything a killed run left over — except the last one, because
+   * a browser attached over CDP loses its window along with its final page.
+   */
+  for (const stale of context.pages()) {
+    if (context.pages().length <= 1) break
+    const url = stale.url()
+    if (url === 'about:blank' || url.startsWith(BASE)) await stale.close().catch(() => undefined)
+  }
+  const page = context.pages()[0] ?? await context.newPage()
+  page.removeAllListeners('console')
+  page.removeAllListeners('pageerror')
   const errors = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -36,13 +54,34 @@ export async function run(name, body) {
   }
   try {
     await page.setViewportSize({ width: 1440, height: 900 })
+    /*
+     * The canary. A shared headless browser sometimes stops drawing — an occluded window, a page
+     * left behind by a killed run — and every symptom of that is a thirty-second timeout on an
+     * element that is perfectly still. One frame asked for up front turns a mystery into a sentence.
+     */
+    const drawing = await page.evaluate(() => new Promise((resolve) => {
+      let frames = 0
+      const step = () => { frames += 1; requestAnimationFrame(step) }
+      requestAnimationFrame(step)
+      setTimeout(() => resolve(frames), 400)
+    }))
+    if (drawing === 0) {
+      throw new Error('The QA browser has stopped drawing: no frames in 400 ms, so nothing can be'
+        + ' clicked. Restart it with --disable-backgrounding-occluded-windows'
+        + ' --disable-renderer-backgrounding --disable-background-timer-throttling'
+        + ' --disable-features=CalculateNativeWinOcclusion and try again.')
+    }
+    // The window is shared, and a resize is not instant: a script that starts measuring before the
+    // page has taken the new width measures the last script's window.
+    await page.waitForFunction(() => window.innerWidth === 1440, null, { timeout: 5000 }).catch(() => undefined)
     await body({ page, check, log, errors, shot, helpers: pageHelpers(page) })
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '))
   } catch (error) {
     results.failed += 1
     log(`SCRIPT ERROR ${error?.stack ?? error}`)
   } finally {
-    await page.close()
+    // The page is handed back rather than closed: see the note where it was borrowed.
+    await page.goto('about:blank').catch(() => undefined)
     await browser.close()
     mkdirSync(OUTPUT, { recursive: true })
     writeFileSync(join(OUTPUT, `${name}.txt`), lines.join('\n'))
@@ -82,6 +121,27 @@ function get(url, host) {
 }
 
 /** The handful of page moves every script makes. */
+/**
+ * A control on the right of the header, whether or not the width has folded that half away.
+ *
+ * At 1440 the view settings collapse into one popover, and the overlays menu and the mirror axes
+ * are inside it. Widening the window to avoid that is not an option: the QA browser has one window
+ * and resizing it stops the compositor drawing for every script that follows.
+ */
+export async function headerControl(page, selector) {
+  const direct = page.locator(selector)
+  if (await direct.count() > 0 && await direct.first().isVisible()) return direct.first()
+  const settings = page.locator('button[aria-label="View settings"]')
+  if (await settings.count() > 0) {
+    // Dispatched rather than clicked: the header is a roving-tabindex toolbar whose buttons sit
+    // under a tooltip wrapper, and Playwright reads that as an interception even though a person's
+    // click lands squarely on the button.
+    await settings.first().dispatchEvent('click')
+    await page.waitForTimeout(350)
+  }
+  return page.locator(selector).first()
+}
+
 export function pageHelpers(page) {
   /** Document coordinates to client coordinates, through the canvas transform. */
   const toClient = (point) => page.evaluate(({ x, y }) => {

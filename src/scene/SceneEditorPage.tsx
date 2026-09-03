@@ -45,7 +45,8 @@ import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/Scene
 import '@/scene/operators'
 import { operatorAvailability } from '@/scene/operators'
 import { isModalOperator } from '@/scene/modalSpecs'
-import { POINTER_MENUS, type MenuIds } from '@/scene/editMenus'
+import { MESH_MENU, POINTER_MENUS, type MenuIds } from '@/scene/editMenus'
+import { SceneTouchBar } from '@/scene/SceneTouchBar'
 import { FALLOFF_KINDS, type FalloffKind } from '@/scene/transform/proportional'
 
 /**
@@ -530,6 +531,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             onUpdateObject={editor.updateObject}
             onUpdateObjects={editor.updateObjects}
             onEditDocument={editor.editDocument}
+            onRunOperator={(id, params) => run(id, params ?? {})}
             onGestureStart={() => editor.beginGesture('Change value')}
             onGestureEnd={() => editor.endGesture('Change value')}
             isOpen={(sectionId) => sectionIsOpen(prefs, sectionId)}
@@ -636,6 +638,15 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             >
               <SceneHints />
             </SceneStage>
+
+            <SceneTouchBar
+              mode={document.view.mode}
+              selectMode={document.view.selectMode}
+              onMode={() => run('mode.toggleEdit')}
+              onSelectMode={(kind) => run(`mode.select${kind === 'vertex' ? 'Vertex' : kind === 'edge' ? 'Edge' : 'Face'}`)}
+              onRun={(id) => run(id)}
+              onMore={(at) => setPointerMenu({ title: 'Mesh', ids: MESH_MENU, at })}
+            />
             <SceneToolbar
               open={panels.toolbar}
               tool={document.view.tool}

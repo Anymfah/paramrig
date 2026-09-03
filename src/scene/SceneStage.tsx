@@ -13,7 +13,7 @@ import { SceneHud } from '@/scene/SceneHud'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
-import type { SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, SceneTool, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneMarquee } from '@/scene/SceneMarquee'
@@ -127,6 +127,8 @@ export function SceneStage({
     touch: boolean
     /** A ⌥ press in edit mode: an orbit if it moves, an edge loop if it does not. */
     loop?: boolean
+    /** The operator a tool would open once this press turns into a drag. */
+    tool?: string
   } | null>(null)
   /**
    * The fingers on the glass. Blender's touch scheme, which is also every map's: one finger turns
@@ -529,6 +531,24 @@ export function SceneStage({
             nav.begin(gesture, event.pointerId, x, y)
             return
           }
+          /*
+           * A tool in the T bar is the same operator its key runs, opened by a *drag* rather than by
+           * the press: choosing Extrude and dragging is E, and the F9 panel afterwards says so. It
+           * waits for the movement on purpose — a plain click with a tool held still selects, as it
+           * does in Blender, and an extrusion of nothing would leave a duplicate nobody asked for.
+           */
+          if (event.button === 0 && latestDocument.current.view.mode === 'edit') {
+            const operatorId = TOOL_OPERATORS[latestDocument.current.view.tool]
+            if (operatorId) {
+              press.current = { x, y, button: event.button, moved: false, navigating: false, touch, tool: operatorId }
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId)
+              } catch {
+                /* An uncaptured gesture ends at the edge of the viewport instead of beyond it. */
+              }
+              return
+            }
+          }
           // The knife places a point where the pointer is, snapped to whatever it is over.
           if (event.button === 0 && latestDocument.current.view.mode === 'edit' && latestDocument.current.view.tool === 'knife') {
             event.preventDefault()
@@ -575,6 +595,21 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
+          const waiting = press.current
+          if (waiting?.tool && !waiting.moved && Math.hypot(x - waiting.x, y - waiting.y) > threshold()) {
+            waiting.moved = true
+            const spec = modalSpecFor(waiting.tool, {
+              normal: elementTargets(latestDocument.current, latestSelection.current).normalBasis?.z ?? null,
+              loopCutPreview: (params) => loopCutPolylines(
+                latestDocument.current,
+                latestSelection.current,
+                Number(params.edge ?? -1),
+                Number(params.cuts ?? 1),
+                Number(params.factor ?? 0),
+              ),
+            })
+            if (spec) modalOp.current?.begin(spec, surface.current, { pointer: [waiting.x, waiting.y], fromDrag: true })
+          }
           const gesture = modalOp.current
           if (gesture?.running) {
             gesture.move({ x, y, dx: event.nativeEvent.movementX, dy: event.nativeEvent.movementY, shift: event.shiftKey })
@@ -842,6 +877,26 @@ export type OperatorBridge = {
 export type ElementPick = { objectId: string; kind: SelectMode; slot: number }
 export type ElementPickMode = 'new' | 'extend' | 'toggle' | 'loop' | 'ring' | 'path'
 export type ElementRegion = { vertices: Set<number>; edges: Set<number>; faces: Set<number> }
+
+/**
+ * Which operator each edit-mode tool is the interactive half of.
+ *
+ * The tools that draw a line rather than drag a number — the knife, bisect, poly build — are not
+ * here: they take the press themselves, because a click of theirs places a point rather than
+ * opening a gesture.
+ */
+const TOOL_OPERATORS: Partial<Record<SceneTool, string>> = {
+  extrude: 'mesh.extrudeRegion',
+  inset: 'mesh.inset',
+  bevel: 'mesh.bevelEdges',
+  'loop-cut': 'mesh.loopCut',
+  spin: 'mesh.spin',
+  smooth: 'mesh.smoothVertices',
+  'edge-slide': 'mesh.edgeSlide',
+  'shrink-fatten': 'mesh.shrinkFatten',
+  shear: 'mesh.shear',
+  rip: 'mesh.rip',
+}
 
 /** How far from the pointer an element is still worth picking, in CSS pixels. Blender's is ten. */
 const ELEMENT_RADIUS = 10

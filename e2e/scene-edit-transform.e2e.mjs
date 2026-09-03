@@ -1,4 +1,4 @@
-import { run } from './lib.mjs'
+import { headerControl, run } from './lib.mjs'
 
 /**
  * Chantier B in the browser: moving elements rather than objects, and the four things that make
@@ -6,7 +6,6 @@ import { run } from './lib.mjs'
  * snapping onto another vertex exactly, and mirror editing following across a plane.
  */
 export default run('scene-edit-transform', async ({ page, check, log, helpers, shot }) => {
-  await page.setViewportSize({ width: 1800, height: 900 })
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
   const box = await helpers.viewportBox()
@@ -91,10 +90,11 @@ export default run('scene-edit-transform', async ({ page, check, log, helpers, s
   await page.keyboard.press('KeyA')
   await page.keyboard.up('Alt')
   await page.waitForTimeout(200)
-  await page.click('button[aria-label="Mirror X"]')
+  const mirrorX = await headerControl(page, 'button[aria-label="Mirror X"]')
+  await mirrorX.click()
   await page.waitForTimeout(250)
   check('the header turns mirror editing on for X',
-    await page.locator('button[aria-label="Mirror X"]').getAttribute('aria-pressed') === 'true')
+    await page.locator('button[aria-label="Mirror X"]').first().getAttribute('aria-pressed') === 'true')
 
   // One corner of the cube, and its partner across the YZ plane.
   const before = await meshOf()
@@ -133,8 +133,9 @@ export default run('scene-edit-transform', async ({ page, check, log, helpers, s
     && Math.abs(movedPartner[0] + movedCorner[0]) < 1e-6,
     JSON.stringify({ moved: movedCorner, partner: movedPartner }))
   await shot('scene-edit-transform-mirror.png')
-  await page.click('button[aria-label="Mirror X"]')
+  await (await headerControl(page, 'button[aria-label="Mirror X"]')).click()
   await page.waitForTimeout(200)
+  await page.keyboard.press('Escape')
   await page.locator('#main').focus()
   await page.keyboard.press('Control+KeyZ')
   await page.waitForTimeout(350)
@@ -171,8 +172,7 @@ export default run('scene-edit-transform', async ({ page, check, log, helpers, s
   await page.keyboard.press('Shift+Tab')
   await page.waitForTimeout(250)
   check('⇧Tab turns snapping on', (await scene()).view.snapEnabled === true, String((await scene()).view.snapEnabled))
-  await page.click('button[aria-label="Snapping"], button[aria-label="Snap to"]').catch(() => undefined)
-  await page.keyboard.press('Escape').catch(() => undefined)
+
 
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))

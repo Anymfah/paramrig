@@ -169,3 +169,21 @@ await page.waitForFunction(() => window.__paramrigScene.frames() > 0, null, { ti
   commits the view, so that an intermediate camera position is never the one stored. Read the live
   DOM mid-gesture — the HUD, the modal header, the status bar — and `helpers.scene()` only once the
   pointer is up and a beat has passed.
+- **One page, borrowed and given back.** The QA browser is shared and headless, and only its front
+  tab is drawn: a page that is not drawn produces no frames, and without frames Playwright's
+  actionability check waits for ever on an element it will never see settle — the failure reads
+  `waiting for element to be visible, enabled and stable` on a button that has not moved a pixel and
+  has no animation on it. `run()` therefore reuses the page that is already there rather than
+  opening one per script, hands it back pointing at `about:blank`, and closes anything a killed run
+  left behind — except the last page, because a browser attached over CDP loses its window with it.
+  If frames stop anyway, the browser wants restarting with
+  `--disable-backgrounding-occluded-windows --disable-renderer-backgrounding
+  --disable-background-timer-throttling --disable-features=CalculateNativeWinOcclusion`; one line of
+  diagnosis first:
+  `page.evaluate(() => new Promise(r => { let n = 0; const s = () => { n += 1; requestAnimationFrame(s) }; requestAnimationFrame(s); setTimeout(() => r(n), 500) }))`.
+- **Edit mode is picked from the id buffer, not from the DOM.** There is no element to query for a
+  vertex. `window.__paramrigScene.pickElements(x, y, radius)` answers with the nearest vertex, edge
+  and face to a point in canvas coordinates, each with its distance in pixels — which is how a
+  script finds something to click, and how the priority (vertex over edge over face) is checked.
+  Project a vertex from the document with `helpers.project3d` and ask the buffer what is there: the
+  two agreeing is the whole of what makes edit mode work.
