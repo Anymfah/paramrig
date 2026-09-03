@@ -32,6 +32,8 @@ export type ModalContext = {
   normal: Vec3 | null
   /** The edge under the pointer, which a loop cut and a vertex slide are about. */
   edge?: number
+  /** The lines a loop cut would leave, given the edge and the numbers it stands at. */
+  loopCutPreview?: (params: OperatorParams) => Vec3[][]
 }
 
 export function modalSpecFor(operatorId: string, context: ModalContext): ModalSpec | null {
@@ -87,6 +89,10 @@ export function modalSpecFor(operatorId: string, context: ModalContext): ModalSp
           { code: 'KeyE', param: 'even', label: 'even', kind: 'toggle' },
           { code: 'KeyF', param: 'flipped', label: 'flipped', kind: 'toggle' },
         ],
+        // Two stages, as Blender's: the pointer chooses the ring while the lines are drawn over an
+        // untouched mesh, and the click that settles it hands over to the slide.
+        choose: { param: 'edge', kind: 'edge' },
+        ...(context.loopCutPreview ? { preview: context.loopCutPreview } : {}),
         ...(context.edge !== undefined ? { fixed: { edge: context.edge } as OperatorParams } : {}),
         readout: (params) => `Cuts ${Number(params.cuts) || 1} · Factor ${factor(params.factor)}`,
       }

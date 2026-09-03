@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Euler, Matrix4 } from 'three'
 import { ModalOperator, type ModalOperatorDeps } from '@/scene/modalOperator'
 import { modalSpecFor } from '@/scene/modalSpecs'
+import { loopCutPolylines } from '@/scene/toolPreview'
+import { SceneToolPath } from '@/scene/SceneToolPath'
+import { ToolPathChannel } from '@/scene/viewport/toolPath'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
 import { elementTargets } from '@/scene/transform/elements'
 import { orientationBasis } from '@/scene/transform/orientation'
@@ -144,6 +147,7 @@ export function SceneStage({
   const pointer = useRef<[number, number]>([0, 0])
   const hud = useMemo(() => new HudChannel(), [])
   const marquee = useMemo(() => new MarqueeChannel(), [])
+  const toolPath = useMemo(() => new ToolPathChannel(), [])
   const region = useRef<{ kind: MarqueeKind; points: Array<[number, number]>; mode: 'new' | 'extend' | 'subtract'; radius: number } | null>(null)
   const onRegionRef = useRef(onRegionSelect)
   onRegionRef.current = onRegionSelect
@@ -171,6 +175,21 @@ export function SceneStage({
       restore: (document, selection) => bridge.current.restore(document, selection),
       message: (text) => bridge.current.message(text),
       pointer: () => pointer.current,
+      edgeUnder: (x, y) => viewport.current?.pickElements(x, y, ELEMENT_RADIUS).edge?.slot ?? null,
+      showPreview: (lines) => {
+        const instance = viewport.current
+        if (!lines || lines.length === 0 || !instance) {
+          toolPath.clear()
+          return
+        }
+        // The lines arrive in world space and are drawn in the DOM, so they are projected here,
+        // once per pointer move, which is the only place that knows both.
+        const projected = lines
+          .map((line) => line.map((point) => instance.project(point)).filter((point): point is [number, number] => point !== null))
+          .filter((line) => line.length > 1)
+        if (projected.length === 0) toolPath.clear()
+        else toolPath.set({ kind: 'loop-cut', lines: projected })
+      },
     })
   }
   const modal = useRef<ModalTransform | null>(null)
@@ -268,6 +287,13 @@ export function SceneStage({
           normal: document.view.mode === 'edit'
             ? elementTargets(document, latestSelection.current).normalBasis?.z ?? null
             : null,
+          loopCutPreview: (params) => loopCutPolylines(
+            latestDocument.current,
+            latestSelection.current,
+            Number(params.edge ?? -1),
+            Number(params.cuts ?? 1),
+            Number(params.factor ?? 0),
+          ),
           ...(extra?.edge !== undefined ? { edge: extra.edge } : {}),
         })
         if (!spec) return false
@@ -452,7 +478,13 @@ export function SceneStage({
             }, 500)
           }
           press.current = { x, y, button: event.button, moved: false, navigating: !!gesture, touch, loop: takingALoop }
-          event.currentTarget.setPointerCapture(event.pointerId)
+          try {
+            // A synthetic press — a QA script, an assistive device — may arrive without a live
+            // pointer to capture, and refusing to capture one is not a reason to drop the gesture.
+            event.currentTarget.setPointerCapture(event.pointerId)
+          } catch {
+            /* The gesture runs uncaptured: it ends at the edge of the viewport instead of beyond it. */
+          }
           if (gesture) {
             event.preventDefault()
             nav.begin(gesture, event.pointerId, x, y)
@@ -710,6 +742,7 @@ export function SceneStage({
         }}
       />
       <SceneMarquee channel={marquee} />
+      <SceneToolPath channel={toolPath} />
       <SceneHud channel={hud} />
       {children}
     </SceneViewportHost>

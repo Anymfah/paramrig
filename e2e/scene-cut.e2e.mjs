@@ -1,0 +1,193 @@
+import { run } from './lib.mjs'
+
+/**
+ * Chantier D in the browser: ⌃R with its preview, and the bisect that follows it.
+ *
+ * The loop cut is the one gesture where what is drawn is not what has happened: nothing is cut
+ * while the pointer is choosing a ring, and the lines over the mesh are the whole of the feedback.
+ * So the script measures that the preview follows the pointer, that it costs what it should, and
+ * that the click after it cuts where the lines were.
+ */
+export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
+  await helpers.newScene()
+  await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
+  const box = await helpers.viewportBox()
+  const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+  const scene = () => helpers.scene()
+  const meshOf = async () => {
+    const document = await scene()
+    return document.meshes[document.objects.find((object) => object.data.kind === 'mesh').data.meshId]
+  }
+  const counts = async () => {
+    const mesh = await meshOf()
+    return { vertices: mesh.vertexIds.length, edges: mesh.edges.length, faces: mesh.faces.length }
+  }
+
+  await page.mouse.click(centre.x, centre.y)
+  await page.waitForTimeout(250)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(400)
+
+  /* ------------------------------------------------------------- the preview */
+
+  // An edge the id buffer answers for, so the pointer is over a real ring.
+  const mesh = await meshOf()
+  let edgeAt = null
+  for (let edge = 0; edge < mesh.edges.length && !edgeAt; edge += 1) {
+    const [a, b] = mesh.edges[edge]
+    const middle = [0, 1, 2].map((axis) => (mesh.vertices[a * 3 + axis] + mesh.vertices[b * 3 + axis]) / 2)
+    const where = await helpers.project3d(middle)
+    if (!where) continue
+    const found = await page.evaluate(([x, y]) => window.__paramrigScene.pickElements(x, y, 8), where.local)
+    if (found.edge) edgeAt = where
+  }
+  await page.mouse.move(edgeAt.x, edgeAt.y)
+  await page.waitForTimeout(150)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+KeyR')
+  await page.waitForTimeout(300)
+  check('⌃R draws the cut it would make', (await page.locator('.scene-tool-path__line').count()) > 0,
+    `${await page.locator('.scene-tool-path__line').count()} lines`)
+  check('and nothing has been cut yet', (await counts()).faces === 6, JSON.stringify(await counts()))
+  const modal = await page.locator('.scene-modal-header').textContent()
+  check('and the header says what the pointer and the click do', modal.includes('Move to choose'), modal)
+  await shot('scene-cut-preview.png')
+
+  // The wheel asks for more cuts, and more lines appear.
+  await page.mouse.wheel(0, -120)
+  await page.waitForTimeout(200)
+  await page.mouse.wheel(0, -120)
+  await page.waitForTimeout(250)
+  const lines = await page.locator('.scene-tool-path__line').count()
+  check('the wheel asks for three cuts and three lines are drawn', lines === 3, `${lines} lines`)
+
+  // The click settles the ring and hands over to the slide; Enter with a typed factor confirms.
+  await page.mouse.move(edgeAt.x, edgeAt.y)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(350)
+  check('the click cuts, and the preview lines are gone',
+    (await page.locator('.scene-tool-path__line').count()) === 0 && (await counts()).faces > 6,
+    JSON.stringify(await counts()))
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(400)
+  const cut = await counts()
+  // Three cuts across a ring of four quads: twelve new vertices, and each quad in four.
+  check('three loops leave a cube of eighteen faces and twenty vertices',
+    cut.faces === 18 && cut.vertices === 20, JSON.stringify(cut))
+  await shot('scene-cut-loops.png')
+
+  // One undo takes back the whole cut.
+  await page.keyboard.press('Control+KeyZ')
+  await page.waitForTimeout(400)
+  check('one undo takes the whole loop cut back', (await counts()).faces === 6, JSON.stringify(await counts()))
+
+  /* --------------------------------------------------------------- the speed */
+
+  // A heavy grid, and the preview measured on it: this is the four-millisecond budget.
+  await helpers.seedScene((current) => {
+    const size = 100
+    const vertices = []
+    const faces = []
+    for (let row = 0; row <= size; row += 1) {
+      for (let column = 0; column <= size; column += 1) vertices.push(column - size / 2, row - size / 2, 0)
+    }
+    for (let row = 0; row < size; row += 1) {
+      for (let column = 0; column < size; column += 1) {
+        const corner = row * (size + 1) + column
+        faces.push([corner, corner + 1, corner + size + 2, corner + size + 1])
+      }
+    }
+    const meshId = Object.keys(current.meshes)[0]
+    const edges = []
+    const seen = new Set()
+    for (const loop of faces) {
+      for (let index = 0; index < loop.length; index += 1) {
+        const a = loop[index]
+        const b = loop[(index + 1) % loop.length]
+        const key = a < b ? `${a}:${b}` : `${b}:${a}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        edges.push([Math.min(a, b), Math.max(a, b)])
+      }
+    }
+    return {
+      meshes: {
+        ...current.meshes,
+        [meshId]: {
+          vertices,
+          vertexIds: vertices.map((_, index) => index).slice(0, vertices.length / 3),
+          edges,
+          faces,
+          faceIds: faces.map((_, index) => index),
+          nextVertexId: vertices.length / 3,
+          nextFaceId: faces.length,
+          attributes: { vertex: {}, edge: {}, face: { smooth: faces.map(() => false), material: faces.map(() => 0) } },
+        },
+      },
+      view: { ...current.view, mode: 'object', distance: 90 },
+    }
+  })
+  // A is select-all in object mode, which is steadier than a click on a scene that has just loaded.
+  await page.locator('#main').focus()
+  await page.keyboard.press('KeyA')
+  await page.waitForTimeout(250)
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(800)
+  const heavy = await counts()
+  log(`heavy grid: ${heavy.vertices} vertices, ${heavy.faces} faces, mode ${(await scene()).view.mode}`)
+
+  const hover = await page.evaluate(() => {
+    const scene = window.__paramrigScene
+    const box = document.querySelector('.scene-viewport').getBoundingClientRect()
+    const samples = []
+    for (let index = 0; index < 40; index += 1) {
+      const x = box.width * (0.3 + 0.4 * (index / 40))
+      const y = box.height * 0.5
+      const started = performance.now()
+      scene.pickElements(x, y, 10)
+      samples.push(performance.now() - started)
+    }
+    samples.sort((a, b) => a - b)
+    return { mean: samples.reduce((total, value) => total + value, 0) / samples.length, p95: samples[Math.floor(samples.length * 0.95)] }
+  })
+  log(`MEASURE hover over ${heavy.faces} faces: ${hover.mean.toFixed(2)} ms mean, ${hover.p95.toFixed(2)} ms p95`)
+  check('the hover pick stays under four milliseconds on ten thousand faces', hover.mean < 4,
+    `${hover.mean.toFixed(2)} ms`)
+
+  // And the whole preview path, which is the number the prompt asks for: the pick, the ring walk,
+  // the projection and the drawing, measured as the pointer really drives them.
+  await page.mouse.move(centre.x, centre.y)
+  await page.waitForTimeout(150)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+KeyR')
+  await page.waitForTimeout(300)
+  const drawn = await page.locator('.scene-tool-path__line').count()
+  check('⌃R previews a ring across the heavy grid', drawn > 0, `${drawn} lines`)
+  const preview = await page.evaluate(() => {
+    const surface = document.querySelector('.scene-surface')
+    const box = surface.getBoundingClientRect()
+    const samples = []
+    for (let index = 0; index < 30; index += 1) {
+      const x = box.left + box.width * (0.35 + 0.3 * (index / 30))
+      const y = box.top + box.height * (0.4 + 0.2 * (index / 30))
+      const started = performance.now()
+      surface.dispatchEvent(new PointerEvent('pointermove', {
+        bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', buttons: 0,
+      }))
+      samples.push(performance.now() - started)
+    }
+    samples.sort((a, b) => a - b)
+    return { mean: samples.reduce((total, value) => total + value, 0) / samples.length, p95: samples[Math.floor(samples.length * 0.95)] }
+  })
+  log(`MEASURE loop cut preview over ${heavy.faces} faces: ${preview.mean.toFixed(2)} ms mean, ${preview.p95.toFixed(2)} ms p95`)
+  check('and the preview follows the pointer in under four milliseconds', preview.mean < 4,
+    `${preview.mean.toFixed(2)} ms mean, ${preview.p95.toFixed(2)} ms p95`)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(250)
+  check('Escape leaves the grid uncut', (await counts()).faces === heavy.faces, JSON.stringify(await counts()))
+
+  const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
+  check('no console errors of our own', errors.length === 0, errors.join(' | '))
+})

@@ -459,6 +459,41 @@
   stroke-width: 1.5;
 }
 
+/*
+ * What a tool draws before it cuts: the loop cut's yellow lines, the knife's path and the points it
+ * has placed. Drawn in the DOM for the same reasons as the marquee, and in the tool's own colour so
+ * that a preview is never mistaken for geometry that is already there.
+ */
+.scene-tool-path {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  overflow: visible;
+}
+.scene-tool-path__line {
+  fill: none;
+  stroke: var(--scene-loop-cut);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.scene-tool-path[data-kind='knife'] .scene-tool-path__line {
+  stroke: var(--scene-knife);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+.scene-tool-path__point {
+  fill: var(--scene-knife);
+  stroke: var(--scene-viewport);
+  stroke-width: 1.5;
+}
+.scene-tool-path__snap {
+  fill: none;
+  stroke: var(--scene-knife-snap);
+  stroke-width: 2;
+}
+
 /* ------------------------------------------------------- the stage's layout */
 
 /*

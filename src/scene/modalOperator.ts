@@ -51,6 +51,17 @@ export type ModalKey = {
 export type ModalSpec = {
   operatorId: string
   drive: ModalDrive
+  /**
+   * A first stage in which the pointer chooses *what* the operator is about rather than how much.
+   *
+   * A loop cut runs over the ring of the edge under the pointer, and Blender lets you move from
+   * ring to ring before committing to one: nothing is cut, a preview is drawn, and the click both
+   * chooses the ring and hands over to the slide. Without this the edge would be whichever one
+   * happened to be under the pointer when the key went down.
+   */
+  choose?: { param: string; kind: 'edge' }
+  /** The lines to draw while choosing, in world space, given the parameters as they stand. */
+  preview?: (params: OperatorParams) => Vec3[][]
   /** The wheel's parameter — segments on a bevel, cuts on a loop cut. */
   wheel?: { param: string; step: number; min: number; max: number }
   keys?: ModalKey[]
@@ -70,6 +81,10 @@ export type ModalOperatorDeps = {
   restore: (document: SceneDocument, selection: SceneSelection) => void
   message: (text: string | null) => void
   pointer: () => [number, number]
+  /** The edge under a point, for the stage that chooses one. */
+  edgeUnder?: (x: number, y: number) => number | null
+  /** Draws the preview lines, in world space, or clears them with null. */
+  showPreview?: (lines: Vec3[][] | null) => void
 }
 
 export class ModalOperator {
@@ -87,6 +102,8 @@ export class ModalOperator {
   /** The direction a vector drive is measuring along; X, Y and Z replace it during the gesture. */
   private direction: Vec3 = [0, 0, 1]
   private axisName: string | null = null
+  /** 'choose' picks what the operator is about; 'adjust' drives its number. */
+  private stage: 'choose' | 'adjust' = 'adjust'
 
   constructor(deps: ModalOperatorDeps) {
     this.deps = deps
@@ -121,6 +138,11 @@ export class ModalOperator {
     this.precise = false
     this.direction = spec.drive.direction ?? [0, 0, 1]
     this.axisName = null
+    this.stage = spec.choose ? 'choose' : 'adjust'
+    if (spec.choose) {
+      const edge = this.deps.edgeUnder?.(this.start[0], this.start[1]) ?? null
+      if (edge !== null) this.params = { ...this.params, [spec.choose.param]: edge }
+    }
     if (!this.fromDrag && element && typeof element.requestPointerLock === 'function') {
       try {
         const request = element.requestPointerLock() as unknown
@@ -135,11 +157,19 @@ export class ModalOperator {
   }
 
   move(input: { x: number; y: number; dx: number; dy: number; shift: boolean }): void {
-    if (!this.spec) return
+    const spec = this.spec
+    if (!spec) return
     this.precise = input.shift
     if (this.locked) this.cursor = [this.cursor[0] + input.dx, this.cursor[1] + input.dy]
     else this.cursor = [input.x, input.y]
-    this.params = { ...this.params, [this.spec.drive.param]: this.drivenValue() }
+    if (this.stage === 'choose' && spec.choose) {
+      // Nothing is done yet: the pointer is choosing which edge, and the preview follows it.
+      const edge = this.deps.edgeUnder?.(input.x, input.y) ?? null
+      if (edge !== null) this.params = { ...this.params, [spec.choose.param]: edge }
+      this.apply()
+      return
+    }
+    this.params = { ...this.params, [spec.drive.param]: this.drivenValue() }
     this.apply()
   }
 
@@ -219,6 +249,15 @@ export class ModalOperator {
     const spec = this.spec
     const before = this.before
     if (!spec || !before) return
+    if (this.stage === 'choose') {
+      // The first click settles what the operator is about and hands over to the number, measured
+      // from where that click landed rather than from where the key was pressed.
+      this.stage = 'adjust'
+      this.start = this.cursor
+      this.deps.showPreview?.(null)
+      this.apply()
+      return
+    }
     const params = this.params
     this.close()
     const error = this.deps.commit(spec.operatorId, params, before, this.beforeSelection)
@@ -238,6 +277,8 @@ export class ModalOperator {
     this.spec = null
     this.before = null
     this.typing = ''
+    this.stage = 'adjust'
+    this.deps.showPreview?.(null)
     this.deps.hud.set({ visible: false, text: '', header: '', x: 0, y: 0, side: 'right' })
     window.document.removeEventListener('pointerlockchange', this.onLockChange)
     if (this.locked && typeof window.document.exitPointerLock === 'function') window.document.exitPointerLock()
@@ -314,8 +355,14 @@ export class ModalOperator {
     const spec = this.spec
     const before = this.before
     if (!spec || !before) return
-    const error = this.deps.preview(spec.operatorId, this.params, before, this.beforeSelection)
-    this.deps.message(error)
+    if (this.stage === 'choose') {
+      // The mesh is left alone and the lines are drawn over it: a preview of a cut that has not
+      // happened is the whole point of the stage.
+      this.deps.showPreview?.(spec.preview ? spec.preview(this.params) : null)
+    } else {
+      const error = this.deps.preview(spec.operatorId, this.params, before, this.beforeSelection)
+      this.deps.message(error)
+    }
     const viewport = this.deps.viewport()
     const size = viewport?.pixelSize ?? { width: 1, height: 1 }
     this.deps.hud.set({
@@ -334,6 +381,9 @@ export class ModalOperator {
     if (!spec) return ''
     const operator = getOperator(spec.operatorId)
     const parts = [operator?.label ?? spec.operatorId, spec.readout(this.params)]
+    if (this.stage === 'choose') {
+      return `${operator?.label ?? spec.operatorId}  ${spec.readout(this.params)} | Move to choose · Click to cut · Escape cancel`
+    }
     const keys = (spec.keys ?? []).map((entry) => `${keyName(entry.code)} ${entry.label}`)
     if (spec.drive.kind === 'vector') keys.push(this.axisName ? `${this.axisName} axis, again to free` : 'X Y Z axis')
     if (spec.wheel) keys.push(`Wheel ${spec.wheel.param}`)
