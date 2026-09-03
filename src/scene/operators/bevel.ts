@@ -54,7 +54,7 @@ const MIN_PROFILE = 0.02
 const AFFECT = ['edges', 'vertices'] as const
 const OFFSET_TYPES = ['offset', 'width', 'depth', 'percent', 'absolute'] as const
 
-type BevelParams = {
+export type BevelParams = {
   width: number
   segments: number
   profile: number
@@ -377,9 +377,12 @@ function clearAway(mesh: EditMesh, opened: number[], touched: Iterable<number>):
 
 /* ------------------------------------------------------------- bevelling edges */
 
-function bevelEdges(target: EditTarget, params: BevelParams): EditOutcome {
-  const mesh = target.mesh
-  const bevelled = [...target.edges].filter((edge) => mesh.hasEdge(edge))
+/**
+ * The bevel itself, over a mesh and the edges to open. The operator hands it the selected edges and
+ * the Bevel modifier hands it the ones its limit method chose, so the two cannot drift apart.
+ */
+export function bevelEdgeSet(mesh: EditMesh, edges: Iterable<number>, params: BevelParams): EditOutcome {
+  const bevelled = [...edges].filter((edge) => mesh.hasEdge(edge))
   if (bevelled.length === 0) return null
   const inBevel = new Set(bevelled)
   for (const edge of bevelled) {
@@ -578,7 +581,9 @@ function bevelVertices(target: EditTarget, params: BevelParams): EditOutcome {
 /* ---------------------------------------------------------------- the operators */
 
 function bevel(target: EditTarget, params: BevelParams): EditOutcome {
-  return chosen(params.affect, AFFECT, 'edges') === 'vertices' ? bevelVertices(target, params) : bevelEdges(target, params)
+  return chosen(params.affect, AFFECT, 'edges') === 'vertices'
+    ? bevelVertices(target, params)
+    : bevelEdgeSet(target.mesh, target.edges, params)
 }
 
 /**

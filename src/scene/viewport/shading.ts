@@ -17,7 +17,12 @@ import {
  * right, one rim from behind — enough to read a form without pretending to be a render.
  */
 
-export type StudioLights = { group: Group; dispose: () => void }
+export type StudioLights = {
+  group: Group
+  /** Off in rendered shading, where the scene's own lamps are what is being looked at. */
+  setEnabled: (enabled: boolean) => void
+  dispose: () => void
+}
 
 export function createStudioLights(): StudioLights {
   const group = new Group()
@@ -31,6 +36,9 @@ export function createStudioLights(): StudioLights {
   group.add(key, fill, rim)
   return {
     group,
+    setEnabled: (enabled) => {
+      group.visible = enabled
+    },
     dispose: () => {
       for (const light of [key, fill, rim]) light.dispose()
       group.clear()

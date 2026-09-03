@@ -633,7 +633,8 @@ function coarseVertices(mesh: EditMesh): Set<number> {
   return keep
 }
 
-function unsubdivideOnce(mesh: EditMesh): boolean {
+/** One level taken back off, on a mesh alone: the operator repeats it, and so does the modifier. */
+export function unsubdivideOnce(mesh: EditMesh): boolean {
   const keep = coarseVertices(mesh)
   if (keep.size === 0 || keep.size === mesh.vertexCount) return false
   // Two faces belong to the same coarse face when the edge between them is one a subdivide would

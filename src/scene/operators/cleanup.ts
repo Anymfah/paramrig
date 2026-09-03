@@ -137,7 +137,7 @@ registerOperator<LooseParams>({
 
 /* ---------------------------------------------------------------- decimate */
 
-type DecimateParams = { ratio: number; symmetry: boolean; triangulate: boolean }
+export type DecimateParams = { ratio: number; symmetry: boolean; triangulate: boolean }
 
 /** A symmetric 4×4 as its ten distinct entries, which is the whole of a fundamental error quadric. */
 type Quadric = number[]
@@ -258,8 +258,11 @@ function collapsible(mesh: EditMesh, edge: number, trianglesOnly: boolean): bool
   return true
 }
 
-function decimate(target: EditTarget, params: DecimateParams): EditOutcome {
-  const mesh = target.mesh
+/**
+ * The quadric collapse itself, over a mesh alone: the operator runs it on the mesh being edited and
+ * the Decimate modifier on the one the stack is building.
+ */
+export function decimateMesh(mesh: EditMesh, params: DecimateParams): EditOutcome {
   const ratio = Math.min(1, Math.max(0, params.ratio))
   let changed = false
   if (params.triangulate) {
@@ -395,7 +398,7 @@ registerOperator<DecimateParams>({
   defaults: { ratio: 0.5, symmetry: false, triangulate: true },
   mode: 'edit',
   available: (context) => requireEdit(context),
-  run: (context, params) => runOnMeshes(context, (target) => decimate(target, params), { label: 'Decimate geometry' }),
+  run: (context, params) => runOnMeshes(context, (target) => decimateMesh(target.mesh, params), { label: 'Decimate geometry' }),
 })
 
 /* ----------------------------------------------------- degenerate dissolve */

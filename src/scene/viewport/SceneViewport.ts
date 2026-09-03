@@ -1,9 +1,13 @@
 import {
+  ACESFilmicToneMapping,
   Box3,
   Color,
   Group,
+  NoToneMapping,
   OrthographicCamera,
+  PCFSoftShadowMap,
   PerspectiveCamera,
+  PMREMGenerator,
   Raycaster,
   Scene,
   SphereGeometry,
@@ -15,7 +19,9 @@ import {
   type BufferGeometry,
   type Camera,
   type Material,
+  type Texture,
 } from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
@@ -29,6 +35,8 @@ import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, O
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
 import { createPickBuffer, createPickMaterial, decodePick, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
 import { createFaceOrientationMaterial, createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
+import { createMaterialLibrary, type MaterialLibrary } from '@/scene/viewport/materials'
+import { createSceneLights, type SceneLights } from '@/scene/viewport/sceneLights'
 import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
 import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
 import { createTransformOverlay, type TransformOverlay } from '@/scene/viewport/transformOverlay'
@@ -183,6 +191,15 @@ function pairKey(a: number, b: number): string {
 
 const UP: Vec3 = [0, 0, 1]
 
+/**
+ * How many lights may cast a shadow at once.
+ *
+ * Each one is another pass over the scene from that light's point of view, at a resolution paid for
+ * in memory. Blender caps them too; four is enough for a key, a fill, a rim and one more, and past
+ * that a person is lighting rather than modelling.
+ */
+const MAX_SHADOWS = 4
+
 /** How many pixels across a glyph's grab area is, at any distance. */
 const GLYPH_PICK_PX = 11
 
@@ -198,6 +215,11 @@ export class SceneViewport {
   private perspective = new PerspectiveCamera(40, 1, 0.01, 1000)
   private orthographic = new OrthographicCamera(-1, 1, 1, -1, -1000, 1000)
   private studio: StudioLights | null = null
+  private sceneLights: SceneLights | null = null
+  private materials: MaterialLibrary | null = null
+  /** The studio environment material preview reflects, built the first time it is asked for. */
+  private studioEnvironment: Texture | null = null
+  private environmentMaker: PMREMGenerator | null = null
   private grid: ViewportGrid | null = null
   private outline: OutlinePass | null = null
   private picking: PickBuffer | null = null
@@ -1100,6 +1122,96 @@ export class SceneViewport {
       if (object) objectView.root.visible = this.isVisible(object)
       if (objectView.wire) objectView.wire.object.visible = view.shading === 'wireframe' || view.overlays.wireframe
     }
+    this.applyShading()
+  }
+
+  /**
+   * The four ways of looking at a scene.
+   *
+   * Wireframe draws the edges and nothing else. Solid lights everything with a fixed studio rig, so
+   * that a model reads the same wherever its lamps are — that is the mode a person models in.
+   * Material preview keeps the materials but still lights them from a studio, so a surface can be
+   * judged without waiting for the lighting to be finished. Rendered uses the scene's own lights,
+   * their shadows, the world and film-like tone mapping, and is what the F12 image is made with.
+   *
+   * The materials themselves are shared and cached; what changes here is which of them each mesh is
+   * drawn with, and what is lighting them.
+   */
+  private applyShading(): void {
+    const renderer = this.renderer
+    const view = this.view
+    if (!renderer || !view) return
+    const shading = view.shading
+    const lit = shading === 'material' || shading === 'rendered'
+
+    if (shading === 'rendered') {
+      renderer.toneMapping = ACESFilmicToneMapping
+      renderer.toneMappingExposure = 1
+      renderer.shadowMap.enabled = true
+      renderer.shadowMap.type = PCFSoftShadowMap
+    } else {
+      // Solid and material preview are working views: what is on screen should be the numbers, not
+      // a film of them.
+      renderer.toneMapping = NoToneMapping
+      renderer.shadowMap.enabled = false
+    }
+
+    this.studio?.setEnabled(shading === 'solid' || shading === 'material')
+    if (shading === 'rendered' && this.document) {
+      if (!this.sceneLights) {
+        this.sceneLights = createSceneLights()
+        this.scene.add(this.sceneLights.group)
+        this.disposables.push(() => this.sceneLights?.dispose())
+      }
+      this.sceneLights.sync(this.document, { shadows: true, maxShadows: MAX_SHADOWS })
+      this.sceneLights.group.visible = true
+    } else if (this.sceneLights) {
+      this.sceneLights.group.visible = false
+    }
+
+    this.scene.environment = lit ? this.environment() : null
+    for (const [id, objectView] of this.views) {
+      if (!objectView.mesh) continue
+      const object = this.document?.objects.find((entry) => entry.id === id)
+      objectView.mesh.visible = shading !== 'wireframe'
+      if (!object) continue
+      objectView.mesh.material = lit ? this.materialsFor(object) : objectView.material ?? objectView.mesh.material
+    }
+  }
+
+  /** The materials a mesh is drawn with, one per slot, in the order its groups name them. */
+  private materialsFor(object: SceneObject): Material | Material[] {
+    const document = this.document
+    if (!document) return this.views.get(object.id)?.material ?? createSolidMaterial()
+    if (!this.materials) {
+      this.materials = createMaterialLibrary({ onTextureLoaded: () => this.invalidate() })
+      this.disposables.push(() => this.materials?.dispose())
+    }
+    const slots = object.materialSlots.length > 0 ? object.materialSlots : [document.materials[0]?.id ?? '']
+    const built = slots.map((slotId) => {
+      const material = document.materials.find((entry) => entry.id === slotId) ?? document.materials[0]
+      return material ? this.materials!.materialFor(material) : createSolidMaterial()
+    })
+    return built.length === 1 ? built[0]! : built
+  }
+
+  /**
+   * What a material reflects. Three's own room, pre-filtered once and kept: it is a few hundred
+   * kilobytes of texture and a second of setup, and building it per frame would be neither.
+   */
+  private environment(): Texture | null {
+    const renderer = this.renderer
+    if (!renderer) return null
+    if (this.studioEnvironment) return this.studioEnvironment
+    this.environmentMaker = new PMREMGenerator(renderer)
+    const room = new RoomEnvironment()
+    this.studioEnvironment = this.environmentMaker.fromScene(room, 0.04).texture
+    room.dispose?.()
+    this.disposables.push(() => {
+      this.studioEnvironment?.dispose()
+      this.environmentMaker?.dispose()
+    })
+    return this.studioEnvironment
   }
 
   get camera(): Camera {

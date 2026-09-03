@@ -222,12 +222,56 @@ function brushOf(mesh: MeshData, matrix: Matrix4): Brush {
   return brush
 }
 
+/* --------------------------------------------------------------- the solver */
+
+/** The three the solver can do, named in the editor's words rather than in `three-bvh-csg`'s. */
+export type BooleanOperation = 'union' | 'difference' | 'intersect'
+
+const OPERATIONS: Record<BooleanOperation, CSGOperation> = {
+  union: ADDITION,
+  difference: SUBTRACTION,
+  intersect: INTERSECTION,
+}
+
+/** A mesh and where it stands; the matrix is left out by anyone whose meshes are already in one frame. */
+export type BooleanBrush = { mesh: MeshData; matrix?: Matrix4 }
+
+/**
+ * The solver's half of a boolean, on meshes alone: the base against each of the others in turn, the
+ * result brought back through `into` and its flat triangles gathered up into faces again.
+ *
+ * The object operators hand it world matrices; the Boolean modifier hands it meshes already in the
+ * modified object's frame and no matrices at all. An empty mesh comes back empty rather than as a
+ * refusal, because what to say about it is the caller's to decide.
+ */
+export function booleanMeshes(
+  base: BooleanBrush,
+  others: BooleanBrush[],
+  operation: BooleanOperation,
+  into?: Matrix4,
+): MeshData {
+  const evaluator = new Evaluator()
+  // Material groups would carry the operands' slots into the result, and the result keeps the
+  // base's material list; one surface with one slot is the honest thing to hand back.
+  evaluator.useGroups = false
+  // The evaluator interpolates every attribute it is told about and throws on one a brush has
+  // not got; UVs are rebuilt from the faces later in this prompt, so they are not carried here.
+  evaluator.attributes = ['position', 'normal']
+  let brush = brushOf(base.mesh, base.matrix ?? new Matrix4())
+  for (const other of others) {
+    brush = evaluator.evaluate(brush, brushOf(other.mesh, other.matrix ?? new Matrix4()), OPERATIONS[operation])
+    brush.updateMatrixWorld()
+  }
+  const built = geometryMesh(brush.geometry, into ?? new Matrix4())
+  return built.faces.length === 0 ? built : recoverFaces(built)
+}
+
 /* --------------------------------------------------------- the object booleans */
 
 type BooleanKind = {
   id: string
   label: string
-  operation: CSGOperation
+  operation: BooleanOperation
   description: string
   /** What is said when the operands leave nothing behind, which is a refusal and not an empty mesh. */
   empty: string
@@ -237,21 +281,21 @@ const KINDS: BooleanKind[] = [
   {
     id: 'mesh.booleanUnion',
     label: 'Boolean union',
-    operation: ADDITION,
+    operation: 'union',
     description: 'Fuse the selected meshes into the active one, keeping everything either encloses.',
     empty: 'The union came out empty, which means neither object encloses a volume.',
   },
   {
     id: 'mesh.booleanDifference',
     label: 'Boolean difference',
-    operation: SUBTRACTION,
+    operation: 'difference',
     description: 'Cut the other selected meshes out of the active one.',
     empty: 'The other objects cover this one completely, so nothing would be left of it.',
   },
   {
     id: 'mesh.booleanIntersect',
     label: 'Boolean intersect',
-    operation: INTERSECTION,
+    operation: 'intersect',
     description: 'Keep only the part the active mesh and the other selected meshes share.',
     empty: 'The selected objects do not overlap, so there is nothing to intersect.',
   },
@@ -306,24 +350,20 @@ for (const kind of KINDS) {
       const activeData = meshOf(context.document, active)
       const others = otherMeshObjects(context, active)
       if (!activeData || others.length === 0) return { error: NEEDS_OTHERS }
-      const evaluator = new Evaluator()
-      // Material groups would carry the operands' slots into the result, and the result keeps the
-      // active object's material list; one surface with one slot is the honest thing to hand back.
-      evaluator.useGroups = false
-      // The evaluator interpolates every attribute it is told about and throws on one a brush has
-      // not got; UVs are rebuilt from the faces later in this prompt, so they are not carried here.
-      evaluator.attributes = ['position', 'normal']
-      let brush = brushOf(activeData, worldMatrix(context.document, active))
+      const operands: BooleanBrush[] = []
       for (const other of others) {
         const data = meshOf(context.document, other)
-        if (!data) continue
-        brush = evaluator.evaluate(brush, brushOf(data, worldMatrix(context.document, other)), kind.operation)
-        brush.updateMatrixWorld()
+        if (data) operands.push({ mesh: data, matrix: worldMatrix(context.document, other) })
       }
-      const built = geometryMesh(brush.geometry, worldMatrix(context.document, active).invert())
+      const built = booleanMeshes(
+        { mesh: activeData, matrix: worldMatrix(context.document, active) },
+        operands,
+        kind.operation,
+        worldMatrix(context.document, active).invert(),
+      )
       if (built.faces.length === 0) return { error: kind.empty }
       const meshId = active.data.kind === 'mesh' ? active.data.meshId : ''
-      let document = withMesh(context.document, meshId, recoverFaces(built))
+      let document = withMesh(context.document, meshId, built)
       if (!params.keepOthers) {
         const gone = new Set(others.map((object) => object.id))
         document = withoutUnusedMeshes({

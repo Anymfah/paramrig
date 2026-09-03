@@ -32,6 +32,10 @@ export type MeshView = {
   /** Which face slot each triangle came from, for picking and for face selection. */
   triangleFace: Int32Array
   triangleCount: number
+  /** The order the triangles were written in: by material slot, so each slot is one run. */
+  order: Uint32Array
+  /** One per material slot in use, in the form three.js draws them. */
+  groups: Array<{ material: number; start: number; count: number }>
   fingerprint: string
   /** The mesh this view was built from, compared by identity before anything is measured. */
   source: MeshData | null
@@ -47,11 +51,19 @@ export function buildMeshView(mesh: MeshData): MeshView {
   const positions = new Float32Array(count * 3)
   const normals = new Float32Array(count * 3)
   const elements = new Float32Array(count)
-  writeAttributes(mesh, triangulation, positions, normals, elements)
+  /*
+   * The triangles are written in order of the material slot their face names, so each slot's
+   * triangles are one unbroken run and can be drawn with one material. Three.js has no other way of
+   * giving two parts of a mesh two appearances, and a mesh with one material — which is most of
+   * them — is left exactly as it was, in face order, with a single group over the whole of it.
+   */
+  const { order, groups } = groupByMaterial(mesh, triangulation)
+  writeAttributes(mesh, triangulation, positions, normals, elements, order)
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(normals, 3))
   // Read by the picking material to write a face id, and by the overlay to tint a selected face.
   geometry.setAttribute('element', new BufferAttribute(elements, 1))
+  for (const group of groups) geometry.addGroup(group.start * 3, group.count * 3, group.material)
   geometry.computeBoundingSphere()
   geometry.computeBoundingBox()
   if (triangulation.triangleCount > 0) geometry.computeBoundsTree?.()
@@ -59,6 +71,8 @@ export function buildMeshView(mesh: MeshData): MeshView {
     geometry,
     triangleFace: triangulation.triangleFace,
     triangleCount: triangulation.triangleCount,
+    order,
+    groups,
     fingerprint: meshFingerprint(mesh),
     source: mesh,
     dispose: () => {
@@ -82,7 +96,8 @@ export function updateMeshPositions(view: MeshView, mesh: MeshData): void {
   const position = view.geometry.getAttribute('position') as BufferAttribute
   const normal = view.geometry.getAttribute('normal') as BufferAttribute
   const element = view.geometry.getAttribute('element') as BufferAttribute
-  writeAttributes(mesh, triangulation, position.array as Float32Array, normal.array as Float32Array, element.array as Float32Array)
+  // The same order the view was built in: a drag moves corners, it does not reassign materials.
+  writeAttributes(mesh, triangulation, position.array as Float32Array, normal.array as Float32Array, element.array as Float32Array, view.order)
   position.needsUpdate = true
   normal.needsUpdate = true
 }
@@ -112,17 +127,19 @@ function writeAttributes(
   positions: Float32Array,
   normals: Float32Array,
   elements: Float32Array,
+  order: Uint32Array,
 ): void {
   const perFace = faceNormals(mesh)
   const perVertex = vertexNormals(mesh)
   const smooth = mesh.attributes.face.smooth
   const { indices, triangleFace, triangleCount } = triangulation
-  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+  for (let position = 0; position < triangleCount; position += 1) {
+    const triangle = order[position]!
     const face = triangleFace[triangle]!
     const isSmooth = smooth[face] === true
     for (let corner = 0; corner < 3; corner += 1) {
       const slot = indices[triangle * 3 + corner]!
-      const target = (triangle * 3 + corner) * 3
+      const target = (position * 3 + corner) * 3
       positions[target] = mesh.vertices[slot * 3] ?? 0
       positions[target + 1] = mesh.vertices[slot * 3 + 1] ?? 0
       positions[target + 2] = mesh.vertices[slot * 3 + 2] ?? 0
@@ -131,7 +148,7 @@ function writeAttributes(
       normals[target] = source[from] ?? 0
       normals[target + 1] = source[from + 1] ?? 0
       normals[target + 2] = source[from + 2] ?? 1
-      elements[triangle * 3 + corner] = face
+      elements[position * 3 + corner] = face
     }
   }
 }
@@ -151,8 +168,43 @@ export function edgePositions(mesh: MeshData): Float32Array {
   return positions
 }
 
-export function createMesh(view: MeshView, material: Material): Mesh {
+export function createMesh(view: MeshView, material: Material | Material[]): Mesh {
   const object = new Mesh(view.geometry, material)
   object.matrixAutoUpdate = false
   return object
+}
+
+/**
+ * The order to write the triangles in, and the runs that come out of it.
+ *
+ * A mesh whose faces all name slot zero — which is most of them — keeps its own order, so nothing
+ * is paid for a feature it does not use, and the group is the whole of it.
+ */
+function groupByMaterial(
+  mesh: MeshData,
+  triangulation: Triangulation,
+): { order: Uint32Array; groups: Array<{ material: number; start: number; count: number }> } {
+  const { triangleFace, triangleCount } = triangulation
+  const slots = mesh.attributes.face.material
+  const order = new Uint32Array(triangleCount)
+  let mixed = false
+  for (let triangle = 0; triangle < triangleCount; triangle += 1) {
+    order[triangle] = triangle
+    if ((slots[triangleFace[triangle]!] ?? 0) !== 0) mixed = true
+  }
+  if (!mixed) {
+    return { order, groups: triangleCount > 0 ? [{ material: 0, start: 0, count: triangleCount }] : [] }
+  }
+  const byMaterial = [...order].sort((a, b) => (
+    (slots[triangleFace[a]!] ?? 0) - (slots[triangleFace[b]!] ?? 0) || a - b
+  ))
+  const groups: Array<{ material: number; start: number; count: number }> = []
+  for (let position = 0; position < byMaterial.length; position += 1) {
+    order[position] = byMaterial[position]!
+    const material = slots[triangleFace[byMaterial[position]!]!] ?? 0
+    const last = groups[groups.length - 1]
+    if (last && last.material === material) last.count += 1
+    else groups.push({ material, start: position, count: 1 })
+  }
+  return { order, groups }
 }
