@@ -7,6 +7,8 @@ import {
   withElements,
   growSelection,
   invertSelection,
+  nextActive,
+  previousActive,
   propagateDown,
   propagateUp,
   selectAll,
@@ -14,10 +16,15 @@ import {
   selectByTrait,
   selectCheckerDeselect,
   selectLinked,
+  selectLinkedFrom,
   selectLoop,
+  selectLoopInnerRegion,
+  selectMirror,
   selectNone,
   selectRandom,
   selectRing,
+  selectShortestPath,
+  selectSideOfActive,
   selectSimilar,
   shrinkSelection,
   toElements,
@@ -108,8 +115,38 @@ function quadAndTriangles(): MeshData {
   return meshFromPolygons(positions, [[0, 1, 2, 3], [1, 4, 2], [4, 5, 2]])
 }
 
+/**
+ * Two quads sharing an edge, the second wound the same way round it as the first — which is to say
+ * one of them faces the wrong way. It is the smallest mesh with a non contiguous edge.
+ */
+function flippedQuads(): MeshData {
+  const positions: Vec3[] = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [2, 0, 0], [2, 1, 0]]
+  return meshFromPolygons(positions, [[0, 1, 2, 3], [1, 2, 5, 4]])
+}
+
 function elements(parts: Partial<ElementSelection> = {}): ElementSelection {
   return { vertices: new Set(), edges: new Set(), faces: new Set(), ...parts }
+}
+
+/** Whether a run of vertex ids is one unbroken chain, walked from one named end to the other. */
+function isChain(mesh: EditMesh, ids: number[], from: number, to: number): boolean {
+  const run = new Set(ids)
+  const seen = new Set<number>([from])
+  let current = from
+  for (;;) {
+    const slot = mesh.slotOfVertex(current)
+    if (slot < 0) return false
+    const onward = mesh.vertexEdges(slot)
+      .map((edge) => {
+        const [a, b] = mesh.edgeVertices(edge)
+        return mesh.vertexId(mesh.vertexId(a) === current ? b : a)
+      })
+      .filter((id) => run.has(id) && !seen.has(id))
+    if (onward.length === 0) break
+    current = onward[0]!
+    seen.add(current)
+  }
+  return current === to && seen.size === ids.length
 }
 
 /* --------------------------------------------------------- the document's form */
@@ -518,5 +555,440 @@ describe('selecting by pattern', () => {
     const everything = selectAll(mesh)
 
     expect(selectCheckerDeselect(everything, 'face', 1, 0, 0)).toEqual(everything)
+  })
+})
+
+/* --------------------------------------------------------------- by a path */
+
+describe('selecting the path between two elements', () => {
+  it('runs along a grid’s row from one corner to the next', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const path = selectShortestPath(mesh, selectNone(), { kind: 'vertex', id: 0 }, { kind: 'vertex', id: 4 })
+
+    expect([...path.vertices].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4])
+  })
+
+  it('crosses a grid corner to opposite corner in nine corners, unbroken', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const path = selectShortestPath(mesh, selectNone(), { kind: 'vertex', id: 0 }, { kind: 'vertex', id: 24 })
+    const run = [...path.vertices]
+
+    expect(run.length).toBe(9)
+    expect(run).toContain(0)
+    expect(run).toContain(24)
+    expect(isChain(mesh, run, 0, 24)).toBe(true)
+  })
+
+  it('crosses the faces of the same grid, along a row and then corner to corner', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const row = selectShortestPath(mesh, selectNone(), { kind: 'face', id: 0 }, { kind: 'face', id: 3 })
+    const across = selectShortestPath(mesh, selectNone(), { kind: 'face', id: 0 }, { kind: 'face', id: 15 })
+
+    expect([...row.faces].sort((a, b) => a - b)).toEqual([0, 1, 2, 3])
+    expect(across.faces.size).toBe(7)
+    expect(across.faces.has(0)).toBe(true)
+    expect(across.faces.has(15)).toBe(true)
+  })
+
+  it('runs from one edge to another by the cheapest pairing of their ends', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const path = selectShortestPath(
+      mesh,
+      selectNone(),
+      { kind: 'edge', id: edgeKey(0, 1) },
+      { kind: 'edge', id: edgeKey(3, 4) },
+    )
+
+    expect([...path.edges].sort()).toEqual([edgeKey(0, 1), edgeKey(1, 2), edgeKey(2, 3), edgeKey(3, 4)])
+    expect([...path.vertices].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4])
+  })
+
+  it('fills the whole block between the two ends when the region is asked for', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const corners = selectShortestPath(
+      mesh,
+      selectNone(),
+      { kind: 'vertex', id: 0 },
+      { kind: 'vertex', id: 24 },
+      { fillRegion: true },
+    )
+    const faces = selectShortestPath(
+      mesh,
+      selectNone(),
+      { kind: 'face', id: 0 },
+      { kind: 'face', id: 15 },
+      { fillRegion: true },
+    )
+
+    expect(corners.vertices.size).toBe(25)
+    expect(faces.faces.size).toBe(16)
+  })
+
+  it('adds to what was selected, and leaves it alone when the two ends are of different kinds', () => {
+    const mesh = EditMesh.from(plane(4))
+    const before = elements({ vertices: new Set([20]) })
+
+    const added = selectShortestPath(mesh, before, { kind: 'vertex', id: 0 }, { kind: 'vertex', id: 4 })
+    const mismatched = selectShortestPath(mesh, before, { kind: 'vertex', id: 0 }, { kind: 'face', id: 0 })
+
+    expect([...added.vertices].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 20])
+    expect(mismatched).toEqual(before)
+  })
+})
+
+/* ------------------------------------------------------- linked from a pick */
+
+describe('selecting what is linked to a pick', () => {
+  it('takes the whole cylinder, and stops at a ring of seams', () => {
+    const mesh = EditMesh.from(cylinder(8, 3))
+    for (let step = 0; step < 8; step += 1) {
+      mesh.setEdgeFlag(mesh.edgeSlot(8 + step, 8 + ((step + 1) % 8)), 'seam', true)
+    }
+
+    const whole = selectLinkedFrom(mesh, selectNone(), { kind: 'face', id: 0 })
+    const stopped = selectLinkedFrom(mesh, selectNone(), { kind: 'face', id: 0 }, { seam: true })
+
+    expect(whole.faces.size).toBe(24)
+    expect([...stopped.faces].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(stopped.vertices.size).toBe(16)
+  })
+
+  it('stops at sharp edges as readily, from a corner rather than a face', () => {
+    const mesh = EditMesh.from(cylinder(8, 3))
+    for (let step = 0; step < 8; step += 1) {
+      mesh.setEdgeFlag(mesh.edgeSlot(8 + step, 8 + ((step + 1) % 8)), 'sharp', true)
+    }
+
+    const stopped = selectLinkedFrom(mesh, selectNone(), { kind: 'vertex', id: 0 }, { sharp: true })
+
+    expect(stopped.faces.size).toBe(8)
+  })
+
+  it('stops where the material changes', () => {
+    const mesh = EditMesh.from(cylinder(8, 3))
+    for (let face = 16; face < 24; face += 1) mesh.setFaceMaterial(face, 1)
+
+    const stopped = selectLinkedFrom(mesh, selectNone(), { kind: 'face', id: 0 }, { material: true })
+
+    expect(stopped.faces.size).toBe(16)
+  })
+
+  it('keeps what was selected before the pick', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    const linked = selectLinkedFrom(mesh, elements({ faces: new Set([15]) }), { kind: 'vertex', id: 0 })
+
+    expect(linked.faces.size).toBe(16)
+    expect(linked.vertices.size).toBe(25)
+  })
+})
+
+/* ------------------------------------------------------- the region of a loop */
+
+describe('selecting the region a loop of edges encloses', () => {
+  it('takes the one face a ring of four edges shuts in', () => {
+    const mesh = EditMesh.from(plane(4))
+    const loop = elements({
+      edges: new Set([edgeKey(6, 7), edgeKey(7, 12), edgeKey(11, 12), edgeKey(6, 11)]),
+    })
+
+    const inner = selectLoopInnerRegion(mesh, loop)
+
+    expect([...inner.faces]).toEqual([5])
+    expect([...inner.vertices].sort((a, b) => a - b)).toEqual([6, 7, 11, 12])
+  })
+
+  it('takes the smaller side of a loop that goes round a closed mesh', () => {
+    const mesh = EditMesh.from(box())
+    const loop = elements({
+      edges: new Set([edgeKey(4, 5), edgeKey(5, 6), edgeKey(6, 7), edgeKey(4, 7)]),
+    })
+
+    expect([...selectLoopInnerRegion(mesh, loop).faces]).toEqual([1])
+  })
+
+  it('leaves the selection alone when nothing is walled off', () => {
+    const mesh = EditMesh.from(plane(4))
+    const single = elements({ edges: new Set([edgeKey(6, 7)]) })
+
+    expect(selectLoopInnerRegion(mesh, single)).toEqual(single)
+    expect(selectLoopInnerRegion(mesh, selectNone())).toEqual(elements())
+  })
+})
+
+/* ------------------------------------------------------------ one side and the other */
+
+describe('selecting one side of the active element', () => {
+  it('takes the far side of a cube, the near side, and the corners level with it', () => {
+    const mesh = EditMesh.from(box())
+    const active = { kind: 'vertex' as const, id: 0 }
+
+    const positive = selectSideOfActive(mesh, selectNone(), active, 0, 'positive', false)
+    const negative = selectSideOfActive(mesh, selectNone(), active, 0, 'negative', false)
+    const aligned = selectSideOfActive(mesh, selectNone(), active, 0, 'aligned', false)
+
+    expect([...positive.vertices].sort((a, b) => a - b)).toEqual([1, 2, 5, 6])
+    expect(positive.edges.size).toBe(4)
+    expect([...positive.faces]).toEqual([3])
+    expect(negative).toEqual(elements())
+    expect([...aligned.vertices].sort((a, b) => a - b)).toEqual([0, 3, 4, 7])
+    expect([...aligned.faces]).toEqual([5])
+  })
+
+  it('measures from a face’s centre as readily as from a corner', () => {
+    const mesh = EditMesh.from(box())
+
+    const level = selectSideOfActive(mesh, selectNone(), { kind: 'face', id: 3 }, 0, 'aligned', false)
+
+    expect([...level.vertices].sort((a, b) => a - b)).toEqual([1, 2, 5, 6])
+  })
+
+  it('keeps what was selected when it is asked to extend', () => {
+    const mesh = EditMesh.from(box())
+    const before = elements({ vertices: new Set([0]) })
+
+    const extended = selectSideOfActive(mesh, before, { kind: 'vertex', id: 0 }, 0, 'positive', true)
+
+    expect([...extended.vertices].sort((a, b) => a - b)).toEqual([0, 1, 2, 5, 6])
+  })
+})
+
+/* ------------------------------------------------------------------ the mirror */
+
+describe('selecting the mirror of what is selected', () => {
+  it('finds a corner’s opposite number across a cube’s middle, on either axis', () => {
+    const mesh = EditMesh.from(box())
+    const corner = elements({ vertices: new Set([0]) })
+
+    const across = selectMirror(mesh, corner, 0, 0.001, false)
+    const kept = selectMirror(mesh, corner, 0, 0.001, true)
+    const depth = selectMirror(mesh, corner, 2, 0.001, false)
+
+    expect([...across.vertices]).toEqual([1])
+    expect([...kept.vertices].sort((a, b) => a - b)).toEqual([0, 1])
+    expect([...depth.vertices]).toEqual([4])
+  })
+
+  it('finds the edge and the face on the other side too', () => {
+    const mesh = EditMesh.from(box())
+    const before = elements({ edges: new Set([edgeKey(0, 3)]), faces: new Set([5]) })
+
+    const mirrored = selectMirror(mesh, before, 0, 0.001, false)
+
+    expect([...mirrored.edges]).toEqual([edgeKey(1, 2)])
+    expect([...mirrored.faces]).toEqual([3])
+  })
+
+  it('finds nothing where the mesh has no other half', () => {
+    const mesh = EditMesh.from(plane(4))
+
+    expect(selectMirror(mesh, elements({ vertices: new Set([1]) }), 0, 0.001, false)).toEqual(elements())
+  })
+})
+
+/* ------------------------------------------------------------------ face step */
+
+describe('growing and shrinking across a face’s corners', () => {
+  it('reaches a quad’s far corner with face step, and only along the edges without', () => {
+    const mesh = EditMesh.from(plane(4))
+    const one = elements({ vertices: new Set([12]) })
+
+    expect([...growSelection(mesh, one, 'vertex').vertices].sort((a, b) => a - b)).toEqual([7, 11, 12, 13, 17])
+    expect([...growSelection(mesh, one, 'vertex', { faceStep: true }).vertices].sort((a, b) => a - b))
+      .toEqual([6, 7, 8, 11, 12, 13, 16, 17, 18])
+  })
+
+  it('takes in the eight faces round a face rather than the four', () => {
+    const mesh = EditMesh.from(plane(4))
+    const one = elements({ faces: new Set([5]) })
+
+    expect([...growSelection(mesh, one, 'face').faces].sort((a, b) => a - b)).toEqual([1, 4, 5, 6, 9])
+    expect([...growSelection(mesh, one, 'face', { faceStep: true }).faces].sort((a, b) => a - b))
+      .toEqual([0, 1, 2, 4, 5, 6, 8, 9, 10])
+  })
+
+  it('takes the edges of an edge’s own faces rather than the edges at its ends', () => {
+    const mesh = EditMesh.from(plane(4))
+    const one = elements({ edges: new Set([edgeKey(11, 12)]) })
+
+    const stepped = growSelection(mesh, one, 'edge', { faceStep: true })
+
+    expect(stepped.edges.size).toBe(7)
+    expect(stepped.edges.has(edgeKey(6, 7))).toBe(true)
+    expect(stepped.edges.has(edgeKey(10, 11))).toBe(false)
+  })
+
+  it('drops a face whose corner neighbours are not all selected', () => {
+    const mesh = EditMesh.from(plane(4))
+    const cross = elements({ faces: new Set([1, 4, 5, 6, 9]) })
+
+    expect([...shrinkSelection(mesh, cross, 'face').faces]).toEqual([5])
+    expect(shrinkSelection(mesh, cross, 'face', { faceStep: true }).faces.size).toBe(0)
+  })
+})
+
+/* -------------------------------------------------- resemblance, the newer traits */
+
+describe('selecting what resembles what is selected, by the newer traits', () => {
+  it('finds the faces of the same perimeter', () => {
+    const mesh = EditMesh.from(box(4))
+
+    const similar = selectSimilar(mesh, elements({ faces: new Set([1]) }), 'face', 'perimeter', 0.001)
+
+    expect([...similar.faces].sort((a, b) => a - b)).toEqual([0, 1])
+  })
+
+  it('finds the faces drawn with the same material', () => {
+    const mesh = EditMesh.from(box())
+    mesh.setFaceMaterial(0, 1)
+    mesh.setFaceMaterial(2, 1)
+
+    const similar = selectSimilar(mesh, elements({ faces: new Set([0]) }), 'face', 'material', 0)
+
+    expect([...similar.faces].sort((a, b) => a - b)).toEqual([0, 2])
+  })
+
+  it('finds the edges running the same way, whichever end they run from', () => {
+    const mesh = EditMesh.from(box())
+
+    const similar = selectSimilar(mesh, elements({ edges: new Set([edgeKey(0, 1)]) }), 'edge', 'direction', 0)
+
+    expect(similar.edges.size).toBe(4)
+    expect(similar.edges.has(edgeKey(3, 2))).toBe(true)
+    expect(similar.edges.has(edgeKey(0, 3))).toBe(false)
+  })
+
+  it('finds the edges marked the same way, and creased by the same amount', () => {
+    const mesh = EditMesh.from(box())
+    mesh.setEdgeFlag(mesh.edgeSlot(0, 1), 'seam', true)
+    mesh.setEdgeFlag(mesh.edgeSlot(1, 2), 'seam', true)
+    mesh.setEdgeFlag(mesh.edgeSlot(0, 3), 'sharp', true)
+    mesh.setEdgeNumber(mesh.edgeSlot(4, 5), 'crease', 0.5)
+
+    const seams = selectSimilar(mesh, elements({ edges: new Set([edgeKey(0, 1)]) }), 'edge', 'seam', 0)
+    const sharp = selectSimilar(mesh, elements({ edges: new Set([edgeKey(0, 3)]) }), 'edge', 'sharp', 0)
+    const creased = selectSimilar(mesh, elements({ edges: new Set([edgeKey(4, 5)]) }), 'edge', 'crease', 0.01)
+
+    expect([...seams.edges].sort()).toEqual([edgeKey(0, 1), edgeKey(1, 2)])
+    expect([...sharp.edges]).toEqual([edgeKey(0, 3)])
+    expect([...creased.edges]).toEqual([edgeKey(4, 5)])
+  })
+
+  it('still leaves the selection alone when the trait means nothing in this mode', () => {
+    const mesh = EditMesh.from(box())
+    const before = elements({ edges: new Set([edgeKey(0, 1)]) })
+
+    expect(selectSimilar(mesh, before, 'edge', 'area', 1)).toEqual(before)
+    expect(selectSimilar(mesh, elements({ faces: new Set([0]) }), 'face', 'length', 1))
+      .toEqual(elements({ faces: new Set([0]) }))
+  })
+})
+
+/* ---------------------------------------------------- by trait, the newer ones */
+
+describe('selecting by the newer traits', () => {
+  it('finds a cylinder’s sharp columns by angle, and none of them at a wider angle', () => {
+    const mesh = EditMesh.from(cylinder(8, 3))
+
+    const sharp = selectByTrait(mesh, 'sharp', { angle: 0.7 })
+    const wider = selectByTrait(mesh, 'sharp', { angle: 0.9 })
+
+    expect(sharp.edges.size).toBe(24)
+    expect(sharp.edges.has(edgeKey(0, 8))).toBe(true)
+    expect(sharp.edges.has(edgeKey(8, 9))).toBe(false)
+    expect(wider.edges.size).toBe(0)
+  })
+
+  it('finds the faces with a given number of sides, and compares either way round', () => {
+    const mesh = EditMesh.from(quadAndTriangles())
+
+    expect([...selectByTrait(mesh, 'faces-by-sides', { sides: 4 }).faces]).toEqual([0])
+    expect([...selectByTrait(mesh, 'faces-by-sides', { sides: 3 }).faces].sort((a, b) => a - b)).toEqual([1, 2])
+    expect([...selectByTrait(mesh, 'faces-by-sides', { sides: 3, comparison: 'greater' }).faces]).toEqual([0])
+    expect([...selectByTrait(mesh, 'faces-by-sides', { sides: 4, comparison: 'less' }).faces].sort((a, b) => a - b))
+      .toEqual([1, 2])
+  })
+
+  it('looks only for the kind of trouble it is asked about', () => {
+    const welded = EditMesh.from(weldedBoxes())
+    const open = EditMesh.from(plane(4))
+
+    const shared = selectByTrait(welded, 'non-manifold', {
+      wire: false, boundary: false, nonContiguous: false, vertices: false,
+    })
+    const rim = selectByTrait(open, 'non-manifold', {
+      wire: false, multipleFaces: false, nonContiguous: false, vertices: false,
+    })
+    const quiet = selectByTrait(open, 'non-manifold', {
+      wire: false, boundary: false, multipleFaces: false, nonContiguous: false, vertices: false,
+    })
+
+    expect(shared.edges.size).toBe(4)
+    expect(rim.edges.size).toBe(16)
+    expect(quiet).toEqual(elements())
+  })
+
+  it('finds the edge where two faces disagree about which way is out', () => {
+    const mesh = EditMesh.from(flippedQuads())
+
+    const flipped = selectByTrait(mesh, 'non-manifold', {
+      wire: false, boundary: false, multipleFaces: false, vertices: false,
+    })
+
+    expect([...flipped.edges]).toEqual([edgeKey(1, 2)])
+  })
+})
+
+/* ----------------------------------------------------------- the pick history */
+
+describe('walking the pick history', () => {
+  const picks = ['0', '1', '2'].map((id) => ({ kind: 'vertex' as const, objectId: 'cube', id }))
+
+  function picked(history: typeof picks, selected: string[], active: (typeof picks)[number]): SceneSelection {
+    return {
+      ...EMPTY_SELECTION,
+      activeObjectId: 'cube',
+      editObjectIds: ['cube'],
+      elements: { cube: { vertices: selected, edges: [], faces: [] } },
+      active,
+      elementHistory: history,
+    }
+  }
+
+  it('steps back through the picks and forward again, leaving the history where it was', () => {
+    const mesh = EditMesh.from(box())
+    const selection = picked(picks, ['0', '1', '2'], picks[2]!)
+
+    const back = previousActive(mesh, selection)
+    const further = previousActive(mesh, back)
+    const forward = nextActive(mesh, further)
+
+    expect(back.active).toEqual(picks[1])
+    expect(further.active).toEqual(picks[0])
+    expect(forward.active).toEqual(picks[1])
+    expect(further.elementHistory).toEqual(picks)
+  })
+
+  it('stays where it is at either end of the history', () => {
+    const mesh = EditMesh.from(box())
+
+    expect(nextActive(mesh, picked(picks, ['0', '1', '2'], picks[2]!)).active).toEqual(picks[2])
+    expect(previousActive(mesh, picked(picks, ['0', '1', '2'], picks[0]!)).active).toEqual(picks[0])
+  })
+
+  it('skips a pick the mesh no longer holds, and selects the one it lands on', () => {
+    const mesh = EditMesh.from(box())
+    const gone = { kind: 'vertex' as const, objectId: 'cube', id: '99' }
+    const history = [picks[0]!, gone, picks[2]!]
+
+    const back = previousActive(mesh, picked(history, ['2'], picks[2]!))
+
+    expect(back.active).toEqual(picks[0])
+    expect(back.elements?.cube?.vertices).toEqual(['0', '2'])
   })
 })
