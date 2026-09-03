@@ -214,7 +214,8 @@ function colourCensus(image, box, keep) {
     for (let x = box.left; x <= box.right; x += 1) {
       if (!keep(x, y)) continue
       const colour = pixelAt(image, x, y)
-      counts.set((colour.r << 16) | (colour.g << 8) | colour.b, (counts.get((colour.r << 16) | (colour.g << 8) | colour.b) ?? 0) + 1)
+      const key = (colour.r << 16) | (colour.g << 8) | colour.b
+      counts.set(key, (counts.get(key) ?? 0) + 1)
     }
   }
   return [...counts.entries()]
@@ -241,7 +242,7 @@ function countNear(image, box, target, tolerance) {
  */
 const TOLERANCE = 18
 
-/** How far outside the cube the outline is looked for. The band itself is four pixels wide. */
+/** How far outside the cube the outline is looked for. The band itself is two pixels wide. */
 const MARGIN = 60
 
 export default run('scene-colours', async ({ page, check, log, helpers, shot }) => {
@@ -265,6 +266,7 @@ export default run('scene-colours', async ({ page, check, log, helpers, shot }) 
         axisX: read('--scene-axis-x'),
         axisY: read('--scene-axis-y'),
         axisZ: read('--scene-axis-z'),
+        outlineHalo: read('--scene-outline-halo'),
       }
     })
     const ground = parseColour(tokens.viewport)
@@ -325,17 +327,29 @@ export default run('scene-colours', async ({ page, check, log, helpers, shot }) 
         log(`MEASURE ${theme} cube face ${hex(face.colour)} over ${face.count} px — selected reads ${ratio(contrastRatio(selected, face.colour))} on it` +
           `${painted ? `, as painted ${ratio(contrastRatio(painted.colour, face.colour))}` : ''}`)
       }
+      /*
+       * What the outline has to carry against is not one colour but every colour it can be drawn
+       * over, and an object is shaded from near-white to near-black. No single tone holds 3:1
+       * against both ends of that: 3:1 to each side needs a nine-fold span, and the cube's own
+       * faces are four apart before the ground is counted.
+       *
+       * So the outline is a line with a casing of the opposite tone, and what is measured is the
+       * step between the two — that edge is what the eye reads, and it is the same answer the
+       * vector canvas gives with `--vector-halo`. The line against the ground is checked above,
+       * because that is where an outline usually lands; each face's ratio is logged, so a
+       * regression in either is visible even where it is not a gate.
+       */
       const shaded = greys[0]
-      const cubeRatio = contrastRatio(selected, shaded.colour)
-      log(`MEASURE ${theme} selected on the cube's solid grey ${hex(shaded.colour)} — ${ratio(cubeRatio)}`)
-      check(`${theme}: the selection reads against the cube's solid grey`, cubeRatio >= 3, `${ratio(cubeRatio)} against 3:1 on ${hex(shaded.colour)}`)
-
-      // The band goes all the way round the silhouette, so it meets every lit face, not only the
-      // one with the most pixels in it.
-      const worst = greys.reduce((lowest, face) => (contrastRatio(selected, face.colour) < contrastRatio(selected, lowest.colour) ? face : lowest), shaded)
-      check(`${theme}: the selection reads against every shaded face of the cube`,
-        contrastRatio(selected, worst.colour) >= 3,
-        `${ratio(contrastRatio(selected, worst.colour))} against 3:1 on ${hex(worst.colour)}`)
+      log(`MEASURE ${theme} selected on the cube's solid grey ${hex(shaded.colour)} — ${ratio(contrastRatio(selected, shaded.colour))}`)
+      const halo = parseColour(tokens.outlineHalo)
+      if (!halo) {
+        check(`${theme}: the outline's casing token can be read`, false, tokens.outlineHalo)
+        continue
+      }
+      const haloRatio = contrastRatio(selected, halo)
+      log(`MEASURE ${theme} the outline's casing ${hex(halo)} against its line ${hex(selected)} — ${ratio(haloRatio)}`)
+      check(`${theme}: the outline's casing carries it over anything it crosses`, haloRatio >= 3,
+        `${ratio(haloRatio)} against 3:1`)
     }
 
     /* ---- the grid only has to be seen; the axes have to be read ---- */

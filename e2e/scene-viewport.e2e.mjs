@@ -53,6 +53,24 @@ export default run('scene-viewport', async ({ page, check, log, helpers, shot })
   check('and the cube is still pickable', !!pickedAgain, String(pickedAgain))
   await shot('scene-viewport-restored-1440.png')
 
+  // Closing a scene has to give the card back everything it was lent.
+  const held = await page.evaluate(() => window.__paramrigScene.stats())
+  log(`MEASURE while open: ${held.geometries} geometries, ${held.textures} textures`)
+  check('a viewport holds geometry while it is open', held.geometries > 0, `${held.geometries} geometries`)
+  // Back to the library the way a person leaves: within the application, not by reloading it —
+  // a reload would throw the window away and take the counters with it.
+  await page.goBack()
+  await page.waitForSelector('.rig-grid')
+  await page.waitForTimeout(600)
+  const leaks = await page.evaluate(() => window.__paramrigSceneLeaks ?? null)
+  log(`MEASURE after closing: ${JSON.stringify(leaks)}`)
+  check('and gives all of it back when the scene is closed',
+    !!leaks && leaks.viewports === 0 && leaks.geometries === 0 && leaks.textures === 0,
+    JSON.stringify(leaks))
+  check('and the debug hatch goes with it', await page.evaluate(() => !window.__paramrigScene))
+
+  await page.goForward()
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 15000 })
   await page.emulateMedia({ colorScheme: 'light' })
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'))
   await page.waitForTimeout(400)

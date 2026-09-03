@@ -108,6 +108,17 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   mkdirSync(DIR, { recursive: true })
   const shot = (file) => page.screenshot({ path: join(DIR, file) })
 
+  /*
+   * An editor with an autosave still pending asks before it is navigated away from, and the two
+   * fresh scenes below navigate away from one. Playwright dismisses such a dialog on its own, but
+   * its answer races the dialog closing itself and the loser throws out of an event handler, past
+   * the harness's try, and takes the process with it. Answering it here is what stops that.
+   */
+  page.on('dialog', (dialog) => { dialog.accept().catch(() => undefined) })
+
+  /** Long enough for the 800 ms autosave to have written, so that nothing asks on the way out. */
+  const settle = () => page.waitForTimeout(1400)
+
   const measures = []
   const record = (label, value) => {
     measures.push(`${label}: ${value}`)
@@ -123,13 +134,12 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   const headerControls = () => page.evaluate(() => {
     const bar = document.querySelector('.scene-header')
     if (!bar) return { controls: 0, width: 0, folded: false }
-    const controls = [...bar.querySelectorAll('button, [role="button"], input:not([type="file"])')]
-      .filter((node) => node.offsetParent !== null && node.getBoundingClientRect().width > 0).length
     const room = document.documentElement.clientWidth
+    const drawn = [...bar.querySelectorAll('button, [role="button"], input:not([type="file"])')]
+      .filter((node) => node.offsetParent !== null && node.getBoundingClientRect().width > 0)
     return {
-      controls,
-      onScreen: [...bar.querySelectorAll('button, [role="button"], input:not([type="file"])')]
-        .filter((node) => node.offsetParent !== null && node.getBoundingClientRect().right <= room).length,
+      controls: drawn.length,
+      onScreen: drawn.filter((node) => node.getBoundingClientRect().right <= room).length,
       width: Math.round(bar.getBoundingClientRect().width),
       folded: !!bar.querySelector('[aria-label="View settings"]'),
     }
@@ -162,6 +172,12 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
     await page.waitForTimeout(350)
   }
 
+  /** The tab is a remembered preference, so every capture chooses it rather than inheriting it. */
+  const openTab = async (name) => {
+    await page.locator(`.scene-properties__tab[aria-label="${name}"]`).click()
+    await page.waitForTimeout(300)
+  }
+
   /* ------------------------------------------------------- the empty scene */
 
   await helpers.newScene()
@@ -170,7 +186,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   await useTheme('dark')
 
   const firstFrame = await page.evaluate(() => window.__paramrigScene.firstFrame())
-  record('time to the first frame', `${firstFrame === null ? 'not reported' : `${firstFrame.toFixed(0)} ms`}`)
+  record('time to the first frame', firstFrame === null ? 'not reported' : `${firstFrame.toFixed(0)} ms`)
   check('the first frame is drawn inside the 1.5 s budget', firstFrame !== null && firstFrame < 1500,
     firstFrame === null ? 'the viewport never marked a first frame' : `${firstFrame.toFixed(0)} ms`)
 
@@ -188,6 +204,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
     startupStats.drawCalls > 0 && startupStats.triangles > 0,
     `${startupStats.drawCalls} calls, ${startupStats.triangles} triangles`)
 
+  await openTab('Object')
   await shot('empty-1440.png')
 
   /* ----------------------------------------------------- the selected cube */
@@ -196,9 +213,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   const counted = await page.locator('.scene-status__stats').textContent()
   check('the cube is selected for the reference captures', counted.includes('Objects 1/3'), counted)
 
-  // The tab is a remembered preference, so it is chosen rather than assumed before anything is read.
-  await page.locator('.scene-properties__tab[aria-label="Object"]').click()
-  await page.waitForTimeout(300)
+  await openTab('Object')
   const properties = await propertiesBody()
   record('object properties content height', `${properties.content}px`)
   record('object properties visible height', `${properties.visible}px`)
@@ -272,6 +287,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
 
   /* ------------------------------------------------- a hundred history steps */
 
+  await settle()
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
   await useTheme('dark')
@@ -283,17 +299,23 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   await page.locator('#main').focus()
   await page.mouse.move(centre.x, centre.y)
   for (let step = 0; step < HISTORY_STEPS; step += 1) {
-    // G X 1 Enter is one move of exactly a metre, and one named entry in the history.
+    /*
+     * G X 1 ↵ is one move of exactly a metre, and one named entry in the history. The HUD is
+     * waited on either side of it: a key sent before the session has opened, or a G sent while
+     * the last one is still closing, is a keystroke the editor never sees, and the run would
+     * quietly end up with ninety-nine edits.
+     */
     await page.keyboard.press('KeyG')
+    await page.waitForSelector('.scene-hud', { state: 'attached' })
     await page.keyboard.press('KeyX')
     await page.keyboard.press('Digit1')
     await page.keyboard.press('Enter')
+    await page.waitForSelector('.scene-hud', { state: 'detached' })
   }
   await page.waitForTimeout(1200)
   const heapAfter = await page.evaluate(() => (performance.memory ? performance.memory.usedJSHeapSize : null))
 
-  await page.locator('.scene-properties__tab[aria-label="History"]').click()
-  await page.waitForTimeout(400)
+  await openTab('History')
   const steps = await page.locator('.scene-history__step').count()
   record('history steps after a hundred moves', steps)
   const movedTo = (await helpers.scene()).objects.find((object) => object.name === 'Cube')
@@ -318,6 +340,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
 
   /* --------------------------------------------------- the orbit under load */
 
+  await settle()
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
   await useTheme('dark')
@@ -337,9 +360,9 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
    *
    * `work` is what the roadmap budgets: how long the page spends inside a frame callback, which is
    * where the viewport draws. `marks` is the cadence the frames actually came at, which says
-   * whether 60 i/s held. The wall clock around each `page.mouse.move`, taken below, carries the
-   * CDP round trip and Chrome's own input pipeline on top of both, so it is recorded and not
-   * budgeted: its floor is a display refresh, not the cost of a frame.
+   * whether 60 frames a second held. The wall clock around each `page.mouse.move`, taken below,
+   * is the gesture end to end, and carries the CDP round trip and Chrome's own input pipeline on
+   * top of the other two — which is why it is read last and read against the frame time.
    */
   await page.evaluate(() => {
     const original = window.requestAnimationFrame.bind(window)
@@ -384,20 +407,26 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
 
   check('the orbit actually drew frames', orbit.work.length > 0, `${orbit.work.length} frames`)
   const workMean = mean(orbit.work)
-  const workp95 = percentile(orbit.work, 0.95)
+  const workP95 = percentile(orbit.work, 0.95)
   record('orbit frames drawn over 200 moves', orbit.work.length)
   record('orbit frame time mean', `${workMean.toFixed(2)} ms`)
-  record('orbit frame time p95', `${workp95.toFixed(2)} ms`)
+  record('orbit frame time p95', `${workP95.toFixed(2)} ms`)
   check('an orbit over a hundred thousand triangles holds a 16 ms mean frame', workMean <= 16, `${workMean.toFixed(2)} ms`)
-  check('and a 33 ms p95 frame', workp95 <= 33, `${workp95.toFixed(2)} ms`)
+  check('and a 33 ms p95 frame', workP95 <= 33, `${workP95.toFixed(2)} ms`)
 
   const cadenceMean = mean(orbit.intervals)
   record('orbit frame interval mean', `${cadenceMean.toFixed(2)} ms`)
   record('orbit frame interval p95', `${percentile(orbit.intervals, 0.95).toFixed(2)} ms`)
   check('and the frames keep coming at the display’s own rate', cadenceMean <= 33, `${cadenceMean.toFixed(2)} ms`)
 
-  record('orbit move-to-move mean over 200 moves', `${mean(moveTimes).toFixed(2)} ms`)
-  record('orbit move-to-move p95 over 200 moves', `${percentile(moveTimes, 0.95).toFixed(2)} ms`)
+  const moveMean = mean(moveTimes)
+  const moveP95 = percentile(moveTimes, 0.95)
+  record('orbit move-to-move mean over 200 moves', `${moveMean.toFixed(2)} ms`)
+  record('orbit move-to-move p95 over 200 moves', `${moveP95.toFixed(2)} ms`)
+  // The noisiest of the three, and the only one measured from outside: a busy host shows up here
+  // first. A failure worth acting on is one the frame time above agrees with.
+  check('the whole gesture, round trip included, holds the 16 ms mean', moveMean <= 16, `${moveMean.toFixed(2)} ms`)
+  check('and its 33 ms p95', moveP95 <= 33, `${moveP95.toFixed(2)} ms`)
 
   writeFileSync(join(DIR, 'measurements.txt'), `${measures.join('\n')}\n`)
   log(`Saved to e2e/reference/scene from ${BASE}`)

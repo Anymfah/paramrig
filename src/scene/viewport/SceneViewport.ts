@@ -28,6 +28,7 @@ import { createSolidMaterial, createStudioLights, disposeMaterial, type StudioLi
 import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
 import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
 import { createTransformOverlay, type TransformOverlay } from '@/scene/viewport/transformOverlay'
+import { countViewport } from '@/scene/viewport/debug'
 import { readSceneTheme, splitAlpha, type SceneTheme } from '@/scene/viewport/theme'
 import { cameraBasis, cameraPosition, fovFromFocalLength, isAxisView, orthoHeight } from '@/scene/viewport/view'
 import { createLines, type ViewportLines } from '@/scene/viewport/lines'
@@ -180,7 +181,12 @@ export class SceneViewport {
     })
     this.scene.add(this.grid.mesh)
     this.outline = createOutlinePass()
-    this.outline.setColours({ hover: splitAlpha(this.theme.hover).colour, selected: splitAlpha(this.theme.selected).colour, active: splitAlpha(this.theme.active).colour })
+    this.outline.setColours({
+      hover: splitAlpha(this.theme.hover).colour,
+      selected: splitAlpha(this.theme.selected).colour,
+      active: splitAlpha(this.theme.active).colour,
+      halo: splitAlpha(this.theme.outlineHalo).colour,
+    })
     this.outline.setWidth(2 * Math.min(2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1))
     this.picking = createPickBuffer()
     this.cursor = cursorGlyph({ ring: splitAlpha(this.theme.cursorRing).colour, ground: splitAlpha(this.theme.cursorGround).colour })
@@ -201,6 +207,7 @@ export class SceneViewport {
       this.observer = new ResizeObserver(() => this.resize())
       this.observer.observe(container)
     }
+    countViewport(1)
     this.resize()
   }
 
@@ -238,9 +245,18 @@ export class SceneViewport {
     this.scene.clear()
     this.overlay.clear()
     this.renderer?.dispose()
+    // Read after the dispose: what is still counted here is what was not given back.
+    const left = this.renderer
+      ? {
+        geometries: this.renderer.info.memory.geometries,
+        textures: this.renderer.info.memory.textures,
+        programs: this.renderer.info.programs?.length ?? 0,
+      }
+      : { geometries: 0, textures: 0, programs: 0 }
     this.renderer?.forceContextLoss?.()
     this.renderer = null
     this.canvas.remove()
+    countViewport(-1, left)
   }
 
   private onContextLost = (event: Event) => {
@@ -319,6 +335,7 @@ export class SceneViewport {
       hover: splitAlpha(this.theme.hover).colour,
       selected: splitAlpha(this.theme.selected).colour,
       active: splitAlpha(this.theme.active).colour,
+      halo: splitAlpha(this.theme.outlineHalo).colour,
     })
     if (this.cursor) {
       this.cursor.lines[0]?.setColour(splitAlpha(this.theme.cursorGround).colour)

@@ -134,11 +134,11 @@ function table(entries: KeymapEntry[]): string[] {
 /**
  * The departures of one section, one line per distinct note.
  *
- * Chords share a note far more often than not — the six file chords depart for one reason, the nine
- * emulated views for another — and printing the sentence once per row would read as nine decisions
- * rather than one. So the chords gather under the sentence they share, in the order the table
- * introduces it. A section with nothing to explain says so, because silence there is ambiguous
- * between “all of this is Blender’s” and “nobody has looked”.
+ * Chords share a note far more often than not — the six file chords depart for one reason and the
+ * emulated axis views for another — and printing the sentence once per row would read as six
+ * decisions rather than one. So the chords gather in front of the sentence they share, in the order
+ * the table introduces it. A section with nothing to explain says so, because silence there is
+ * ambiguous between “all of this is Blender’s” and “nobody has looked”.
  */
 function departures(entries: KeymapEntry[]): string[] {
   const notes = new Map<string, string[]>()

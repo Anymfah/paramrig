@@ -50,8 +50,20 @@
     overflow: visible;
     border-block-end: 0;
   }
-  /* The scene's name is the part that gives way; six characters and an ellipsis still identify it. */
+  /*
+   * The left end gives way so the menus start inside the window rather than a scroll away. The
+   * name keeps eight characters and an ellipsis, which still identifies a scene; the autosave
+   * badge is clipped to its own dot, which is the glanceable half of it — the words are in the
+   * File menu, and the badge keeps both its tooltip and its place in the accessibility tree.
+   */
   .scene-stage .scene-file__name { width: 8ch; }
+  .scene-stage .editor-save-badge {
+    flex: none;
+    inline-size: calc(6px + var(--space-2) * 2);
+    padding-inline: var(--space-2);
+  }
+  /* Without this the dot is the flex item that gives way, and the badge clips to a sliver of word. */
+  .scene-stage .editor-save-badge__dot { flex: none; }
 
   /*
    * The T bar. `toolbar.css` already unrolls it into a row along the foot of the viewport; what is
@@ -198,11 +210,17 @@
   .scene-body button,
   .scene-body input,
   .scene-body .number-value,
-  .scene-body .select-field,
   .scene-body .color-field,
   .scene-body .segment,
-  .scene-body .segment__opt,
-  .scene-body .switch { min-block-size: var(--hit-target-coarse); }
+  .scene-body .segment__opt { min-block-size: var(--hit-target-coarse); }
+  /*
+   * A switch is the exception, and it is left alone on purpose. The pill is forty by twenty-four
+   * with a thumb placed against those numbers; stretching it to forty-four would make a horizontal
+   * switch into a vertical capsule with the thumb in the wrong corner. What a thumb actually
+   * presses is the label that wraps it, so that is the thing given the height.
+   */
+  .scene-body .switch { min-block-size: 0; }
+  .scene-body .control--switch { min-block-size: var(--hit-target-coarse); }
   .scene-body .icon-btn {
     width: var(--hit-target-coarse);
     height: var(--hit-target-coarse);

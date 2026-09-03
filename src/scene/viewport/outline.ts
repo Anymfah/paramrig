@@ -47,7 +47,9 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uHover;
   uniform vec3 uSelected;
   uniform vec3 uActive;
+  uniform vec3 uHalo;
   uniform float uWidth;
+  uniform float uHaloWidth;
 
   float maskAt(vec2 uv) {
     return texture2D(uMask, uv).r;
@@ -58,17 +60,23 @@ const FRAGMENT = /* glsl */ `
     // The band is drawn outside the silhouette, never over it: an outline that ate into the object
     // would hide the very edge a modeller is looking at.
     if (centre > 0.0) discard;
+    float core = 0.0;
     float found = 0.0;
-    for (int index = 0; index < 8; index++) {
-      float angle = float(index) * 0.7853981634;
-      vec2 offset = vec2(cos(angle), sin(angle)) * uTexel * uWidth;
-      found = max(found, maskAt(vUv + offset));
+    for (int index = 0; index < 12; index++) {
+      float angle = float(index) * 0.5235987756;
+      vec2 direction = vec2(cos(angle), sin(angle));
+      core = max(core, maskAt(vUv + direction * uTexel * uWidth));
+      found = max(found, maskAt(vUv + direction * uTexel * (uWidth + uHaloWidth)));
     }
     if (found <= 0.0) discard;
     vec3 colour = uHover;
     if (found > 2.5 / 255.0) colour = uActive;
     else if (found > 1.5 / 255.0) colour = uSelected;
+    // Outside the line, one more band of the casing colour, so the outline reads whatever it
+    // happens to cross: a pale ground, a dark one, or the middle of another object.
+    if (core <= 0.0) colour = uHalo;
     gl_FragColor = vec4(colour, 1.0);
+    #include <colorspace_fragment>
   }
 `
 
@@ -78,7 +86,7 @@ export type OutlinePass = {
   render: (renderer: WebGLRenderer, camera: Camera) => void
   draw: (renderer: WebGLRenderer) => void
   setSize: (width: number, height: number) => void
-  setColours: (colours: { hover: string; selected: string; active: string }) => void
+  setColours: (colours: { hover: string; selected: string; active: string; halo: string }) => void
   setWidth: (pixels: number) => void
   dispose: () => void
 }
@@ -104,7 +112,9 @@ export function createOutlinePass(): OutlinePass {
       uHover: new Uniform(new Color('#ffffff')),
       uSelected: new Uniform(new Color('#f0a02e')),
       uActive: new Uniform(new Color('#ffce6a')),
+      uHalo: new Uniform(new Color('#0d1010')),
       uWidth: new Uniform(1),
+      uHaloWidth: new Uniform(1),
     },
   })
   const quad = new Mesh(new PlaneGeometry(2, 2), material)
@@ -143,9 +153,11 @@ export function createOutlinePass(): OutlinePass {
       ;(material.uniforms.uHover!.value as Color).set(colours.hover)
       ;(material.uniforms.uSelected!.value as Color).set(colours.selected)
       ;(material.uniforms.uActive!.value as Color).set(colours.active)
+      ;(material.uniforms.uHalo!.value as Color).set(colours.halo)
     },
     setWidth: (pixels) => {
       material.uniforms.uWidth!.value = Math.max(0.75, pixels)
+      material.uniforms.uHaloWidth!.value = Math.max(0.75, pixels / 2)
     },
     dispose: () => {
       target.dispose()

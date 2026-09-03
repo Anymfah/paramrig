@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { SceneCounts } from '@/scene/document'
 import type { SceneDocument, SceneSelection } from '@/scene/types'
 
@@ -9,11 +10,13 @@ import type { SceneDocument, SceneSelection } from '@/scene/types'
  * nothing on screen that says a middle drag orbits — so the status bar teaches the gestures as the
  * context changes, which is what Blender does and what makes the first minute survivable.
  */
-export function SceneStatusBar({ document, selection, counts, message }: {
+export function SceneStatusBar({ document, selection, counts, message, keymapHint }: {
   document: SceneDocument
   selection: SceneSelection
   counts: SceneCounts
   message: string | null
+  /** The one-line "press F1 for the keys" affordance, which stays after the hint chip has gone. */
+  keymapHint?: ReactNode
 }) {
   const hints = document.view.mode === 'edit'
     ? [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Menu', 'right click']]
@@ -22,6 +25,7 @@ export function SceneStatusBar({ document, selection, counts, message }: {
   return (
     <div className="scene-status" role="status">
       <div className="scene-status__hints">
+        {keymapHint}
         {hints.map(([label, gesture]) => (
           <span key={label} className="scene-status__hint">
             <kbd>{gesture}</kbd>

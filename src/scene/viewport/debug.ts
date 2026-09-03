@@ -26,12 +26,46 @@ export type SceneDebugApi = {
   firstFrame: () => number | null
   loseContext: () => boolean
   restoreContext: () => boolean
+  leaks: () => SceneLeakCounters
+}
+
+/**
+ * What a closed scene left behind. A viewport that does not give its geometries, its textures and
+ * its render targets back keeps them on the graphics card for the life of the tab, and nothing in
+ * the interface would ever say so — which is why the numbers are counted here and asserted by a QA
+ * script rather than trusted.
+ */
+export type SceneLeakCounters = {
+  /** Viewports built and not yet disposed. */
+  viewports: number
+  /** What the renderer still held when the last one was disposed. */
+  geometries: number
+  textures: number
+  programs: number
 }
 
 declare global {
   interface Window {
     __paramrigScene?: SceneDebugApi
+    __paramrigSceneLeaks?: SceneLeakCounters
   }
+}
+
+function counters(): SceneLeakCounters {
+  if (typeof window === 'undefined') return { viewports: 0, geometries: 0, textures: 0, programs: 0 }
+  if (!window.__paramrigSceneLeaks) window.__paramrigSceneLeaks = { viewports: 0, geometries: 0, textures: 0, programs: 0 }
+  return window.__paramrigSceneLeaks
+}
+
+/** Called by the viewport as it is built and as it is disposed. */
+export function countViewport(change: 1 | -1, left?: { geometries: number; textures: number; programs: number }): void {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return
+  const held = counters()
+  held.viewports = Math.max(0, held.viewports + change)
+  if (!left) return
+  held.geometries = left.geometries
+  held.textures = left.textures
+  held.programs = left.programs
 }
 
 const FIRST_FRAME_MARK = 'paramrig-scene-first-frame'
@@ -72,6 +106,7 @@ export function installSceneDebug(viewport: SceneViewport): () => void {
       extension.loseContext()
       return true
     },
+    leaks: () => counters(),
     restoreContext: () => {
       const context = (viewport.canvas.getContext('webgl2') ?? viewport.canvas.getContext('webgl')) as WebGLRenderingContext | null
       const extension = context?.getExtension('WEBGL_lose_context')

@@ -178,10 +178,8 @@ export function LibraryPage() {
               {recent.map((entry) => (
                 <li key={entry.id}>
                   <button type="button" className="library-recent__item" onClick={() => void openRecent(entry)}>
-                    <span className="library-recent__preview" style={{ background: entry.background }}>
-                      {entry.thumbnail ? (
-                        <svg viewBox={`0 0 ${entry.width} ${entry.height}`} aria-hidden="true" dangerouslySetInnerHTML={{ __html: entry.thumbnail }} />
-                      ) : null}
+                    <span className="library-recent__preview" style={entry.background ? { background: entry.background } : undefined}>
+                      <RecentThumb entry={entry} />
                     </span>
                     <span className="library-recent__text">
                       <span className="library-recent__name">{entry.name}</span>
@@ -258,6 +256,24 @@ export function LibraryPage() {
       </div>
       <ShellNavResize />
     </div>
+  )
+}
+
+/**
+ * A recent entry's picture. A vector document keeps its preview as SVG markup and the size to draw
+ * it at; a scene keeps a whole picture as a data URL, because a scene has no page to draw against.
+ */
+function RecentThumb({ entry }: { entry: RecentProject }) {
+  if (!entry.thumbnail) return null
+  if (entry.kind === 'scene' || entry.thumbnail.startsWith('data:')) {
+    return <img className="library-recent__image" src={entry.thumbnail} alt="" />
+  }
+  return (
+    <svg
+      viewBox={`0 0 ${entry.width ?? 800} ${entry.height ?? 600}`}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: entry.thumbnail }}
+    />
   )
 }
 

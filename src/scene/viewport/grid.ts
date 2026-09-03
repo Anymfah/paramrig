@@ -107,6 +107,10 @@ const FRAGMENT = /* glsl */ `
 
     if (alpha <= 0.003) discard;
     gl_FragColor = vec4(colour, alpha);
+    // A hand-written shader writes whatever it is given, and three.js hands over colours in the
+    // linear working space. Without this the grid reaches the screen darker and more saturated
+    // than the token asked for -- a bug nobody sees until they measure the picture.
+    #include <colorspace_fragment>
   }
 `
 

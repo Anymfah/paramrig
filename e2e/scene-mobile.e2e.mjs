@@ -113,12 +113,13 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
     { x: box.x + box.width * 0.75, y: box.y + box.height * 0.3 },
   )
   const after = await helpers.scene()
-  // What the drag did instead, when it did not orbit, is the useful half of a failure here.
-  log(`  ${countBefore} → ${await counted()}`)
+  // What the drag did instead is the useful half of a failure here, and proof the touch landed.
+  const countAfter = await counted()
   check('one finger dragging in the viewport orbits',
     Math.abs(after.view.yaw - before.view.yaw) > 0.05 || Math.abs(after.view.pitch - before.view.pitch) > 0.05,
     `yaw ${before.view.yaw.toFixed(3)} → ${after.view.yaw.toFixed(3)}`
-    + `, pitch ${before.view.pitch.toFixed(3)} → ${after.view.pitch.toFixed(3)}`)
+    + `, pitch ${before.view.pitch.toFixed(3)} → ${after.view.pitch.toFixed(3)}`
+    + `; the drag went to the marquee instead (${countBefore} → ${countAfter})`)
 
   /* ---------------------------------------------------------- the toolbar */
 
@@ -155,16 +156,34 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
 
   const header = await page.evaluate(() => {
     const row = document.querySelector('.scene-titlebar')
+    row.scrollLeft = 0
     const controls = [...row.querySelectorAll('button, input')].filter((node) => !node.closest('.visually-hidden'))
+    const menus = [...row.querySelectorAll('.scene-menu__trigger')]
+    const within = (node) => {
+      const box = node.getBoundingClientRect()
+      return box.left >= 0 && box.right <= window.innerWidth
+    }
     return {
       rows: [...new Set(controls.map((node) => Math.round(node.getBoundingClientRect().top / 8)))].length,
       scrolls: row.scrollWidth > row.clientWidth + 1,
       width: Math.round(row.clientWidth),
       content: Math.round(row.scrollWidth),
+      menus: menus.length,
+      menusInView: menus.filter(within).length,
     }
   })
   check('the header row stays one line and scrolls sideways',
     header.rows === 1 && header.scrolls, JSON.stringify(header))
+  check('and a menu is on screen before anyone scrolls it',
+    header.menusInView > 0, `${header.menusInView} of ${header.menus} menus within 320 px`)
+
+  // Reaching the last of them is a scroll, not a fold: nothing has been dropped from the row.
+  await page.locator('.scene-menu__trigger', { hasText: 'Object' }).first().click()
+  await page.waitForSelector('.scene-menu[role="menu"]')
+  const objectMenu = await page.locator('.scene-menu[role="menu"] .scene-menu__item').count()
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+  check('and the last menu in the row still opens', objectMenu > 0, `${objectMenu} entries`)
 
   /* -------------------------------------------------------- the status bar */
 
@@ -187,7 +206,10 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
     const box = document.querySelector('.scene-canvas').getBoundingClientRect()
     return { width: Math.round(box.width), height: Math.round(box.height) }
   })
+  // With nothing selected the Item tab is an empty state; the sheet is measured with something in it.
   await page.locator('#main').focus()
+  await page.keyboard.press('a')
+  await page.waitForTimeout(200)
   await page.keyboard.press('n')
   await page.waitForSelector('.scene-sidebar')
   await page.waitForTimeout(300)
@@ -243,7 +265,7 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
 
   /* ------------------------------------------------------- the 44 px walk */
 
-  const targets = await page.evaluate(() => {
+  const walk = () => page.evaluate(() => {
     const SELECTOR = [
       'button', 'input', 'select', 'textarea', 'a[href]',
       '[role="button"]', '[role="tab"]', '[role="switch"]', '[role="slider"]',
@@ -256,10 +278,19 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
       || node.tagName.toLowerCase()
     // A screen-reader-only file input is not a target; it is a one-pixel clip nobody can see.
     const shown = (node) => getComputedStyle(node).visibility !== 'hidden' && !node.closest('.visually-hidden')
+    /*
+     * What a thumb has to hit, which is not always the element itself: a control wrapped in the
+     * label that names it is pressed anywhere in that label, so the label is the target. That is
+     * how a switch's forty-by-twenty-four pill sits inside a forty-four-pixel row.
+     */
+    const target = (node) => {
+      const label = node.closest('label')
+      return label && node.id && label.getAttribute('for') === node.id ? label : node
+    }
     const measure = (root, area) => [...root.querySelectorAll(SELECTOR)]
       .filter(shown)
       .map((node) => {
-        const box = node.getBoundingClientRect()
+        const box = target(node).getBoundingClientRect()
         return { area, name: name(node), width: Math.round(box.width * 10) / 10, height: Math.round(box.height * 10) / 10 }
       })
       .filter((entry) => entry.width > 0 && entry.height > 0)
@@ -268,10 +299,19 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
       ...measure(document.querySelector('.scene-titlebar'), 'header'),
     ].sort((a, b) => Math.min(a.width, a.height) - Math.min(b.width, b.height))
   })
+
+  // Both tabs of the sheet: Item is number fields, Tool is switches and segmented choices.
+  const itemTargets = await walk()
+  await page.locator('.scene-sidebar__tab', { hasText: 'Tool' }).click()
+  await page.waitForTimeout(300)
+  const toolTargets = await walk()
+  await shot('scene-mobile-320-tools.png')
+  const targets = [...itemTargets, ...toolTargets].sort((a, b) => Math.min(a.width, a.height) - Math.min(b.width, b.height))
   const inViewport = targets.filter((entry) => entry.area === 'viewport')
   const smallest = inViewport[0]
   const under = inViewport.filter((entry) => entry.width < 44 || entry.height < 44)
-  log(`  ${inViewport.length} controls in the viewport; smallest “${smallest.name}” at ${smallest.width} × ${smallest.height}`)
+  log(`  ${inViewport.length} controls in the viewport over both sheet tabs;`
+    + ` smallest “${smallest.name}” at ${smallest.width} × ${smallest.height}`)
   for (const entry of under.slice(0, 8)) log(`  under 44: ${entry.area} “${entry.name}” ${entry.width} × ${entry.height}`)
   check('every control in the viewport is at least 44 px in both directions',
     under.length === 0,

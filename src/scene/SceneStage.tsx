@@ -94,7 +94,14 @@ export function SceneStage({
   const viewport = useRef<SceneViewport | null>(null)
   const navigator = useRef<ViewNavigator | null>(null)
   const frameHandle = useRef<number | null>(null)
-  const press = useRef<{ x: number; y: number; button: number; moved: boolean; navigating: boolean } | null>(null)
+  const press = useRef<{ x: number; y: number; button: number; moved: boolean; navigating: boolean; touch: boolean } | null>(null)
+  /**
+   * The fingers on the glass. Blender's touch scheme, which is also every map's: one finger turns
+   * the view, two pan it and pinch it, a tap picks, and a long press is the right button.
+   */
+  const touches = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ distance: number; centre: [number, number] } | null>(null)
+  const longPress = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hover = useRef<string | null>(null)
   const latestSelection = useRef(selection)
   latestSelection.current = selection
@@ -261,6 +268,8 @@ export function SceneStage({
   useEffect(() => () => {
     if (frameHandle.current !== null) cancelAnimationFrame(frameHandle.current)
     frameHandle.current = null
+    if (longPress.current) clearTimeout(longPress.current)
+    longPress.current = null
     navigator.current?.dispose()
   }, [])
 
@@ -340,7 +349,34 @@ export function SceneStage({
             onPlaceRef.current(hit?.point ?? instance.pointOnViewPlane(x, y), hit?.normal ?? null)
             return
           }
-          press.current = { x, y, button: event.button, moved: false, navigating: !!gesture }
+          const touch = event.pointerType === 'touch'
+          if (touch) {
+            touches.current.set(event.pointerId, { x, y })
+            if (touches.current.size === 2) {
+              // The second finger takes over: whatever the first one had started is abandoned.
+              press.current = null
+              nav.end()
+              const [a, b] = [...touches.current.values()]
+              pinch.current = {
+                distance: Math.hypot(a!.x - b!.x, a!.y - b!.y),
+                centre: [(a!.x + b!.x) / 2, (a!.y + b!.y) / 2],
+              }
+              if (longPress.current) clearTimeout(longPress.current)
+              longPress.current = null
+              event.currentTarget.setPointerCapture(event.pointerId)
+              return
+            }
+            if (touches.current.size > 2) return
+            // A press held still is the right button, which is how a menu is reached with no mouse.
+            if (longPress.current) clearTimeout(longPress.current)
+            longPress.current = setTimeout(() => {
+              longPress.current = null
+              if (press.current?.moved) return
+              press.current = null
+              onMenuRef.current({ x: event.clientX, y: event.clientY })
+            }, 500)
+          }
+          press.current = { x, y, button: event.button, moved: false, navigating: !!gesture, touch }
           event.currentTarget.setPointerCapture(event.pointerId)
           if (gesture) {
             event.preventDefault()
@@ -394,6 +430,21 @@ export function SceneStage({
             })
             return
           }
+          // Two fingers pan and pinch; that is the whole of it, and it never selects anything.
+          if (event.pointerType === 'touch' && touches.current.has(event.pointerId)) {
+            touches.current.set(event.pointerId, { x, y })
+            const held = pinch.current
+            if (held && touches.current.size === 2) {
+              const [a, b] = [...touches.current.values()]
+              const distance = Math.hypot(a!.x - b!.x, a!.y - b!.y)
+              const centre: [number, number] = [(a!.x + b!.x) / 2, (a!.y + b!.y) / 2]
+              nav.pan(centre[0] - held.centre[0], centre[1] - held.centre[1])
+              if (held.distance > 1 && distance > 1) nav.zoomBy((held.distance - distance) * 6)
+              pinch.current = { distance, centre }
+              pump()
+              return
+            }
+          }
           const stroke = sketch.current
           if (stroke) {
             const point = pointInScene(instance, x, y)
@@ -409,7 +460,16 @@ export function SceneStage({
           }
           const held = press.current
           if (held) {
-            if (!held.moved && Math.hypot(x - held.x, y - held.y) > threshold()) held.moved = true
+            if (!held.moved && Math.hypot(x - held.x, y - held.y) > threshold()) {
+              held.moved = true
+              // One finger past the threshold turns the view; under it, it was a tap, and taps pick.
+              if (held.touch && !held.navigating) {
+                if (longPress.current) clearTimeout(longPress.current)
+                longPress.current = null
+                held.navigating = true
+                nav.begin('orbit', event.pointerId, held.x, held.y)
+              }
+            }
             if (held.navigating) {
               nav.move(x, y)
               pump()
@@ -439,6 +499,12 @@ export function SceneStage({
         onPointerUp={(event) => {
           const nav = navigator.current
           const instance = viewport.current
+          if (event.pointerType === 'touch') {
+            touches.current.delete(event.pointerId)
+            if (touches.current.size < 2) pinch.current = null
+            if (longPress.current) clearTimeout(longPress.current)
+            longPress.current = null
+          }
           const stroke = sketch.current
           sketch.current = null
           if (stroke && instance) {
@@ -501,7 +567,11 @@ export function SceneStage({
           }
           onSelectRef.current([found], found)
         }}
-        onPointerCancel={() => {
+        onPointerCancel={(event) => {
+          touches.current.delete(event.pointerId)
+          pinch.current = null
+          if (longPress.current) clearTimeout(longPress.current)
+          longPress.current = null
           press.current = null
           region.current = null
           marquee.clear()

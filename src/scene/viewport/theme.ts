@@ -19,6 +19,8 @@ export type SceneTheme = {
   edgeSelected: string
   faceSelected: string
   faceActive: string
+  /** The casing the selection outline is drawn against, so it reads on any ground. */
+  outlineHalo: string
   axisX: string
   axisY: string
   axisZ: string
@@ -55,6 +57,7 @@ const TOKENS: Record<keyof SceneTheme, string> = {
   edgeSelected: '--scene-edge-selected',
   faceSelected: '--scene-face-selected',
   faceActive: '--scene-face-active',
+  outlineHalo: '--scene-outline-halo',
   axisX: '--scene-axis-x',
   axisY: '--scene-axis-y',
   axisZ: '--scene-axis-z',
@@ -92,6 +95,7 @@ export const FALLBACK_THEME: SceneTheme = {
   edgeSelected: '#f0a02e',
   faceSelected: '#f0a02e4d',
   faceActive: '#ffce6a66',
+  outlineHalo: '#0b0e0e',
   axisX: '#d1495b',
   axisY: '#77b255',
   axisZ: '#4a86c8',

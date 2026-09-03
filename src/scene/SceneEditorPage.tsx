@@ -22,6 +22,7 @@ import {
 } from '@/scene/prefs'
 import { SceneFileMenu } from '@/scene/SceneFileMenu'
 import { SceneHeader } from '@/scene/SceneHeader'
+import { SceneHints, SceneKeymapHint } from '@/scene/SceneHints'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
 import { ADD_MENU } from '@/scene/operators/add'
 import { SNAP_PIE } from '@/scene/operators/cursor'
@@ -426,7 +427,9 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onReady={(handle) => { stage.current = handle }}
               createViewport={createViewport}
               options={viewportOptions}
-            />
+            >
+              <SceneHints />
+            </SceneStage>
             <SceneToolbar
               open={panels.toolbar}
               tool={document.view.tool}
@@ -468,7 +471,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onAdjust={editor.adjustLastOperation}
             />
           </div>
-          <SceneStatusBar document={document} selection={selection} counts={counts} message={editor.message} />
+          <SceneStatusBar
+            document={document}
+            selection={selection}
+            counts={counts}
+            message={editor.message}
+            keymapHint={<SceneKeymapHint onOpen={() => setKeymapOpen(true)} />}
+          />
         </div>
       </WorkspaceShell>
 

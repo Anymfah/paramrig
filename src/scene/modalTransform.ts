@@ -128,21 +128,26 @@ export class ModalTransform {
     this.element = element
     this.fromDrag = !!options.fromDrag
     this.deps.beginGesture(transformLabel(this.session))
-    // The pointer lock is what makes a rotation able to pass a full turn: the real cursor is hidden
-    // and the movement is reported as deltas that never run out of screen. A browser that refuses
-    // it leaves the session working, without the wrap.
-    // A drag already has the pointer captured and the person can see where it is; locking it as
-    // well would take the cursor away mid-gesture for nothing. The lock is for the keyboard start,
-    // where the movement has to be able to run past the edge of the screen.
+    this.locked = false
+    /*
+     * The pointer lock is what lets a rotation pass a full turn: the cursor is hidden and the
+     * movement arrives as deltas that never run out of screen. It is asked for only when the
+     * session starts from the keyboard — a drag already has the pointer captured, and taking the
+     * cursor away in the middle of one would buy nothing.
+     */
     if (!this.fromDrag && element && typeof element.requestPointerLock === 'function') {
       try {
         const request = element.requestPointerLock() as unknown
         if (request && typeof (request as Promise<void>).catch === 'function') (request as Promise<void>).catch(() => undefined)
-        this.locked = true
         // Escape is the browser's way out of a pointer lock, and it keeps the key to itself. So
         // the lock going away *is* the cancel: whichever way the person leaves, the session ends
         // the same, and the transform goes back to where it started.
+        //
+        // `locked` is set by the event, never by the request. A browser may refuse a lock — Chrome
+        // does for a few seconds after a person has pressed Escape out of one — and a session that
+        // took the refusal for a loss would cancel itself the moment it opened.
         window.document.addEventListener('pointerlockchange', this.onLockChange)
+        window.document.addEventListener('pointerlockerror', this.onLockError)
       } catch {
         this.locked = false
       }
@@ -239,15 +244,29 @@ export class ModalTransform {
   }
 
   private onLockChange = (): void => {
-    if (!this.locked || !this.session) return
-    if (window.document.pointerLockElement === this.element) return
+    if (!this.session) return
+    if (window.document.pointerLockElement === this.element) {
+      this.locked = true
+      return
+    }
+    // Losing a lock the session actually held is how Escape reaches it; never having had one is
+    // not, and the session carries on without the wrap.
+    if (!this.locked) return
+    this.locked = false
     this.cancel()
+  }
+
+  private onLockError = (): void => {
+    this.locked = false
   }
 
   private close(): void {
     this.session = null
     this.fromDrag = false
-    if (typeof window !== 'undefined') window.document.removeEventListener('pointerlockchange', this.onLockChange)
+    if (typeof window !== 'undefined') {
+      window.document.removeEventListener('pointerlockchange', this.onLockChange)
+      window.document.removeEventListener('pointerlockerror', this.onLockError)
+    }
     this.deps.hud.clear()
     this.deps.overlay()?.clear()
     if (this.locked && typeof window !== 'undefined' && window.document.exitPointerLock) {
