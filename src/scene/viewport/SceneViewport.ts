@@ -13,6 +13,7 @@ import {
   SphereGeometry,
   Matrix4,
   Mesh,
+  MeshStandardMaterial,
   Vector2,
   Vector3,
   WebGLRenderer,
@@ -21,6 +22,7 @@ import {
   type Material,
 } from 'three'
 import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/environment'
+import { solidColour } from '@/scene/viewport/solidColour'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
@@ -102,7 +104,8 @@ type ObjectView = {
   pickMaterial?: Material
   maskMesh?: Mesh
   maskMaterial?: Material
-  material?: Material
+  /** The solid material, whose colour follows the shading options; typed for that reason. */
+  material?: MeshStandardMaterial
   /** The meshes an empty draws on behalf of the collection it stands in for. */
   instances?: MeshView[]
   /** Their counterparts in the id buffer, so an instance can be clicked where it is drawn. */
@@ -547,6 +550,9 @@ export class SceneViewport {
   setDocument(document: SceneDocument): void {
     this.document = document
     this.syncObjects()
+    // The materials belong to the document, so a colour changed in the panel has to reach the
+    // meshes here as well as when the shading mode changes — otherwise solid keeps yesterday's grey.
+    this.applyShading()
     this.syncEdit()
     this.syncCursor()
     this.notes?.setAnnotations(document.annotations ?? [])
@@ -687,11 +693,31 @@ export class SceneViewport {
       )
       this.disposables.push(() => disposeMaterial(this.orientationMaterial))
     }
-    for (const view of this.views.values()) {
-      if (!view.mesh || !view.material) continue
-      const material = wanted && this.orientationMaterial ? this.orientationMaterial : view.material
-      if (view.mesh.material !== material) view.mesh.material = material
+    for (const [id, view] of this.views) {
+      if (!view.mesh) continue
+      const object = this.document?.objects.find((entry) => entry.id === id)
+      /*
+       * Off, this asks the shading what the mesh would otherwise wear rather than remembering it:
+       * the answer changes with the mode and with the materials, and a remembered one was how a
+       * material-preview cube ended up drawn in the solid grey it had been wearing before.
+       */
+      const material = wanted && this.orientationMaterial
+        ? this.orientationMaterial
+        : object ? this.shadedMaterial(object, view) : view.material
+      if (material && view.mesh.material !== material) view.mesh.material = material
     }
+  }
+
+  /** What an object's mesh wears in the current mode: its materials, or the solid one. */
+  private shadedMaterial(object: SceneObject, view: ObjectView): Material | Material[] | undefined {
+    const shading = this.view?.shading ?? 'solid'
+    if (shading === 'material' || shading === 'rendered') return this.materialsFor(object)
+    if (view.material && this.document && this.view) {
+      // Solid's colour is a reading aid rather than a rendering: the material's, the object's, one
+      // for all of them, or one per object so that a crowded scene can be told apart at all.
+      view.material.color.set(solidColour(this.document, object, this.view))
+    }
+    return view.material
   }
 
   private syncEdit(): void {
@@ -1140,7 +1166,6 @@ export class SceneViewport {
     const view = this.view
     if (!renderer || !view) return
     const shading = view.shading
-    const lit = shading === 'material' || shading === 'rendered'
 
     if (shading === 'rendered') {
       renderer.toneMapping = ACESFilmicToneMapping
@@ -1174,7 +1199,7 @@ export class SceneViewport {
       const object = this.document?.objects.find((entry) => entry.id === id)
       objectView.mesh.visible = shading !== 'wireframe'
       if (!object) continue
-      objectView.mesh.material = lit ? this.materialsFor(object) : objectView.material ?? objectView.mesh.material
+      objectView.mesh.material = this.shadedMaterial(object, objectView) ?? objectView.mesh.material
     }
     // Last, and after the materials have been chosen: face orientation replaces whichever of them
     // an object ended up with, and choosing a material afterwards would quietly undo the overlay.
@@ -1401,6 +1426,42 @@ export class SceneViewport {
       normal: [normal.x, normal.y, normal.z],
       distance: hit.distance,
     }
+  }
+
+  /**
+   * Which face of which object is under a pixel.
+   *
+   * The id buffer cannot answer this outside edit mode — it holds objects there, not faces — so the
+   * ray is cast and the triangle it hit is read back through the two mappings the mesh view keeps:
+   * the order the triangles were written in, which is by material slot, and the face each triangle
+   * came from. It is what lets a material be dropped onto one face of an object that is not open.
+   */
+  faceAt(x: number, y: number): { objectId: string; faceId: number } | null {
+    const camera = this.camera
+    this.raycaster.setFromCamera(
+      new Vector2((x / this.size.width) * 2 - 1, 1 - (y / this.size.height) * 2),
+      camera,
+    )
+    const targets: Mesh[] = []
+    for (const view of this.views.values()) {
+      if (!view.mesh || !view.root.visible) continue
+      view.root.updateMatrixWorld(true)
+      view.mesh.updateMatrixWorld(true)
+      targets.push(view.mesh)
+    }
+    const hit = this.raycaster.intersectObjects(targets, false)[0]
+    if (!hit || hit.faceIndex === undefined || hit.faceIndex === null) return null
+    const owner = [...this.views.entries()].find(([, view]) => view.mesh === hit.object)
+    if (!owner) return null
+    const meshView = owner[1].meshView
+    const object = this.document?.objects.find((entry) => entry.id === owner[0])
+    const mesh = object ? this.drawnMeshOf(object) : null
+    if (!meshView || !mesh) return null
+    const source = meshView.order[hit.faceIndex]
+    if (source === undefined) return null
+    const faceSlot = meshView.triangleFace[source]
+    const faceId = faceSlot === undefined || faceSlot < 0 ? undefined : mesh.faceIds[faceSlot]
+    return faceId === undefined ? null : { objectId: owner[0], faceId }
   }
 
   /**

@@ -3,13 +3,14 @@ import type { HistoryStep } from '@/editor/history'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { DataPanel } from '@/scene/panels/DataPanel'
 import { HistoryPanel } from '@/scene/panels/HistoryPanel'
+import { MaterialPanel } from '@/scene/panels/MaterialPanel'
 import { ModifiersPanel } from '@/scene/panels/ModifiersPanel'
 import { ObjectPanel } from '@/scene/panels/ObjectPanel'
 import { ScenePanel } from '@/scene/panels/ScenePanel'
 import { WorldPanel } from '@/scene/panels/WorldPanel'
 import { evaluateObject } from '@/scene/modifiers/stack'
 import { PROPERTIES_TABS, type PropertiesTab } from '@/scene/prefs'
-import type { SceneDocument, SceneObject, SceneSelection, SceneVersion } from '@/scene/types'
+import type { EditorMode, SceneDocument, SceneObject, SceneSelection, SceneVersion } from '@/scene/types'
 import { IconButton } from '@/ui/Button'
 import { IconChevron, IconLock, IconUnlock } from '@/ui/icons'
 import { NumberField } from '@/ui/NumberField'
@@ -39,8 +40,10 @@ export function SceneProperties({
   selection,
   selectedObjects,
   activeObject,
+  mode,
   tab,
   onTab,
+  onActiveMaterialSlot,
   onUpdateObject,
   onUpdateObjects,
   onEditDocument,
@@ -55,8 +58,12 @@ export function SceneProperties({
   selection: SceneSelection
   selectedObjects: SceneObject[]
   activeObject: SceneObject | null
+  /** Object or edit: Assign and Select only mean something while a mesh is open. */
+  mode: EditorMode
   tab: PropertiesTab
   onTab: (tab: PropertiesTab) => void
+  /** Which material slot the panel is on, which is what the material operators work on. */
+  onActiveMaterialSlot: (slot: number) => void
   onUpdateObject: (id: string, patch: Partial<SceneObject>, label?: string) => void
   onUpdateObjects: (patches: Array<{ id: string; patch: Partial<SceneObject> }>, label?: string) => void
   onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
@@ -83,8 +90,6 @@ export function SceneProperties({
   const gesture = { onGestureStart, onGestureEnd }
   const unit = lengthUnit(document)
 
-  // The selection carries the order things were picked in; the panel only needs how many.
-  void selection
 
   const moveTab = (from: PropertiesTab, step: number) => {
     const index = PROPERTIES_TABS.indexOf(from)
@@ -167,9 +172,18 @@ export function SceneProperties({
           />
         ) : null}
         {tab === 'material' ? (
-          <div className="scene-properties__notice">
-            <SceneEmpty>No materials. They arrive with the material prompt.</SceneEmpty>
-          </div>
+          <MaterialPanel
+            document={document}
+            activeObject={activeObject}
+            mode={mode}
+            activeSlot={selection.activeMaterialSlot ?? 0}
+            onActiveSlot={onActiveMaterialSlot}
+            onUpdateObject={onUpdateObject}
+            onEditDocument={onEditDocument}
+            onRunOperator={onRunOperator}
+            {...gesture}
+            {...folds}
+          />
         ) : null}
         {tab === 'data' ? (
           <DataPanel

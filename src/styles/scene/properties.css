@@ -494,3 +494,83 @@
   .scene-modifier__switch[data-on] { forced-color-adjust: none; color: Highlight; }
   .scene-modifier[data-drop]::before { background: Highlight; }
 }
+
+/*
+ * Material slots.
+ *
+ * A list of rows, each with the rendered sphere of the material in it, and a column of tools beside
+ * them — the shape Blender uses, and for the same reason: the slots are a short list a person picks
+ * from, and the tools act on whichever one is picked rather than on each row.
+ */
+.scene-slots {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+.scene-slots__list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+.scene-slots__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: start;
+  cursor: pointer;
+}
+.scene-slots__row:hover { background: var(--surface-overlay); }
+.scene-slots__row[aria-selected='true'] { background: color-mix(in srgb, var(--scene-selected) 22%, transparent); }
+.scene-slots__row:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-slots__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-slots__tools { display: grid; gap: 2px; }
+
+/* The sphere itself: a real render where there is a GPU, a flat disc of the base colour where not. */
+.scene-swatch {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid var(--border-hairline);
+  background-size: cover;
+}
+.scene-swatch[data-empty] {
+  background: repeating-linear-gradient(45deg, var(--surface-overlay) 0 4px, transparent 4px 8px);
+}
+
+.scene-name-field { display: grid; grid-template-columns: var(--label-width, 96px) minmax(0, 1fr); align-items: center; gap: 8px; }
+.scene-name-field input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+.scene-name-field input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+@media (forced-colors: active) {
+  .scene-slots__row[aria-selected='true'] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .scene-swatch { border-color: CanvasText; }
+}

@@ -1,7 +1,9 @@
 import { SceneAxes, SceneEmpty, SceneSection } from '@/scene/SceneProperties'
 import type { CameraData, SceneDocument, SceneObject, Vec3 } from '@/scene/types'
+import { BarField } from '@/ui/BarField'
 import { NumberField } from '@/ui/NumberField'
 import { SelectField } from '@/ui/SelectField'
+import { SwitchField } from '@/ui/SwitchField'
 
 /**
  * The Scene tab: what a unit means here, where the 3D cursor is, and which camera the scene looks
@@ -41,6 +43,18 @@ export function ScenePanel({ document, unit, onEditDocument, onGestureStart, onG
       next[axis] = value
       return { ...current, cursor: { ...current.cursor, [part]: next } }
     }, '3D cursor')
+  }
+
+  const output = document.output ?? DEFAULT_OUTPUT
+  const setOutput = (patch: Partial<NonNullable<SceneDocument['output']>>, label: string) => {
+    onEditDocument((current) => ({ ...current, output: { ...(current.output ?? DEFAULT_OUTPUT), ...patch } }), label)
+  }
+  const colour = document.colorManagement ?? DEFAULT_COLOR_MANAGEMENT
+  const setColour = (patch: Partial<NonNullable<SceneDocument['colorManagement']>>, label: string) => {
+    onEditDocument((current) => ({
+      ...current,
+      colorManagement: { ...(current.colorManagement ?? DEFAULT_COLOR_MANAGEMENT), ...patch },
+    }), label)
   }
 
   const setActiveCamera = (id: string) => {
@@ -113,6 +127,85 @@ export function ScenePanel({ document, unit, onEditDocument, onGestureStart, onG
           />
         )}
       </SceneSection>
+
+      <SceneSection
+        id="scene-output"
+        title="Output"
+        meta={`${Math.round((output.width * output.percentage) / 100)} × ${Math.round((output.height * output.percentage) / 100)}`}
+        {...folds}
+      >
+        <NumberField
+          label="Resolution X"
+          value={output.width}
+          min={4}
+          max={16384}
+          step={1}
+          variant="field"
+          onChange={(width) => setOutput({ width: Math.round(width) }, 'Render width')}
+          {...gesture}
+        />
+        <NumberField
+          label="Resolution Y"
+          value={output.height}
+          min={4}
+          max={16384}
+          step={1}
+          variant="field"
+          onChange={(height) => setOutput({ height: Math.round(height) }, 'Render height')}
+          {...gesture}
+        />
+        <BarField
+          label="Percentage"
+          value={output.percentage}
+          min={1}
+          max={400}
+          sliderMax={200}
+          step={1}
+          unit="%"
+          defaultValue={100}
+          onChange={(percentage) => setOutput({ percentage: Math.round(percentage) }, 'Render scale')}
+          {...gesture}
+        />
+        <SwitchField
+          label="Transparent"
+          checked={output.transparent}
+          defaultValue={false}
+          onChange={(transparent) => setOutput({ transparent }, 'Transparent background')}
+        />
+        <SceneEmpty>The percentage scales the image without changing the framing, which is how a draft render is made small.</SceneEmpty>
+      </SceneSection>
+
+      <SceneSection id="scene-color" title="Colour management" {...folds}>
+        <BarField
+          label="Exposure"
+          value={colour.exposure}
+          min={-10}
+          max={10}
+          sliderMin={-4}
+          sliderMax={4}
+          step={0.01}
+          defaultValue={0}
+          onChange={(exposure) => setColour({ exposure }, 'Exposure')}
+          {...gesture}
+        />
+        <BarField
+          label="Gamma"
+          value={colour.gamma}
+          min={0.1}
+          max={5}
+          sliderMax={2}
+          step={0.01}
+          defaultValue={1}
+          onChange={(gamma) => setColour({ gamma }, 'Gamma')}
+          {...gesture}
+        />
+        <SceneEmpty>Exposure is a stop of light before the film curve; both apply to the rendered view and to the image it makes.</SceneEmpty>
+      </SceneSection>
     </>
   )
 }
+
+/** What an image is rendered at until a document says otherwise: Blender's own starting frame. */
+const DEFAULT_OUTPUT = { width: 1920, height: 1080, percentage: 100, transparent: false } as const
+
+const DEFAULT_COLOR_MANAGEMENT = { exposure: 0, gamma: 1 } as const

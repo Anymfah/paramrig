@@ -99,6 +99,9 @@ export type CameraData = {
   focalLength: number
   sensor: number
   orthoScale: number
+  /** Blender's lens shift, in widths of the frame: the frame moves, the camera does not turn. */
+  shiftX?: number
+  shiftY?: number
   clipStart: number
   clipEnd: number
   /** Indicative depth of field: the viewport blurs nothing, the render pass reads it. */
@@ -363,7 +366,20 @@ export type ViewState = {
   /** Objects hidden by "local view"; empty when the view is not local. */
   localObjectIds?: string[]
   /** The panels the person left open, so a document reopens the way it was closed. */
-  panels?: { toolbar: boolean; sidebar: boolean; sidebarTab: 'item' | 'tool' | 'view' }
+  panels?: { toolbar: boolean; sidebar: boolean; sidebarTab: 'item' | 'tool' | 'view' | 'assets' }
+  /**
+   * Looking through the active camera, with its frame drawn and the rest dimmed. It is a state of
+   * the view rather than a place it has moved to: the camera is what is being looked through, so
+   * moving the camera moves the view and not the other way about — unless it is locked.
+   */
+  camera?: {
+    /** Whether the view is looking through the active camera at all. */
+    looking: boolean
+    /** Navigating moves the camera itself, which is Blender's "Lock camera to view". */
+    lock?: boolean
+    /** How dark the region outside the frame is drawn, nought to one. */
+    passepartout?: number
+  }
 }
 
 /* -------------------------------------------------------- notes and rules */

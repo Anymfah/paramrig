@@ -63,7 +63,11 @@ const MODULES = new Map<ModifierKind, ModifierModule>()
  * would mean a panel describing one thing and the viewport drawing another.
  */
 export function registerModifier<Params extends Modifier['params']>(module: ModifierModule<Params>): ModifierModule<Params> {
-  if (MODULES.has(module.kind)) throw new Error(`A modifier is already registered as “${module.kind}”.`)
+  // Twice is a mistake, except under hot replacement, where the file simply ran again: see the
+  // same note in `operators/registry.ts`. The definition that was just written wins.
+  if (MODULES.has(module.kind) && !import.meta.hot) {
+    throw new Error(`A modifier is already registered as “${module.kind}”.`)
+  }
   MODULES.set(module.kind, module as unknown as ModifierModule)
   return module
 }

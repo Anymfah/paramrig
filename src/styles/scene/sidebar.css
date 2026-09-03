@@ -209,3 +209,30 @@
     inset-block-end: calc(var(--space-2) + var(--scene-toolbar-strip) + var(--space-2));
   }
 }
+
+/*
+ * The asset list: a material, its sphere, and its name, dragged out onto the viewport.
+ *
+ * The rows are wide targets rather than tight ones — a drag has to start somewhere, and a 44-pixel
+ * row is what a finger needs as well as a mouse.
+ */
+.scene-assets {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scene-assets__item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: var(--radius-xs);
+  cursor: grab;
+}
+.scene-assets__item:hover { background: var(--surface-overlay); }
+.scene-assets__item:active { cursor: grabbing; }
+.scene-assets__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); }

@@ -12,7 +12,13 @@ const OPERATORS = new Map<string, Operator<OperatorParams>>()
 
 export function registerOperator<Params extends OperatorParams>(operator: Operator<Params>): Operator<Params> {
   if (OPERATORS.has(operator.id)) {
-    throw new Error(`An operator is already registered as “${operator.id}”.`)
+    /*
+     * Twice is a mistake, except while a module is being hot-replaced: the dev server re-runs the
+     * file, every `registerOperator` in it runs again, and a throw there takes the editor down for
+     * the rest of the session over an edit that was fine. The new definition is the one to keep —
+     * it is the one that was just written.
+     */
+    if (!import.meta.hot) throw new Error(`An operator is already registered as “${operator.id}”.`)
   }
   OPERATORS.set(operator.id, operator as unknown as Operator<OperatorParams>)
   return operator

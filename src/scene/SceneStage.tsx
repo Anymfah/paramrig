@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Euler, Matrix4 } from 'three'
 import { ModalOperator, type ModalOperatorDeps } from '@/scene/modalOperator'
+import { draggedMaterialId, isMaterialDrag } from '@/scene/materialDrag'
 import { modalSpecFor } from '@/scene/modalSpecs'
 import { elementWorldPoints, loopCutPolylines } from '@/scene/toolPreview'
 import { SceneToolPath } from '@/scene/SceneToolPath'
@@ -78,6 +79,7 @@ export function SceneStage({
   onContextMenu,
   onAnnotate,
   onMeasure,
+  onMaterialDrop,
   onTransform,
   onEditDocument,
   onGestureStart,
@@ -96,6 +98,8 @@ export function SceneStage({
   onSelect: (ids: string[], active: string | null) => void
   /** What a box, lasso or circle covered, and how it should be combined with the selection. */
   onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
+  /** A material dragged out of the asset list and let go over the viewport. */
+  onMaterialDrop: (materialId: string, objectId: string, faceId: number | null) => void
   /** How a pointer-driven operator previews, keeps and abandons its work. */
   operatorBridge: OperatorBridge
   /** What each tool is set to in the sidebar; a gesture starts from its own operator's entry. */
@@ -173,6 +177,8 @@ export function SceneStage({
   const onElementRef = useRef({ onPickElement, onRegionElements, onPolyBuild })
   onElementRef.current = { onPickElement, onRegionElements, onPolyBuild }
   const hoveredElement = useRef<ElementPick | null>(null)
+  /** The object a material is hovering over while it is dragged, so the drop has a visible target. */
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
   const onPlaceRef = useRef(onPlaceCursor)
   onPlaceRef.current = onPlaceCursor
   const onMenuRef = useRef(onContextMenu)
@@ -485,6 +491,33 @@ export function SceneStage({
       <div
         className="scene-surface"
         data-testid="scene-surface"
+        data-drop={dropTarget ? '' : undefined}
+        onDragOver={(event) => {
+          if (!isMaterialDrag(event.dataTransfer)) return
+          // Without this the browser refuses the drop and the gesture ends in a flying-back icon.
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          const instance = viewport.current
+          const box = event.currentTarget.getBoundingClientRect()
+          const under = instance?.faceAt(event.clientX - box.left, event.clientY - box.top) ?? null
+          setDropTarget(under ? under.objectId : null)
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return
+          setDropTarget(null)
+        }}
+        onDrop={(event) => {
+          const material = draggedMaterialId(event.dataTransfer)
+          setDropTarget(null)
+          if (!material) return
+          event.preventDefault()
+          const instance = viewport.current
+          const box = event.currentTarget.getBoundingClientRect()
+          const under = instance?.faceAt(event.clientX - box.left, event.clientY - box.top) ?? null
+          if (!under) return
+          // ⇧ paints the one face under the pointer; without it the whole object is painted.
+          onMaterialDrop(material, under.objectId, event.shiftKey ? under.faceId : null)
+        }}
         onPointerDown={(event) => {
           const nav = navigator.current
           const instance = viewport.current

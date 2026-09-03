@@ -65,6 +65,7 @@ function show(options: {
   objects?: SceneObject[]
   selected?: string[]
   active?: string | null
+  mode?: 'object' | 'edit' | 'sculpt'
   tab?: PropertiesTab
   steps?: HistoryStep[]
   index?: number
@@ -83,6 +84,7 @@ function show(options: {
     onGestureStart: vi.fn(),
     onGestureEnd: vi.fn(),
     onSection: vi.fn(),
+    onActiveMaterialSlot: vi.fn(),
     onGoTo: vi.fn(),
     onRestoreVersion: vi.fn(),
     onDeleteVersion: vi.fn(),
@@ -94,7 +96,9 @@ function show(options: {
       selection={{ objectIds: selectedIds, activeObjectId: activeId }}
       selectedObjects={selectedObjects}
       activeObject={objects.find((object) => object.id === activeId) ?? null}
+      mode={options.mode ?? 'object'}
       tab={options.tab ?? 'object'}
+      onActiveMaterialSlot={spies.onActiveMaterialSlot}
       onTab={spies.onTab}
       onUpdateObject={spies.onUpdateObject}
       onUpdateObjects={spies.onUpdateObjects}
@@ -253,9 +257,15 @@ describe('the tabs', () => {
     expect(screen.getByText(/No modifiers/)).toBeInTheDocument()
   })
 
-  it('says what the tabs that are not written yet are waiting for', () => {
+  it('shows the material slots of the active object', () => {
     show({ tab: 'material' })
-    expect(screen.getByText('No materials. They arrive with the material prompt.')).toBeInTheDocument()
+    expect(screen.getByRole('listbox', { name: 'Material slots' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add material slot' })).toBeInTheDocument()
+  })
+
+  it('says what the tabs that are not written yet are waiting for', () => {
+    show({ tab: 'controls' })
+    expect(screen.getByText(/No controls yet\./)).toBeInTheDocument()
   })
 
   it('says what the Controls tab is for before a rig exists', () => {

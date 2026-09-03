@@ -401,6 +401,8 @@ function objectData(value: unknown, kind: string, meshIds: Set<string>): ObjectD
       focalLength: num(source.focalLength, 50, 1, 5000),
       sensor: num(source.sensor, 36, 1, 200),
       orthoScale: num(source.orthoScale, 6, 0.001, 1e5),
+      ...(source.shiftX === undefined ? {} : { shiftX: num(source.shiftX, 0, -10, 10) }),
+      ...(source.shiftY === undefined ? {} : { shiftY: num(source.shiftY, 0, -10, 10) }),
       clipStart: num(source.clipStart, 0.1, 1e-6, 1e5),
       clipEnd: num(source.clipEnd, 100, 1e-3, 1e7),
       ...(source.depthOfField && typeof source.depthOfField === 'object'
@@ -570,11 +572,18 @@ function viewState(value: unknown): ViewState {
     proportional: !!source.proportional,
     proportionalFalloff: pick(source.proportionalFalloff, ['smooth', 'sphere', 'root', 'inverse-square', 'sharp', 'linear', 'constant', 'random'] as const, 'smooth'),
     proportionalSize: num(source.proportionalSize, 1, 1e-4, 1e4),
+    ...(source.camera === undefined ? {} : {
+      camera: {
+        looking: !!source.camera.looking,
+        ...(source.camera.lock === undefined ? {} : { lock: !!source.camera.lock }),
+        ...(source.camera.passepartout === undefined ? {} : { passepartout: num(source.camera.passepartout, 0.5, 0, 1) }),
+      },
+    }),
     ...(Array.isArray(source.localObjectIds) ? { localObjectIds: source.localObjectIds.filter((id): id is string => typeof id === 'string') } : {}),
     panels: {
       toolbar: panels.toolbar !== false,
       sidebar: !!panels.sidebar,
-      sidebarTab: pick(panels.sidebarTab, ['item', 'tool', 'view'] as const, 'item'),
+      sidebarTab: pick(panels.sidebarTab, ['item', 'tool', 'view', 'assets'] as const, 'item'),
     },
   }
 }

@@ -534,8 +534,10 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             selection={selection}
             selectedObjects={editor.selectedObjects}
             activeObject={editor.activeObject}
+            mode={document.view.mode}
             tab={tab}
             onTab={(next) => savePrefs(withTab(prefs, documentId, next))}
+            onActiveMaterialSlot={(slot) => editor.setSelection({ ...selection, activeMaterialSlot: slot })}
             onUpdateObject={editor.updateObject}
             onUpdateObjects={editor.updateObjects}
             onEditDocument={editor.editDocument}
@@ -596,6 +598,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               selection={selection}
               preferences={preferences}
               onView={setView}
+              onMaterialDrop={(materialId, objectId, faceId) => run('material.drop', {
+                materialId,
+                objectId,
+                faceId: faceId === null ? '' : String(faceId),
+              })}
               onSelect={selectObjects}
               onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
               operatorBridge={operatorBridge}

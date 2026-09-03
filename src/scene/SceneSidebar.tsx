@@ -3,6 +3,8 @@ import { applyElementTargets, elementTargets } from '@/scene/transform/elements'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import { getOperator, type OperatorParams } from '@/scene/operators'
 import { TOOL_OPERATORS } from '@/scene/toolOperators'
+import { MATERIAL_DRAG_TYPE } from '@/scene/materialDrag'
+import { MaterialSwatch } from '@/scene/panels/MaterialSwatch'
 import { ParameterField } from '@/ui/ParameterField'
 import { objectBounds } from '@/scene/objects'
 import type {
@@ -33,7 +35,7 @@ import { useRovingFocus } from '@/ui/useRovingFocus'
  * it calls, and never the editor itself, so a test can mount it with three lines of setup.
  */
 
-export type SidebarTab = 'item' | 'tool' | 'view'
+export type SidebarTab = 'item' | 'tool' | 'view' | 'assets'
 
 /**
  * How the next box, circle or lasso combines with what is already selected.
@@ -60,6 +62,7 @@ const TABS: Array<{ id: SidebarTab; label: string }> = [
   { id: 'item', label: 'Item' },
   { id: 'tool', label: 'Tool' },
   { id: 'view', label: 'View' },
+  { id: 'assets', label: 'Assets' },
 ]
 
 const SELECTION_MODES: Array<{ value: SelectionMode; label: string }> = [
@@ -272,6 +275,7 @@ export function SceneSidebar({
             onGestureEnd={onGestureEnd}
           />
         ) : null}
+        {tab === 'assets' ? <AssetsTab document={document} /> : null}
         {tab === 'view' ? (
           <ViewTab
             document={document}
@@ -896,5 +900,44 @@ function ViewTab({
         onGestureEnd={onGestureEnd}
       />
     </>
+  )
+}
+
+/**
+ * The Assets tab: what the document holds that can be dropped onto something.
+ *
+ * For now that is its materials, each with the same rendered sphere the Material tab uses, and each
+ * draggable onto the viewport — onto an object to paint the whole of it, or onto a face with ⇧ held
+ * to paint that face alone. Dragging is how a material is applied in every tool that has an asset
+ * browser, and it is far quicker than finding the object, then the tab, then the slot.
+ */
+function AssetsTab({ document: scene }: { document: SceneDocument }) {
+  return (
+    <div className="scene-sidebar__section" role="group" aria-label="Materials">
+      <ul className="scene-assets">
+        {scene.materials.map((material) => (
+          <li key={material.id}>
+            <div
+              className="scene-assets__item"
+              draggable
+              onDragStart={(event) => {
+                event.dataTransfer.effectAllowed = 'copy'
+                event.dataTransfer.setData(MATERIAL_DRAG_TYPE, material.id)
+                // Plain text as well, so a drop outside the viewport says something rather than nothing.
+                event.dataTransfer.setData('text/plain', material.name)
+              }}
+            >
+              <MaterialSwatch material={material} />
+              <span className="scene-assets__name">{material.name}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="scene-sidebar__note">
+        {scene.materials.length === 0
+          ? 'No materials yet. The Material tab of the properties makes one.'
+          : 'Drag one onto an object to paint it, or hold ⇧ to paint one face.'}
+      </p>
+    </div>
   )
 }
