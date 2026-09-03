@@ -8,6 +8,9 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+    // three-bvh-csg and three-mesh-bvh each pull three in; two copies of it in one bundle would
+    // mean two class identities and an `instanceof` that quietly answers false.
+    dedupe: ['three'],
   },
   server: {
     host: '0.0.0.0',
