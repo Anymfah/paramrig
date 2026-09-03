@@ -31,6 +31,13 @@ export type EditTarget = {
   faces: Set<number>
   /** The active element as a slot, when the active element belongs to this object. */
   active: { kind: SelectMode; slot: number } | null
+  /**
+   * The same selection as ids, read before the operator touched anything. Slots renumber under a
+   * removal and ids do not, so this is what a selection survives on.
+   */
+  vertexIds: number[]
+  edgeKeys: string[]
+  faceIds: number[]
 }
 
 /** What an operator selects afterwards, as slots in the mesh as it leaves it. */
@@ -82,6 +89,9 @@ export function editTargets(context: OperatorContext): EditTarget[] {
       edges: slotsOfEdges(mesh, elements),
       faces: slotsOfFaces(mesh, elements),
       active: activeSlot(mesh, context.selection.active, id),
+      vertexIds: [...elements.vertices],
+      edgeKeys: [...elements.edges],
+      faceIds: [...elements.faces],
     })
   }
   return targets
@@ -158,12 +168,16 @@ export function runOnMeshes(
     if (outcome.select !== undefined || outcome.active !== undefined) {
       selection = writeSelection(selection, target, outcome.select, outcome.active)
     } else {
-      // The mesh moved under the ids the selection names; re-reading it drops anything the
-      // operator removed, so a selection never points at geometry that is no longer there.
+      /*
+       * The operator changed the mesh and said nothing about the selection, so the selection is
+       * kept by *id*. Keeping it by slot would be worse than useless: removing geometry renumbers
+       * every slot after it, so slot 7 after a delete is different geometry from slot 7 before it,
+       * and a selection filtered by range alone would quietly re-point at a neighbour.
+       */
       selection = writeSelection(selection, target, {
-        vertices: [...target.vertices].filter((slot) => target.mesh.hasVertex(slot)),
-        edges: [...target.edges].filter((slot) => target.mesh.hasEdge(slot)),
-        faces: [...target.faces].filter((slot) => target.mesh.hasFace(slot)),
+        vertices: liveSlots(target.mesh, [...target.vertexIds], (mesh, id) => mesh.slotOfVertex(id)),
+        edges: liveSlots(target.mesh, [...target.edgeKeys], (mesh, key) => elementSlot(mesh, 'edge', key)),
+        faces: liveSlots(target.mesh, [...target.faceIds], (mesh, id) => mesh.slotOfFace(id)),
       }, undefined)
     }
   }
@@ -248,6 +262,16 @@ function elementRef(target: EditTarget, active: { kind: SelectMode; slot: number
 
 function same(a: ElementRef, b: ElementRef): boolean {
   return a.kind === b.kind && a.objectId === b.objectId && a.id === b.id
+}
+
+/** The slots some ids name in the mesh as it now stands; the ones it no longer holds are dropped. */
+function liveSlots<Id>(mesh: EditMesh, ids: Id[], find: (mesh: EditMesh, id: Id) => number): number[] {
+  const slots: number[] = []
+  for (const id of ids) {
+    const slot = find(mesh, id)
+    if (slot >= 0) slots.push(slot)
+  }
+  return slots
 }
 
 function slotsOfVertices(mesh: EditMesh, elements: ElementSelection): Set<number> {

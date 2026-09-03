@@ -912,8 +912,30 @@ export class EditMesh {
         refused += 1
       }
     }
+    /*
+     * Merging the fan is only half of it. A vertex on an open rim, and a vertex used by a single
+     * face, are still corners of the face that survives — and removing them would take that face
+     * with them, which is the opposite of dissolving. Their corner comes off the loop instead, and
+     * a loop that would be left with fewer than three corners keeps its vertex rather than
+     * collapsing into nothing.
+     */
+    for (const vertex of [...gone]) {
+      let kept = true
+      for (const face of this.vertexFaces(vertex)) {
+        const loop = this.mesh.faces[face]!.filter((corner) => corner !== vertex)
+        if (loop.length < 3 || !this.setFaceLoop(face, loop)) {
+          kept = false
+          break
+        }
+      }
+      if (kept) continue
+      gone.delete(vertex)
+      refused += 1
+    }
     const edges = new Set<number>()
     for (const edge of merged.interior) edges.add(edge)
+    // An edge at a dissolved vertex that no face uses any more goes with it; one still in a face —
+    // the two rim edges a boundary dissolve joins — is left for `removeGeometry` to renumber.
     this.removeGeometry(merged.dead, edges, gone)
     return { dissolved: gone.size, refused }
   }

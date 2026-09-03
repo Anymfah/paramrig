@@ -849,3 +849,47 @@ describe('edge attributes', () => {
     }
   })
 })
+
+describe('dissolving a vertex that is not surrounded', () => {
+  it('takes a corner off the only face that uses it, rather than the face', () => {
+    const mesh = EditMesh.from(plane(1))
+    const edge = mesh.edgeSlot(mesh.faceVertices(0)[0]!, mesh.faceVertices(0)[1]!)
+    const middle = mesh.splitEdge(edge)
+    expect(mesh.faceVertices(0)).toHaveLength(5)
+
+    expect(mesh.dissolveVertices([middle])).toEqual({ dissolved: 1, refused: 0 })
+
+    expect(mesh.faceCount).toBe(1)
+    expect(mesh.faceVertices(0)).toHaveLength(4)
+    expect(mesh.vertexCount).toBe(4)
+  })
+
+  it('joins the two rim edges at a vertex on an open border', () => {
+    const mesh = EditMesh.from(plane(2))
+    // A vertex halfway along the bottom row: two faces on the inside, an open rim outside.
+    const rim = [...Array(mesh.vertexCount).keys()].find((slot) => (
+      mesh.vertexFaces(slot).length === 2 && mesh.vertexEdges(slot).some((edge) => mesh.isBoundaryEdge(edge))
+    ))!
+
+    expect(mesh.dissolveVertices([rim])).toEqual({ dissolved: 1, refused: 0 })
+
+    expect(mesh.vertexCount).toBe(8)
+    expect(mesh.faceCount).toBe(3)
+    for (let face = 0; face < mesh.faceCount; face += 1) expect(mesh.faceVertices(face).length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('keeps a vertex whose face would be left with two corners', () => {
+    const mesh = EditMesh.from(plane(1))
+    const loop = mesh.faceVertices(0)
+    mesh.splitFace(0, loop[0]!, loop[2]!)
+    // A corner of one of the two triangles, used by that triangle alone: taking it off would
+    // leave a face of two corners, which is not a face.
+    const corner = loop[1]!
+    expect(mesh.vertexFaces(corner)).toHaveLength(1)
+
+    expect(mesh.dissolveVertices([corner])).toEqual({ dissolved: 0, refused: 1 })
+
+    expect(mesh.faceCount).toBe(2)
+    expect(mesh.vertexCount).toBe(4)
+  })
+})
