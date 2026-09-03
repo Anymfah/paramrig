@@ -1,8 +1,10 @@
 import {
   Color,
   DirectionalLight,
+  DoubleSide,
   Group,
   MeshStandardMaterial,
+  ShaderMaterial,
   type Material,
 } from 'three'
 
@@ -45,6 +47,37 @@ export function createSolidMaterial(): MeshStandardMaterial {
     roughness: 0.62,
     metalness: 0,
     flatShading: false,
+  })
+}
+
+/**
+ * Face orientation: blue where a face turns towards the viewer, red where it turns away.
+ *
+ * It is the only way to see a mesh that has been turned inside out, and a mesh that has been turned
+ * inside out is the commonest reason a boolean or a solidify comes out wrong. `gl_FrontFacing` is
+ * the whole of it — the winding is what the graphics card already knows.
+ */
+export function createFaceOrientationMaterial(front: string, back: string): ShaderMaterial {
+  return new ShaderMaterial({
+    vertexShader: `
+      void main() {
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      precision highp float;
+      uniform vec3 uFront;
+      uniform vec3 uBack;
+      void main() {
+        gl_FragColor = vec4(gl_FrontFacing ? uFront : uBack, 1.0);
+        #include <colorspace_fragment>
+      }
+    `,
+    side: DoubleSide,
+    uniforms: {
+      uFront: { value: new Color(front) },
+      uBack: { value: new Color(back) },
+    },
   })
 }
 

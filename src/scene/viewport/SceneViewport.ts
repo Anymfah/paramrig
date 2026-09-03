@@ -18,7 +18,7 @@ import {
 } from 'three'
 import { meshOf } from '@/scene/document'
 import { parseEdgeKey } from '@/scene/mesh/data'
-import type { MeshData, SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
@@ -27,7 +27,7 @@ import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
 import { createPickBuffer, createPickMaterial, decodePick, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
-import { createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
+import { createFaceOrientationMaterial, createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
 import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
 import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
 import { createTransformOverlay, type TransformOverlay } from '@/scene/viewport/transformOverlay'
@@ -166,6 +166,12 @@ function editSlots(mesh: MeshData, selection: SceneSelection, objectId: string):
   return slots
 }
 
+/** Whether any overlay the edit view draws has been switched, which is what makes it redraw. */
+function overlaysChanged(before: OverlayFlags, after: OverlayFlags): boolean {
+  const keys: Array<keyof OverlayFlags> = ['seams', 'sharp', 'creases', 'bevelWeight', 'faceCentres', 'normals', 'normalLength', 'faceOrientation']
+  return keys.some((key) => before[key] !== after[key])
+}
+
 function pairKey(a: number, b: number): string {
   return a < b ? `${a}:${b}` : `${b}:${a}`
 }
@@ -201,6 +207,8 @@ export class SceneViewport {
   /** One per mesh open for editing, keyed by object id; the index is what its element ids carry. */
   private editViews = new Map<string, { view: EditView; index: number }>()
   private editObjects: string[] = []
+  /** Built the first time the face-orientation overlay is switched on, and kept for the session. */
+  private orientationMaterial: Material | null = null
   private observer: ResizeObserver | null = null
   private frameHandle: number | null = null
   private disposed = false
@@ -533,7 +541,13 @@ export class SceneViewport {
     const before = this.view
     this.view = view
     this.applyView()
-    if (!before || before.mode !== view.mode || before.xray !== view.xray || before.selectMode.join() !== view.selectMode.join()) {
+    if (
+      !before
+      || before.mode !== view.mode
+      || before.xray !== view.xray
+      || before.selectMode.join() !== view.selectMode.join()
+      || overlaysChanged(before.overlays, view.overlays)
+    ) {
       this.syncEdit()
     }
     this.invalidate()
@@ -609,7 +623,28 @@ export class SceneViewport {
    * belongs to, and leaving both in the buffer would make the answer depend on which happened to
    * be nearer the pointer.
    */
+  /**
+   * Face orientation replaces the shading rather than drawing over it: the question it answers is
+   * about every face at once, and a tint over a lit surface would be read as a material.
+   */
+  private applyFaceOrientation(): void {
+    const wanted = this.view?.overlays.faceOrientation === true
+    if (wanted && !this.orientationMaterial) {
+      this.orientationMaterial = createFaceOrientationMaterial(
+        splitAlpha(this.theme.faceFront).colour,
+        splitAlpha(this.theme.faceBack).colour,
+      )
+      this.disposables.push(() => disposeMaterial(this.orientationMaterial))
+    }
+    for (const view of this.views.values()) {
+      if (!view.mesh || !view.material) continue
+      const material = wanted && this.orientationMaterial ? this.orientationMaterial : view.material
+      if (view.mesh.material !== material) view.mesh.material = material
+    }
+  }
+
   private syncEdit(): void {
+    this.applyFaceOrientation()
     const document = this.document
     const editing = this.view?.mode === 'edit'
       ? (this.selection.editObjectIds ?? []).filter((id) => document?.objects.some((object) => object.id === id)).slice(0, MAX_EDITED_OBJECTS)
@@ -642,6 +677,16 @@ export class SceneViewport {
       entry.view.setResolution(buffer.width, buffer.height, this.pixelRatio)
       entry.view.setMesh(data, objectView.meshView)
       entry.view.setSelectMode(this.view?.selectMode ?? ['vertex'])
+      const overlays = this.view?.overlays
+      entry.view.setOverlays({
+        seams: overlays?.seams ?? true,
+        sharp: overlays?.sharp ?? true,
+        creases: overlays?.creases ?? true,
+        bevelWeight: overlays?.bevelWeight ?? false,
+        faceCentres: overlays?.faceCentres ?? true,
+        normals: overlays?.normals ?? false,
+        normalLength: overlays?.normalLength ?? 0.2,
+      })
       entry.view.setXray(this.view?.xray ?? false)
       entry.view.setSelection(editSlots(data, this.selection, id))
       entry.view.setMatrix(objectView.root.matrix)

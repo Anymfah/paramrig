@@ -249,12 +249,21 @@ export type OverlayFlags = {
   cursor: boolean
   outline: boolean
   extras: boolean
-  /** Edit-mode overlays, read from the second prompt onwards. */
+  /** Edit-mode overlays. */
   wireframe: boolean
   faceOrientation: boolean
   normals: boolean
+  /** How long a drawn normal is, in metres. */
+  normalLength: number
   statistics: boolean
   textInfo: boolean
+  /** The edge attributes, each drawn in its own colour over the edges that carry it. */
+  seams: boolean
+  sharp: boolean
+  creases: boolean
+  bevelWeight: boolean
+  /** The dot at the middle of a face, which face mode draws whether or not this is on. */
+  faceCentres: boolean
 }
 
 export type GizmoFlags = {

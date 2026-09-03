@@ -155,15 +155,21 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const run = useCallback((id: string, params: Record<string, unknown> = {}) => {
     const operator = getOperator(id)
     if (operator?.modal) {
-      const transform = MODAL_MODES[id]
       const context = editor.operatorContext()
       const available = context ? operator.available(context) : 'There is no scene open.'
-      if (!transform || available !== true) {
-        editor.setMessage(available === true ? 'That tool is not available here.' : available)
+      if (available !== true) {
+        editor.setMessage(available)
         return
       }
-      if (!stage.current?.startTransform(transform)) editor.setMessage('Select something to move first.')
-      return
+      // G, R and S open a transform session; the modelling gestures open their own; and anything
+      // else modal — spin, screw, a knife replayed from the palette — runs with the numbers it
+      // declares, which is the only thing a menu entry can mean.
+      const transform = MODAL_MODES[id]
+      if (transform) {
+        if (!stage.current?.startTransform(transform)) editor.setMessage('Select something to move first.')
+        return
+      }
+      if (isModalOperator(id) && stage.current?.beginModalOperator(id)) return
     }
     const aspect = viewportAspect()
     runOperator(id, { ...params, ...(aspect ? { aspect } : {}) })

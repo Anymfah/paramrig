@@ -169,7 +169,7 @@ const SHADINGS: Array<{ value: ShadingMode; label: string }> = [
   { value: 'rendered', label: 'Rendered' },
 ]
 
-const VIEWPORT_OVERLAYS: Array<{ key: keyof OverlayFlags; label: string }> = [
+const VIEWPORT_OVERLAYS: Array<{ key: OverlaySwitch; label: string }> = [
   { key: 'grid', label: 'Grid' },
   { key: 'floor', label: 'Floor' },
   { key: 'axisX', label: 'X axis' },
@@ -182,10 +182,18 @@ const VIEWPORT_OVERLAYS: Array<{ key: keyof OverlayFlags; label: string }> = [
   { key: 'textInfo', label: 'Text info' },
 ]
 
-const EDIT_OVERLAYS: Array<{ key: keyof OverlayFlags; label: string }> = [
+/** The overlays that are switches, which is every one of them but the normals' length. */
+type OverlaySwitch = { [Key in keyof OverlayFlags]: OverlayFlags[Key] extends boolean ? Key : never }[keyof OverlayFlags]
+
+const EDIT_OVERLAYS: Array<{ key: OverlaySwitch; label: string }> = [
   { key: 'wireframe', label: 'Wireframe' },
+  { key: 'faceCentres', label: 'Face centres' },
   { key: 'faceOrientation', label: 'Face orientation' },
   { key: 'normals', label: 'Normals' },
+  { key: 'seams', label: 'Seams' },
+  { key: 'sharp', label: 'Sharp edges' },
+  { key: 'creases', label: 'Creases' },
+  { key: 'bevelWeight', label: 'Bevel weight' },
 ]
 
 const GIZMOS: Array<{ key: keyof GizmoFlags; label: string }> = [
@@ -412,7 +420,8 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
     run: () => onView({ proportionalFalloff: entry.value, proportional: true }),
   }))
 
-  const overlayFlag = (key: keyof OverlayFlags, label: string): SceneMenuEntry => ({
+  /** Every overlay in the menu is a switch; the one number among them is set in the sidebar. */
+  const overlayFlag = (key: OverlaySwitch, label: string): SceneMenuEntry => ({
     id: `overlay.${key}`,
     label,
     choice: 'check',

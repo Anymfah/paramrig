@@ -81,8 +81,14 @@ export const DEFAULT_VIEW: ViewState = {
     wireframe: false,
     faceOrientation: false,
     normals: false,
+    normalLength: 0.2,
     statistics: false,
     textInfo: true,
+    seams: true,
+    sharp: true,
+    creases: true,
+    bevelWeight: false,
+    faceCentres: true,
   },
   gizmos: { navigate: true, move: false, rotate: false, scale: false, object: true },
   mode: 'object',
@@ -448,6 +454,9 @@ function viewState(value: unknown): ViewState {
     ? source.selectMode.filter((mode): mode is 'vertex' | 'edge' | 'face' => mode === 'vertex' || mode === 'edge' || mode === 'face')
     : []
   const flag = (given: unknown, fallback: boolean) => (typeof given === 'boolean' ? given : fallback)
+  const number = (given: unknown, fallback: number, low: number, high: number) => (
+    typeof given === 'number' && Number.isFinite(given) ? Math.min(high, Math.max(low, given)) : fallback
+  )
   return {
     target: vec3(source.target, DEFAULT_VIEW.target),
     yaw: num(source.yaw, DEFAULT_VIEW.yaw, -1e5, 1e5),
@@ -472,8 +481,14 @@ function viewState(value: unknown): ViewState {
       wireframe: flag(overlays.wireframe, false),
       faceOrientation: flag(overlays.faceOrientation, false),
       normals: flag(overlays.normals, false),
+      normalLength: number(overlays.normalLength, 0.2, 0.001, 100),
       statistics: flag(overlays.statistics, false),
       textInfo: flag(overlays.textInfo, true),
+      seams: flag(overlays.seams, true),
+      sharp: flag(overlays.sharp, true),
+      creases: flag(overlays.creases, true),
+      bevelWeight: flag(overlays.bevelWeight, false),
+      faceCentres: flag(overlays.faceCentres, true),
     },
     gizmos: {
       navigate: flag(gizmos.navigate, true),

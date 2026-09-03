@@ -15,6 +15,7 @@ import {
   UnsignedByteType,
   type Matrix4,
 } from 'three'
+import { faceNormal as faceNormalOf } from '@/scene/mesh/normals'
 import type { MeshData, SelectMode } from '@/scene/types'
 import { createLines, setLineResolution, type ViewportLines } from '@/scene/viewport/lines'
 import type { MeshView } from '@/scene/viewport/meshView'
@@ -34,6 +35,27 @@ import { splitAlpha, type SceneTheme } from '@/scene/viewport/theme'
  * one attribute. Selection changes on every click, and rewrites one small array or one texture —
  * never the geometry. A mesh of a hundred thousand vertices is dragged at the same cost as a cube.
  */
+
+/** Which of the edit-mode overlays are on, and how long a drawn normal is. */
+export type EditOverlayFlags = {
+  seams: boolean
+  sharp: boolean
+  creases: boolean
+  bevelWeight: boolean
+  faceCentres: boolean
+  normals: boolean
+  normalLength: number
+}
+
+const DEFAULT_OVERLAYS: EditOverlayFlags = {
+  seams: true,
+  sharp: true,
+  creases: true,
+  bevelWeight: false,
+  faceCentres: true,
+  normals: false,
+  normalLength: 0.2,
+}
 
 /** What is selected, in slots of the mesh as it stands. */
 export type EditSlots = {
@@ -192,6 +214,7 @@ export type EditView = {
   /** The element under the pointer, drawn in the hover colour. True when it changed. */
   setHover: (element: { kind: SelectMode; slot: number } | null) => boolean
   setSelectMode: (modes: SelectMode[]) => void
+  setOverlays: (overlays: EditOverlayFlags) => void
   setXray: (xray: boolean) => void
   setResolution: (width: number, height: number, pixelRatio: number) => void
   setTheme: (theme: SceneTheme) => void
@@ -213,6 +236,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
   let xray = false
   let size = { width: 1, height: 1 }
   let lastShape = ''
+  let overlays: EditOverlayFlags = DEFAULT_OVERLAYS
   let colours = readColours(theme)
 
   /* the drawn things */
@@ -322,7 +346,11 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
   vertexPick.frustumCulled = false
 
   vertexPick.renderOrder = 2
-  root.add(points, centres, edges.object, chosenEdges.object)
+  const normals: ViewportLines = createLines({ colour: colours.normal, width: 1.4 })
+  normals.object.renderOrder = 29
+  normals.object.visible = false
+
+  root.add(points, centres, edges.object, chosenEdges.object, normals.object)
   pickRoot.add(edgePick, vertexPick)
 
   /* ------------------------------------------------------------ the writing */
@@ -344,6 +372,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     writeEdgePositions()
     writeEdgeIds()
     writeFaceCentres()
+    writeNormals()
 
     if (faces) {
       root.remove(faces)
@@ -394,6 +423,36 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     edgePickGeometry.setAttribute('aId', new BufferAttribute(ids, 3))
   }
 
+  /** One line out of each face's middle, along its normal, at the length the overlay asks for. */
+  function writeNormals(): void {
+    if (!mesh || !overlays.normals) {
+      normals.object.visible = false
+      return
+    }
+    const positions: number[] = []
+    const reach = Math.max(0.001, overlays.normalLength)
+    for (let face = 0; face < mesh.faces.length; face += 1) {
+      const loop = mesh.faces[face]!
+      let x = 0
+      let y = 0
+      let z = 0
+      for (const corner of loop) {
+        x += mesh.vertices[corner * 3] ?? 0
+        y += mesh.vertices[corner * 3 + 1] ?? 0
+        z += mesh.vertices[corner * 3 + 2] ?? 0
+      }
+      const divisor = Math.max(1, loop.length)
+      const centre: [number, number, number] = [x / divisor, y / divisor, z / divisor]
+      const normal = faceNormalOf(mesh, face)
+      positions.push(
+        centre[0], centre[1], centre[2],
+        centre[0] + normal[0] * reach, centre[1] + normal[1] * reach, centre[2] + normal[2] * reach,
+      )
+    }
+    normals.object.visible = positions.length > 0
+    if (positions.length > 0) normals.setPositions(positions)
+  }
+
   function writeFaceCentres(): void {
     if (!mesh) return
     const count = mesh.faces.length
@@ -433,6 +492,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     }
     writeEdgePositions()
     writeFaceCentres()
+    writeNormals()
     applySelection()
   }
 
@@ -486,13 +546,31 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     const chosen = new Color(colours.edgeSelected)
     const active = new Color(colours.active)
     const under = new Color(colours.hover)
+    const seam = new Color(colours.seam)
+    const sharp = new Color(colours.sharp)
+    const crease = new Color(colours.crease)
+    const attributes = mesh.attributes.edge
     const rgb = new Float32Array(count * 6)
     const chosenPositions: number[] = []
     for (let slot = 0; slot < count; slot += 1) {
       const isActive = slots.active?.kind === 'edge' && slots.active.slot === slot
       const isChosen = slots.edges.has(slot)
       const isUnder = hovered?.kind === 'edge' && hovered.slot === slot
-      const colour = isUnder ? under : isActive ? active : isChosen ? chosen : plain
+      /*
+       * An attribute wins over the plain edge colour and loses to the selection. Blender draws it
+       * the same way round: a seam you have selected is drawn as selected, because what you are
+       * about to move matters more than what the edge is marked as.
+       */
+      const marked = overlays.seams && attributes.seam?.[slot]
+        ? seam
+        : overlays.sharp && attributes.sharp?.[slot]
+          ? sharp
+          : overlays.creases && (attributes.crease?.[slot] ?? 0) > 0
+            ? crease
+            : overlays.bevelWeight && (attributes.bevelWeight?.[slot] ?? 0) > 0
+              ? crease
+              : null
+      const colour = isUnder ? under : isActive ? active : isChosen ? chosen : marked ?? plain
       rgb[slot * 6] = colour.r
       rgb[slot * 6 + 1] = colour.g
       rgb[slot * 6 + 2] = colour.b
@@ -513,7 +591,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
 
   function applyModes(): void {
     points.visible = modes.includes('vertex')
-    centres.visible = modes.includes('face')
+    centres.visible = modes.includes('face') && overlays.faceCentres
     // Blender never hides the edges: they are how a person reads the shape they are working on.
     edges.object.visible = true
     if (faces) faces.visible = true
@@ -576,6 +654,13 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       modes = next.length > 0 ? next : ['vertex']
       applyModes()
     },
+    setOverlays: (next) => {
+      const same = overlays.normals === next.normals && overlays.normalLength === next.normalLength
+      overlays = next
+      if (!same) writeNormals()
+      applyModes()
+      writeEdgeColours()
+    },
     setXray: (next) => {
       xray = next
       applyXray()
@@ -587,6 +672,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       vertexPickMaterial.uniforms.uPixelRatio!.value = ratio
       setLineResolution(edges.material, size.width, size.height)
       setLineResolution(chosenEdges.material, size.width, size.height)
+      setLineResolution(normals.material, size.width, size.height)
     },
     setTheme: (next) => {
       colours = readColours(next)
@@ -603,6 +689,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       ;(faceMaterial.uniforms.uActive!.value as Color).set(colours.faceActive)
       faceMaterial.uniforms.uOpacity!.value = colours.faceAlpha
       chosenEdges.setColour(colours.edgeSelected)
+      normals.setColour(colours.normal)
       writeEdgeColours()
     },
     dispose: () => {
@@ -612,6 +699,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       centreMaterial.dispose()
       edges.dispose()
       chosenEdges.dispose()
+      normals.dispose()
       faceMaterial.dispose()
       faceStates.dispose()
       facePickMaterial.dispose()
@@ -669,5 +757,9 @@ function readColours(theme: SceneTheme) {
     faceAlpha: face.alpha,
     hover: splitAlpha(theme.hover).colour,
     faceActive: splitAlpha(theme.faceActive).colour,
+    normal: splitAlpha(theme.normal).colour,
+    seam: splitAlpha(theme.seam).colour,
+    sharp: splitAlpha(theme.sharp).colour,
+    crease: splitAlpha(theme.crease).colour,
   }
 }
