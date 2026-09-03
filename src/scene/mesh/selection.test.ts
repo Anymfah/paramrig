@@ -4,6 +4,7 @@ import { EditMesh } from '@/scene/mesh/editMesh'
 import {
   convertSelectMode,
   fromElements,
+  withElements,
   growSelection,
   invertSelection,
   propagateDown,
@@ -117,9 +118,9 @@ describe('reading and writing a document’s selection', () => {
   it('reads ids and edge keys, and drops what is not one', () => {
     const stored: SceneSelection = {
       ...EMPTY_SELECTION,
-      vertices: ['4', '5', 'north', ''],
-      edges: ['4:5', 'not-an-edge', '7:7'],
-      faces: ['1'],
+      activeObjectId: 'cube',
+      editObjectIds: ['cube'],
+      elements: { cube: { vertices: ['4', '5', 'north', ''], edges: ['4:5', 'not-an-edge', '7:7'], faces: ['1'] } },
     }
 
     const read = toElements(stored)
@@ -139,17 +140,32 @@ describe('reading and writing a document’s selection', () => {
     expect(written.vertices).toEqual(['4', '5', '12'])
     expect(written.edges).toEqual(['4:5', '5:6'])
     expect(written.faces).toEqual(['1', '2'])
-    expect(written.active).toBeNull()
   })
 
   it('carries the active element through, and comes back to where it started', () => {
     const before = elements({ vertices: new Set([1, 2]), edges: new Set(['1:2']), faces: new Set([0]) })
+    const active = { kind: 'edge' as const, objectId: 'cube', id: '1:2' }
 
-    const written = fromElements(before, { kind: 'edge', id: '1:2' })
-    const read = toElements({ ...EMPTY_SELECTION, ...written })
+    const written = withElements({ ...EMPTY_SELECTION, activeObjectId: 'cube' }, 'cube', before, active)
+    const read = toElements(written)
 
-    expect(written.active).toEqual({ kind: 'edge', id: '1:2' })
+    expect(written.active).toEqual(active)
+    expect(written.elementHistory).toEqual([active])
     expect(read).toEqual(before)
+  })
+
+  it('promotes the previous pick when the active element is deselected', () => {
+    const first = { kind: 'vertex' as const, objectId: 'cube', id: '1' }
+    const second = { kind: 'vertex' as const, objectId: 'cube', id: '2' }
+    const base = { ...EMPTY_SELECTION, activeObjectId: 'cube' }
+
+    const one = withElements(base, 'cube', elements({ vertices: new Set([1]) }), first)
+    const two = withElements(one, 'cube', elements({ vertices: new Set([1, 2]) }), second)
+    const back = withElements(two, 'cube', elements({ vertices: new Set([1]) }))
+
+    expect(two.active).toEqual(second)
+    expect(back.active).toEqual(first)
+    expect(back.elementHistory).toEqual([first])
   })
 })
 

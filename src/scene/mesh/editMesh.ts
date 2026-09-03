@@ -1,5 +1,5 @@
 import { cloneMesh, setVertexPosition, vertexPosition } from '@/scene/mesh/data'
-import { faceNormal, length, meshBounds, subtract, vertexNormal } from '@/scene/mesh/normals'
+import { dot, faceArea, faceCentre, faceNormal, length, meshBounds, subtract, vertexNormal } from '@/scene/mesh/normals'
 import type { MeshData, Vec3 } from '@/scene/types'
 
 /**
@@ -510,6 +510,614 @@ export class EditMesh {
       if (edge >= 0) edges.push(edge)
     }
     this.faceEdgeLists[faceSlot] = edges
+  }
+
+  /* ------------------------------------------------------------- measuring */
+
+  edgeLength(edgeSlot: number): number {
+    const edge = this.mesh.edges[edgeSlot]
+    if (!edge) return 0
+    return length(subtract(this.position(edge[1]), this.position(edge[0])))
+  }
+
+  faceCentre(faceSlot: number): Vec3 {
+    return faceCentre(this.mesh, faceSlot)
+  }
+
+  faceArea(faceSlot: number): number {
+    return faceArea(this.mesh, faceSlot)
+  }
+
+  facePerimeter(faceSlot: number): number {
+    const loop = this.mesh.faces[faceSlot]
+    if (!loop || loop.length < 2) return 0
+    let total = 0
+    for (let index = 0; index < loop.length; index += 1) {
+      const here = this.position(loop[index]!)
+      const next = this.position(loop[(index + 1) % loop.length]!)
+      total += length(subtract(next, here))
+    }
+    return total
+  }
+
+  /**
+   * How sharply the two faces at an edge fold, in radians: 0 where they lie flat, π at a spike.
+   * An edge with anything other than two faces has no fold, and answers 0 — which is what limited
+   * dissolve and “select sharp edges” both want, since neither should act on a boundary.
+   */
+  dihedral(edgeSlot: number): number {
+    const faces = this.edgeFaceLists[edgeSlot]
+    if (!faces || faces.length !== 2) return 0
+    const cosine = dot(this.faceNormal(faces[0]!), this.faceNormal(faces[1]!))
+    return Math.acos(Math.min(1, Math.max(-1, cosine)))
+  }
+
+  /** The average of some vertices, which is the median pivot and the centre of a merge. */
+  median(vertexSlots: Iterable<number>): Vec3 {
+    let x = 0
+    let y = 0
+    let z = 0
+    let count = 0
+    for (const slot of vertexSlots) {
+      if (!this.hasVertex(slot)) continue
+      const point = this.position(slot)
+      x += point[0]
+      y += point[1]
+      z += point[2]
+      count += 1
+    }
+    if (count === 0) return [0, 0, 0]
+    return [x / count, y / count, z / count]
+  }
+
+  /** The box around some vertices. Empty input answers a box at the origin, never NaN. */
+  boundsOf(vertexSlots: Iterable<number>): { min: Vec3; max: Vec3; centre: Vec3; size: Vec3 } {
+    let minX = Number.POSITIVE_INFINITY
+    let minY = Number.POSITIVE_INFINITY
+    let minZ = Number.POSITIVE_INFINITY
+    let maxX = Number.NEGATIVE_INFINITY
+    let maxY = Number.NEGATIVE_INFINITY
+    let maxZ = Number.NEGATIVE_INFINITY
+    let count = 0
+    for (const slot of vertexSlots) {
+      if (!this.hasVertex(slot)) continue
+      const [x, y, z] = this.position(slot)
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
+      minZ = Math.min(minZ, z)
+      maxX = Math.max(maxX, x)
+      maxY = Math.max(maxY, y)
+      maxZ = Math.max(maxZ, z)
+      count += 1
+    }
+    if (count === 0) return { min: [0, 0, 0], max: [0, 0, 0], centre: [0, 0, 0], size: [0, 0, 0] }
+    const min: Vec3 = [minX, minY, minZ]
+    const max: Vec3 = [maxX, maxY, maxZ]
+    return {
+      min,
+      max,
+      centre: [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2],
+      size: [maxX - minX, maxY - minY, maxZ - minZ],
+    }
+  }
+
+  /** Whether a vertex is one a surface passes cleanly through: manifold edges, and a single fan. */
+  isManifoldVertex(vertexSlot: number): boolean {
+    const edges = this.vertexEdgeLists[vertexSlot]
+    if (!edges || edges.length === 0) return false
+    for (const edge of edges) if (!this.isEdgeManifold(edge)) return false
+    return this.hasSingleFan(vertexSlot)
+  }
+
+  hasVertex(slot: number): boolean {
+    return Number.isInteger(slot) && slot >= 0 && slot < this.vertexCount
+  }
+
+  hasEdge(slot: number): boolean {
+    return Number.isInteger(slot) && slot >= 0 && slot < this.mesh.edges.length
+  }
+
+  hasFace(slot: number): boolean {
+    return Number.isInteger(slot) && slot >= 0 && slot < this.mesh.faces.length
+  }
+
+  /* --------------------------------------------------------------- regions */
+
+  /**
+   * The outer boundary of a patch of faces, as cycles of vertex slots wound the way the faces are.
+   *
+   * The walk is over directed corners rather than edges: a corner whose opposite is also in the
+   * patch is inside it, and everything left over is the rim. That gives the winding for free, which
+   * an extrusion needs to build its side faces facing outwards, and it costs one pass.
+   */
+  boundaryLoops(faceSlots: Iterable<number>): number[][] {
+    const faces = this.collect(faceSlots, this.mesh.faces.length)
+    const directed = new Set<string>()
+    for (const face of faces) {
+      const loop = this.mesh.faces[face]!
+      for (let index = 0; index < loop.length; index += 1) {
+        directed.add(`${loop[index]}>${loop[(index + 1) % loop.length]}`)
+      }
+    }
+    const next = new Map<number, number[]>()
+    for (const key of directed) {
+      const [from, to] = key.split('>').map(Number) as [number, number]
+      if (directed.has(`${to}>${from}`)) continue
+      const list = next.get(from)
+      if (list) list.push(to)
+      else next.set(from, [to])
+    }
+    const loops: number[][] = []
+    const used = new Set<string>()
+    for (const [start, targets] of next) {
+      for (const first of targets) {
+        if (used.has(`${start}>${first}`)) continue
+        const loop = [start]
+        let from = start
+        let to = first
+        for (;;) {
+          used.add(`${from}>${to}`)
+          if (to === start) break
+          loop.push(to)
+          const onward = (next.get(to) ?? []).find((candidate) => !used.has(`${to}>${candidate}`))
+          if (onward === undefined) break
+          from = to
+          to = onward
+        }
+        if (loop.length >= 3) loops.push(loop)
+      }
+    }
+    return loops
+  }
+
+  /* -------------------------------------------------------------- mutating */
+
+  /** The edge between two vertices, minted if the mesh has not got it. */
+  addEdge(a: number, b: number): number {
+    if (a === b || !this.hasVertex(a) || !this.hasVertex(b)) return -1
+    return this.ensureEdge(a, b)
+  }
+
+  /**
+   * Rewrites a face's corners, keeping its id, its material and its shading.
+   *
+   * Its UVs do not survive a change of corner count — this prompt cuts geometry, and the UV work is
+   * a later one — so they are dropped rather than left mismatched with the loop they address.
+   */
+  setFaceLoop(faceSlot: number, loop: number[]): boolean {
+    if (!this.hasFace(faceSlot)) return false
+    const cleaned = this.cleanLoop(loop)
+    if (cleaned.length < 3) return false
+    const before = this.mesh.faces[faceSlot]!.length
+    this.detachFace(faceSlot)
+    this.mesh.faces[faceSlot] = cleaned
+    this.attachFace(faceSlot)
+    const uv = this.mesh.attributes.vertex.uv
+    if (uv && cleaned.length !== before) uv[faceSlot] = []
+    return true
+  }
+
+  /**
+   * Splits several edges at once, each at `t` along it, and answers the new vertex slot for each.
+   *
+   * Doing them together is not an optimisation: an edge is named by a slot, removing one edge
+   * renumbers the rest, and so splitting them one call at a time would hand the caller a list of
+   * stale numbers after the first. Vertices and faces are only ever added here, so the slots this
+   * returns stay good.
+   */
+  splitEdges(cuts: Array<{ edge: number; t?: number }>): number[] {
+    const wanted: Array<{ edge: number; a: number; b: number; t: number }> = []
+    const seen = new Set<number>()
+    for (const cut of cuts) {
+      if (!this.hasEdge(cut.edge) || seen.has(cut.edge)) continue
+      seen.add(cut.edge)
+      const pair = this.mesh.edges[cut.edge]!
+      wanted.push({ edge: cut.edge, a: pair[0], b: pair[1], t: Math.min(1, Math.max(0, cut.t ?? 0.5)) })
+    }
+    if (wanted.length === 0) return []
+    const middles = new Map<number, number>()
+    const created: number[] = []
+    for (const cut of wanted) {
+      const from = this.position(cut.a)
+      const to = this.position(cut.b)
+      const slot = this.addVertex([
+        from[0] + (to[0] - from[0]) * cut.t,
+        from[1] + (to[1] - from[1]) * cut.t,
+        from[2] + (to[2] - from[2]) * cut.t,
+      ])
+      middles.set(cut.edge, slot)
+      created.push(slot)
+    }
+    const touched = new Set<number>()
+    for (const cut of wanted) for (const face of this.edgeFaceLists[cut.edge] ?? []) touched.add(face)
+    for (const face of touched) {
+      const loop = this.mesh.faces[face]!
+      const next: number[] = []
+      for (let index = 0; index < loop.length; index += 1) {
+        const here = loop[index]!
+        const ahead = loop[(index + 1) % loop.length]!
+        next.push(here)
+        const edge = this.edgeSlot(here, ahead)
+        const middle = edge >= 0 ? middles.get(edge) : undefined
+        if (middle !== undefined) next.push(middle)
+      }
+      this.setFaceLoop(face, next)
+    }
+    for (const cut of wanted) {
+      const middle = middles.get(cut.edge)!
+      this.ensureEdge(cut.a, middle)
+      this.ensureEdge(middle, cut.b)
+    }
+    // The halves carry the whole edge's attributes: a crease or a seam that was on it stays on both,
+    // which is what Blender does and what keeps a subdivided seam a seam.
+    const attributes = this.mesh.attributes.edge
+    for (const cut of wanted) {
+      const middle = middles.get(cut.edge)!
+      for (const half of [this.edgeSlot(cut.a, middle), this.edgeSlot(middle, cut.b)]) {
+        if (half < 0) continue
+        if (attributes.seam) attributes.seam[half] = attributes.seam[cut.edge] ?? false
+        if (attributes.sharp) attributes.sharp[half] = attributes.sharp[cut.edge] ?? false
+        if (attributes.crease) attributes.crease[half] = attributes.crease[cut.edge] ?? 0
+        if (attributes.bevelWeight) attributes.bevelWeight[half] = attributes.bevelWeight[cut.edge] ?? 0
+      }
+    }
+    this.removeGeometry(new Set(), new Set(wanted.map((cut) => cut.edge)), new Set())
+    return created
+  }
+
+  /** One edge split, at `t` along it; the new vertex's slot, or -1 when there is no such edge. */
+  splitEdge(edgeSlot: number, t = 0.5): number {
+    return this.splitEdges([{ edge: edgeSlot, t }])[0] ?? -1
+  }
+
+  /**
+   * Cuts a face in two along the line between two of its corners. The face keeps its id and the
+   * first half; the second half is a new face with the same material and shading.
+   * Answers the new face's slot, or -1 when the two corners are the same, not both on the face, or
+   * next to each other — none of which is a cut, and all of which would leave a degenerate face.
+   */
+  splitFace(faceSlot: number, a: number, b: number): number {
+    const loop = this.mesh.faces[faceSlot]
+    if (!loop || a === b) return -1
+    const from = loop.indexOf(a)
+    const to = loop.indexOf(b)
+    if (from < 0 || to < 0) return -1
+    const forward: number[] = []
+    for (let index = from; ; index = (index + 1) % loop.length) {
+      forward.push(loop[index]!)
+      if (index === to) break
+    }
+    const backward: number[] = []
+    for (let index = to; ; index = (index + 1) % loop.length) {
+      backward.push(loop[index]!)
+      if (index === from) break
+    }
+    if (forward.length < 3 || backward.length < 3) return -1
+    if (!this.setFaceLoop(faceSlot, forward)) return -1
+    const added = this.addFace(backward)
+    if (added >= 0) this.copyFaceAttributes(faceSlot, added)
+    return added
+  }
+
+  /**
+   * Merges faces into the n-gon of their outer rim, along the edges they share.
+   * Answers the slot the merged face landed on, or -1 when the faces do not make a single patch
+   * with a single rim — two faces touching at a corner only, or a patch with a hole in it.
+   */
+  joinFaces(faceSlots: Iterable<number>): number {
+    const faces = this.collect(faceSlots, this.mesh.faces.length)
+    if (faces.size === 0) return -1
+    if (faces.size === 1) return [...faces][0]!
+    const shared = new Set<number>()
+    for (const face of faces) {
+      for (const edge of this.faceEdgeLists[face] ?? []) {
+        const users = (this.edgeFaceLists[edge] ?? []).filter((candidate) => faces.has(candidate))
+        if (users.length === 2) shared.add(edge)
+      }
+    }
+    const id = this.faceId(Math.min(...faces))
+    const merged = this.mergeRegions(faces, shared)
+    if (merged.kept.length !== 1) return -1
+    this.removeGeometry(merged.dead, merged.interior, new Set())
+    return this.slotOfFace(id)
+  }
+
+  /**
+   * Pulls an edge down to a point: both its vertices become one, at the middle, and any face that
+   * had only a triangle's worth of corners left goes with it. Answers the surviving vertex's slot.
+   */
+  collapseEdge(edgeSlot: number): number {
+    const edge = this.mesh.edges[edgeSlot]
+    if (!edge) return -1
+    const [keep, drop] = [edge[0], edge[1]]
+    const keepId = this.vertexId(keep)
+    const from = this.position(keep)
+    const to = this.position(drop)
+    this.setPosition(keep, [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2])
+    const dead = new Set<number>()
+    for (const face of this.vertexFaces(drop)) {
+      const loop = this.cleanLoop(this.mesh.faces[face]!.map((slot) => (slot === drop ? keep : slot)))
+      if (loop.length < 3) dead.add(face)
+      else this.setFaceLoop(face, loop)
+    }
+    for (const other of this.vertexEdges(drop)) {
+      const pair = this.mesh.edges[other]!
+      const far = pair[0] === drop ? pair[1] : pair[0]
+      if (far !== keep) this.ensureEdge(keep, far)
+    }
+    this.removeGeometry(dead, new Set(), new Set([drop]))
+    return this.slotOfVertex(keepId)
+  }
+
+  /**
+   * Blender's dissolve, for all three element kinds: the geometry named goes away and what
+   * surrounded it becomes one face. A patch that cannot become one face — because it has a hole, or
+   * because it pinches at a vertex — is left exactly as it was, and counted as refused.
+   */
+  dissolveEdges(edgeSlots: Iterable<number>): { dissolved: number; refused: number } {
+    const edges = this.collect(edgeSlots, this.mesh.edges.length)
+    const inner = new Set<number>()
+    const faces = new Set<number>()
+    let refused = 0
+    for (const edge of edges) {
+      const users = this.edgeFaceLists[edge] ?? []
+      if (users.length !== 2) {
+        refused += 1
+        continue
+      }
+      inner.add(edge)
+      for (const face of users) faces.add(face)
+    }
+    const merged = this.mergeRegions(faces, inner)
+    this.removeGeometry(merged.dead, merged.interior, new Set())
+    return { dissolved: merged.interior.size, refused: refused + merged.refused }
+  }
+
+  dissolveFaces(faceSlots: Iterable<number>): { dissolved: number; refused: number } {
+    const faces = this.collect(faceSlots, this.mesh.faces.length)
+    const inner = new Set<number>()
+    for (const face of faces) {
+      for (const edge of this.faceEdgeLists[face] ?? []) {
+        const users = (this.edgeFaceLists[edge] ?? []).filter((candidate) => faces.has(candidate))
+        if (users.length === 2) inner.add(edge)
+      }
+    }
+    const merged = this.mergeRegions(faces, inner)
+    this.removeGeometry(merged.dead, merged.interior, new Set())
+    return { dissolved: merged.kept.length, refused: merged.refused }
+  }
+
+  dissolveVertices(vertexSlots: Iterable<number>): { dissolved: number; refused: number } {
+    const vertices = this.collect(vertexSlots, this.vertexCount)
+    const faces = new Set<number>()
+    const inner = new Set<number>()
+    const gone = new Set<number>()
+    let refused = 0
+    for (const vertex of vertices) {
+      const around = this.vertexFaceLists[vertex] ?? []
+      if (around.length === 0) {
+        // A vertex no face uses is not dissolved into anything; deleting it is a different verb.
+        refused += 1
+        continue
+      }
+      gone.add(vertex)
+      for (const face of around) faces.add(face)
+      for (const edge of this.vertexEdgeLists[vertex] ?? []) inner.add(edge)
+    }
+    const merged = this.mergeRegions(faces, inner)
+    for (const vertex of [...gone]) {
+      // A vertex whose fan refused to merge stays, or the mesh would gain a hole where it was.
+      if (merged.stranded.has(vertex)) {
+        gone.delete(vertex)
+        refused += 1
+      }
+    }
+    const edges = new Set<number>()
+    for (const edge of merged.interior) edges.add(edge)
+    this.removeGeometry(merged.dead, edges, gone)
+    return { dissolved: gone.size, refused }
+  }
+
+  /**
+   * Merges each patch of faces joined by a dissolved edge into one face on the patch's rim.
+   * Nothing is removed here: the faces that lost their geometry and the edges that went inside are
+   * handed back, so that one removal can renumber the mesh once at the end of an operator.
+   */
+  private mergeRegions(
+    faceSlots: Iterable<number>,
+    dissolved: Set<number>,
+  ): { kept: number[]; dead: Set<number>; interior: Set<number>; refused: number; stranded: Set<number> } {
+    const faces = this.collect(faceSlots, this.mesh.faces.length)
+    const kept: number[] = []
+    const dead = new Set<number>()
+    const interior = new Set<number>()
+    const stranded = new Set<number>()
+    const seen = new Set<number>()
+    let refused = 0
+    for (const start of [...faces].sort((a, b) => a - b)) {
+      if (seen.has(start)) continue
+      const region: number[] = [start]
+      seen.add(start)
+      for (let index = 0; index < region.length; index += 1) {
+        for (const edge of this.faceEdgeLists[region[index]!] ?? []) {
+          if (!dissolved.has(edge)) continue
+          for (const face of this.edgeFaceLists[edge] ?? []) {
+            if (!faces.has(face) || seen.has(face)) continue
+            seen.add(face)
+            region.push(face)
+          }
+        }
+      }
+      if (region.length < 2) continue
+      const outcome = this.regionLoop(region, dissolved)
+      if (!outcome) {
+        refused += 1
+        for (const face of region) for (const slot of this.mesh.faces[face] ?? []) stranded.add(slot)
+        continue
+      }
+      const survivor = Math.min(...region)
+      if (!this.setFaceLoop(survivor, outcome.loop)) {
+        refused += 1
+        for (const face of region) for (const slot of this.mesh.faces[face] ?? []) stranded.add(slot)
+        continue
+      }
+      kept.push(survivor)
+      for (const face of region) if (face !== survivor) dead.add(face)
+      for (const edge of outcome.interior) interior.add(edge)
+    }
+    return { kept, dead, interior, refused, stranded }
+  }
+
+  /** The single rim of a patch, wound like its faces, or null when the patch has not got one. */
+  private regionLoop(region: number[], dissolved: Set<number>): { loop: number[]; interior: Set<number> } | null {
+    const directed = new Set<string>()
+    for (const face of region) {
+      const loop = this.mesh.faces[face]!
+      for (let index = 0; index < loop.length; index += 1) {
+        directed.add(`${loop[index]}>${loop[(index + 1) % loop.length]}`)
+      }
+    }
+    const interior = new Set<number>()
+    const next = new Map<number, number>()
+    for (const key of directed) {
+      const [from, to] = key.split('>').map(Number) as [number, number]
+      const edge = this.edgeSlot(from, to)
+      if (directed.has(`${to}>${from}`)) {
+        // An edge with a face on both sides is inside the patch. If it was not one of the edges
+        // being dissolved, merging would swallow it silently — so the patch is refused instead.
+        if (edge < 0 || !dissolved.has(edge)) return null
+        interior.add(edge)
+        continue
+      }
+      if (next.has(from)) return null
+      next.set(from, to)
+    }
+    if (next.size < 3) return null
+    const start = next.keys().next().value as number
+    const loop = [start]
+    let walk = next.get(start)!
+    while (walk !== start) {
+      if (loop.length > next.size) return null
+      loop.push(walk)
+      const onward = next.get(walk)
+      if (onward === undefined) return null
+      walk = onward
+    }
+    if (loop.length !== next.size) return null
+    return { loop, interior }
+  }
+
+  /** Removes faces, edges and vertices in one pass, so slots renumber once rather than three times. */
+  private removeGeometry(faces: Set<number>, edges: Set<number>, vertices: Set<number>): void {
+    if (faces.size === 0 && edges.size === 0 && vertices.size === 0) return
+    for (const edge of edges) for (const face of this.edgeFaceLists[edge] ?? []) faces.add(face)
+    for (const vertex of vertices) {
+      for (const edge of this.vertexEdgeLists[vertex] ?? []) edges.add(edge)
+      for (const face of this.vertexFaceLists[vertex] ?? []) faces.add(face)
+    }
+    this.compactFaces(faces)
+    this.compactEdges(edges)
+    this.compactVertices(vertices)
+    this.rebuild()
+  }
+
+  /** Public removal of anything, by kind, in one renumbering. */
+  remove(what: { faces?: Iterable<number>; edges?: Iterable<number>; vertices?: Iterable<number> }): void {
+    this.removeGeometry(
+      this.collect(what.faces ?? [], this.mesh.faces.length),
+      this.collect(what.edges ?? [], this.mesh.edges.length),
+      this.collect(what.vertices ?? [], this.vertexCount),
+    )
+  }
+
+  /** Gives a face another's material and shading, which every face an operator mints should have. */
+  copyFaceAttributes(from: number, to: number): void {
+    const attributes = this.mesh.attributes.face
+    if (!this.hasFace(from) || !this.hasFace(to)) return
+    attributes.smooth[to] = attributes.smooth[from] ?? false
+    attributes.material[to] = attributes.material[from] ?? 0
+  }
+
+  /** A face's material slot, and its shading, which several operators carry across and Data reads. */
+  faceMaterial(faceSlot: number): number {
+    return this.mesh.attributes.face.material[faceSlot] ?? 0
+  }
+
+  setFaceMaterial(faceSlot: number, material: number): void {
+    if (this.hasFace(faceSlot)) this.mesh.attributes.face.material[faceSlot] = Math.max(0, Math.round(material))
+  }
+
+  faceSmooth(faceSlot: number): boolean {
+    return this.mesh.attributes.face.smooth[faceSlot] ?? false
+  }
+
+  setFaceSmooth(faceSlot: number, smooth: boolean): void {
+    if (this.hasFace(faceSlot)) this.mesh.attributes.face.smooth[faceSlot] = smooth
+  }
+
+  /** The edge attributes, read and written by slot: seam, sharp, crease and bevel weight. */
+  edgeFlag(edgeSlot: number, flag: 'seam' | 'sharp'): boolean {
+    return this.mesh.attributes.edge[flag]?.[edgeSlot] ?? false
+  }
+
+  setEdgeFlag(edgeSlot: number, flag: 'seam' | 'sharp', value: boolean): void {
+    if (!this.hasEdge(edgeSlot)) return
+    const attributes = this.mesh.attributes.edge
+    if (!attributes[flag]) attributes[flag] = this.mesh.edges.map(() => false)
+    attributes[flag]![edgeSlot] = value
+  }
+
+  edgeNumber(edgeSlot: number, flag: 'crease' | 'bevelWeight'): number {
+    return this.mesh.attributes.edge[flag]?.[edgeSlot] ?? 0
+  }
+
+  setEdgeNumber(edgeSlot: number, flag: 'crease' | 'bevelWeight', value: number): void {
+    if (!this.hasEdge(edgeSlot)) return
+    const attributes = this.mesh.attributes.edge
+    if (!attributes[flag]) attributes[flag] = this.mesh.edges.map(() => 0)
+    attributes[flag]![edgeSlot] = Math.min(1, Math.max(0, value))
+  }
+
+  /** A loop with repeats and unknown slots taken out, and the wrap-around repeat with them. */
+  private cleanLoop(loop: number[]): number[] {
+    const cleaned: number[] = []
+    for (const slot of loop) {
+      if (!this.hasVertex(slot)) continue
+      if (cleaned.length > 0 && cleaned[cleaned.length - 1] === slot) continue
+      if (cleaned.includes(slot)) continue
+      cleaned.push(slot)
+    }
+    return cleaned
+  }
+
+  private detachFace(faceSlot: number): void {
+    for (const edge of this.faceEdgeLists[faceSlot] ?? []) {
+      const list = this.edgeFaceLists[edge]
+      if (list) {
+        const index = list.indexOf(faceSlot)
+        if (index >= 0) list.splice(index, 1)
+      }
+    }
+    for (const slot of this.mesh.faces[faceSlot] ?? []) {
+      const list = this.vertexFaceLists[slot]
+      if (list) {
+        const index = list.indexOf(faceSlot)
+        if (index >= 0) list.splice(index, 1)
+      }
+    }
+    this.faceEdgeLists[faceSlot] = []
+  }
+
+  private attachFace(faceSlot: number): void {
+    const loop = this.mesh.faces[faceSlot] ?? []
+    const edges: number[] = []
+    for (let index = 0; index < loop.length; index += 1) {
+      const edge = this.ensureEdge(loop[index]!, loop[(index + 1) % loop.length]!)
+      edges.push(edge)
+      this.edgeFaceLists[edge]!.push(faceSlot)
+    }
+    this.faceEdgeLists[faceSlot] = edges
+    for (const slot of loop) this.vertexFaceLists[slot]!.push(faceSlot)
   }
 
   /* -------------------------------------------------------------- internals */

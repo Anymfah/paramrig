@@ -375,16 +375,28 @@ export type SceneDocument = {
   updatedAt: string
 }
 
+/** One object's edit-mode selection, by stable id, as a document stores it. */
+export type ElementIds = { vertices: string[]; edges: EdgeKey[]; faces: string[] }
+
+/** An element, named the way a selection has to name one across a whole document. */
+export type ElementRef = { kind: SelectMode; objectId: string; id: string }
+
 /** What the editor has selected, in whichever mode it is in. */
 export type SceneSelection = {
   /** Object ids, in the order they were picked; the last one is active. */
   objectIds: string[]
   activeObjectId: string | null
-  /** Edit-mode selection of the active object, by stable id. */
-  vertices?: string[]
-  edges?: EdgeKey[]
-  faces?: string[]
-  active?: { kind: SelectMode; id: string } | null
+  /**
+   * The objects Tab opened. Blender edits several at once, each keeping its own selection, and an
+   * operator runs on every one of them — so the selection is a map rather than one set of ids.
+   */
+  editObjectIds?: string[]
+  /** Edit-mode selection, by object id. */
+  elements?: Record<string, ElementIds>
+  /** The element picked last: the active pivot, the normal orientation and ⌃ path all read it. */
+  active?: ElementRef | null
+  /** Picks in order, newest last. Taking the active one out promotes the one before it. */
+  elementHistory?: ElementRef[]
 }
 
 export const EMPTY_SELECTION: SceneSelection = { objectIds: [], activeObjectId: null }

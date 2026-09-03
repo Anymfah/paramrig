@@ -595,3 +595,257 @@ describe('the building blocks', () => {
     }
   })
 })
+
+/* ------------------------------------------------------------------ measuring */
+
+describe('measuring elements', () => {
+  it('measures an edge, a face and the fold between two faces', () => {
+    const mesh = EditMesh.from(cube())
+    const edge = mesh.edgeSlot(0, 1)
+    expect(mesh.edgeLength(edge)).toBeCloseTo(2, 10)
+    expect(mesh.faceArea(0)).toBeCloseTo(4, 10)
+    expect(mesh.facePerimeter(0)).toBeCloseTo(8, 10)
+    // Two faces of a cube meet at a right angle, so their normals are a right angle apart.
+    expect(mesh.dihedral(edge)).toBeCloseTo(Math.PI / 2, 10)
+    expectVector(mesh.faceCentre(0), [0, 0, -1])
+  })
+
+  it('finds no fold across a boundary edge, where there is only one face', () => {
+    const mesh = EditMesh.from(plane(1))
+    expect(mesh.dihedral(0)).toBe(0)
+  })
+
+  it('takes the median and the bounds of some vertices, and neither of none', () => {
+    const mesh = EditMesh.from(cube())
+    expectVector(mesh.median([0, 1]), [0, -1, -1])
+    const bounds = mesh.boundsOf([0, 6])
+    expectVector(bounds.min, [-1, -1, -1])
+    expectVector(bounds.max, [1, 1, 1])
+    expectVector(bounds.size, [2, 2, 2])
+    expectVector(mesh.median([]), [0, 0, 0])
+    expectVector(mesh.boundsOf([]).size, [0, 0, 0])
+  })
+
+  it('calls a cube’s vertices manifold and a bow tie’s shared corner not', () => {
+    const closed = EditMesh.from(cube())
+    for (let vertex = 0; vertex < closed.vertexCount; vertex += 1) {
+      expect(closed.isManifoldVertex(vertex)).toBe(true)
+    }
+    const pinched = EditMesh.from(bowTie())
+    const corner = [...Array(pinched.vertexCount).keys()].find((slot) => pinched.vertexFaces(slot).length === 2)
+    expect(corner).toBeDefined()
+    expect(pinched.isManifoldVertex(corner!)).toBe(false)
+  })
+})
+
+/* ------------------------------------------------------------------- regions */
+
+describe('boundary loops', () => {
+  it('walks the rim of one face, and of a patch of four', () => {
+    const mesh = EditMesh.from(plane(2))
+    const single = mesh.boundaryLoops([0])
+    expect(single).toHaveLength(1)
+    expect(single[0]).toHaveLength(4)
+    const all = mesh.boundaryLoops([0, 1, 2, 3])
+    expect(all).toHaveLength(1)
+    // Four quads in a square have eight vertices on the rim and one in the middle.
+    expect(all[0]).toHaveLength(8)
+    expect(all[0]).not.toContain(mesh.slotOfVertex(4))
+  })
+
+  it('walks the two rims of an open cylinder', () => {
+    const mesh = EditMesh.from(cylinder(6, 1))
+    const loops = mesh.boundaryLoops([...Array(mesh.faceCount).keys()])
+    expect(loops).toHaveLength(2)
+    for (const loop of loops) expect(loop).toHaveLength(6)
+  })
+})
+
+/* ------------------------------------------------------------------ mutating */
+
+describe('splitting', () => {
+  it('puts a vertex on an edge and lengthens both faces that used it', () => {
+    const mesh = EditMesh.from(cube())
+    const edge = mesh.edgeSlot(0, 1)
+    const faces = mesh.edgeFaces(edge).map((face) => mesh.faceId(face))
+    const middle = mesh.splitEdge(edge, 0.5)
+    expect(middle).toBeGreaterThanOrEqual(0)
+    expectVector(mesh.position(middle), [0, -1, -1])
+    expect(mesh.vertexCount).toBe(9)
+    // The edge is gone and two halves stand in its place; the mesh is still closed.
+    expect(mesh.edgeSlot(0, 1)).toBe(-1)
+    expect(mesh.edgeSlot(0, middle)).toBeGreaterThanOrEqual(0)
+    expect(mesh.edgeSlot(middle, 1)).toBeGreaterThanOrEqual(0)
+    expect(mesh.edgeCount).toBe(13)
+    for (const id of faces) expect(mesh.faceVertices(mesh.slotOfFace(id))).toHaveLength(5)
+    expect(mesh.isManifold()).toBe(true)
+    expect(eulerCharacteristic(mesh)).toBe(2)
+  })
+
+  it('splits every edge of a face at once, and the slots it answers stay good', () => {
+    const mesh = EditMesh.from(plane(1))
+    const cuts = [0, 1, 2, 3].map((edge) => ({ edge, t: 0.5 }))
+    const middles = mesh.splitEdges(cuts)
+    expect(middles).toHaveLength(4)
+    expect(mesh.vertexCount).toBe(8)
+    expect(mesh.faceVertices(0)).toHaveLength(8)
+    for (const slot of middles) expect(mesh.vertexFaces(slot)).toEqual([0])
+  })
+
+  it('splits at a fraction other than the middle', () => {
+    const mesh = EditMesh.from(plane(1))
+    const edge = mesh.edgeSlot(0, 1)
+    const [a, b] = mesh.edgeVertices(edge)
+    const from = mesh.position(a)
+    const to = mesh.position(b)
+    const middle = mesh.splitEdge(edge, 0.25)
+    expectVector(mesh.position(middle), [
+      from[0] + (to[0] - from[0]) * 0.25,
+      from[1] + (to[1] - from[1]) * 0.25,
+      from[2] + (to[2] - from[2]) * 0.25,
+    ])
+  })
+
+  it('cuts a face in two between two of its corners, and refuses a cut that is not one', () => {
+    const mesh = EditMesh.from(plane(1))
+    const loop = mesh.faceVertices(0)
+    expect(mesh.splitFace(0, loop[0]!, loop[1]!)).toBe(-1)
+    expect(mesh.splitFace(0, loop[0]!, loop[0]!)).toBe(-1)
+    const added = mesh.splitFace(0, loop[0]!, loop[2]!)
+    expect(added).toBe(1)
+    expect(mesh.faceCount).toBe(2)
+    expect(mesh.faceVertices(0)).toHaveLength(3)
+    expect(mesh.faceVertices(1)).toHaveLength(3)
+    expect(mesh.edgeSlot(loop[0]!, loop[2]!)).toBeGreaterThanOrEqual(0)
+  })
+
+  it('gives the half it mints the material of the face it came from', () => {
+    const mesh = EditMesh.from(plane(1))
+    mesh.setFaceMaterial(0, 2)
+    mesh.setFaceSmooth(0, true)
+    const loop = mesh.faceVertices(0)
+    const added = mesh.splitFace(0, loop[0]!, loop[2]!)
+    expect(mesh.faceMaterial(added)).toBe(2)
+    expect(mesh.faceSmooth(added)).toBe(true)
+  })
+})
+
+describe('joining and collapsing', () => {
+  it('joins two faces of a plane back into one quad', () => {
+    const mesh = EditMesh.from(plane(1))
+    const loop = mesh.faceVertices(0)
+    mesh.splitFace(0, loop[0]!, loop[2]!)
+    expect(mesh.faceCount).toBe(2)
+    const merged = mesh.joinFaces([0, 1])
+    expect(merged).toBe(0)
+    expect(mesh.faceCount).toBe(1)
+    expect(mesh.faceVertices(0)).toHaveLength(4)
+    expect(mesh.edgeCount).toBe(4)
+  })
+
+  it('refuses to join two faces that share nothing', () => {
+    const mesh = EditMesh.from(plane(2))
+    expect(mesh.joinFaces([0, 3])).toBe(-1)
+    expect(mesh.faceCount).toBe(4)
+  })
+
+  it('collapses an edge to its middle and drops the triangles that fall in', () => {
+    const mesh = EditMesh.from(cube())
+    const edge = mesh.edgeSlot(0, 1)
+    const kept = mesh.collapseEdge(edge)
+    expect(kept).toBeGreaterThanOrEqual(0)
+    expectVector(mesh.position(kept), [0, -1, -1])
+    expect(mesh.vertexCount).toBe(7)
+    // The two quads on that edge become triangles; the four others keep their corners.
+    expect(mesh.faceCount).toBe(6)
+    const triangles = [...Array(mesh.faceCount).keys()].filter((face) => mesh.faceVertices(face).length === 3)
+    expect(triangles).toHaveLength(2)
+    expect(mesh.isManifold()).toBe(true)
+    expect(eulerCharacteristic(mesh)).toBe(2)
+  })
+})
+
+describe('dissolving', () => {
+  it('dissolves an edge into the n-gon of the two faces it held apart', () => {
+    const mesh = EditMesh.from(plane(2))
+    const shared = mesh.faceEdges(0).find((edge) => mesh.edgeFaces(edge).length === 2)!
+    const outcome = mesh.dissolveEdges([shared])
+    expect(outcome).toEqual({ dissolved: 1, refused: 0 })
+    expect(mesh.faceCount).toBe(3)
+    expect(mesh.faceVertices(0)).toHaveLength(6)
+    expect(mesh.edgeCount).toBe(11)
+  })
+
+  it('refuses to dissolve a boundary edge, and says so', () => {
+    const mesh = EditMesh.from(plane(1))
+    expect(mesh.dissolveEdges([0])).toEqual({ dissolved: 0, refused: 1 })
+    expect(mesh.faceCount).toBe(1)
+  })
+
+  it('dissolves four faces of a plane into one, and the middle vertex with them', () => {
+    const mesh = EditMesh.from(plane(2))
+    const outcome = mesh.dissolveFaces([0, 1, 2, 3])
+    expect(outcome.dissolved).toBe(1)
+    expect(mesh.faceCount).toBe(1)
+    expect(mesh.faceVertices(0)).toHaveLength(8)
+    // The four inner edges go; the middle vertex stays, loose, until something drops it.
+    expect(mesh.edgeCount).toBe(8)
+    mesh.dropLoose()
+    expect(mesh.vertexCount).toBe(8)
+  })
+
+  it('dissolves the middle vertex of a subdivided plane into one face', () => {
+    const mesh = EditMesh.from(plane(2))
+    const middle = [...Array(mesh.vertexCount).keys()].find((slot) => mesh.vertexFaces(slot).length === 4)!
+    const outcome = mesh.dissolveVertices([middle])
+    expect(outcome).toEqual({ dissolved: 1, refused: 0 })
+    expect(mesh.vertexCount).toBe(8)
+    expect(mesh.faceCount).toBe(1)
+    expect(mesh.faceVertices(0)).toHaveLength(8)
+  })
+
+  it('leaves a mesh alone when the patch it was asked to merge has a hole in it', () => {
+    const mesh = EditMesh.from(plane(3))
+    const middle = [...Array(mesh.faceCount).keys()].find((face) => mesh.faceEdges(face).every((edge) => mesh.edgeFaces(edge).length === 2))!
+    const ring = [...Array(mesh.faceCount).keys()].filter((face) => face !== middle)
+    const before = mesh.faceCount
+    const outcome = mesh.dissolveFaces(ring)
+    expect(outcome.refused).toBeGreaterThan(0)
+    expect(mesh.faceCount).toBe(before)
+  })
+})
+
+describe('rewriting a face', () => {
+  it('keeps the face’s id, material and shading when its corners change', () => {
+    const mesh = EditMesh.from(plane(1))
+    mesh.setFaceMaterial(0, 3)
+    const id = mesh.faceId(0)
+    const extra = mesh.addVertex([2, 0, 0])
+    expect(mesh.setFaceLoop(0, [...mesh.faceVertices(0), extra])).toBe(true)
+    expect(mesh.faceId(0)).toBe(id)
+    expect(mesh.faceMaterial(0)).toBe(3)
+    expect(mesh.faceVertices(0)).toHaveLength(5)
+    expect(mesh.vertexFaces(extra)).toEqual([0])
+  })
+
+  it('refuses a loop with fewer than three corners left after the repeats come out', () => {
+    const mesh = EditMesh.from(plane(1))
+    const loop = mesh.faceVertices(0)
+    expect(mesh.setFaceLoop(0, [loop[0]!, loop[1]!, loop[0]!])).toBe(false)
+    expect(mesh.faceVertices(0)).toHaveLength(4)
+  })
+})
+
+describe('edge attributes', () => {
+  it('carries a seam and a crease onto both halves of a split edge', () => {
+    const mesh = EditMesh.from(cube())
+    const edge = mesh.edgeSlot(0, 1)
+    mesh.setEdgeFlag(edge, 'seam', true)
+    mesh.setEdgeNumber(edge, 'crease', 0.75)
+    const middle = mesh.splitEdge(edge)
+    for (const half of [mesh.edgeSlot(0, middle), mesh.edgeSlot(middle, 1)]) {
+      expect(mesh.edgeFlag(half, 'seam')).toBe(true)
+      expect(mesh.edgeNumber(half, 'crease')).toBeCloseTo(0.75, 10)
+    }
+  })
+})

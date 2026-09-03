@@ -1,7 +1,7 @@
 import { edgeKey, parseEdgeKey } from '@/scene/mesh/data'
 import type { EditMesh } from '@/scene/mesh/editMesh'
 import { add, cross, dot, length, subtract } from '@/scene/mesh/normals'
-import type { EdgeKey, SceneSelection, SelectMode, Vec3 } from '@/scene/types'
+import type { EdgeKey, ElementIds, ElementRef, SceneSelection, SelectMode, Vec3 } from '@/scene/types'
 
 /**
  * What is selected in edit mode, and every question the select operators ask of it.
@@ -33,25 +33,84 @@ const NORMAL_TOLERANCE = 1e-6
 
 /* --------------------------------------------------------------- documents */
 
-export function toElements(selection: SceneSelection): ElementSelection {
+export function toElements(selection: SceneSelection, objectId?: string): ElementSelection {
+  const id = objectId ?? selection.activeObjectId ?? ''
+  const stored = selection.elements?.[id]
   return {
-    vertices: readIds(selection.vertices),
-    edges: readKeys(selection.edges),
-    faces: readIds(selection.faces),
+    vertices: readIds(stored?.vertices),
+    edges: readKeys(stored?.edges),
+    faces: readIds(stored?.faces),
   }
+}
+
+/** Every object the selection is editing, active first, which is the order operators run in. */
+export function editedObjectIds(selection: SceneSelection): string[] {
+  const ids = selection.editObjectIds ?? []
+  const active = selection.activeObjectId
+  if (!active || !ids.includes(active)) return [...ids]
+  return [active, ...ids.filter((id) => id !== active)]
 }
 
 /**
  * The document's half of the round trip. The lists come out sorted so that two selections holding
  * the same elements are the same document, whatever order the operators put them in.
  */
-export function fromElements(elements: ElementSelection, active?: SceneSelection['active']): Partial<SceneSelection> {
+export function fromElements(elements: ElementSelection): ElementIds {
   return {
     vertices: sortedNumbers(elements.vertices).map((id) => String(id)),
     edges: sortedKeys(elements.edges),
     faces: sortedNumbers(elements.faces).map((id) => String(id)),
-    active: active ?? null,
   }
+}
+
+/**
+ * One object's entry replaced, everything else left alone. The active element is dropped when it is
+ * no longer in the selection — an active that has been deselected would keep steering the pivot and
+ * the normal orientation from geometry nobody can see is chosen.
+ */
+export function withElements(
+  selection: SceneSelection,
+  objectId: string,
+  elements: ElementSelection,
+  active?: ElementRef | null,
+): SceneSelection {
+  const next: SceneSelection = {
+    ...selection,
+    elements: { ...(selection.elements ?? {}), [objectId]: fromElements(elements) },
+  }
+  const chosen = active === undefined ? selection.active ?? null : active
+  next.active = chosen && holds(next, chosen) ? chosen : promoteActive(next, chosen)
+  if (active) {
+    const history = (selection.elementHistory ?? []).filter((entry) => !sameElement(entry, active))
+    next.elementHistory = [...history, active].slice(-64)
+  } else {
+    next.elementHistory = (selection.elementHistory ?? []).filter((entry) => holds(next, entry))
+  }
+  return next
+}
+
+/** Whether a selection still holds an element, which is what makes an active one still valid. */
+export function holds(selection: SceneSelection, element: ElementRef): boolean {
+  const stored = selection.elements?.[element.objectId]
+  if (!stored) return false
+  if (element.kind === 'vertex') return stored.vertices.includes(element.id)
+  if (element.kind === 'edge') return stored.edges.includes(element.id)
+  return stored.faces.includes(element.id)
+}
+
+/** The most recent pick that is still selected: what the active becomes when the active goes. */
+export function promoteActive(selection: SceneSelection, dropped?: ElementRef | null): ElementRef | null {
+  const history = selection.elementHistory ?? []
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const entry = history[index]!
+    if (dropped && sameElement(entry, dropped)) continue
+    if (holds(selection, entry)) return entry
+  }
+  return null
+}
+
+export function sameElement(a: ElementRef, b: ElementRef): boolean {
+  return a.kind === b.kind && a.objectId === b.objectId && a.id === b.id
 }
 
 /* ----------------------------------------------------------------- flushing */
