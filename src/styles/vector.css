@@ -26,18 +26,14 @@
 }
 /*
  * On the canvas the selection is not drawn against the chrome but against the artboard, and the
- * artboard is whatever colour the document says — white as often as near-black. The light theme's
- * carbon accent disappears on a dark page, so the canvas keeps a mid-tone that reads on both.
+ * artboard is whatever colour the document says — white as often as near-black. Neither theme's
+ * accent works there: the light one's carbon disappears on a dark page, and the dark one's pale
+ * mint reads as a plain white hairline on everything. The canvas keeps its own mineral teal, one
+ * mid-tone that carries on both, and leans on the halo behind it for the rest.
  */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) .vector-canvas {
-    --vector-selection: #1f8a72;
-    --vector-selection-fill: color-mix(in srgb, #1f8a72 14%, transparent);
-  }
-}
-:root[data-theme='light'] .vector-canvas {
-  --vector-selection: #1f8a72;
-  --vector-selection-fill: color-mix(in srgb, #1f8a72 14%, transparent);
+.vector-canvas {
+  --vector-selection: #1fae8c;
+  --vector-selection-fill: color-mix(in srgb, #1fae8c 12%, transparent);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) { --vector-halo: rgb(247 250 249 / 0.92); }
@@ -364,7 +360,7 @@
 .vector-selection > rect {
   fill: none;
   stroke: var(--vector-selection);
-  stroke-width: 1.25;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
@@ -384,17 +380,22 @@
   pointer-events: stroke;
   cursor: var(--cursor-rotate);
 }
+/*
+ * The handles are what the eye lands on, so they are the solid part: a pale chip with a hairline
+ * of the selection colour and a shadow under it, rather than one more line of the same weight.
+ */
 .vector-selection__handle {
   fill: var(--vector-handle-fill);
   stroke: var(--vector-selection);
-  stroke-width: 1.25;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+  filter: drop-shadow(0 calc(0.5px / var(--zoom, 1)) calc(1.5px / var(--zoom, 1)) rgb(9 11 9 / 0.35));
 }
 .vector-nodes__outline {
   fill: none;
   stroke: var(--vector-selection);
-  stroke-width: 1.25;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }
@@ -412,9 +413,10 @@
 .vector-nodes__control {
   fill: var(--vector-handle-fill);
   stroke: var(--vector-selection);
-  stroke-width: 1.25;
+  stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
+  filter: drop-shadow(0 calc(0.5px / var(--zoom, 1)) calc(1.5px / var(--zoom, 1)) rgb(9 11 9 / 0.35));
 }
 .vector-nodes__point[data-selected='true'] { fill: var(--vector-selection); }
 .vector-nodes__control-line {
@@ -616,15 +618,25 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-row--action { justify-content: space-between; }
 .vector-row--action .vector-row__label { color: var(--text-muted); font-size: var(--text-xs); }
 
-/* A field of the Design tab, with the ◇ that turns it into a control. */
+/*
+ * A field of the Design tab, with the ◇ that turns it into a control. The diamond sits in a gutter
+ * of its own on the left rather than beside the field: a column that some rows use and others do
+ * not would leave every unexposable row sticking out thirty pixels further right than its
+ * neighbour. Here every row of a section ends at the same place, whatever it carries.
+ */
 .vector-exposable {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   min-width: 0;
 }
 .vector-exposable__field { flex: 1; min-width: 0; }
+.vector-inspector__body[data-expose] .vector-section__body,
+.vector-paint-popover[data-expose] { padding-inline-start: calc(var(--space-4) + var(--hit-target)); }
+.vector-inspector__body[data-expose] .vector-exposable,
+.vector-paint-popover[data-expose] .vector-exposable { margin-inline-start: calc(-1 * var(--hit-target)); }
 .vector-expose.icon-btn {
+  order: -1;
   width: var(--hit-target);
   height: var(--hit-target);
   flex: none;
@@ -641,6 +653,8 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-expose--bound.icon-btn { opacity: 1; color: var(--accent); }
 .vector-expose--bound.icon-btn svg { fill: currentColor; }
 .vector-exposable[data-dropping] { outline: 2px dashed var(--accent); outline-offset: 2px; border-radius: var(--radius-xs); }
+/* The tooltip wraps the button, so the anchor is what the flex row actually orders. */
+.vector-exposable > .tt__anchor { order: -1; flex: none; }
 .vector-expose-popover {
   display: flex;
   flex-direction: column;
@@ -941,11 +955,12 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-canvas[data-tool='transform'] .vector-hit { cursor: default; }
 [data-vector-element][data-locked='true'] { pointer-events: none; }
 .vector-canvas[data-tool='node'] .vector-artboard { cursor: default; }
+/* Hovering shows the outline of the shape itself, in the selection colour, one notch quieter. */
 .vector-hover {
   fill: none;
   stroke: var(--vector-selection);
-  stroke-width: 1;
-  opacity: 0.7;
+  stroke-width: 1.5;
+  opacity: 0.55;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
 }

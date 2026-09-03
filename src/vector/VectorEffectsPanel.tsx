@@ -103,7 +103,7 @@ function EffectRow({ effect, index, first, last, onChange, onRemove, onMove, ges
           {driven ? <IconDiamond className="vector-row__driven" /> : null}
         </Popover.Trigger>
         <Popover.Portal>
-          <Popover.Content className="popover vector-paint-popover" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={name}>
+          <Popover.Content className="popover vector-paint-popover" data-expose="on" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={name}>
             <SelectField
               label="Effect"
               value={effect.kind}

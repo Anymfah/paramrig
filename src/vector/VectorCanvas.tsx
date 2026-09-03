@@ -6,7 +6,7 @@ import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks,
 import { addGuide, createGuide, moveGuide, removeGuide } from '@/vector/guides'
 import { countedLabel } from '@/vector/history'
 import { fillPointerEvents, isHittable, strokeHitWidth } from '@/vector/hitTest'
-import { anglePoint, arcProperties, DEFAULT_INNER_RATIO, DEFAULT_SIDES, isFullEllipse, localPoint, polygonPathData, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type PolygonProperties, type ShapeHandle } from '@/vector/shapes'
+import { anglePoint, arcProperties, DEFAULT_INNER_RATIO, DEFAULT_SIDES, fillPoint, isFullEllipse, localPoint, polygonFill, polygonPathData, polygonProperties, shapeHudLabel, shapePatch, shapePoint, type PolygonProperties, type ShapeHandle } from '@/vector/shapes'
 import { cornerHandlePoint, cornerRadiusAt, cornerRadiusPatch, CORNERS, maxNodeRadius, nodeCorner, nodeRadiusAt, nodeRadiusHandle, type CornerName, type NodeCorner } from '@/vector/corners'
 import { addStop, dropStop, gradientCircle, gradientLine, linearPatch, moveStop, pointAt, projectOnLine, radialPatch, STOP_DROP_PX } from '@/vector/gradient'
 import { fillsOf, fillsPatch } from '@/vector/paints'
@@ -2756,8 +2756,10 @@ function ShapeHandles({ element, zoom, coarse, onStart }: {
   const spots: Array<{ handle: ShapeHandle; at: Point; label: string }> = []
   if (element.kind === 'polygon') {
     const { sides, innerRatio } = polygonProperties(element)
-    spots.push({ handle: 'polygon-sides', at: shapePoint(element, anglePoint(90)), label: `${sides} sides` })
-    spots.push({ handle: 'polygon-ratio', at: shapePoint(element, anglePoint(90 + 180 / sides, innerRatio * 0.5)), label: 'Star points' })
+    // The handles ride on the shape as it is drawn, which is the inscribed ring stretched to the box.
+    const fill = polygonFill(sides)
+    spots.push({ handle: 'polygon-sides', at: shapePoint(element, fillPoint(fill, anglePoint(90))), label: `${sides} sides` })
+    spots.push({ handle: 'polygon-ratio', at: shapePoint(element, fillPoint(fill, anglePoint(90 + 180 / sides, innerRatio * 0.5))), label: 'Star points' })
   } else {
     const arc = arcProperties(element)
     const full = isFullEllipse(arc)
@@ -3415,7 +3417,7 @@ function Handles({ bounds, zoom, rotation, onResize, onRotate }: {
             style={{ cursor: resizeCursor(item.handle, rotation) }}
             onPointerDown={(event) => onResize(item.handle, event)}
           />
-          <rect className="vector-selection__handle" x={item.x - handleRadius} y={item.y - handleRadius} width={handleRadius * 2} height={handleRadius * 2} rx={1 / zoom} />
+          <rect className="vector-selection__handle" x={item.x - handleRadius} y={item.y - handleRadius} width={handleRadius * 2} height={handleRadius * 2} rx={2 / zoom} />
         </g>
       ))}
     </>

@@ -165,7 +165,7 @@ function PaintRow({ label, paint, index, style, onChange, onRemove, gesture, pal
           {driven ? <IconDiamond className="vector-row__driven" /> : null}
         </Popover.Trigger>
         <Popover.Portal>
-          <Popover.Content className="popover vector-paint-popover" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={`${typeLabel} ${label.toLowerCase()}`}>
+          <Popover.Content className="popover vector-paint-popover" data-expose="on" side="left" align="start" sideOffset={10} collisionPadding={8} aria-label={`${typeLabel} ${label.toLowerCase()}`}>
             <SelectField
               label="Type"
               value={paint.type}

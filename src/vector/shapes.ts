@@ -53,6 +53,11 @@ export function anglePoint(degrees: number, radius = 0.5): VectorPoint {
 /**
  * Regular polygon, or a star when `innerRatio` is above zero: the first point sits at the top and
  * the rest follow counter-clockwise, in normalised box coordinates.
+ *
+ * The points come off the inscribed circle, which leaves a shape with an odd number of sides short
+ * of its own box — a five-pointed star reaches its top but stops a tenth short of its bottom. They
+ * are stretched back out to fill it, so an object's box is the object's extent: the selection hugs
+ * what it selects, and W and H say what the shape actually measures.
  */
 export function polygonNetwork({ sides, innerRatio }: PolygonProperties): VectorNetwork {
   const points: VectorPoint[] = []
@@ -61,10 +66,52 @@ export function polygonNetwork({ sides, innerRatio }: PolygonProperties): Vector
     points.push(anglePoint(90 + index * step))
     if (innerRatio > 0) points.push(anglePoint(90 + index * step + step / 2, innerRatio * 0.5))
   }
+  const filled = fillBox(points)
   return {
-    nodes: points.map((point, index) => ({ id: `p${index}`, x: round(point.x), y: round(point.y) })),
-    segments: points.map((_, index) => ({ id: `e${index}`, a: `p${index}`, b: `p${(index + 1) % points.length}` })),
+    nodes: filled.map((point, index) => ({ id: `p${index}`, x: round(point.x), y: round(point.y) })),
+    segments: filled.map((_, index) => ({ id: `e${index}`, a: `p${index}`, b: `p${(index + 1) % filled.length}` })),
   }
+}
+
+/**
+ * The stretch that takes a polygon's inscribed points out to the edges of its box. It depends on
+ * the number of sides alone — the inner ring of a star is always inside the outer one — so it does
+ * not shift under the pointer while a star's points are being pulled in.
+ */
+export type BoxFill = { left: number; top: number; width: number; height: number }
+
+export function polygonFill(sides: number): BoxFill {
+  const step = 360 / Math.max(1, sides)
+  const points = Array.from({ length: Math.max(1, sides) }, (_, index) => anglePoint(90 + index * step))
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const left = Math.min(...xs)
+  const top = Math.min(...ys)
+  const width = Math.max(...xs) - left
+  const height = Math.max(...ys) - top
+  return { left, top, width: width < 1e-6 ? 1 : width, height: height < 1e-6 ? 1 : height }
+}
+
+/** A point of the inscribed circle, in the filled box. */
+export function fillPoint(fill: BoxFill, point: VectorPoint): VectorPoint {
+  return { x: (point.x - fill.left) / fill.width, y: (point.y - fill.top) / fill.height }
+}
+
+/** A point of the filled box, back on the inscribed circle. */
+export function unfillPoint(fill: BoxFill, point: VectorPoint): VectorPoint {
+  return { x: point.x * fill.width + fill.left, y: point.y * fill.height + fill.top }
+}
+
+function fillBox(points: VectorPoint[]): VectorPoint[] {
+  if (points.length === 0) return points
+  const xs = points.map((point) => point.x)
+  const ys = points.map((point) => point.y)
+  const left = Math.min(...xs)
+  const top = Math.min(...ys)
+  const width = Math.max(...xs) - left
+  const height = Math.max(...ys) - top
+  if (width < 1e-6 || height < 1e-6) return points
+  return points.map((point) => ({ x: (point.x - left) / width, y: (point.y - top) / height }))
 }
 
 /**
@@ -206,6 +253,16 @@ function shapeRadius(element: VectorElement, point: Point): number {
   return Math.min(1, Math.hypot(dx, dy))
 }
 
+/** How far out a world point sits on the inscribed circle a polygon was stretched from. */
+function polygonRadius(element: VectorElement, point: Point, fill: BoxFill): number {
+  const local = localPoint(element, point)
+  const inscribed = unfillPoint(fill, {
+    x: (local.x - element.x) / Math.max(1e-6, element.width),
+    y: (local.y - element.y) / Math.max(1e-6, element.height),
+  })
+  return Math.min(1, Math.hypot(inscribed.x - 0.5, inscribed.y - 0.5) * 2)
+}
+
 /** World position of a point given in the element's normalised box. */
 export function shapePoint(element: VectorElement, normalized: Point): Point {
   const local = { x: element.x + normalized.x * element.width, y: element.y + normalized.y * element.height }
@@ -222,7 +279,8 @@ export function shapePatch(element: VectorElement, handle: ShapeHandle, at: Poin
     return { sides: Math.min(MAX_SIDES, Math.max(MIN_SIDES, sides + steps)) }
   }
   if (handle === 'polygon-ratio') {
-    return { innerRatio: Math.min(1, Math.max(0, shapeRadius(element, at))) }
+    const { sides } = polygonProperties(element)
+    return { innerRatio: Math.min(1, Math.max(0, polygonRadius(element, at, polygonFill(sides)))) }
   }
   const arc = arcProperties(element)
   if (handle === 'arc-ratio') return { arcStart: arc.start, arcSweep: arc.sweep, arcRatio: Math.min(0.99, shapeRadius(element, at)) }

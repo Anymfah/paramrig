@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { handleRadii, hitLayerOf, layerRank, pickHit } from '@/vector/hitPriority'
+import { HANDLE_GLYPH_PX, handleRadii, hitLayerOf, layerRank, pickHit } from '@/vector/hitPriority'
 
 const node = (attributes: Record<string, string>) => ({
   attributes,
@@ -61,7 +61,7 @@ describe('handle sizes', () => {
       const radii = handleRadii(zoom, false)
 
       expect(radii.hit * 2 * zoom).toBeCloseTo(32, 6)
-      expect(radii.glyph * 2 * zoom).toBeCloseTo(8, 6)
+      expect(radii.glyph * 2 * zoom).toBeCloseTo(HANDLE_GLYPH_PX, 6)
     }
   })
 

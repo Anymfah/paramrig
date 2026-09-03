@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from 'react'
+import { useContext, useState, type ReactNode } from 'react'
 import { INSPECTOR_TABS, type InspectorTab } from '@/vector/inspectorPrefs'
 import { VectorEmpty, VectorSection } from '@/vector/VectorSection'
 import { Exposable } from '@/vector/VectorExpose'
+import { ExposeContext } from '@/vector/exposeContext'
 import { useSectionState } from '@/vector/useSectionState'
 
 import { createEffect } from '@/vector/effects'
@@ -136,6 +137,7 @@ export function VectorInspector({
   onPickFont,
   onImportFont,
 }: VectorInspectorProps) {
+  const expose = useContext(ExposeContext)
   const gesture = { onGestureStart, onGestureEnd, onGestureCancel }
   const [versionName, setVersionName] = useState('')
   const nodeMode = tool === 'node'
@@ -234,7 +236,16 @@ export function VectorInspector({
           </button>
         ))}
       </div>
-      <div className="vector-inspector__body scroll-area" role="tabpanel" id={tabPanelId} aria-labelledby={`vector-tab-${tab}`}>
+      <div
+        className="vector-inspector__body scroll-area"
+        role="tabpanel"
+        id={tabPanelId}
+        aria-labelledby={`vector-tab-${tab}`}
+        // With one object under the pointer every field can become a control, so the rows make room
+        // for the gutter the diamonds live in. With several, nothing can, and the gutter would be
+        // an empty column.
+        data-expose={expose?.elementId ? 'on' : undefined}
+      >
         {saveMessage ? <div className="vector-inspector__notice"><StatusMessage tone="error">{saveMessage}</StatusMessage></div> : null}
         {tab === 'history' ? (
           <VectorSection

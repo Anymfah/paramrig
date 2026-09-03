@@ -59,7 +59,7 @@ export function pickHit<Node extends AttributeSource>(candidates: Node[]): Node 
  */
 export const HANDLE_TARGET_PX = 32
 export const HANDLE_TARGET_COARSE_PX = 44
-export const HANDLE_GLYPH_PX = 8
+export const HANDLE_GLYPH_PX = 7
 
 export function handleRadii(zoom: number, coarse: boolean): { hit: number; glyph: number } {
   return {

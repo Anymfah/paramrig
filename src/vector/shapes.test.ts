@@ -6,6 +6,8 @@ import {
   anglePoint,
   arcNetwork,
   arcProperties,
+  fillPoint,
+  polygonFill,
   isFullEllipse,
   lineNetwork,
   polygonNetwork,
@@ -50,16 +52,30 @@ describe('polygon geometry', () => {
 
     expect(star.nodes).toHaveLength(10)
     const radii = star.nodes.map((node) => Math.hypot(node.x - 0.5, node.y - 0.5))
-    expect(Math.max(...radii)).toBeCloseTo(0.5)
-    expect(Math.min(...radii)).toBeCloseTo(0.25)
+    // Stretched to fill the box, the two rings are no longer circles, but they stay two rings.
+    expect(Math.min(...radii)).toBeLessThan(Math.max(...radii) * 0.6)
+  })
+
+  it('fills its own box, whatever the number of sides', () => {
+    for (const sides of [3, 5, 7, 12]) {
+      for (const innerRatio of [0, 0.45]) {
+        const { nodes } = polygonNetwork({ sides, innerRatio })
+        const xs = nodes.map((node) => node.x)
+        const ys = nodes.map((node) => node.y)
+
+        expect(Math.min(...xs)).toBeCloseTo(0, 3)
+        expect(Math.max(...xs)).toBeCloseTo(1, 3)
+        expect(Math.min(...ys)).toBeCloseTo(0, 3)
+        expect(Math.max(...ys)).toBeCloseTo(1, 3)
+      }
+    }
   })
 
   it('grows towards the ellipse as the sides pile up', () => {
-    const triangle = area(polygonNetwork({ sides: 3, innerRatio: 0 }))
     const square = area(polygonNetwork({ sides: 4, innerRatio: 0 }))
     const many = area(polygonNetwork({ sides: 60, innerRatio: 0 }))
 
-    expect(triangle).toBeLessThan(square)
+    // A diamond fills half the box it is stretched into; the ellipse fills a quarter of pi.
     expect(square).toBeCloseTo(20000, -2)
     expect(many).toBeGreaterThan(square)
     expect(many).toBeLessThan(Math.PI * 100 * 100 + 1)
@@ -151,9 +167,15 @@ describe('what a shape handle does', () => {
     expect(shapePatch(polygon, 'polygon-sides', { x: 84, y: 0 }, { x: 0, y: 0 }, 0.5)).toEqual({ sides: 8 })
   })
 
-  it('reads the star ratio off the distance to the centre', () => {
-    expect(shapePatch(polygon, 'polygon-ratio', { x: 100, y: 50 }, { x: 0, y: 0 }, 1).innerRatio).toBeCloseTo(0.5)
-    expect(shapePatch(polygon, 'polygon-ratio', { x: 100, y: 100 }, { x: 0, y: 0 }, 1).innerRatio).toBe(0)
+  it('reads the star ratio back from where its handle was put', () => {
+    // The handle is drawn on the stretched shape, so the reading has to undo the same stretch.
+    const fill = polygonFill(5)
+    const handleAt = (ratio: number) => shapePoint(polygon, fillPoint(fill, anglePoint(90 + 180 / 5, ratio * 0.5)))
+
+    for (const ratio of [0.25, 0.5, 0.8]) {
+      expect(shapePatch(polygon, 'polygon-ratio', handleAt(ratio), { x: 0, y: 0 }, 1).innerRatio).toBeCloseTo(ratio, 3)
+    }
+    expect(shapePatch(polygon, 'polygon-ratio', handleAt(0), { x: 0, y: 0 }, 1).innerRatio).toBeCloseTo(0, 3)
   })
 
   it('opens an arc from the whole ellipse by dragging its end', () => {
@@ -193,7 +215,8 @@ describe('what a shape handle does', () => {
 
   it('says what the drag is doing', () => {
     expect(shapeHudLabel(polygon, 'polygon-sides', { x: 42, y: 0 }, { x: 0, y: 0 }, 1)).toBe('8 sides')
-    expect(shapeHudLabel(polygon, 'polygon-ratio', { x: 100, y: 50 }, { x: 0, y: 0 }, 1)).toBe('50%')
+    const half = shapePoint(polygon, fillPoint(polygonFill(5), anglePoint(90 + 180 / 5, 0.25)))
+    expect(shapeHudLabel(polygon, 'polygon-ratio', half, { x: 0, y: 0 }, 1)).toBe('50%')
     expect(shapeHudLabel(ellipse, 'arc-end', { x: 100, y: 0 }, { x: 200, y: 100 }, 1)).toBe('0° · 90°')
   })
 
