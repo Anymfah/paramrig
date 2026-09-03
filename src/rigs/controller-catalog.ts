@@ -2,7 +2,7 @@ import type { ParameterDef,NumberParam,RigManifest } from './types'
 import { defaultCurve } from '@/state/values'
 
 const base=(id:string,label:string,group:string)=>({id,label,group})
-const number=(id:string,label:string,group:string,extra:Partial<NumberParam>={}):NumberParam=>({kind:'number',...base(id,label,group),min:0,max:100,step:1,defaultValue:50,view:'slider',...extra})
+const number=(id:string,label:string,group:string,extra:Partial<NumberParam>={}):NumberParam=>({kind:'number',...base(id,label,group),min:0,max:100,step:1,defaultValue:50,...extra})
 const vector=(id:string,label:string,group:string,axes:string[],view:'fields'|'xy'|'dimensions'|'direction'|'rotation'|'anchor'='fields',min=-1,max=1,defaultValue=axes.map(()=>0)):Extract<ParameterDef,{kind:'vector'}>=>({kind:'vector',...base(id,label,group),axes,view,min,max,step:0.01,defaultValue})
 const select=(id:string,label:string,group:string,options:string[]):ParameterDef=>({kind:'select',...base(id,label,group),options:options.map(value=>({value,label:value})),defaultValue:options[0]!})
 const namedOptions=(values:string[])=>values.map(value=>({value,label:value.charAt(0).toUpperCase()+value.slice(1)}))
@@ -22,10 +22,10 @@ export const controllerCategories = [
 export const controllerDefinitions:ParameterDef[]=[
   number('exact','Exact value','numbers',{view:'field',step:0.01,defaultValue:32,unit:'px',units:[{value:'px',label:'Pixels',factor:1},{value:'rem',label:'Rem',factor:16,step:0.01}]}),
   number('count','Number stepper','numbers',{view:'stepper',min:1,max:24,defaultValue:6}),
-  number('amount','Number slider','numbers',{step:0.01,defaultValue:50}),
-  number('balance','Bipolar slider','numbers',{min:-100,defaultValue:0,defaultSource:{mode:'parameter',source:'amount'}}),
-  number('frequency','Logarithmic slider','numbers',{min:20,max:20000,scale:'log',defaultValue:440,unit:'Hz'}),
-  number('steps','Stepped slider','numbers',{min:1,max:16,stops:[1,2,4,8,16],defaultValue:4}),
+  number('amount','Number bar','numbers',{step:0.01,defaultValue:50,unit:'%'}),
+  number('balance','Bipolar bar','numbers',{view:'bar',min:-100,defaultValue:0,defaultSource:{mode:'parameter',source:'amount'}}),
+  number('frequency','Logarithmic scale','numbers',{min:20,max:20000,scale:'log',defaultValue:440,unit:'Hz'}),
+  number('steps','Stepped scale','numbers',{min:1,max:16,stops:[1,2,4,8,16],defaultValue:4}),
   number('knob','Rotary knob','numbers',{view:'knob',defaultValue:40}),
   number('angle','Circular angle','numbers',{min:0,max:360,unit:'°',view:'angle',defaultValue:45}),
   {kind:'range',...base('range','Minimum / maximum','numbers'),min:0,max:100,step:1,defaultValue:[20,80]},

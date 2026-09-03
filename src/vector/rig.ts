@@ -287,7 +287,7 @@ const LABELS: Partial<Record<SimpleProperty, string>> = {
   innerRatio: 'Star points', arcStart: 'Arc start', arcSweep: 'Arc sweep', blendMode: 'Blend mode',
 }
 
-const NUMBER_VIEWS = ['field', 'stepper', 'slider', 'bar', 'knob', 'angle', 'seed']
+const NUMBER_VIEWS = ['field', 'stepper', 'bar', 'knob', 'angle', 'seed']
 const MAX_PARAMETERS = 200
 const MAX_BINDINGS = 500
 
@@ -340,7 +340,7 @@ export function sanitizeParameter(value: unknown, groupIds: Set<string>): Parame
       step: Math.max(0, finite(source.step, 1)),
       defaultValue: finite(source.defaultValue, min),
       ...(text(source.unit, 12) ? { unit: text(source.unit, 12)! } : {}),
-      ...(view && NUMBER_VIEWS.includes(view) ? { view: view as 'slider' } : {}),
+      ...(view && NUMBER_VIEWS.includes(view) ? { view: view as 'bar' } : {}),
     }
   }
   if (kind === 'color') return { ...base, kind: 'color', defaultValue: hex(source.defaultValue, '#D4E7E1'), ...(source.alpha === true ? { alpha: true } : {}) }

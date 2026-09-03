@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyScrub,
   clampNumber,
+  trackFraction,
   evaluateExpression,
   evaluateNumberInput,
   fineStep,
@@ -69,5 +70,14 @@ describe('numeric helpers', () => {
     expect(fineStep(1)).toBe(0.1)
     expect(fineStep(0.01)).toBe(0.001)
     expect(nudgeNumber(24, -1, { min: -120, max: 120, step: fineStep(1) })).toBe(23.9)
+  })
+  it('walks a gauge at the pointer\'s pace and clamps at both ends', () => {
+    // Half the box crossed is half the track crossed: the filled edge stays under the hand.
+    expect(trackFraction(0.25, 100, 200, false)).toBe(0.75)
+    expect(trackFraction(0.25, -100, 200, false)).toBe(0)
+    expect(trackFraction(0.5, 400, 200, false)).toBe(1)
+    expect(trackFraction(0.5, 80, 200, true)).toBe(0.55)
+    // An unmeasured box (never laid out) must not divide by zero.
+    expect(trackFraction(0.4, 120, 0, false)).toBe(0.4)
   })
 })

@@ -29,7 +29,8 @@ export type NumberParam = {
   defaultValue: number
   sliderMin?: number
   sliderMax?: number
-  view?: 'field' | 'stepper' | 'slider' | 'knob' | 'angle' | 'seed'
+  /** 'bar' is the default measured view: the field itself is the track, filled to the value. */
+  view?: 'field' | 'stepper' | 'bar' | 'knob' | 'angle' | 'seed'
   scale?: 'linear' | 'log'
   stops?: number[]
   readOnly?: boolean

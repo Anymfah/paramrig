@@ -36,8 +36,8 @@ Live examples with their complete manifests are on `/docs/controls`;
 - wrap a pointer drag with `beginGesture()` / `endGesture()` so undo records
   one step
 - give every grab handle a hit helper of `--hit-target` (32px), `--hit-target-coarse`
-  (44px) on touch — same pattern as the slider thumb, never a 12px click box
-- offer a non-drag alternative (numeric fields, buttons, or a slider)
+  (44px) on touch — the gauge field takes the whole box, never a 12px click box
+- offer a non-drag alternative (numeric fields, buttons, or arrow keys)
 
 Do not add `if (rig.name === …)` branches in the shell. Keep renderer and
 control choices on the rig module.

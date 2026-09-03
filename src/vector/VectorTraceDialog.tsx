@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/ui/Button'
 import { SelectField } from '@/ui/SelectField'
-import { SliderField } from '@/ui/SliderField'
+import { BarField } from '@/ui/BarField'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { VectorModal } from '@/vector/VectorModal'
 import { DEFAULT_TRACE, MAX_TRACE_COLORS, MIN_TRACE_COLORS, PREVIEW_SIDE, traceBitmap, type TraceLayer } from '@/vector/trace'
@@ -103,11 +103,11 @@ export function VectorTraceDialog({ image, open, onClose, onTrace }: {
           onChange={(mode) => setOptions((current) => ({ ...current, mode: mode as VectorTraceOptions['mode'] }))}
         />
         {options.mode === 'colors' ? (
-          <SliderField label="Bands" value={options.colors} min={MIN_TRACE_COLORS} max={MAX_TRACE_COLORS} step={1} onChange={(colors) => setOptions((current) => ({ ...current, colors }))} />
+          <BarField label="Bands" value={options.colors} min={MIN_TRACE_COLORS} max={MAX_TRACE_COLORS} step={1} onChange={(colors) => setOptions((current) => ({ ...current, colors }))} />
         ) : null}
-        <SliderField label="Threshold" value={Math.round(options.threshold * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => setOptions((current) => ({ ...current, threshold: value / 100 }))} />
-        <SliderField label="Smoothing" value={Math.round(options.smoothing * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => setOptions((current) => ({ ...current, smoothing: value / 100 }))} />
-        <SliderField label="Ignore under" value={Math.round(options.minArea)} min={0} max={400} step={1} unit="px²" onChange={(minArea) => setOptions((current) => ({ ...current, minArea }))} />
+        <BarField label="Threshold" value={Math.round(options.threshold * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => setOptions((current) => ({ ...current, threshold: value / 100 }))} />
+        <BarField label="Smoothing" value={Math.round(options.smoothing * 100)} min={0} max={100} step={1} unit="%" onChange={(value) => setOptions((current) => ({ ...current, smoothing: value / 100 }))} />
+        <BarField label="Ignore under" value={Math.round(options.minArea)} min={0} max={400} step={1} unit="px²" onChange={(minArea) => setOptions((current) => ({ ...current, minArea }))} />
         {error ? <StatusMessage tone="error">{error}</StatusMessage> : null}
         <div className="vector-trace__actions">
           <Button variant="quiet" size="sm" onClick={onClose}>Cancel</Button>

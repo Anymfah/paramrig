@@ -1,7 +1,6 @@
 import { useRef, useState, type CSSProperties } from 'react'
 import type { NumberParam } from '@/rigs/types'
 import { NumberField } from './NumberField'
-import { SliderField } from './SliderField'
 import { usesStepper, snapToStep, type UnitOption } from './numeric'
 import { useControllerGesture, type GestureProps } from './controller-gesture'
 import { IconButton } from './Button'
@@ -24,15 +23,29 @@ function BaseNumberController({param,value,onChange,units,onUnitChange,driven,mi
   const drag=useControllerGesture(gesture)
   const origin=useRef({x:0,y:0,angle:0,value:0})
   const p={label:param.label,value,min:param.min,max:param.max,step:param.step,unit:param.unit,units,onUnitChange,onChange,defaultValue:param.defaultValue,driven,mixed,...gesture}
-  const view=param.view ?? (usesStepper(param)?'stepper':'slider')
   const lo=param.sliderMin ?? param.min, hi=param.sliderMax ?? param.max
   const log=param.scale==='log' && lo>0 && hi>lo
   const fraction=log ? Math.log(Math.max(lo,value)/lo)/Math.log(hi/lo) : (value-lo)/(hi-lo||1)
-  const convert=(u:number)=>{
+  // A measured value reads as a filled field: one row instead of two. Only a discrete count keeps its stepper — a scale with stops or decades is not a count.
+  const view=param.view ?? (usesStepper(param)&&!log&&!param.stops?.length?'stepper':'bar')
+  const valueAt=(u:number)=>{
     let next=log ? lo*Math.pow(hi/lo,u) : lo+(hi-lo)*u
     if(param.stops?.length) next=param.stops.reduce((best,v)=>Math.abs(v-next)<Math.abs(best-next)?v:best,param.stops[0]!)
     else next=snapToStep(next,param.min,param.step)
-    onChange(Math.max(param.min,Math.min(param.max,next)))
+    return Math.max(param.min,Math.min(param.max,next))
+  }
+  const convert=(u:number)=>onChange(valueAt(u))
+  const stopFraction=(stop:number)=>Math.max(0,Math.min(1,log?Math.log(Math.max(lo,stop)/lo)/Math.log(hi/lo):(stop-lo)/(hi-lo||1)))
+  // A log track shows its decades, so the eye knows why the middle is not the average.
+  const decades:number[]=[]
+  if(log)for(let d=Math.pow(10,Math.ceil(Math.log10(lo)));d<=hi;d*=10)if(d>lo)decades.push(d)
+  const ticks=param.stops?.length?param.stops:decades
+  // Where a scale decides the next value, the arrows follow the scale: the next stop, or a percent of the track.
+  const stepScale=(direction:1|-1)=>{
+    if(!param.stops?.length){convert(Math.max(0,Math.min(1,fraction+direction*0.01)));return}
+    const sorted=[...param.stops].sort((a,b)=>a-b)
+    const next=direction>0?sorted.find(v=>v>value):[...sorted].reverse().find(v=>v<value)
+    onChange(next??(direction>0?sorted[sorted.length-1]!:sorted[0]!))
   }
   if(param.readOnly)return <div className="control control--field"><div className="number-value number-value--readonly"><span className="number-value__label">{param.label}</span><output className="number-value__readout">{value.toFixed(2)}</output>{param.unit?<span className="number-value__unit">{param.unit}</span>:null}</div></div>
   if(view==='seed') return <NumberField {...p} variant="stepper" trailing={<Tooltip content="New seed"><IconButton label="New seed" onClick={()=>onChange(param.min+Math.floor(Math.random()*(Math.floor((param.max-param.min)/param.step)+1))*param.step)}><IconDice/></IconButton></Tooltip>}/>
@@ -64,20 +77,5 @@ function BaseNumberController({param,value,onChange,units,onUnitChange,driven,mi
       <span className="controller-dial__ticks" aria-hidden/><span className="controller-dial__arc" aria-hidden/><span className="controller-dial__hand"/><span className="controller-dial__center"/></div></Tooltip></div>
   </div>
   if(view==='field'||view==='stepper') return <NumberField {...p} variant={view}/>
-  if(!log&&!param.stops?.length) return <SliderField {...p} sliderMin={param.sliderMin} sliderMax={param.sliderMax}/>
-  const stopFraction=(stop:number)=>Math.max(0,Math.min(1,log?Math.log(Math.max(lo,stop)/lo)/Math.log(hi/lo):(stop-lo)/(hi-lo||1)))
-  // A log track shows its decades, so the eye knows why the middle is not the average.
-  const decades:number[]=[]
-  if(log)for(let d=Math.pow(10,Math.ceil(Math.log10(lo)));d<=hi;d*=10)if(d>lo)decades.push(d)
-  const ticks=param.stops?.length?param.stops:decades
-  return <div className="controller-stack"><NumberField {...p} variant="field"/><div className="slider-wrap" data-driven={driven?'':undefined} style={{'--p':String(fraction)} as CSSProperties}><span className="slider__track"><span className="slider__fill"/></span>
-    {ticks.map(stop=><span key={stop} className="slider__stop" data-reached={stop<=value||undefined} style={{'--at':String(stopFraction(stop))} as CSSProperties} aria-hidden="true"/>)}
-    <input type="range" className="slider" aria-label={`${param.label} slider`} aria-valuemin={param.min} aria-valuemax={param.max} aria-valuenow={value} aria-valuetext={`${value}${param.unit??''}`} min={0} max={1000} step={1} value={Math.max(0,Math.min(1000,fraction*1000))} disabled={Boolean(driven)} onDoubleClick={()=>{if(!driven)onChange(param.defaultValue)}} onPointerDown={e=>{drag.start(e,true)}} {...drag.handlers} onKeyDown={e=>{
-      if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key))return
-      e.preventDefault()
-      if(e.key==='Home'){convert(0);return}if(e.key==='End'){convert(1);return}
-      const direction=['ArrowLeft','ArrowDown','PageDown'].includes(e.key)?-1:1
-      if(param.stops?.length){const stops=[...param.stops].sort((a,b)=>a-b);onChange(direction>0?stops.find(v=>v>value)??stops[stops.length-1]!:stops.reverse().find(v=>v<value)??stops[stops.length-1]!)}
-      else convert(Math.max(0,Math.min(1,fraction+direction*(e.key.startsWith('Page')?0.1:0.01))))
-    }} onChange={e=>convert(Number(e.target.value)/1000)}/></div></div>
+  return <NumberField {...p} variant="bar" fill={fraction} fromFraction={valueAt} origin={lo<0&&hi>0?-lo/(hi-lo):null} ticks={ticks.length?ticks.map(stopFraction):undefined} onNudge={log||param.stops?.length?stepScale:undefined}/>
 }

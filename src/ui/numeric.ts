@@ -1,6 +1,8 @@
 export const SCRUB_THRESHOLD_PX = 4
 export const SCRUB_PX_PER_STEP = 6
 export const SCRUB_PX_PER_STEP_FINE = 20
+/** How much slower a held Shift makes a gauge drag. */
+export const SCRUB_FINE_DIVISOR = 8
 
 export function formatNumber(value: number, step: number): string {
   const rawDecimals = String(step).split('.')[1]?.length ?? 0
@@ -50,6 +52,15 @@ export function applyScrub(
   const scrubStep = options.fine ? options.step : Math.max(options.step, rangeStep)
   const next = origin + (dx / pxPerStep) * scrubStep
   return clampNumber(snapToStep(next, options.min, options.step), options.min, options.max)
+}
+
+/**
+ * A gauge follows the pointer: crossing the box crosses the whole track, so the filled
+ * edge stays where the hand put it. Shift slows the hand down, it does not change the map.
+ */
+export function trackFraction(origin: number, dx: number, width: number, fine: boolean): number {
+  if (!(width > 0)) return clampNumber(origin, 0, 1)
+  return clampNumber(origin + dx / width / (fine ? SCRUB_FINE_DIVISOR : 1), 0, 1)
 }
 
 export function fineStep(step: number): number {

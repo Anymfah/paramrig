@@ -24,8 +24,7 @@ type BarFieldProps = {
 /**
  * A measured value on one row: the field is its own track, filled to the value, dragged
  * anywhere in the box. Rig parameters reach it through NumberController's `bar` view; panels
- * that declare their controls by hand use this. Keep SliderField where the track carries
- * something a fill cannot — marks, decades, a colour ramp.
+ * that declare their controls by hand use this one. Nothing draws a separate track any more.
  */
 export function BarField({
   label,

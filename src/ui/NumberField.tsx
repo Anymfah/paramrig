@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { IconMinus, IconPlus } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
@@ -8,6 +8,8 @@ import { IconDriven } from '@/ui/icons'
 import {
   SCRUB_THRESHOLD_PX,
   applyScrub,
+  clampNumber,
+  trackFraction,
   evaluateNumberInput,
   formatNumber,
   nudgeNumber,
@@ -34,7 +36,17 @@ type NumberFieldProps = {
   mixed?: boolean
   /** The value comes from elsewhere (an expression, a track, another parameter); the field only shows it. */
   driven?: string
-  variant?: 'slider' | 'stepper' | 'field'
+  variant?: 'slider' | 'stepper' | 'field' | 'bar'
+  /** Where the value sits in its track, 0 to 1. A 'bar' field paints it as a gauge behind the value. */
+  fill?: number
+  /** The value at a point of the track, 0 to 1. A 'bar' drag maps the box's width onto it, so the fill follows the pointer. */
+  fromFraction?: (fraction: number) => number
+  /** Where zero sits in the track, 0 to 1. A bipolar gauge fills from there, so the neutral value reads as empty. */
+  origin?: number | null
+  /** Marks along the track, 0 to 1: a scale's decades, a stepped value's allowed stops. */
+  ticks?: number[]
+  /** Replaces the step-sized arrow nudge where the scale decides the next value — stops, decades. */
+  onNudge?: (direction: 1 | -1) => void
   disabled?: boolean
   onChange: (value: number) => void
   onGestureStart?: () => void
@@ -57,6 +69,11 @@ export function NumberField({
   mixed = false,
   driven,
   variant = 'slider',
+  fill,
+  fromFraction,
+  origin,
+  ticks,
+  onNudge,
   disabled,
   onChange,
   onGestureStart,
@@ -85,6 +102,8 @@ export function NumberField({
     id: number
     startX: number
     origin: number
+    originFill: number
+    width: number
     target: HTMLElement
   } | null>(null)
 
@@ -111,7 +130,8 @@ export function NumberField({
   }
 
   const applyNudge = (direction: 1 | -1) => {
-    onChange(nudgeNumber(valueRef.current, direction, bounds))
+    if (onNudge) onNudge(direction)
+    else onChange(nudgeNumber(valueRef.current, direction, bounds))
   }
 
   const hold = useHoldRepeat(
@@ -156,12 +176,27 @@ export function NumberField({
       endScrub(true)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // An unmount mid-drag — the panel closing, another object selected — must close the history entry it opened.
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      endScrub(true)
+    }
   }, [])
+
+  const level = clampNumber(fill ?? 0, 0, 1)
+  const gaugeStyle = {
+    '--p': String(level),
+    ...(origin !== null && origin !== undefined
+      ? { '--origin': String(origin), '--fill-start': String(Math.min(origin, level)), '--fill-span': String(Math.abs(level - origin)) }
+      : {}),
+  } as CSSProperties
 
   const valueControl = (
     <div
       className="number-value"
+      data-bar={variant === 'bar' ? '' : undefined}
+      data-bipolar={variant === 'bar' && origin !== null && origin !== undefined ? '' : undefined}
+      style={variant === 'bar' ? gaugeStyle : undefined}
       data-scrubbing={scrubbing || undefined}
       data-driven={driven ? '' : undefined}
       data-mixed={mixed || undefined}
@@ -176,6 +211,8 @@ export function NumberField({
             document.activeElement === inputRef.current
               ? parseNumberInput(draft, min, max, step) ?? valueRef.current
               : valueRef.current,
+          originFill: level,
+          width: event.currentTarget.getBoundingClientRect().width,
           target: event.currentTarget,
         }
         event.currentTarget.setPointerCapture(event.pointerId)
@@ -192,7 +229,11 @@ export function NumberField({
         }
         if (gesture.current !== 'scrub') return
         event.preventDefault()
-        const next = applyScrub(state.origin, dx, { ...bounds, fine: event.shiftKey })
+        // The gauge is a map of the track, so it follows the pointer; a bare field has no map and keeps the step-paced scrub.
+        const next =
+          variant === 'bar' && fromFraction && state.width > 0
+            ? fromFraction(trackFraction(state.originFill, dx, state.width, event.shiftKey))
+            : applyScrub(state.origin, dx, { ...bounds, fine: event.shiftKey })
         setDraft(formatNumber(next, step))
         setError(null)
         onChange(next)
@@ -223,6 +264,20 @@ export function NumberField({
         }
       }}
     >
+      {variant === 'bar'
+        ? ticks?.map((at) => (
+            <span
+              key={at}
+              className="number-value__mark"
+              data-reached={at <= level || undefined}
+              style={{ '--at': String(at) } as CSSProperties}
+              aria-hidden="true"
+            />
+          ))
+        : null}
+      {variant === 'bar' && origin !== null && origin !== undefined ? (
+        <span className="number-value__mark" data-origin="" style={{ '--at': String(origin) } as CSSProperties} aria-hidden="true" />
+      ) : null}
       {variant === 'stepper' ? null : (
         <label className="number-value__label" htmlFor={fieldId}>
           {label}
@@ -240,6 +295,11 @@ export function NumberField({
         inputMode="decimal"
         autoComplete="off"
         spellCheck={false}
+        role={variant === 'bar' ? 'spinbutton' : undefined}
+        aria-valuemin={variant === 'bar' ? min : undefined}
+        aria-valuemax={variant === 'bar' ? max : undefined}
+        aria-valuenow={variant === 'bar' && !mixed ? value : undefined}
+        aria-valuetext={variant === 'bar' && !mixed ? `${formatNumber(value, step)}${unit ? ` ${unit}` : ''}` : undefined}
         disabled={disabled}
         readOnly={Boolean(driven)}
         placeholder={mixed ? 'Mixed' : undefined}
@@ -392,5 +452,5 @@ export function NumberField({
       ) : null}
     </>
   )
-  return variant === 'field' ? <div className="control control--field">{field}</div> : field
+  return variant === 'field' || variant === 'bar' ? <div className="control control--field">{field}</div> : field
 }

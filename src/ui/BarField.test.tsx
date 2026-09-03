@@ -25,6 +25,6 @@ describe('BarField', () => {
     expect(gauge.style.getPropertyValue('--origin')).toBe('0.5')
     expect(gauge.style.getPropertyValue('--fill-start')).toBe('0.3')
     expect(gauge.style.getPropertyValue('--fill-span')).toBe('0.2')
-    expect(gauge.querySelector('.number-value__origin')).toBeTruthy()
+    expect(gauge.querySelector('.number-value__mark[data-origin]')).toBeTruthy()
   })
 })

@@ -216,7 +216,6 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
 
 /* Fields */
 .field { display: flex; flex-direction: column; gap: var(--space-2); }
-.slider-field { display: flex; flex-direction: column; gap: var(--space-2); }
 .field--row { flex-direction: row; align-items: center; justify-content: space-between; }
 .field__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 .field__label,
@@ -243,8 +242,6 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   align-items: center;
   min-width: 0;
 }
-.control--slider { row-gap: var(--space-2); }
-.control--slider .slider-wrap,
 .control--curve .curve-field,
 .control--curve .curve-field__exact,
 .control--gradient .gradient-bar,
@@ -308,6 +305,63 @@ button.btn--solid:focus-visible { background: var(--accent-hover); }
   cursor: text;
 }
 .number-value[data-scrubbing] .number-value__input { cursor: ew-resize; user-select: none; }
+
+/*
+ * A measured field is its own track. At rest the level is a filet on the bottom edge; the
+ * full gauge only comes up under the pointer, so a column of them stays quiet to read.
+ * The box is the drag target, so the 32px rule holds without a thumb to enlarge.
+ */
+.number-value[data-bar] { position: relative; overflow: clip; }
+.number-value[data-bar] > *:not(.number-value__mark) { position: relative; z-index: 1; }
+.number-value[data-bar]::before,
+.number-value[data-bar]::after {
+  content: '';
+  position: absolute;
+  inset-inline-start: 0;
+  width: calc(var(--p, 0) * 100%);
+  z-index: 0;
+  pointer-events: none;
+}
+.number-value[data-bar]::before {
+  inset-block: 0;
+  background: var(--accent-subtle);
+  opacity: 0;
+  transition: opacity var(--duration-instant) var(--ease-out);
+}
+.number-value[data-bar]::after {
+  inset-block-end: 0;
+  height: 2px;
+  background: var(--text-muted);
+  transition: background-color var(--duration-instant) var(--ease-out);
+}
+.number-value[data-bar]:hover::before,
+.number-value[data-bar][data-scrubbing]::before,
+.number-value[data-bar]:has(:focus-visible)::before { opacity: 1; }
+.number-value[data-bar]:hover::after,
+.number-value[data-bar][data-scrubbing]::after,
+.number-value[data-bar]:has(:focus-visible)::after { background: var(--text-primary); }
+.number-value[data-bar][data-driven]::after { background: var(--text-secondary); }
+.number-value[data-bar][data-driven]::before { opacity: 0; }
+/* A bipolar gauge grows out of its zero, so the neutral value reads as empty rather than half full. */
+.number-value[data-bar][data-bipolar]::before,
+.number-value[data-bar][data-bipolar]::after {
+  inset-inline-start: calc(var(--fill-start, 0) * 100%);
+  width: calc(var(--fill-span, 0) * 100%);
+}
+/* The scale's own marks: a stepped value's stops, a decade of a logarithmic track, the bipolar zero. */
+.number-value__mark {
+  position: absolute;
+  inset-block-end: 0;
+  inset-inline-start: calc(var(--at, 0.5) * 100%);
+  width: 1px;
+  height: 6px;
+  margin-inline-start: -0.5px;
+  background: var(--border-strong);
+  pointer-events: none;
+  z-index: 0;
+}
+.number-value__mark[data-reached] { background: var(--text-muted); }
+.number-value__mark[data-origin] { height: 8px; background: var(--text-muted); }
 
 /*
  * A measured field is its own track. At rest the level is a filet on the bottom edge; the
@@ -433,58 +487,6 @@ button.number-value__unit--menu:active { transform: scale(0.96); }
   cursor: text;
 }
 
-.slider-wrap {
-  --thumb-size: var(--hit-target);
-  position: relative;
-  display: grid;
-  align-items: center;
-  min-height: var(--thumb-size);
-  overflow: clip;
-}
-.slider__origin {
-  position: absolute;
-  left: calc(var(--thumb-size) + var(--origin, 0.5) * (100% - 2 * var(--thumb-size)));
-  top: 50%;
-  width: 1px;
-  height: 8px;
-  margin-top: -4px;
-  background: var(--text-muted);
-  pointer-events: none;
-  z-index: 0;
-}
-.slider__track {
-  position: absolute;
-  inset-inline: calc(var(--thumb-size) / 2);
-  top: 50%;
-  height: 4px;
-  margin-top: -2px;
-  border-radius: var(--radius-full);
-  background: var(--border-default);
-  pointer-events: none;
-  z-index: 0;
-  box-shadow: 0 0 0 0 transparent;
-  transition: box-shadow var(--duration-instant) var(--ease-out);
-}
-.slider-wrap:hover .slider__track,
-.slider-wrap:has(.slider:focus-visible) .slider__track,
-.slider-wrap:has(.slider:active) .slider__track,
-.slider-wrap:has(.slider[data-scrubbing]) .slider__track {
-  box-shadow: 0 1px 0 0 var(--border-default), 0 -1px 0 0 var(--border-default);
-}
-.slider__fill {
-  display: block;
-  height: 100%;
-  width: calc(var(--p, 0) * (100% - var(--thumb-size)) + var(--thumb-size) / 2);
-  border-radius: inherit;
-  background: var(--text-primary);
-}
-/* A bipolar track fills from its origin, so the eye reads the sign before the number. */
-.slider-wrap[data-bipolar] .slider__fill {
-  margin-inline-start: calc(var(--fill-start, 0) * (100% - var(--thumb-size)));
-  width: calc(var(--fill-span, 0) * (100% - var(--thumb-size)));
-  border-radius: 0;
-}
-.slider-wrap[data-bipolar] .slider__origin { z-index: 1; background: var(--text-primary); }
 .slider {
   appearance: none;
   background: transparent;
@@ -532,37 +534,6 @@ button.number-value__unit--menu:active { transform: scale(0.96); }
   transition-duration: 90ms;
 }
 input.slider:focus-visible { outline: none; }
-.slider__stop {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--thumb-size) / 2 + var(--at, 0) * (100% - var(--thumb-size)));
-  width: 2px;
-  height: 10px;
-  margin: -5px 0 0 -1px;
-  border-radius: 1px;
-  background: var(--border-strong);
-  pointer-events: none;
-  z-index: 0;
-}
-.slider__stop[data-reached] { background: var(--text-primary); }
-.slider__overflow {
-  position: absolute;
-  top: 50%;
-  z-index: 2;
-  width: 0;
-  height: 0;
-  margin-top: -4px;
-  border: 4px solid transparent;
-  pointer-events: none;
-}
-.slider__overflow--start {
-  left: calc(var(--thumb-size) / 2);
-  border-right-color: var(--text-primary);
-}
-.slider__overflow--end {
-  right: calc(var(--thumb-size) / 2);
-  border-left-color: var(--text-primary);
-}
 .slider::-moz-range-track {
   height: 4px;
   background: transparent;
@@ -852,8 +823,6 @@ input.slider:focus-visible { outline: none; }
 .number-value__driven { display: inline-flex; flex: none; color: var(--text-secondary); }
 .number-value[data-driven] { cursor: default; background: color-mix(in srgb, var(--accent-subtle) 60%, var(--surface-inset)); }
 .number-value[data-driven] .number-value__input { cursor: default; color: var(--text-secondary); }
-.slider-wrap[data-driven] { opacity: 0.55; }
-.slider-wrap[data-driven] .slider { cursor: default; }
 .controller-dial[data-driven] { cursor: default; opacity: 0.55; }
 .controller-dial[data-kind='angle'] { cursor: grab; }
 .controller-dial[data-kind='angle']:active { cursor: grabbing; }
@@ -1429,7 +1398,6 @@ a.menu__item:visited { color: var(--text-primary); }
   .nav-item, .nav-folder, .icon-btn, .compare-toggle button, .menu__item { min-height: 44px; }
   .icon-btn { width: 44px; }
   .field .icon-btn, .control .icon-btn { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
-  .inspector .slider-wrap { --thumb-size: var(--hit-target-coarse); }
   .inspector .gradient-bar { --handle-size: var(--hit-target-coarse); }
   .inspector .gradient-handle { border-width: 16px; }
   .inspector .gradient-handle:hover,
@@ -1478,7 +1446,6 @@ a.menu__item:visited { color: var(--text-primary); }
 .context-controller__actions .menu__item:focus-visible { background: var(--surface-raised); }
 .context-controller__actions .menu__item:active { background: var(--surface-inset); }
 @media (any-pointer: coarse) {
-  .context-controller .slider-wrap { --thumb-size: var(--hit-target-coarse); }
   .context-controller .slider::-webkit-slider-thumb, .context-controller .slider::-moz-range-thumb { border-width: 16px; }
 }
 .snapshot-name { width: 100%; min-width: 0; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; padding: var(--space-1); }
@@ -1595,10 +1562,6 @@ a.menu__item:visited { color: var(--text-primary); }
 .radial-controller__zones .tt__anchor { display: flex; justify-content: center; }
 .radial-controller__zone-label { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-radius: var(--radius-xs); }
 .radial-controller__zone-label:focus-visible { outline: none; color: var(--text-primary); }
-.range-controller__fill { cursor: grab; }
-.range-controller:active .range-controller__fill { cursor: grabbing; }
-.range-controller .tt__anchor { position: absolute; inset-block: 0; display: contents; }
-.range-controller__fill::before { content: ''; position: absolute; inset: -14px 0; }
 .controller-pad {
   --pad-origin-x: 50%;
   --pad-origin-y: 50%;
@@ -1660,10 +1623,6 @@ a.menu__item:visited { color: var(--text-primary); }
 .controller-point[data-dropping] { opacity: 0.4; }
 .controller-point[data-dropping]::after { border-style: dashed; background: transparent; }
 .points-controller svg { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.range-controller { position: relative; height: 4px; background: var(--rule); border-radius: var(--radius-full); margin: var(--space-5) var(--space-4); cursor: pointer; touch-action: none; }
-.range-controller::before { content: ''; position: absolute; inset: -14px 0; }
-.range-controller__fill { position: absolute; inset-block: 0; background: var(--text-secondary); }
-.range-controller .controller-point { top: 50%; }
 .dial-row { display: flex; align-items: center; justify-content: center; gap: var(--space-4); padding: var(--space-1) 0; }
 .controller-dial {
   --dial-start: -135deg;
@@ -1893,7 +1852,6 @@ a.menu__item:visited { color: var(--text-primary); }
 @media (max-width: 600px) { .catalog-toolbar { grid-template-columns: minmax(0,1fr); } .catalog-toolbar > .control { width: 100%; justify-self: stretch; } .controller-components { grid-template-columns: minmax(0,1fr); } }
 @media (any-pointer: coarse) {
   .controller-point { --point-hit: var(--hit-target-coarse); }
-  .slider-wrap { --thumb-size: var(--hit-target-coarse); }
   .gradient-bar { --handle-size: var(--hit-target-coarse); }
   .gradient-handle { border-width: 16px; }
   .gradient-handle:hover, .gradient-handle:focus-visible { border-width: 10px; }
@@ -1905,7 +1863,7 @@ a.menu__item:visited { color: var(--text-primary); }
 }
 @media (prefers-reduced-motion: reduce) { .controller-point,.text-field,.controller-dial,.choice-controller__option,.resource-drop,.anchor-presets button,.controller-list-item__toggle,.controller-list-item__toggle svg { transition: none; } }
 @media (prefers-reduced-motion: reduce) { .visual-gizmo,.texture-frame,.visual-gizmo__cube,.visual-camera__frustum { transition: none; } }
-@media (forced-colors: active) { .controller-point::after,.controller-dial__hand,.controller-dial__center,.controller-dial__arc,.range-controller__fill { background: Highlight; } .controller-pad,.points-controller,.controller-dial,.resource-drop,.visual-gizmo,.texture-frame { border-color: ButtonText; } .choice-controller__option[aria-checked="true"] { background: Highlight; color: HighlightText; box-shadow: none; } .controller-dial__center { border-color: Canvas; } .radial-controller__zone { fill: Canvas; stroke: ButtonText; } .visual-gizmo__box,.texture-frame__crop { border-color: ButtonText; background: Canvas; } }
+@media (forced-colors: active) { .controller-point::after,.controller-dial__hand,.controller-dial__center,.controller-dial__arc { background: Highlight; } .controller-pad,.points-controller,.controller-dial,.resource-drop,.visual-gizmo,.texture-frame { border-color: ButtonText; } .choice-controller__option[aria-checked="true"] { background: Highlight; color: HighlightText; box-shadow: none; } .controller-dial__center { border-color: Canvas; } .radial-controller__zone { fill: Canvas; stroke: ButtonText; } .visual-gizmo__box,.texture-frame__crop { border-color: ButtonText; background: Canvas; } }
 .tl-view-switch { padding-inline: var(--space-3); border-bottom: 1px solid var(--rule); }
 .timeline-graph { flex: 0 0 auto; max-height: 320px; overflow-y: auto; padding: var(--space-3) var(--space-5); border-bottom: 1px solid var(--rule); }
 .timeline-graph .points-controller { height: 128px; }

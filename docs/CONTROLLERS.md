@@ -1,6 +1,6 @@
 # Controller contracts
 
-The catalog at `/docs/controls` contains 62 interactive examples across ten
+The catalog at `/docs/controls` contains 66 interactive examples across ten
 families. `/r/controller-lab` opens the same manifest in the full workspace.
 Both use `src/ui/ParameterField.tsx`; catalog controls are not separate demos.
 Individual examples expose their current JSON value and complete declaration
@@ -10,7 +10,7 @@ from the code icon in the card header, which opens a full-height inspector.
 
 | Family | Instruments |
 | --- | --- |
-| Numbers | Exact field with convertible display units, stepper, slider, bipolar/logarithmic/discrete scales, knob, angle, minimum/maximum range, seed |
+| Numbers | Exact field with convertible display units, stepper, gauge field, bipolar/logarithmic/discrete scales, knob, angle, minimum/maximum range, seed |
 | Position & dimensions | Vectors 2D/3D, XY pad, dimensions with proportional lock, directions 2D/3D, rotation, anchor presets, transform |
 | Color & appearance | RGB/HSL and hexadecimal color, alpha, palette, gradient stops, opacity ramp, gradient geometry, HDR color plus intensity, visual material choice, shadow |
 | Choices | Switch, tri-state choice, segmented choices, dropdown, searchable options, multiple selection, object reference |
@@ -31,6 +31,21 @@ The primitive and composite types live in `src/rigs/types.ts` and
 - Numbers can declare `view`, `scale`, `stops`, units and display bounds.
   Logarithmic scales require positive bounds; discrete stops should be sorted
   and inside the numeric bounds.
+- A measured number with no declared `view` renders as `bar`: the field is its
+  own track, filled to the value, one row instead of two. The box is the drag
+  target, so it keeps the 32px rule without a thumb, and crossing the box
+  crosses the whole track. Only a discrete count keeps its stepper.
+- A gauge carries its own scale. A logarithmic track marks its decades, declared
+  `stops` mark their allowed values, and the arrow keys then follow those marks
+  instead of the raw step. A bipolar range fills from its zero, so the neutral
+  value reads as empty rather than half full.
+- A range is two gauges, one per bound, each anchored to the other: both rows
+  paint the same window while each row keeps its own number, and neither bound
+  can pass the other.
+- Panels that declare their own controls — the vector editor, colour opacity —
+  use `src/ui/BarField.tsx` for the same instrument. Nothing in the app draws a
+  separate track any more, apart from the two places where the track itself is
+  the information: the hue ramp in the colour picker, and the timeline playhead.
 - Convertible display units declare a positive conversion factor from their
   displayed unit to the manifest's base unit. Sessions, drafts, snapshots and
   exported values always keep the normalized base number.

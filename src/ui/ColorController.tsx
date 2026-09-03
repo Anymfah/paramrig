@@ -2,7 +2,7 @@ import { useState, type CSSProperties } from 'react'
 import type { ColorParam } from '@/rigs/types'
 import { ColorField } from './ColorField'
 import { NumberField } from './NumberField'
-import { SliderField } from './SliderField'
+import { BarField } from './BarField'
 import { SelectField } from './SelectField'
 import type { GestureProps } from './controller-gesture'
 
@@ -26,7 +26,7 @@ export function ColorController({param,value,onChange,...gesture}:GestureProps &
   const defaultHex=param.defaultValue.slice(0,7)
   if(!param.alpha&&!param.channels)return <ColorField label={param.label} value={hex} defaultValue={defaultHex} onChange={onChange} {...gesture}/>
   return <div className="controller-stack"><ColorField label={param.label} value={hex} defaultValue={defaultHex} onChange={rgba} {...gesture}/>
-    {param.alpha?<SliderField label="Opacity" value={alpha*100} min={0} max={100} step={1} unit="%" onChange={n=>rgba(hex,n/100)} {...gesture}/>:null}
+    {param.alpha?<BarField label="Opacity" value={alpha*100} min={0} max={100} step={1} unit="%" onChange={n=>rgba(hex,n/100)} {...gesture}/>:null}
     {param.channels?<><SelectField label="Channels" value={mode} options={[{value:'rgb',label:'RGB'},{value:'hsl',label:'HSL'}]} onChange={setMode}/><div className="controller-components" style={{'--component-count':3} as CSSProperties}>{(mode==='rgb'?['R','G','B']:['H','S','L']).map((label,i)=><NumberField key={label} label={label} value={values[i]!} min={0} max={mode==='rgb'?255:i===0?360:100} step={1} variant="field" onChange={n=>change(i,n)} {...gesture}/>)}</div></>:null}
   </div>
 }
