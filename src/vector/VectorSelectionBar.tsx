@@ -11,7 +11,7 @@ import { VectorChip } from '@/vector/VectorChip'
 import { booleanLabel, BOOLEAN_OPERATIONS } from '@/vector/booleanGroups'
 import type { BooleanOperation } from '@/vector/booleans'
 import { SHORTCUTS, withShortcut } from '@/vector/commands'
-import type { SelectionAnchor } from '@/vector/selectionAnchor'
+import type { SelectionBarPlacement } from '@/vector/VectorCanvas'
 
 /** What the bar does to the objects under it. */
 export type SelectionBarActions = {
@@ -43,34 +43,51 @@ export type NodeBarActions = {
   onDeleteNodes: () => void
 }
 
-const BAR_OFFSET = 12
-
 /**
- * The chip that follows the selection: what you do to what you have, within reach of it, instead of
- * across the window in a toolbar. It carries the same actions as the canvas menu, in the order they
- * are used, and hands the rare ones to a ⋯.
+ * What you do to what you have, in one place. It parks at the bottom of the canvas rather than over
+ * the selection: a bar that moves with every selection is never in the same place twice, and over a
+ * shape it covers the thing it is there to act on. Its grip drags it wherever it is wanted, and the
+ * canvas remembers where that was.
  */
-export function VectorSelectionBar({ anchor, actions, nodeActions }: {
-  anchor: SelectionAnchor
+export function VectorSelectionBar({ placement, actions, nodeActions }: {
+  placement: SelectionBarPlacement
   actions: SelectionBarActions
   nodeActions: NodeBarActions
 }) {
   // Handed over as custom properties, so a narrow layout can place the bar itself.
-  const style = {
-    '--bar-x': `${anchor.x}px`,
-    '--bar-y': `${anchor.placement === 'above' ? anchor.y - BAR_OFFSET : anchor.y + BAR_OFFSET}px`,
-  } as CSSProperties
+  const style = { '--bar-x': `${placement.x}px`, '--bar-y': `${placement.y}px` } as CSSProperties
   return (
     <VectorChip
       className="vector-selection-bar"
       style={style}
       role="toolbar"
-      dataset={{ placement: anchor.placement, mode: anchor.mode }}
+      dataset={{ mode: placement.mode, dragging: placement.dragging ? 'true' : undefined }}
     >
-      {anchor.mode === 'nodes'
+      <Tooltip content="Drag to move this bar · double-click to put it back">
+        <button
+          type="button"
+          className="vector-selection-bar__grip"
+          aria-label="Move the actions bar"
+          onPointerDown={placement.onGrip}
+          onDoubleClick={placement.onReset}
+        >
+          <IconGrip />
+        </button>
+      </Tooltip>
+      {placement.mode === 'nodes'
         ? <NodeButtons actions={nodeActions} />
         : <ObjectButtons actions={actions} />}
     </VectorChip>
+  )
+}
+
+function IconGrip() {
+  return (
+    <svg aria-hidden width={16} height={16} viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" />
+      <circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" />
+      <circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" />
+    </svg>
   )
 }
 
@@ -101,6 +118,7 @@ function ObjectButtons({ actions }: { actions: SelectionBarActions }) {
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+      <span className="vector-selection-bar__sep" aria-hidden="true" />
       <BarButton label="Flip horizontal" tip={withShortcut('Flip horizontal', 'flipHorizontal')} onClick={() => actions.onFlip('x')}><IconFlipH /></BarButton>
       <BarButton label="Flip vertical" tip={withShortcut('Flip vertical', 'flipVertical')} onClick={() => actions.onFlip('y')}><IconFlipV /></BarButton>
       <BarButton label="Rotate 90 degrees" tip={withShortcut('Rotate 90°', 'rotate90')} onClick={actions.onRotate90}><IconRotate90 /></BarButton>
@@ -111,6 +129,7 @@ function ObjectButtons({ actions }: { actions: SelectionBarActions }) {
         {actions.hidden ? <IconEyeOff /> : <IconEye />}
       </BarButton>
       <BarButton label="Delete selection" tip={withShortcut('Delete', 'delete')} onClick={actions.onDelete}><IconTrash /></BarButton>
+      <span className="vector-selection-bar__sep" aria-hidden="true" />
       <DropdownMenu.Root modal={false}>
         <Tooltip content="More actions">
           <DropdownMenu.Trigger asChild>

@@ -1980,8 +1980,8 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 }
 
 /*
- * What you do to what you have, over the thing itself. It stands above the selection box, or under
- * it when the top of the box has left the canvas, and steps aside for the whole of any gesture.
+ * What you do to what you have, in one place. It parks at the bottom of the canvas, out of the way
+ * of the drawing, and its grip drags it wherever it is wanted.
  */
 .vector-selection-bar {
   display: flex;
@@ -1989,18 +1989,42 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
   gap: var(--space-1);
   left: var(--bar-x);
   top: var(--bar-y);
-  height: 36px;
+  height: 44px;
   padding-inline: var(--space-1);
+  transform: translate(-50%, -100%);
   z-index: 5;
   animation: vector-bar-in var(--duration-instant) var(--ease-out) both;
 }
-.vector-selection-bar[data-placement='above'] { transform: translate(-50%, -100%); }
-.vector-selection-bar[data-placement='below'] { transform: translate(-50%, 0); }
-@keyframes vector-bar-in { from { opacity: 0; } }
+.vector-selection-bar[data-dragging] { animation: none; cursor: grabbing; }
+@keyframes vector-bar-in { from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); } }
+.vector-selection-bar__grip {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+.vector-selection-bar__grip:hover { color: var(--text-secondary); background: var(--accent-subtle); }
+.vector-selection-bar__grip:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.vector-selection-bar[data-dragging] .vector-selection-bar__grip { cursor: grabbing; color: var(--text-primary); }
+.vector-selection-bar__sep {
+  width: 1px;
+  height: 20px;
+  flex: none;
+  margin-inline: var(--space-1);
+  background: var(--border-default);
+}
 .vector-selection-bar .icon-btn,
 .vector-selection-bar__more {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   display: grid;
   place-items: center;
   border: 0;
@@ -2010,7 +2034,7 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 }
 .vector-selection-bar__more {
   width: auto;
-  min-width: 32px;
+  min-width: 36px;
   padding-inline: var(--space-1);
   display: inline-flex;
   gap: 1px;
@@ -2024,15 +2048,13 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-selection-bar__more:disabled { color: var(--text-muted); opacity: 0.5; cursor: not-allowed; }
 .vector-selection-bar__menu { min-width: 12rem; }
 @media (pointer: coarse) {
-  .vector-selection-bar { height: 44px; }
+  .vector-selection-bar { height: 52px; }
   .vector-selection-bar .icon-btn,
-  .vector-selection-bar__more { width: 40px; height: 40px; }
+  .vector-selection-bar__more { width: 44px; height: 44px; }
+  .vector-selection-bar__grip { width: 28px; height: 44px; }
 }
 @media (width < 48em) {
-  /*
-   * On one narrow column the selection bar stops floating: it becomes the bar at the foot of the
-   * canvas, where a thumb reaches it and where it covers nothing.
-   */
+  /* On one narrow column there is nowhere to park it: it spans the foot of the canvas. */
   .vector-selection-bar {
     left: 0;
     right: 0;
@@ -2040,12 +2062,13 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
     top: auto;
     width: 100%;
     justify-content: space-around;
+    transform: none;
     border-inline: 0;
     border-block-end: 0;
     border-radius: 0;
   }
-  .vector-selection-bar[data-placement='above'],
-  .vector-selection-bar[data-placement='below'] { transform: none; }
+  .vector-selection-bar__grip,
+  .vector-selection-bar__sep { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .vector-selection-bar { animation: none; }

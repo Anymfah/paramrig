@@ -221,17 +221,17 @@ export default run('chantier-q', async ({ page, check, log, helpers }) => {
   await page.waitForTimeout(400)
   const nodeBar = await page.evaluate(() => {
     const bar = document.querySelector('.vector-selection-bar').getBoundingClientRect()
-    const shape = document.querySelector('[data-vector-element] path').getBoundingClientRect()
+    const canvas = document.querySelector('.vector-canvas').getBoundingClientRect()
     const covered = [...document.querySelectorAll('.vector-nodes__point')]
       .filter((node) => {
         const r = node.getBoundingClientRect()
         return r.left < bar.right && r.right > bar.left && r.top < bar.bottom && r.bottom > bar.top
       })
-    return { covered: covered.length, above: bar.bottom <= shape.top + 1 }
+    return { covered: covered.length, parked: Math.round(canvas.bottom - bar.bottom) }
   })
   log(`MEASURE node bar: ${JSON.stringify(nodeBar)}`)
   check('the node bar covers no node', nodeBar.covered === 0, JSON.stringify(nodeBar))
-  check('and hangs off the path instead', nodeBar.above, JSON.stringify(nodeBar))
+  check('and parks at the foot of the canvas like the object one', nodeBar.parked === 16, JSON.stringify(nodeBar))
 
 })
 

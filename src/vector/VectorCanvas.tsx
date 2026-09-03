@@ -17,7 +17,7 @@ import { canvasMeasure, resizeTextPatch, textProperties } from '@/vector/text'
 import { MAX_ZOOM, MIN_ZOOM, measurementLabel, nextZoom, zoomAround, zoomToBox, type Measurement } from '@/vector/measure'
 import { constrainToAngle, faceNodeIds, handlePolar } from '@/vector/nodeEdit'
 import { VectorChip } from '@/vector/VectorChip'
-import { selectionAnchorFor, type SelectionAnchor } from '@/vector/selectionAnchor'
+import { barPosition, clampBarOffset, DEFAULT_BAR_OFFSET, selectionBarMode, type BarOffset, type SelectionBarMode } from '@/vector/selectionBar'
 import { VectorTextEditor } from '@/vector/VectorTextEditor'
 import {
   cubicAt, bendSegment, deleteNodes, deleteSegments, insertNodeOnSegment, moveHandle, moveNodes, nearestSegment, networkFromRuns, normalizeWorld, segmentCubic, smoothSegments, toggleNodeSmooth,
@@ -150,12 +150,25 @@ type VectorCanvasProps = {
   onGestureEnd: (label?: string) => void
   onGestureCancel: () => void
   /**
-   * Draws whatever should float over the selection. The canvas works out where that is — and when
-   * it should not be there at all, which is during any gesture — and hands the point over.
+   * Draws the bar of actions for the selection. The canvas works out whether there is one, which
+   * set of actions it holds and where it has been parked, and hands that over.
    */
-  overlay?: (anchor: SelectionAnchor | null) => ReactNode
+  overlay?: (placement: SelectionBarPlacement | null) => ReactNode
   /** What the shape tool draws: a plain polygon, or a star with its points pulled in. */
   shape?: PolygonProperties
+  /** Where the bar of actions was last parked, and where to write it when it is moved. */
+  barOffset?: BarOffset
+  onBarOffset?: (offset: BarOffset) => void
+}
+
+/** Everything the bar of actions needs: which set it holds, where it sits, and how to move it. */
+export type SelectionBarPlacement = {
+  mode: SelectionBarMode
+  x: number
+  y: number
+  dragging: boolean
+  onGrip: (event: ReactPointerEvent<HTMLElement>) => void
+  onReset: () => void
 }
 
 /** What a modal G / R / S transform is called in the history. */
@@ -202,6 +215,8 @@ export function VectorCanvas({
   onGestureCancel,
   overlay,
   shape = { sides: DEFAULT_SIDES, innerRatio: DEFAULT_INNER_RATIO },
+  barOffset = DEFAULT_BAR_OFFSET,
+  onBarOffset,
 }: VectorCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null)
   const instanceId = useId().replace(/:/g, '')
@@ -273,8 +288,62 @@ export function VectorCanvas({
   const [coarse, setCoarse] = useState(false)
   const [textEditId, setTextEditId] = useState<string | null>(null)
   const [dropping, setDropping] = useState(false)
-  /** True from the moment a pointer goes down on the canvas until it comes up: the chips stand back. */
-  const [busy, setBusy] = useState(false)
+  const [barDragging, setBarDragging] = useState(false)
+  /** The bar measures itself as it is grabbed, so the clamp knows how wide it actually is. */
+  const barSize = useRef({ width: 360, height: 44 })
+  const barDrag = useRef<{ pointerId: number; x: number; y: number; from: BarOffset } | null>(null)
+
+  const onBarOffsetRef = useRef(onBarOffset)
+  onBarOffsetRef.current = onBarOffset
+  const viewportSizeRef = useRef({ width: 0, height: 0 })
+
+  const measureBar = useCallback(() => {
+    const node = viewportRef.current?.querySelector('.vector-selection-bar')
+    if (node) {
+      const box = node.getBoundingClientRect()
+      barSize.current = { width: box.width, height: box.height }
+    }
+    return barSize.current
+  }, [])
+
+  const barOffsetRef = useRef(barOffset)
+  barOffsetRef.current = barOffset
+
+  useEffect(() => {
+    if (!barDragging) return
+    const onMove = (event: PointerEvent) => {
+      const drag = barDrag.current
+      if (!drag || drag.pointerId !== event.pointerId) return
+      const next = clampBarOffset(
+        { dx: drag.from.dx + event.clientX - drag.x, dy: drag.from.dy + event.clientY - drag.y },
+        viewportSizeRef.current,
+        barSize.current,
+      )
+      onBarOffsetRef.current?.(next)
+    }
+    const onUp = () => {
+      barDrag.current = null
+      setBarDragging(false)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [barDragging])
+
+  const startBarDrag = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+    measureBar()
+    barDrag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, from: barOffsetRef.current }
+    setBarDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }, [measureBar])
   const [cropId, setCropId] = useState<string | null>(null)
   const [imagePlaceId, setImagePlaceId] = useState<string | null>(null)
   const [droppingStop, setDroppingStop] = useState(false)
@@ -2049,19 +2118,29 @@ export function VectorCanvas({
   }
   const editingWorld = editing ? worldNetwork(editing) : null
   const nodeBox = editing && editingWorld && selectedNodeIds.length > 1 ? nodeBoundsOf(editingWorld, selectedNodeIds) : null
-  const selectionAnchor = selectionAnchorFor({
+  const barMode = selectionBarMode({
     tool,
-    busy: busy || panning || !!transformStatus || !!textEditId || !!cropId || dropping,
-    // In node mode the bar hangs off the whole path, not off the nodes: anchored on a node it lands
-    // on top of the very points it is there to act on.
-    bounds: tool === 'node'
-      ? (editing ? inkSelectionBounds([editing]) : null)
-      : (selectedLeaves.length ? inkSelectionBounds(selectedLeaves) : null),
-    viewport: viewportSize,
-    zoom,
-    pan,
-    page: { width: document.width, height: document.height },
+    hasSelection: tool === 'node' ? !!editing : selectedLeaves.length > 0,
+    // Text editing, cropping and a drop each own the whole surface for as long as they last.
+    busy: !!textEditId || !!cropId || dropping,
   })
+  useEffect(() => {
+    if (!viewportSize.width || !viewportSize.height) return
+    viewportSizeRef.current = viewportSize
+    const held = barOffsetRef.current
+    const inside = clampBarOffset(held, viewportSize, barSize.current)
+    if (inside.dx !== held.dx || inside.dy !== held.dy) onBarOffsetRef.current?.(inside)
+  }, [viewportSize])
+
+  const barPlacement: SelectionBarPlacement | null = barMode && viewportSize.width > 0
+    ? {
+      mode: barMode,
+      ...barPosition(barOffset, viewportSize, barSize.current),
+      dragging: barDragging,
+      onGrip: startBarDrag,
+      onReset: () => onBarOffsetRef.current?.(DEFAULT_BAR_OFFSET),
+    }
+    : null
 
   // Cropping owns the overlay: the ordinary resize handles would sit on top of the crop ones.
   const showHandles = (tool === 'select' || tool === 'scale') && selectedLeaves.length > 0 && !editing && !cropping
@@ -2177,7 +2256,6 @@ export function VectorCanvas({
       data-rulers={viewOptions.rulers || undefined}
       style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background, '--zoom': String(zoom) } as CSSProperties}
       onPointerDownCapture={(event) => {
-        if (!(event.target instanceof Element) || !event.target.closest('.vector-chip')) setBusy(true)
         if (event.button !== 1 && !(event.button === 0 && (spaceHeld.current || tool === 'hand'))) return
         event.preventDefault()
         event.stopPropagation()
@@ -2190,8 +2268,6 @@ export function VectorCanvas({
         if (!active || active.pointerId !== event.pointerId) return
         onPanChange({ x: active.origin.x + event.clientX - active.x, y: active.origin.y + event.clientY - active.y })
       }}
-      onPointerUpCapture={() => setBusy(false)}
-      onPointerCancelCapture={() => setBusy(false)}
       onPointerUp={(event) => {
         if (panDrag.current?.pointerId !== event.pointerId) return
         panDrag.current = null
@@ -2199,7 +2275,7 @@ export function VectorCanvas({
         try { event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* already released */ }
       }}
       onPointerCancel={() => { panDrag.current = null; setPanning(false) }}
-      onLostPointerCapture={() => { panDrag.current = null; setPanning(false); setBusy(false) }}
+      onLostPointerCapture={() => { panDrag.current = null; setPanning(false) }}
       onPointerLeave={() => { setHoveredId(null); if (tool === 'pen') setPenCursor(null) }}
       onDragOver={(event) => {
         if (event.dataTransfer.types.includes('application/x-paramrig-component')) {
@@ -2441,7 +2517,7 @@ export function VectorCanvas({
       ) : null}
       {nodeTip ? <VectorChip className="vector-tip" style={{ left: nodeTip.x, top: nodeTip.y }}>{nodeTip.label}</VectorChip> : null}
       {hud ? <VectorChip className="vector-hud" role="status" live="polite" style={{ left: hud.x, top: hud.y }}>{hud.label}</VectorChip> : null}
-      {overlay?.(selectionAnchor) ?? null}
+      {overlay?.(barPlacement) ?? null}
       {viewOptions.minimap ? (
         <Minimap
           document={document}

@@ -49,7 +49,8 @@ import { serializeVectorMarkup } from '@/vector/document'
 import { ensureFont, ensureFonts } from '@/vector/fontLoader'
 import { boxBounds, boxCenter, copyAngles, IDENTITY_TRANSFORM, numericPatches, rotatedCopyPatches, type NumericTransform } from '@/vector/repeat'
 import { VectorFileMenu } from '@/vector/VectorFileMenu'
-import { readInspectorPrefs, tabOf, withTab, writeInspectorPrefs, type InspectorTab } from '@/vector/inspectorPrefs'
+import { readInspectorPrefs, tabOf, withBarOffset, withTab, writeInspectorPrefs, type InspectorTab } from '@/vector/inspectorPrefs'
+import type { BarOffset } from '@/vector/selectionBar'
 import { ToolGroup, ZoomControl } from '@/vector/VectorToolbar'
 import { DEFAULT_ENTRIES, groupOfTool, TOOL_GROUPS, type ToolGroupId } from '@/vector/toolGroups'
 import { DEFAULT_INNER_RATIO, DEFAULT_SIDES, STAR_INNER_RATIO } from '@/vector/shapes'
@@ -132,6 +133,12 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
     setInspectorTabState(next)
     writeInspectorPrefs(withTab(readInspectorPrefs(), manifest.id, next))
   }, [manifest.id])
+  /** Where the bar of actions was parked. It is a habit, so it follows the person, not the document. */
+  const [barOffset, setBarOffsetState] = useState<BarOffset>(() => readInspectorPrefs().bar)
+  const setBarOffset = useCallback((next: BarOffset) => {
+    setBarOffsetState(next)
+    writeInspectorPrefs(withBarOffset(readInspectorPrefs(), next))
+  }, [])
   const [renameOpen, setRenameOpen] = useState(false)
   /** The navigation tool the menu offers first: whichever was used last. */
   const toolbarRef = useRef<HTMLDivElement>(null)
@@ -1656,9 +1663,11 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
           onMeshPointChange={setMeshPoint}
           onPlaceComponent={placeComponent}
           shape={{ sides: DEFAULT_SIDES, innerRatio: groupEntry.shapes === 'star' ? STAR_INNER_RATIO : DEFAULT_INNER_RATIO }}
-          overlay={(anchor) => anchor && (anchor.mode === 'nodes' ? !!nodeTarget : selectedIds.length > 0) ? (
+          barOffset={barOffset}
+          onBarOffset={setBarOffset}
+          overlay={(placement) => placement && (placement.mode === 'nodes' ? !!nodeTarget : selectedIds.length > 0) ? (
             <VectorSelectionBar
-              anchor={anchor}
+              placement={placement}
               actions={{
                 canUngroup,
                 canCombine: selectedElements.filter((element) => element.kind !== 'group').length > 1,

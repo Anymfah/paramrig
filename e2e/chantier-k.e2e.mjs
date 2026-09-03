@@ -1,8 +1,12 @@
 import { run } from './lib.mjs'
 
-/** The selection bar: what you do to what you have, over the thing itself. */
+/** The selection bar: what you do to what you have, parked out of the way of it. */
 export default run('chantier-k', async ({ page, check, log, helpers }) => {
   await helpers.newDocument()
+  await page.evaluate(() => localStorage.removeItem('paramrig.vector-inspector.v1'))
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('.vector-toolbar')
+  await page.locator('#main').focus()
   await page.keyboard.press('r')
   await helpers.drag({ x: 200, y: 220 }, { x: 420, y: 380 })
   await page.waitForTimeout(300)
@@ -16,17 +20,18 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
     const rect = node.getBoundingClientRect()
     const canvas = document.querySelector('.vector-canvas').getBoundingClientRect()
     return {
-      placement: node.dataset.placement,
       mode: node.dataset.mode,
       height: Math.round(rect.height),
-      overCentre: Math.abs((rect.left + rect.right) / 2 - (box.left + box.right) / 2) < 3,
-      above: rect.bottom <= box.top + 1,
+      bottomGap: Math.round(canvas.bottom - rect.bottom),
+      offCentre: Math.round((rect.left + rect.right) / 2 - (canvas.left + canvas.right) / 2),
+      clear: rect.top > box.bottom,
       inside: rect.left >= canvas.left - 1 && rect.right <= canvas.right + 1 && rect.top >= canvas.top - 1,
     }
   })
   log(`MEASURE selection bar: ${JSON.stringify(geometry)}`)
-  check('it stands over the middle of the box', geometry.overCentre && geometry.above)
-  check('it is 36 pixels tall', geometry.height === 36, String(geometry.height))
+  check('it parks at the bottom middle of the canvas', geometry.offCentre === 0 && geometry.bottomGap === 16, JSON.stringify(geometry))
+  check('and covers nothing of the selection', geometry.clear, JSON.stringify(geometry))
+  check('it is 44 pixels tall', geometry.height === 44, String(geometry.height))
   check('it stays inside the canvas', geometry.inside)
 
   const buttons = await bar.locator('button').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
@@ -37,17 +42,55 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
   const sizes = await bar.locator('button').evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)))
   check('every button is a 32 pixel target', sizes.every((size) => size >= 32), sizes.join(', '))
 
-  // It steps aside for the whole of a gesture.
+  // Parked at the edge it covers nothing, so it no longer blinks out on every gesture.
   const from = await helpers.toClient({ x: 250, y: 260 })
   const to = await helpers.toClient({ x: 330, y: 300 })
   await page.mouse.move(from.x, from.y)
   await page.mouse.down()
   await page.mouse.move(to.x, to.y, { steps: 6 })
-  const duringDrag = await page.locator('.vector-selection-bar').count()
+  const duringDrag = await page.evaluate(() => {
+    const node = document.querySelector('.vector-selection-bar')
+    return node ? Math.round(node.getBoundingClientRect().left) : null
+  })
   await page.mouse.up()
   await page.waitForTimeout(250)
-  check('it hides for the whole of a drag', duringDrag === 0, String(duringDrag))
-  check('it comes back when the pointer comes up', await page.locator('.vector-selection-bar').count() === 1)
+  const afterDrag = await page.evaluate(() => Math.round(document.querySelector('.vector-selection-bar').getBoundingClientRect().left))
+  check('it stays put through a drag rather than blinking out', duringDrag !== null && duringDrag === afterDrag, `${duringDrag} → ${afterDrag}`)
+
+  // Its grip moves it, and the canvas remembers where it was left.
+  const grip = await page.evaluate(() => {
+    const r = document.querySelector('.vector-selection-bar__grip').getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
+  })
+  await page.mouse.move(grip.x, grip.y)
+  await page.mouse.down()
+  await page.mouse.move(grip.x - 160, grip.y - 240, { steps: 8 })
+  await page.mouse.up()
+  await page.waitForTimeout(300)
+  const parked = await page.evaluate(() => {
+    const r = document.querySelector('.vector-selection-bar').getBoundingClientRect()
+    return { left: Math.round(r.left), top: Math.round(r.top) }
+  })
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('paramrig.vector-inspector.v1') ?? '{}').bar)
+  log(`MEASURE bar after its grip was dragged: ${JSON.stringify({ parked, stored })}`)
+  check('the grip drags the bar', stored?.dx === -160 && stored.dy === -240, JSON.stringify(stored))
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('.vector-toolbar')
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+a')
+  await page.waitForTimeout(400)
+  const reopened = await page.evaluate(() => {
+    const r = document.querySelector('.vector-selection-bar').getBoundingClientRect()
+    return { left: Math.round(r.left), top: Math.round(r.top) }
+  })
+  check('and it comes back where it was left', reopened.left === parked.left && reopened.top === parked.top, JSON.stringify({ parked, reopened }))
+  await page.dblclick('.vector-selection-bar__grip')
+  await page.waitForTimeout(300)
+  check('a double-click on the grip puts it back', await page.evaluate(() => {
+    const bar = document.querySelector('.vector-selection-bar').getBoundingClientRect()
+    const canvas = document.querySelector('.vector-canvas').getBoundingClientRect()
+    return Math.round((bar.left + bar.right) / 2 - (canvas.left + canvas.right) / 2) === 0
+  }))
 
   // A button on the bar acts, and does not start a drag on the canvas underneath.
   const before = (await helpers.doc()).elements[0]

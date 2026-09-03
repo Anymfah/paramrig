@@ -1,3 +1,5 @@
+import { DEFAULT_BAR_OFFSET, parseBarOffset, type BarOffset } from '@/vector/selectionBar'
+
 export type InspectorTab = 'design' | 'controls' | 'history'
 
 export const INSPECTOR_TABS: InspectorTab[] = ['design', 'controls', 'history']
@@ -12,6 +14,8 @@ export type InspectorPrefs = {
   collapsed: string[]
   /** Which way a document that carries controls was left open: drawing it, or turning its knobs. */
   modes: Record<string, VectorMode>
+  /** Where the selection bar was last dragged to, as a nudge from the bottom middle. */
+  bar: BarOffset
 }
 
 /** Edit draws the document; Tune shows it as a rig, with the controls and nothing to drag. */
@@ -19,7 +23,7 @@ export type VectorMode = 'edit' | 'tune'
 
 const KEY = 'paramrig.vector-inspector.v1'
 
-export const EMPTY_PREFS: InspectorPrefs = { tabs: {}, collapsed: [], modes: {} }
+export const EMPTY_PREFS: InspectorPrefs = { tabs: {}, collapsed: [], modes: {}, bar: DEFAULT_BAR_OFFSET }
 
 export function parseInspectorPrefs(raw: unknown): InspectorPrefs {
   if (!raw || typeof raw !== 'object') return EMPTY_PREFS
@@ -31,7 +35,11 @@ export function parseInspectorPrefs(raw: unknown): InspectorPrefs {
   const modes = value.modes && typeof value.modes === 'object' && !Array.isArray(value.modes)
     ? Object.fromEntries(Object.entries(value.modes).flatMap(([id, mode]) => (mode === 'edit' || mode === 'tune' ? [[id, mode]] : [])))
     : {}
-  return { tabs, collapsed, modes }
+  return { tabs, collapsed, modes, bar: parseBarOffset(value.bar) ?? DEFAULT_BAR_OFFSET }
+}
+
+export function withBarOffset(prefs: InspectorPrefs, bar: BarOffset): InspectorPrefs {
+  return { ...prefs, bar }
 }
 
 export function withMode(prefs: InspectorPrefs, documentId: string, mode: VectorMode): InspectorPrefs {

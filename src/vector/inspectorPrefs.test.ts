@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_PREFS, isOpen, modeOf, parseInspectorPrefs, tabOf, withMode, withSection, withTab } from '@/vector/inspectorPrefs'
+import { EMPTY_PREFS, isOpen, modeOf, parseInspectorPrefs, tabOf, withBarOffset, withMode, withSection, withTab } from '@/vector/inspectorPrefs'
 
 describe('what the inspector remembers', () => {
   it('opens a document it has never seen on Design', () => {
@@ -32,8 +32,13 @@ describe('what the inspector remembers', () => {
   it('reads back nothing it does not recognise', () => {
     expect(parseInspectorPrefs(null)).toEqual(EMPTY_PREFS)
     expect(parseInspectorPrefs('nonsense')).toEqual(EMPTY_PREFS)
-    expect(parseInspectorPrefs({ tabs: { a: 'design', b: 'nowhere' }, collapsed: ['fill', 7], modes: { a: 'tune', b: 'sideways' } }))
-      .toEqual({ tabs: { a: 'design' }, collapsed: ['fill'], modes: { a: 'tune' } })
+    expect(parseInspectorPrefs({ tabs: { a: 'design', b: 'nowhere' }, collapsed: ['fill', 7], modes: { a: 'tune', b: 'sideways' }, bar: { dx: 'far' } }))
+      .toEqual({ tabs: { a: 'design' }, collapsed: ['fill'], modes: { a: 'tune' }, bar: { dx: 0, dy: 0 } })
+  })
+
+  it('remembers where the selection bar was parked', () => {
+    expect(withBarOffset(EMPTY_PREFS, { dx: -40, dy: -120 }).bar).toEqual({ dx: -40, dy: -120 })
+    expect(parseInspectorPrefs({ bar: { dx: -40, dy: -120 } }).bar).toEqual({ dx: -40, dy: -120 })
   })
 
   it('opens a document the way it was left', () => {
