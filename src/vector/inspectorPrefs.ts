@@ -1,41 +1,47 @@
+import {
+  inspectorPrefsStore,
+  isOpen as isSectionOpen,
+  modeOf as modeOfPrefs,
+  tabOf as tabOfPrefs,
+  withMode as withModePrefs,
+  withSection as withSectionPrefs,
+  withTab as withTabPrefs,
+  type EditorMode,
+} from '@/editor/inspectorPrefs'
 import { DEFAULT_BAR_OFFSET, parseBarOffset, type BarOffset } from '@/vector/selectionBar'
 
 export type InspectorTab = 'design' | 'controls' | 'history'
 
 export const INSPECTOR_TABS: InspectorTab[] = ['design', 'controls', 'history']
 
-/**
- * What the inspector remembers between visits: which tab each document was left on, and which
- * sections are folded away. The tab belongs to the document — a rig with controls is opened
- * differently from a drawing — while a folded section is a habit, and follows the person.
- */
+/** Edit draws the document; Tune shows it as a rig, with the controls and nothing to drag. */
+export type VectorMode = EditorMode
+
+/** On top of the shared three, the vector inspector remembers where the selection bar was left. */
+type VectorExtra = { bar: BarOffset }
+
 export type InspectorPrefs = {
   tabs: Record<string, InspectorTab>
   collapsed: string[]
-  /** Which way a document that carries controls was left open: drawing it, or turning its knobs. */
   modes: Record<string, VectorMode>
   /** Where the selection bar was last dragged to, as a nudge from the bottom middle. */
   bar: BarOffset
 }
 
-/** Edit draws the document; Tune shows it as a rig, with the controls and nothing to drag. */
-export type VectorMode = 'edit' | 'tune'
+const store = inspectorPrefsStore<InspectorTab, VectorExtra>({
+  key: 'paramrig.vector-inspector.v1',
+  tabs: INSPECTOR_TABS,
+  defaultTab: 'design',
+  extra: {
+    empty: { bar: DEFAULT_BAR_OFFSET },
+    parse: (value) => ({ bar: parseBarOffset(value.bar) ?? DEFAULT_BAR_OFFSET }),
+  },
+})
 
-const KEY = 'paramrig.vector-inspector.v1'
-
-export const EMPTY_PREFS: InspectorPrefs = { tabs: {}, collapsed: [], modes: {}, bar: DEFAULT_BAR_OFFSET }
+export const EMPTY_PREFS: InspectorPrefs = store.empty
 
 export function parseInspectorPrefs(raw: unknown): InspectorPrefs {
-  if (!raw || typeof raw !== 'object') return EMPTY_PREFS
-  const value = raw as Partial<InspectorPrefs>
-  const tabs = value.tabs && typeof value.tabs === 'object' && !Array.isArray(value.tabs)
-    ? Object.fromEntries(Object.entries(value.tabs).flatMap(([id, tab]) => INSPECTOR_TABS.includes(tab as InspectorTab) ? [[id, tab as InspectorTab]] : []))
-    : {}
-  const collapsed = Array.isArray(value.collapsed) ? value.collapsed.filter((id): id is string => typeof id === 'string') : []
-  const modes = value.modes && typeof value.modes === 'object' && !Array.isArray(value.modes)
-    ? Object.fromEntries(Object.entries(value.modes).flatMap(([id, mode]) => (mode === 'edit' || mode === 'tune' ? [[id, mode]] : [])))
-    : {}
-  return { tabs, collapsed, modes, bar: parseBarOffset(value.bar) ?? DEFAULT_BAR_OFFSET }
+  return store.parse(raw)
 }
 
 export function withBarOffset(prefs: InspectorPrefs, bar: BarOffset): InspectorPrefs {
@@ -43,45 +49,34 @@ export function withBarOffset(prefs: InspectorPrefs, bar: BarOffset): InspectorP
 }
 
 export function withMode(prefs: InspectorPrefs, documentId: string, mode: VectorMode): InspectorPrefs {
-  return { ...prefs, modes: { ...prefs.modes, [documentId]: mode } }
+  return withModePrefs(prefs, documentId, mode)
 }
 
 /** A document opens the way it was left; a document with no controls has nothing to tune. */
 export function modeOf(prefs: InspectorPrefs, documentId: string): VectorMode {
-  return prefs.modes[documentId] ?? 'edit'
+  return modeOfPrefs(prefs, documentId)
 }
 
 export function withTab(prefs: InspectorPrefs, documentId: string, tab: InspectorTab): InspectorPrefs {
-  return { ...prefs, tabs: { ...prefs.tabs, [documentId]: tab } }
+  return withTabPrefs(prefs, documentId, tab)
 }
 
 export function withSection(prefs: InspectorPrefs, sectionId: string, open: boolean): InspectorPrefs {
-  const collapsed = prefs.collapsed.filter((id) => id !== sectionId)
-  return { ...prefs, collapsed: open ? collapsed : [...collapsed, sectionId] }
+  return withSectionPrefs(prefs, sectionId, open)
 }
 
 export function tabOf(prefs: InspectorPrefs, documentId: string): InspectorTab {
-  return prefs.tabs[documentId] ?? 'design'
+  return tabOfPrefs(prefs, documentId, 'design')
 }
 
 export function isOpen(prefs: InspectorPrefs, sectionId: string, defaultOpen = true): boolean {
-  return prefs.collapsed.includes(sectionId) ? false : defaultOpen
+  return isSectionOpen(prefs, sectionId, defaultOpen)
 }
 
 export function readInspectorPrefs(): InspectorPrefs {
-  if (typeof localStorage === 'undefined') return EMPTY_PREFS
-  try {
-    return parseInspectorPrefs(JSON.parse(localStorage.getItem(KEY) ?? 'null'))
-  } catch {
-    return EMPTY_PREFS
-  }
+  return store.read()
 }
 
 export function writeInspectorPrefs(prefs: InspectorPrefs): void {
-  if (typeof localStorage === 'undefined') return
-  try {
-    localStorage.setItem(KEY, JSON.stringify(prefs))
-  } catch {
-    /* The inspector keeps working from memory when storage is full or blocked. */
-  }
+  store.write(prefs)
 }

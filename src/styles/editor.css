@@ -1,0 +1,195 @@
+/*
+ * What the vector editor and the scene editor draw the same way: the floating chip, the autosave
+ * badge, the centred modal and the command palette. Each rule is written once and answers to two
+ * names — `.editor-*` for anything new, `.vector-*` for the class names the vector editor's markup
+ * and its QA scripts already use.
+ */
+/*
+ * Two roles the shared chrome needs a colour for: a write that landed, and one that did not.
+ * The values are the vector editor's guide and snap tones, so nothing changes appearance.
+ */
+:root {
+  --editor-ok: #6fb8a6;
+  --editor-alert: #e0968f;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --editor-ok: #2a8f78;
+    --editor-alert: #b2554b;
+  }
+}
+:root[data-theme='light'] {
+  --editor-ok: #2a8f78;
+  --editor-alert: #b2554b;
+}
+/*
+ * The one floating surface of the canvas. The readout, the node tip and the selection bar all sit
+ * on it, so nothing on the canvas ever looks like a second kind of small box.
+ */
+.editor-chip,
+.vector-chip {
+  position: absolute;
+  z-index: 4;
+  border: 1px solid var(--chip-border);
+  border-radius: var(--chip-radius);
+  background: var(--chip-bg);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow: var(--chip-shadow);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.editor-save-badge,
+.vector-save-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-inline: var(--space-2);
+  min-height: 24px;
+  border-radius: var(--radius-xs);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.editor-save-badge__dot,
+.vector-save-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+  transition: opacity var(--duration-fast) var(--ease-out), background-color var(--duration-fast) var(--ease-out);
+}
+.editor-save-badge[data-state='saved'],
+.vector-save-badge[data-state='saved'] { color: var(--text-secondary); }
+:is(.editor-save-badge, .vector-save-badge)[data-state='saved'] :is(.editor-save-badge__dot, .vector-save-badge__dot) {
+  background: var(--editor-ok);
+  opacity: 1;
+}
+:is(.editor-save-badge, .vector-save-badge)[data-state='pending'] :is(.editor-save-badge__dot, .vector-save-badge__dot),
+:is(.editor-save-badge, .vector-save-badge)[data-state='saving'] :is(.editor-save-badge__dot, .vector-save-badge__dot) { opacity: 1; }
+.editor-save-badge[data-state='error'],
+.vector-save-badge[data-state='error'] { color: var(--editor-alert); }
+:is(.editor-save-badge, .vector-save-badge)[data-state='error'] :is(.editor-save-badge__dot, .vector-save-badge__dot) {
+  background: var(--editor-alert);
+  opacity: 1;
+}
+
+.editor-modal,
+.vector-modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-popover);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh var(--space-4) var(--space-4);
+  background: color-mix(in srgb, var(--carbon) 45%, transparent);
+  animation: editor-modal-in var(--duration-fast) var(--ease-out);
+}
+@keyframes editor-modal-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.editor-modal__panel,
+.vector-modal__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(34rem, 100%);
+  max-height: 70vh;
+  overflow: hidden;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-overlay);
+}
+.editor-palette__input,
+.vector-palette__input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--border-hairline);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.editor-palette__input:focus-visible,
+.vector-palette__input:focus-visible { outline: none; box-shadow: inset 0 -2px 0 0 var(--focus-ring); }
+.editor-palette__list,
+.vector-palette__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+}
+.editor-palette__empty,
+.vector-palette__empty {
+  padding: var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.editor-palette__item,
+.vector-palette__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 36px;
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+.editor-palette__item[data-active],
+.vector-palette__item[data-active] { background: var(--accent-subtle); }
+.editor-palette__item[aria-disabled='true'],
+.vector-palette__item[aria-disabled='true'] { color: var(--text-muted); cursor: not-allowed; }
+.editor-palette__item:focus-visible,
+.vector-palette__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.editor-palette__section,
+.vector-palette__section {
+  width: 5.5rem;
+  flex: none;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor-palette__label,
+.vector-palette__label { flex: 1; }
+.editor-palette__item kbd,
+.vector-palette__item kbd {
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+@media (pointer: coarse) {
+  .editor-palette__item,
+  .vector-palette__item { min-height: 44px; }
+}
+
+@media (forced-colors: active) {
+  .editor-chip,
+  .vector-chip { border-color: CanvasText; }
+}

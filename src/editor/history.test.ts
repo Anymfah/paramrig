@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { changedIds, countedLabel, historyRows, stepDistance, type HistoryStep } from '@/vector/history'
-import type { VectorVersion } from '@/vector/types'
+import { changedIds, countedLabel, historyRows, stepDistance, type HistoryStep, type NamedVersion } from '@/editor/history'
 
 const steps: HistoryStep[] = [
   { index: 0, label: 'Opened', at: 1000 },
@@ -9,8 +8,8 @@ const steps: HistoryStep[] = [
   { index: 3, label: 'Change fill', at: 4000 },
 ]
 
-const version = (id: string, name: string, at: number): VectorVersion => ({
-  id, name, createdAt: new Date(at).toISOString(), elements: [], guides: [],
+const version = (id: string, name: string, at: number): NamedVersion => ({
+  id, name, createdAt: new Date(at).toISOString(),
 })
 
 describe('history rows', () => {

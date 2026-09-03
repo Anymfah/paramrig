@@ -1,3 +1,4 @@
+import { readStore, writeStore, type StorageResult } from '@/editor/storage'
 import type { RigManifest } from '@/rigs/types'
 import { sanitizeGuides } from '@/vector/guides'
 import { buildTree, descendantIds, sanitizeParents, type TreeNode } from '@/vector/tree'
@@ -22,6 +23,8 @@ import { selectionBounds } from '@/vector/geometry'
 import { sanitizeRig } from '@/vector/rig'
 import { BUNDLED_DOCUMENTS } from '@/rigs/examples/aperture-mark'
 
+export { STORAGE_BLOCKED_MESSAGE, STORAGE_FULL_MESSAGE, storageMessage, type StorageResult } from '@/editor/storage'
+
 const STORAGE_KEY = 'paramrig.vector-documents.v1'
 const DEFAULT_WIDTH = 800
 const DEFAULT_HEIGHT = 600
@@ -33,47 +36,11 @@ export const DEFAULT_FRAME_FILL = '#E9EEED'
 export const MAX_DOCUMENT_SIZE = 10000
 
 function readAll(): Record<string, VectorDocument> {
-  if (typeof localStorage === 'undefined') return {}
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as unknown
-    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
-    return Object.fromEntries(
-      Object.entries(value).flatMap(([id, document]) => {
-        const valid = sanitizeVectorDocument(document)
-        return valid && valid.id === id ? [[id, valid]] : []
-      }),
-    )
-  } catch {
-    return {}
-  }
+  return readStore(STORAGE_KEY, sanitizeVectorDocument)
 }
-
-/** Outcome of a browser-storage write, so callers can tell the user when a draft did not land. */
-export type StorageResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' }
 
 function writeAll(documents: Record<string, VectorDocument>): StorageResult {
-  if (typeof localStorage === 'undefined') return { ok: false, reason: 'unavailable' }
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(documents))
-    return { ok: true }
-  } catch (error) {
-    /* Editing remains available in memory when storage is full or blocked. */
-    return { ok: false, reason: isQuotaError(error) ? 'quota' : 'unavailable' }
-  }
-}
-
-function isQuotaError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false
-  const { name, code } = error as { name?: unknown; code?: unknown }
-  return name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || code === 22 || code === 1014
-}
-
-export const STORAGE_FULL_MESSAGE = 'Browser storage is full. Save this project to a file to keep your changes.'
-export const STORAGE_BLOCKED_MESSAGE = 'Browser storage is unavailable. Save this project to a file to keep your changes.'
-
-export function storageMessage(result: StorageResult): string | null {
-  if (result.ok) return null
-  return result.reason === 'quota' ? STORAGE_FULL_MESSAGE : STORAGE_BLOCKED_MESSAGE
+  return writeStore(STORAGE_KEY, documents)
 }
 
 export function createVectorDocument(): VectorDocument {

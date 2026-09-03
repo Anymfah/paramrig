@@ -5,6 +5,7 @@ import type { RigManifest } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { useRovingFocus } from '@/ui/useRovingFocus'
+import { LiveRegion } from '@/editor/LiveRegion'
 import { nodeAnnouncement, selectionAnnouncement, toolAnnouncement } from '@/vector/announce'
 import { MAX_ZOOM, MIN_ZOOM, nextZoom } from '@/vector/measure'
 import { readPrefs, updatePrefs } from '@/state/workspace'
@@ -1700,7 +1701,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
         </ContextTarget>
         </ContextMenuRoot>
       </div>
-      <p className="visually-hidden" role="status" aria-live="polite" data-vector-announce>{announcement}</p>
+      <LiveRegion name="vector" message={announcement} />
       <VectorCommandPalette commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <VectorTraceDialog
         image={traceable}

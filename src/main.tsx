@@ -5,6 +5,7 @@ import { initTheme } from '@/state/theme'
 import '@/styles/tokens.css'
 import '@/styles/components.css'
 import '@/styles/shell.css'
+import '@/styles/editor.css'
 import '@/styles/vector.css'
 
 initTheme()

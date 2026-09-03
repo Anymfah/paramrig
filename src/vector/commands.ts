@@ -1,17 +1,13 @@
+import type { EditorCommand } from '@/editor/commands'
 import type { Affine } from '@/vector/affine'
 import type { Bounds } from '@/vector/geometry'
 import { childrenOf, siblingIndex } from '@/vector/tree'
 import type { VectorElement } from '@/vector/types'
 
 /** Everything a command needs to show itself: the palette, the context menu and tooltips share it. */
-export type VectorCommand = {
-  id: string
-  label: string
-  section: string
-  shortcut?: string
-  disabled?: boolean
-  run: () => void
-}
+export type VectorCommand = EditorCommand
+
+export { filterCommands } from '@/editor/commands'
 
 /** Shortcut labels, in one place so a tooltip and the palette can never disagree. */
 export const SHORTCUTS = {
@@ -68,24 +64,6 @@ export type ShortcutId = keyof typeof SHORTCUTS
 /** `Rename · ⌘R` style label for a tooltip. */
 export function withShortcut(label: string, id: ShortcutId): string {
   return `${label} · ${SHORTCUTS[id]}`
-}
-
-/** Ranked matches for the command palette: a name that starts with the query comes first. */
-export function filterCommands(commands: VectorCommand[], query: string): VectorCommand[] {
-  const needle = query.trim().toLowerCase()
-  if (!needle) return commands
-  const scored = commands.flatMap((command) => {
-    const label = command.label.toLowerCase()
-    const section = command.section.toLowerCase()
-    const shortcut = (command.shortcut ?? '').toLowerCase()
-    if (label.startsWith(needle)) return [{ command, score: 0 }]
-    if (label.includes(needle)) return [{ command, score: 1 }]
-    // Sections match from the start only: a bare letter should not drag in every "Object" command.
-    if (section.startsWith(needle)) return [{ command, score: 2 }]
-    if (shortcut.includes(needle)) return [{ command, score: 3 }]
-    return []
-  })
-  return scored.sort((a, b) => a.score - b.score).map((entry) => entry.command)
 }
 
 const DIGIT_WINDOW_MS = 700
