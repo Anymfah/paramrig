@@ -225,3 +225,14 @@
   .scene-pie__item { transition: none; }
   .scene-pie { animation: none; }
 }
+
+/*
+ * A menu is capped and scrolls rather than growing to whatever it holds. ⇧A over the Add family is
+ * sixteen entries and two rules; left uncapped it is taller than the window, and a menu that has to
+ * be pushed up the screen to fit is no longer a menu at the pointer.
+ */
+.scene-menu[role='menu'] {
+  max-height: min(60vh, 22rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

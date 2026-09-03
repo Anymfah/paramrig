@@ -40,6 +40,8 @@ export type SceneStageHandle = {
   /** Offers a key to a running modal tool; true when it took it. */
   handleKey: (event: KeyboardEvent) => boolean
   transformActive: () => boolean
+  /** Where the pointer last was, in page coordinates, for a menu that opens at it. */
+  pointerPage: () => { x: number; y: number }
 }
 
 export function SceneStage({
@@ -51,6 +53,8 @@ export function SceneStage({
   onRegionSelect,
   onPlaceCursor,
   onContextMenu,
+  onAnnotate,
+  onMeasure,
   onTransform,
   onGestureStart,
   onGestureEnd,
@@ -72,6 +76,10 @@ export function SceneStage({
   onPlaceCursor: (position: Vec3, normal: Vec3 | null) => void
   /** A plain right-click asks for the object menu at that point. */
   onContextMenu: (at: { x: number; y: number }) => void
+  /** A freehand stroke, finished. Kept in the document but outside the history. */
+  onAnnotate: (points: Vec3[]) => void
+  /** A ruler, finished, likewise. */
+  onMeasure: (from: Vec3, to: Vec3) => void
   /** Writes transforms during a gesture, without recording each frame. */
   onTransform: (patches: Array<{ id: string; patch: Partial<SceneObject> }>) => void
   onGestureStart: (label: string) => void
@@ -108,6 +116,9 @@ export function SceneStage({
   onPlaceRef.current = onPlaceCursor
   const onMenuRef = useRef(onContextMenu)
   onMenuRef.current = onContextMenu
+  const sketch = useRef<{ tool: 'annotate' | 'measure'; points: Vec3[] } | null>(null)
+  const onDrawRef = useRef({ onAnnotate, onMeasure })
+  onDrawRef.current = { onAnnotate, onMeasure }
   const modal = useRef<ModalTransform | null>(null)
   if (!modal.current) {
     modal.current = new ModalTransform({
@@ -152,6 +163,7 @@ export function SceneStage({
         startTransform: () => false,
         handleKey: () => false,
         transformActive: () => false,
+        pointerPage: () => ({ x: 0, y: 0 }),
       })
       return
     }
@@ -194,6 +206,12 @@ export function SceneStage({
       startTransform: (mode) => modal.current?.start(mode, surface.current, {}) ?? false,
       handleKey: (event) => modal.current?.key(event) ?? false,
       transformActive: () => modal.current?.active ?? false,
+      pointerPage: () => {
+        const box = surface.current?.getBoundingClientRect()
+        return box
+          ? { x: box.left + pointer.current[0], y: box.top + pointer.current[1] }
+          : { x: pointer.current[0], y: pointer.current[1] }
+      },
     })
   }, [preferences, pump])
 
@@ -329,6 +347,12 @@ export function SceneStage({
             nav.begin(gesture, event.pointerId, x, y)
             return
           }
+          // The two tools that draw on the scene take the press before the marquee does.
+          if (event.button === 0 && (latestDocument.current.view.tool === 'annotate' || latestDocument.current.view.tool === 'measure')) {
+            const tool = latestDocument.current.view.tool as 'annotate' | 'measure'
+            sketch.current = { tool, points: [pointInScene(instance, x, y)] }
+            return
+          }
           // A drag with the select tool draws a region; ⌃ makes it a lasso, as in Blender.
           if (event.button === 0) {
             const tool = latestDocument.current.view.tool
@@ -370,6 +394,19 @@ export function SceneStage({
             })
             return
           }
+          const stroke = sketch.current
+          if (stroke) {
+            const point = pointInScene(instance, x, y)
+            if (stroke.tool === 'annotate') {
+              stroke.points.push(point)
+              instance.annotations?.setDraft(stroke.points, latestTheme(instance), 3)
+            } else {
+              stroke.points[1] = point
+              instance.annotations?.setDraftRuler(stroke.points[0]!, point)
+            }
+            instance.invalidate()
+            return
+          }
           const held = press.current
           if (held) {
             if (!held.moved && Math.hypot(x - held.x, y - held.y) > threshold()) held.moved = true
@@ -402,6 +439,17 @@ export function SceneStage({
         onPointerUp={(event) => {
           const nav = navigator.current
           const instance = viewport.current
+          const stroke = sketch.current
+          sketch.current = null
+          if (stroke && instance) {
+            instance.annotations?.setDraft([], '#ffffff', 3)
+            instance.annotations?.setDraftRuler(null, null)
+            instance.invalidate()
+            if (stroke.tool === 'annotate' && stroke.points.length > 1) onDrawRef.current.onAnnotate(stroke.points)
+            if (stroke.tool === 'measure' && stroke.points.length === 2) onDrawRef.current.onMeasure(stroke.points[0]!, stroke.points[1]!)
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+            return
+          }
           const held = press.current
           press.current = null
           if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
@@ -440,6 +488,16 @@ export function SceneStage({
               : [...current.objectIds, found]
             onSelectRef.current(next, next.includes(found) ? found : next.at(-1) ?? null)
             return
+          }
+          // ⌥ steps to the next object along the ray, so an object inside another can be reached.
+          if (event.altKey) {
+            const stack = instance.raycastStack(event.clientX - box.left, event.clientY - box.top)
+            if (stack.length > 1) {
+              const at = current.activeObjectId ? stack.indexOf(current.activeObjectId) : -1
+              const next = stack[(at + 1) % stack.length]!
+              onSelectRef.current([next], next)
+              return
+            }
           }
           onSelectRef.current([found], found)
         }}
@@ -491,6 +549,27 @@ function readRegion(
   const box = boundsOfPoints(region.points)
   if (region.points.length < 3) return []
   return viewport.pickRegion(box.x, box.y, box.width, box.height, (x, y) => insidePolygon(region.points, x, y))
+}
+
+/**
+ * Where a drawn point sits in the world: on the surface under the pointer when there is one, and
+ * otherwise on the plane the view is looking at. A note drawn over an object should stick to it.
+ */
+function pointInScene(viewport: SceneViewport, x: number, y: number): Vec3 {
+  const hit = viewport.raycast(x, y)
+  if (!hit) return viewport.pointOnViewPlane(x, y)
+  // Lifted a hair off the surface, or the note is buried inside it by depth fighting.
+  return [
+    hit.point[0] + hit.normal[0] * 0.002,
+    hit.point[1] + hit.normal[1] * 0.002,
+    hit.point[2] + hit.normal[2] * 0.002,
+  ]
+}
+
+/** The colour a fresh annotation is drawn in: the viewport's own foreground. */
+function latestTheme(viewport: SceneViewport): string {
+  void viewport
+  return '#f2f4f3'
 }
 
 /** The 3D cursor's own frame, from the Euler angles the document stores it with. */

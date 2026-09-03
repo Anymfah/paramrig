@@ -1,0 +1,216 @@
+/* The scene editor on a narrow screen. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * What the 3D editor does when it has three hundred pixels and a thumb.
+ *
+ * The shell already folds the outliner and the properties behind the three-way dock at the foot of
+ * the window; that leaves the chrome the viewport owns, which the dock knows nothing about, and
+ * that is what this file moves. Three changes carry it: the T bar unrolls into a strip along the
+ * foot of the viewport, the N sidebar becomes a sheet rising from the same edge, and every target
+ * grows to forty-four pixels. None of it touches the grid — a panel that opened by taking width
+ * from the viewport would move the model out from under the finger at the moment somebody reached
+ * for it, which is the one thing a 3D view must never do.
+ *
+ * The rules come in two blocks, and the split is deliberate. Layout answers to the width alone, so
+ * a narrow desktop window gets the same shape as a phone; the target sizes answer to the width or
+ * a coarse pointer, because a three-hundred-pixel window is thumb-sized whatever is pointing at
+ * it. Several selectors are qualified by an ancestor only to outrank the same rule in `scene.css`,
+ * which the cascade places after every file imported alongside this one.
+ */
+
+/* ------------------------------------------------------------------ layout */
+
+@media (max-width: 64em) {
+  /*
+   * The stage stops swallowing touch. It declares `touch-action: none` so a drag over the model
+   * orbits rather than scrolling the page, but the effective value is the intersection of the whole
+   * ancestor chain, so that also froze the tool strip and the sheet. The surfaces that must swallow
+   * a gesture — the pointer layer over the canvas, the navigation ball and its buttons — each
+   * declare `none` for themselves, so the stage can afford to allow a pan.
+   */
+  .workspace-main .scene-stage { touch-action: pan-x pan-y; }
+
+  /*
+   * The header row. It stays one line and scrolls sideways: a second row would have to come out of
+   * the viewport's height, and a control that moved between two rows mid-gesture reads worse than
+   * one that has to be scrolled to. The scrollbar is hidden because a fifty-two-pixel strip cannot
+   * spare the room, and the row is reachable by dragging the controls themselves.
+   */
+  .scene-stage .scene-titlebar {
+    flex-wrap: nowrap;
+    overflow: auto hidden;
+    scrollbar-width: none;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+  .scene-stage .scene-titlebar::-webkit-scrollbar { display: none; }
+  .scene-stage .scene-titlebar > .scene-file { flex: none; }
+  .scene-stage .scene-titlebar > .scene-header {
+    flex: none;
+    overflow: visible;
+    border-block-end: 0;
+  }
+  /* The scene's name is the part that gives way; six characters and an ellipsis still identify it. */
+  .scene-stage .scene-file__name { width: 8ch; }
+
+  /*
+   * The T bar. `toolbar.css` already unrolls it into a row along the foot of the viewport; what is
+   * added here is the sideways scroll on touch, since eight tools and a close button do not fit
+   * across three hundred pixels at the size a thumb needs them.
+   */
+  .scene-stage .scene-toolbar {
+    padding-inline: var(--space-1);
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .scene-stage .scene-toolbar::-webkit-scrollbar { display: none; }
+  /* An auto margin would strand the close button past the end of a strip that already overflows. */
+  .scene-stage .scene-toolbar__close { margin-inline-start: var(--space-2); }
+
+  /*
+   * The N sidebar becomes a sheet rising from the foot of the viewport, at most three fifths of its
+   * height. It covers the tool strip while it is up, on purpose: both want the same edge, and a
+   * sheet stopping short of it would leave a band of viewport nothing could reach past. Closing it
+   * is one tap in its own head. It is still absolutely positioned, so the canvas does not move.
+   */
+  .scene-stage .scene-sidebar {
+    inset: auto 0 0;
+    z-index: calc(var(--z-overlay) + 1);
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: 60%;
+    padding-block-start: var(--space-4);
+    border-inline: 0;
+    border-block-end: 0;
+    border-radius: var(--scene-panel-radius) var(--scene-panel-radius) 0 0;
+  }
+  /* The grab bar: what tells a thumb this is a sheet, and where it expects to take hold of one. */
+  .scene-stage .scene-sidebar::before {
+    content: '';
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-start: 50%;
+    translate: -50% 0;
+    inline-size: 2.25rem;
+    block-size: 4px;
+    border-radius: var(--radius-full);
+    background: var(--text-muted);
+  }
+  /* The sheet is bounded, so the panel inside it is what scrolls rather than the sheet growing. */
+  .scene-stage .scene-sidebar__body {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+  }
+
+  /*
+   * The navigation ball. Its buttons fold from a column into a row, which nearly halves the height
+   * of the stack and lifts it clear of the sheet's top edge; it stays in the corner it has always
+   * been in, which is what makes it findable.
+   */
+  .scene-stage .scene-nav__buttons {
+    flex-direction: row;
+    gap: var(--space-1);
+  }
+
+  /*
+   * “Adjust last operation” spans the foot of the viewport, above the tool strip that
+   * `sidebar.css` already makes room for. Full width because its fields are numbers a thumb has to
+   * scrub, and fifteen rems of them at this width is a column of slivers.
+   */
+  .scene-stage .scene-redo {
+    inset-inline: var(--space-2);
+    inline-size: auto;
+    max-inline-size: none;
+    max-block-size: 45%;
+  }
+
+  /*
+   * Everything portalled to the body is fixed, so it is the only chrome that could reach past the
+   * status bar and cover the dock. Bounding its height keeps the three panels one tap away.
+   */
+  .scene-menu,
+  .scene-file-menu,
+  .scene-toolbar__menu,
+  .scene-header__settings {
+    max-block-size: 60dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* ----------------------------------------------------------------- targets */
+
+@media (max-width: 64em), (pointer: coarse) {
+  /* The header's own row has to be tall enough to hold what is now in it. */
+  .scene-stage .scene-titlebar,
+  .scene-header { min-height: calc(var(--hit-target-coarse) + var(--space-2)); }
+
+  .scene-header__button {
+    width: var(--hit-target-coarse);
+    height: var(--hit-target-coarse);
+  }
+  .scene-menu__trigger {
+    height: var(--hit-target-coarse);
+    min-width: var(--hit-target-coarse);
+  }
+  .scene-menu__item,
+  .scene-file-menu__item,
+  .scene-pie__item { min-height: var(--hit-target-coarse); }
+  .scene-file__name,
+  .scene-file__button { min-height: var(--hit-target-coarse); }
+
+  .scene-toolbar__tool,
+  .scene-toolbar__close {
+    inline-size: var(--scene-tool-size-coarse, 44px);
+    block-size: var(--scene-tool-size-coarse, 44px);
+  }
+
+  /*
+   * The ball is drawn in a sixty-unit viewBox, and an axis dot's target is twenty-five of those
+   * units across. Only the element's own size can turn that into forty-four pixels, which is why
+   * the number here is a hundred and twelve and not something rounder.
+   */
+  .scene-stage .scene-nav__ball {
+    width: 112px;
+    height: 112px;
+  }
+  .scene-stage .scene-nav__button {
+    width: var(--hit-target-coarse);
+    height: var(--hit-target-coarse);
+  }
+
+  .scene-sidebar__tab,
+  .scene-redo__summary { min-block-size: var(--hit-target-coarse); }
+  .scene-sidebar__lock,
+  .scene-sidebar__lock-spacer {
+    inline-size: var(--hit-target-coarse);
+    block-size: var(--hit-target-coarse);
+  }
+
+  /*
+   * The two floating panels borrow their fields from the kit, and the kit's own coarse rules only
+   * reach the inspector. Over the viewport there is no such thing as a thirty-pixel control.
+   */
+  .scene-body button,
+  .scene-body input,
+  .scene-body .number-value,
+  .scene-body .select-field,
+  .scene-body .color-field,
+  .scene-body .segment,
+  .scene-body .segment__opt,
+  .scene-body .switch { min-block-size: var(--hit-target-coarse); }
+  .scene-body .icon-btn {
+    width: var(--hit-target-coarse);
+    height: var(--hit-target-coarse);
+  }
+  /*
+   * A number field is four and a half characters wide, sitting at the right of a control that a
+   * drag scrubs. The drag has the whole row; the caret has only the digits, and four and a half
+   * characters of them is thirty-nine pixels — narrower than the thumb that has to land on them.
+   */
+  .scene-body .number-value__input { min-inline-size: var(--hit-target-coarse); }
+}

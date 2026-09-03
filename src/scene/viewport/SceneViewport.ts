@@ -25,6 +25,7 @@ import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createPickBuffer, createPickMaterial, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
 import { createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
+import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
 import { createGizmos, type GizmoHandle, type GizmoKind, type GizmoSet } from '@/scene/viewport/gizmo'
 import { createTransformOverlay, type TransformOverlay } from '@/scene/viewport/transformOverlay'
 import { readSceneTheme, splitAlpha, type SceneTheme } from '@/scene/viewport/theme'
@@ -111,6 +112,7 @@ export class SceneViewport {
   private cursor: (Glyph & { setScreenScale: (scale: number) => void }) | null = null
   private transform: TransformOverlay | null = null
   private gizmos: GizmoSet | null = null
+  private notes: AnnotationLayer | null = null
   private gizmoKinds: GizmoKind[] = []
   private gizmoPivot: Vec3 = [0, 0, 0]
   private gizmoBasis = { x: [1, 0, 0] as Vec3, y: [0, 1, 0] as Vec3, z: [0, 0, 1] as Vec3 }
@@ -185,6 +187,8 @@ export class SceneViewport {
     this.overlayRoot.add(this.cursor.object)
     this.transform = createTransformOverlay(this.theme)
     this.overlayRoot.add(this.transform.group)
+    this.notes = createAnnotationLayer(this.theme)
+    this.overlayRoot.add(this.notes.group)
     this.gizmos = createGizmos(this.theme)
     this.overlayRoot.add(this.gizmos.group)
     this.picking.scene.add(this.gizmos.pickGroup)
@@ -225,6 +229,7 @@ export class SceneViewport {
     this.cursor?.dispose()
     this.transform?.dispose()
     this.gizmos?.dispose()
+    this.notes?.dispose()
     this.grid?.dispose()
     this.outline?.dispose()
     this.picking?.dispose()
@@ -291,6 +296,7 @@ export class SceneViewport {
     if (this.cursor) for (const line of this.cursor.lines) setLineResolution(line.material, buffer.width, buffer.height)
     this.transform?.setResolution(buffer.width, buffer.height)
     this.gizmos?.setResolution(buffer.width, buffer.height)
+    this.notes?.setResolution(buffer.width, buffer.height)
   }
 
   get pixelSize(): { width: number; height: number } {
@@ -322,11 +328,17 @@ export class SceneViewport {
     }
     this.transform?.setTheme(this.theme)
     this.gizmos?.setTheme(this.theme)
+    this.notes?.setTheme(this.theme)
     for (const view of this.views.values()) {
       const object = this.document?.objects.find((entry) => entry.id === view.id)
       if (object) this.paintGlyph(view, object)
     }
     this.invalidate()
+  }
+
+  /** The freehand notes and the rulers drawn over the scene. */
+  get annotations(): AnnotationLayer | null {
+    return this.notes
   }
 
   /** The lines a modal transform draws: its constraint axes and its measuring line. */
@@ -388,6 +400,8 @@ export class SceneViewport {
     this.document = document
     this.syncObjects()
     this.syncCursor()
+    this.notes?.setAnnotations(document.annotations ?? [])
+    this.notes?.setMeasurements(document.measurements ?? [], null)
     this.invalidate()
   }
 
@@ -810,6 +824,36 @@ export class SceneViewport {
       normal: [normal.x, normal.y, normal.z],
       distance: hit.distance,
     }
+  }
+
+  /**
+   * Every object the ray under a pixel passes through, nearest first.
+   *
+   * Blender's ⌥ click cycles through what is under the pointer, which needs the whole stack and not
+   * just the front of it. The id buffer cannot answer this — it only remembers the winner — so this
+   * is the one place a real ray is cast through everything.
+   */
+  raycastStack(x: number, y: number): string[] {
+    const camera = this.camera
+    this.raycaster.setFromCamera(
+      new Vector2((x / this.size.width) * 2 - 1, 1 - (y / this.size.height) * 2),
+      camera,
+    )
+    const targets: Mesh[] = []
+    const owners = new Map<Mesh, string>()
+    for (const [id, view] of this.views) {
+      if (!view.mesh || !view.root.visible) continue
+      view.root.updateMatrixWorld(true)
+      view.mesh.updateMatrixWorld(true)
+      targets.push(view.mesh)
+      owners.set(view.mesh, id)
+    }
+    const found: string[] = []
+    for (const hit of this.raycaster.intersectObjects(targets, false)) {
+      const owner = owners.get(hit.object as Mesh)
+      if (owner && !found.includes(owner)) found.push(owner)
+    }
+    return found
   }
 
   /**

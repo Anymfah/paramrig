@@ -173,7 +173,7 @@ export function WorkspacePage() {
           {manifest.renderer === 'html' ? <span className="preview-meta__end">{manifest.summary}</span> : null}
         </div>
         {manifest.renderer === 'three' ? (
-          <svg className="scene-axes" viewBox="0 0 48 48" aria-hidden="true">
+          <svg className="preview-axes" viewBox="0 0 48 48" aria-hidden="true">
             <line x1="8" y1="40" x2="40" y2="40" />
             <line x1="8" y1="40" x2="8" y2="8" />
             <line x1="8" y1="40" x2="28" y2="26" />

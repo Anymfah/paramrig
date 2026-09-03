@@ -23,6 +23,9 @@ import {
 import { SceneFileMenu } from '@/scene/SceneFileMenu'
 import { SceneHeader } from '@/scene/SceneHeader'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
+import { ADD_MENU } from '@/scene/operators/add'
+import { SNAP_PIE } from '@/scene/operators/cursor'
+import type { OperatorContext } from '@/scene/operators/types'
 import { SceneNavGizmo } from '@/scene/SceneNavGizmo'
 import { SceneOutliner } from '@/scene/SceneOutliner'
 import { ScenePieMenu, type ScenePieItem } from '@/scene/ScenePieMenu'
@@ -38,6 +41,12 @@ import type { SceneTool, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/operators'
+
+/**
+ * What a fresh annotation is drawn in. Notes are the person's own marks rather than part of the
+ * model, so they take the viewport's foreground rather than the selection colour.
+ */
+const ANNOTATION_COLOUR = '#f2f4f3'
 
 /** Which modal session each modal operator opens. */
 const MODAL_MODES: Record<string, TransformMode> = {
@@ -56,7 +65,8 @@ const CONTEXT_IDS = [
 
 const SELECT_TOOLS: SceneTool[] = ['select-box', 'select-circle', 'select-lasso']
 
-type Pie = { kind: 'pivot' | 'orientation' | 'shading' | 'snap'; at: { x: number; y: number } } | null
+type PieKind = 'pivot' | 'orientation' | 'shading' | 'snap' | 'mode'
+type Pie = { kind: PieKind; at: { x: number; y: number } } | null
 
 /**
  * The 3D editor: the outliner on the left, the viewport in the middle, the properties on the right.
@@ -82,6 +92,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [redoExpanded, setRedoExpanded] = useState(false)
   const [pie, setPie] = useState<Pie>(null)
   const [contextAt, setContextAt] = useState<{ x: number; y: number } | null>(null)
+  const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
   const preferences = prefs.preferences ?? DEFAULT_PREFERENCES
@@ -119,6 +130,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     }
     const aspect = viewportAspect()
     runOperator(id, { ...params, ...(aspect ? { aspect } : {}) })
+    // ⇧D and ⌥D put the copy under the pointer and hand straight over to a move, as Blender does;
+    // the frame's wait is for the copy to reach the document the session will read.
+    if (id === 'object.duplicate' || id === 'object.duplicateLinked') {
+      requestAnimationFrame(() => stage.current?.startTransform('move'))
+    }
   }, [editor, runOperator, viewportAspect])
 
   /** Opening a file replaces the document, which means going to its own address. */
@@ -223,12 +239,27 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       case 'pie.pivot':
       case 'pie.orientation':
         event.preventDefault()
-        setPie({ kind: action.id === 'pie.pivot' ? 'pivot' : 'orientation', at: pointerCentre() })
+        setPie({
+          kind: action.id === 'pie.pivot' ? 'pivot' : 'orientation',
+          at: stage.current?.pointerPage() ?? pointerCentre(),
+        })
         return
       case 'add.menu':
-        // The Add menu is opened from the header; a pie for it arrives with the mesh prompt.
+        // ⇧A opens the Add menu where the pointer is, as Blender's does, filterable by typing.
         event.preventDefault()
-        setPaletteOpen(true)
+        setAddAt(stage.current?.pointerPage() ?? pointerCentre())
+        return
+      case 'cursor.snapPie':
+        event.preventDefault()
+        setPie({ kind: 'snap', at: stage.current?.pointerPage() ?? pointerCentre() })
+        return
+      case 'pie.shading':
+        event.preventDefault()
+        setPie({ kind: 'shading', at: stage.current?.pointerPage() ?? pointerCentre() })
+        return
+      case 'mode.pie':
+        event.preventDefault()
+        setPie({ kind: 'mode', at: stage.current?.pointerPage() ?? pointerCentre() })
         return
       default:
         return
@@ -380,6 +411,14 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
               onPlaceCursor={(position, normal) => run('cursor.place', { position, ...(normal ? { normal } : {}) })}
               onContextMenu={setContextAt}
+              onAnnotate={(points) => editor.editDocument((current) => ({
+                ...current,
+                annotations: [...(current.annotations ?? []), { id: crypto.randomUUID(), color: ANNOTATION_COLOUR, width: 3, points }],
+              }), 'Annotate', false)}
+              onMeasure={(from, to) => editor.editDocument((current) => ({
+                ...current,
+                measurements: [...(current.measurements ?? []), { id: crypto.randomUUID(), from, to }],
+              }), 'Measure', false)}
               onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
               onGestureStart={editor.beginGesture}
               onGestureEnd={editor.endGesture}
@@ -441,14 +480,26 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         <ScenePieMenu
           open
           at={pie.at}
-          label={pie.kind === 'pivot' ? 'Pivot point' : 'Transform orientation'}
-          items={pieItems(pie.kind, document.view)}
+          label={PIE_LABELS[pie.kind]}
+          items={pieItems(pie.kind, context)}
           onPick={(id) => {
             setPie(null)
             if (pie.kind === 'pivot') patchView({ pivot: id as ViewState['pivot'] })
-            else patchView({ orientation: id as ViewState['orientation'] })
+            else if (pie.kind === 'orientation') patchView({ orientation: id as ViewState['orientation'] })
+            else if (pie.kind === 'shading') patchView({ shading: id as ViewState['shading'] })
+            else if (pie.kind === 'mode') editor.setMessage('Edit mode arrives with the mesh editing prompt.')
+            else run(id)
           }}
           onClose={() => setPie(null)}
+        />
+      ) : null}
+      {addAt ? (
+        <SceneMenu
+          label="Add"
+          entries={addEntries(context, run)}
+          at={addAt}
+          open
+          onOpenChange={(open) => { if (!open) setAddAt(null) }}
         />
       ) : null}
       {contextAt ? (
@@ -492,9 +543,53 @@ const ORIENTATION_ITEMS: ScenePieItem[] = [
   { id: 'cursor', label: 'Cursor', icon: 'orientation-cursor' },
 ]
 
-function pieItems(kind: 'pivot' | 'orientation' | 'shading' | 'snap', view: ViewState): ScenePieItem[] {
-  void view
-  return kind === 'pivot' ? PIVOT_ITEMS : ORIENTATION_ITEMS
+const SHADING_ITEMS: ScenePieItem[] = [
+  { id: 'wireframe', label: 'Wireframe', icon: 'shading-wireframe' },
+  { id: 'solid', label: 'Solid', icon: 'shading-solid' },
+  { id: 'material', label: 'Material preview', icon: 'shading-material' },
+  { id: 'rendered', label: 'Rendered', icon: 'shading-rendered' },
+]
+
+const MODE_ITEMS: ScenePieItem[] = [
+  { id: 'object', label: 'Object mode' },
+  { id: 'edit', label: 'Edit mode', disabled: true, reason: 'Edit mode arrives with the mesh editing prompt.' },
+  { id: 'sculpt', label: 'Sculpt mode', disabled: true, reason: 'Sculpt mode arrives with the horizon prompt.' },
+]
+
+const PIE_LABELS: Record<PieKind, string> = {
+  pivot: 'Pivot point',
+  orientation: 'Transform orientation',
+  shading: 'Viewport shading',
+  snap: 'Snap',
+  mode: 'Mode',
+}
+
+function pieItems(kind: PieKind, context: OperatorContext | null): ScenePieItem[] {
+  if (kind === 'pivot') return PIVOT_ITEMS
+  if (kind === 'orientation') return ORIENTATION_ITEMS
+  if (kind === 'shading') return SHADING_ITEMS
+  if (kind === 'mode') return MODE_ITEMS
+  // The snap pie is the operators themselves, so what it offers and what it refuses come from them.
+  return SNAP_PIE.map((id) => {
+    const operator = getOperator(id)
+    const availability = operator && context ? operator.available(context) : true
+    return {
+      id,
+      label: operator?.label ?? id,
+      ...(operator?.icon ? { icon: operator.icon } : {}),
+      ...(availability === true ? {} : { disabled: true, reason: availability }),
+    }
+  })
+}
+
+/** The ⇧A menu: the Add sections, in Blender's order, with a rule between them. */
+function addEntries(context: OperatorContext | null, run: (id: string) => void): SceneMenuEntry[] {
+  const entries: SceneMenuEntry[] = []
+  for (const section of ADD_MENU) {
+    if (entries.length) entries.push({ separator: true })
+    entries.push(...menuEntries(section.items, context, run) as SceneMenuEntry[])
+  }
+  return entries
 }
 
 /** The keymap, as the F1 sheet shows it: generated from the table, so it cannot go out of date. */

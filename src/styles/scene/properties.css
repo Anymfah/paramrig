@@ -172,12 +172,25 @@
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
+/*
+ * One axis per row, as Blender stacks them. Three across fits a wide panel and nothing else: at the
+ * inspector's own 320 pixels each field would have about ninety, and a label, a number, a unit and
+ * a lock do not go into ninety pixels without one of them being cut off.
+ */
 .scene-axes__fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-1);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
 }
-.scene-axes__fields .number-value { width: 100%; }
+/*
+ * Three fields across a 320-pixel column, each with a lock beside its number. Without these the
+ * field's own minimum width wins, the tracks add up to more than the panel, and the third lock is
+ * cut off by the edge of the inspector.
+ */
+.scene-axes__fields > * { min-width: 0; }
+.scene-axes__fields .number-value { width: 100%; min-width: 0; }
+.scene-axes__fields .number-value__input { min-width: 0; }
+.scene-axes__fields .tt__anchor { min-width: 0; }
 .scene-axes__fields .number-value__label { flex: none; }
 .scene-axes__fields .icon-btn { width: 24px; height: 24px; }
 
@@ -304,10 +317,7 @@
   .scene-axes__fields .icon-btn { width: var(--hit-target); height: var(--hit-target); }
 }
 
-/* At the narrowest the three axes stop fitting across; they stack rather than truncate. */
-@media (max-width: 22rem) {
-  .scene-axes__fields { grid-template-columns: minmax(0, 1fr); }
-}
+
 
 @media (prefers-reduced-motion: reduce) {
   .scene-section__title svg,

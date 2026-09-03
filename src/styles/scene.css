@@ -1,10 +1,12 @@
 @import './scene/header.css';
+@import './scene/hints.css';
 @import './scene/menu.css';
 @import './scene/outliner.css';
 @import './scene/properties.css';
 @import './scene/sidebar.css';
 @import './scene/toolbar.css';
 @import './scene/files.css';
+@import './scene/mobile.css';
 
 /*
  * The 3D editor's own colours, and the chrome around its viewport.

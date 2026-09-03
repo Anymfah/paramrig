@@ -1,0 +1,86 @@
+/* The scene editor's opening hint. Colours come from the --scene-* and ParamRig tokens, never literals. */
+
+/*
+ * The chip that teaches the first minute, and the line that stays behind it.
+ *
+ * The chip sits in the middle-bottom of the viewport: near enough to the status bar to read as part
+ * of the chrome rather than part of the model, and far enough from the corners that it covers none
+ * of the panels that float there. It is the same floating surface as the transform readout, so a
+ * viewport never shows two kinds of small box.
+ */
+
+.scene-hints {
+  inset-block-end: var(--space-3);
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-block: 3px;
+  padding-inline: var(--space-3) 3px;
+  /* The chip's own rule is nowrap; this one is a sentence, and on a narrow viewport it must fold. */
+  max-inline-size: min(40rem, calc(100% - var(--space-6)));
+  white-space: normal;
+  transition: opacity var(--scene-hint-fade, 200ms) var(--ease-out);
+}
+
+/* Leaving is a fade and nothing more: a chip that also slides reads as something being thrown out. */
+.scene-hints[data-leaving] { opacity: 0; }
+
+.scene-hints__text { min-inline-size: 0; }
+
+.scene-hints__close {
+  flex: none;
+  inline-size: var(--hit-target);
+  block-size: var(--hit-target);
+  color: var(--text-muted);
+}
+
+/* The line in the status bar. It is quiet until it is wanted, like the hints beside it. */
+.scene-hints__keymap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: var(--hit-target);
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-instant) var(--ease-out), background var(--duration-instant) var(--ease-out);
+}
+.scene-hints__keymap:hover { color: var(--text-primary); background: var(--accent-subtle); }
+.scene-hints__keymap:active { background: var(--surface-inset); }
+.scene-hints__keymap:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.scene-hints__keymap[aria-disabled='true'] { color: var(--text-muted); cursor: not-allowed; }
+.scene-hints__keymap kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 11px;
+}
+
+@media (pointer: coarse) {
+  .scene-hints__close {
+    inline-size: var(--hit-target-coarse);
+    block-size: var(--hit-target-coarse);
+  }
+  .scene-hints__keymap { min-block-size: var(--hit-target-coarse); }
+}
+
+/* The fade is the only motion here, so under a reduced-motion setting the chip is simply gone. */
+@media (prefers-reduced-motion: reduce) {
+  .scene-hints { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .scene-hints__keymap:focus-visible { outline-color: CanvasText; }
+}
