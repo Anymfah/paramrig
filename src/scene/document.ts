@@ -2,6 +2,7 @@ import { readStore, writeStore, type StorageResult } from '@/editor/storage'
 import type { RigManifest } from '@/rigs/types'
 import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
+import { MAX_PITCH } from '@/scene/viewport/view'
 import type {
   Collection,
   EmptyDisplay,
@@ -450,7 +451,7 @@ function viewState(value: unknown): ViewState {
   return {
     target: vec3(source.target, DEFAULT_VIEW.target),
     yaw: num(source.yaw, DEFAULT_VIEW.yaw, -1e5, 1e5),
-    pitch: num(source.pitch, DEFAULT_VIEW.pitch, -89.9, 89.9),
+    pitch: num(source.pitch, DEFAULT_VIEW.pitch, -MAX_PITCH, MAX_PITCH),
     distance: num(source.distance, DEFAULT_VIEW.distance, 1e-4, 1e6),
     projection: pick(source.projection, ['perspective', 'orthographic'] as const, 'perspective'),
     focalLength: num(source.focalLength, 50, 1, 5000),

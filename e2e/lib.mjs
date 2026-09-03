@@ -220,8 +220,11 @@ export function pageHelpers(page) {
     return all[location.pathname.split('/r/')[1]]
   })
 
-  /** The viewport's box on screen, for placing a pointer without guessing. */
-  const viewportBox = () => page.locator('.scene-stage').boundingBox()
+  /**
+   * The canvas's box on screen, for placing a pointer without guessing. It is the canvas and not
+   * the stage: `project()` answers in canvas coordinates, and the stage also holds the status bar.
+   */
+  const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
   return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, viewportBox, captureExport, openPaint, closePaint, openSection }
 }
