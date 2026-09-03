@@ -761,7 +761,10 @@ export function SceneStage({
           marquee.clear()
           if (drawing && held.moved) {
             if (latestDocument.current.view.mode === 'edit') {
-              onElementRef.current.onRegionElements(readElementRegion(instance, drawing), drawing.mode)
+              onElementRef.current.onRegionElements(
+                readElementRegion(instance, drawing, latestDocument.current.view.selectMode),
+                drawing.mode,
+              )
               return
             }
             const found = readRegion(instance, drawing)
@@ -990,22 +993,31 @@ function closestOnSegment(a: [number, number], b: [number, number], point: [numb
 function readElementRegion(
   viewport: SceneViewport,
   region: { kind: MarqueeKind; points: Array<[number, number]>; radius: number },
+  kinds: SelectMode[],
 ): Map<string, ElementRegion> {
   if (region.kind === 'box') {
     const [a, b] = region.points
     if (!a || !b) return new Map()
-    return viewport.pickElementRegion(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]))
+    return viewport.pickElementRegion(
+      Math.min(a[0], b[0]),
+      Math.min(a[1], b[1]),
+      Math.abs(b[0] - a[0]),
+      Math.abs(b[1] - a[1]),
+      undefined,
+      kinds,
+    )
   }
   if (region.kind === 'circle') {
     const centre = region.points[0]
     if (!centre) return new Map()
     const radius = region.radius
     return viewport.pickElementRegion(centre[0] - radius, centre[1] - radius, radius * 2, radius * 2,
-      (x, y) => Math.hypot(x - centre[0], y - centre[1]) <= radius)
+      (x, y) => Math.hypot(x - centre[0], y - centre[1]) <= radius, kinds)
   }
   if (region.points.length < 3) return new Map()
   const box = boundsOfPoints(region.points)
-  return viewport.pickElementRegion(box.x, box.y, box.width, box.height, (x, y) => insidePolygon(region.points, x, y))
+  return viewport.pickElementRegion(box.x, box.y, box.width, box.height,
+    (x, y) => insidePolygon(region.points, x, y), kinds)
 }
 
 function readRegion(

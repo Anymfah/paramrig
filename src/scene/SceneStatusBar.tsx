@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import type { SceneCounts } from '@/scene/document'
 import { editStats } from '@/scene/editStats'
 import type { SceneDocument, SceneSelection } from '@/scene/types'
@@ -24,7 +24,11 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
     ? [['Select', 'click'], ['Extend', '⇧ click'], ['Loop', '⌥ click'], ['Path', '⌃ click'], ['Orbit', 'middle drag']]
     : [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Add', '⇧A']]
   // Edit mode counts what is being edited, not the scene: that is the number a person is watching.
-  const stats = editing ? editStats(document, selection) : null
+  // Counted when the document or the selection changes, not on every render of the bar.
+  const stats = useMemo(
+    () => (document.view.mode === 'edit' ? editStats(document, selection) : null),
+    [document, selection],
+  )
 
   return (
     <div className="scene-status" role="status">

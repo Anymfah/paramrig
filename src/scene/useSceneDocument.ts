@@ -32,9 +32,18 @@ export type LastOperation = {
   label: string
 }
 
-function clone(document: SceneDocument): SceneDocument {
-  return structuredClone(document)
-}
+/**
+ * A history entry holds the document itself, not a copy of it.
+ *
+ * Nothing in the editor writes into a document: an operator returns a new one, `withMesh` replaces
+ * a map, a field spreads what it changes. So the document *is* the state at that moment, and
+ * copying it buys nothing — while copying one that holds a hundred thousand vertices costs a
+ * hundred milliseconds and mints fresh meshes the sanitiser then has to read all over again.
+ *
+ * If something ever did mutate a document in place, this is where the bug would show: undo would
+ * come back to the state it was meant to leave. That is a defect to fix at the source rather than
+ * to hide behind a copy of every mesh in the scene.
+ */
 
 function sameSelection(a: SceneSelection, b: SceneSelection): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
@@ -120,7 +129,7 @@ export function useSceneDocument(documentId: string) {
     const next = { ...updated, updatedAt: new Date().toISOString() }
     if (record && !gestureStart.current) {
       writeHistory({
-        past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: clone(current), label, at: Date.now() }],
+        past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: current, label, at: Date.now() }],
         future: [],
       })
     }
@@ -375,10 +384,10 @@ export function useSceneDocument(documentId: string) {
     if (!previous || !current) return
     writeHistory({
       past: value.past.slice(0, -1),
-      future: [{ document: clone(current), label: previous.label, at: previous.at }, ...value.future].slice(0, HISTORY_LIMIT),
+      future: [{ document: current, label: previous.label, at: previous.at }, ...value.future].slice(0, HISTORY_LIMIT),
     })
     // The view the person is looking through is theirs, not the history's.
-    latest.current = { ...clone(previous.document), view: current.view }
+    latest.current = { ...previous.document, view: current.view }
     setDocumentState(latest.current)
     setLastOperation(null)
     selectChanged(current.objects, latest.current.objects)
@@ -391,10 +400,10 @@ export function useSceneDocument(documentId: string) {
     const current = latest.current
     if (!next || !current) return
     writeHistory({
-      past: [...value.past, { document: clone(current), label: next.label, at: next.at }].slice(-HISTORY_LIMIT),
+      past: [...value.past, { document: current, label: next.label, at: next.at }].slice(-HISTORY_LIMIT),
       future: value.future.slice(1),
     })
-    latest.current = { ...clone(next.document), view: current.view }
+    latest.current = { ...next.document, view: current.view }
     setDocumentState(latest.current)
     setLastOperation(null)
     selectChanged(current.objects, latest.current.objects)
@@ -421,7 +430,7 @@ export function useSceneDocument(documentId: string) {
       past: states.slice(0, target).map((entry, at) => ({ document: entry.document, label: states[at + 1]!.label, at: states[at + 1]!.at })),
       future: states.slice(target + 1),
     })
-    latest.current = { ...clone(states[target]!.document), view: current.view }
+    latest.current = { ...states[target]!.document, view: current.view }
     setDocumentState(latest.current)
     setLastOperation(null)
     selectChanged(current.objects, latest.current.objects)

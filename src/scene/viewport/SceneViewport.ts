@@ -126,6 +126,11 @@ function editSlots(mesh: MeshData, selection: SceneSelection, objectId: string):
   const stored = selection.elements?.[objectId]
   const slots: EditSlots = { vertices: new Set(), edges: new Set(), faces: new Set(), active: null }
   if (!stored) return slots
+  // Three indexes over a hundred thousand elements, built to look nothing up: the empty selection
+  // is the commonest one there is, and it is the one a mesh is opened with.
+  const active = selection.active
+  const wanted = stored.vertices.length + stored.edges.length + stored.faces.length
+  if (wanted === 0 && (!active || active.objectId !== objectId)) return slots
   const vertexSlot = new Map<number, number>()
   for (let slot = 0; slot < mesh.vertexIds.length; slot += 1) vertexSlot.set(mesh.vertexIds[slot]!, slot)
   const faceSlot = new Map<number, number>()
@@ -149,7 +154,6 @@ function editSlots(mesh: MeshData, selection: SceneSelection, objectId: string):
     const slot = edgeSlot.get(pairKey(pair[0], pair[1]))
     if (slot !== undefined) slots.edges.add(slot)
   }
-  const active = selection.active
   if (active && active.objectId === objectId) {
     if (active.kind === 'vertex') {
       const slot = vertexSlot.get(Number(active.id))
@@ -600,7 +604,10 @@ export class SceneViewport {
         if (mesh && !meshViewIsCurrent(view.meshView, mesh)) {
           updateMeshPositions(view.meshView, mesh)
           refreshMeshBounds(view.meshView)
+          // The fingerprint is cleared so the next comparison is forced; the source is what says
+          // “this is the very mesh I was last given”, and it is now that one.
           view.meshView.fingerprint = ''
+          view.meshView.source = mesh
           view.wire?.setPositions(edgePositions(mesh))
         }
       }
@@ -745,10 +752,15 @@ export class SceneViewport {
     width: number,
     height: number,
     inside?: (px: number, py: number) => boolean,
+    kinds?: SelectMode[],
   ): Map<string, { vertices: Set<number>; edges: Set<number>; faces: Set<number> }> {
     const found = new Map<string, { vertices: Set<number>; edges: Set<number>; faces: Set<number> }>()
     const renderer = this.renderer
     if (!renderer || !this.picking || width < 1 || height < 1 || this.editObjects.length === 0) return found
+    // Only the kinds being selected are drawn into the buffer for this read, which is what Blender
+    // selects with a box and, on a heavy mesh, two passes of drawing that nobody would have read.
+    const wanted = kinds && kinds.length > 0 ? kinds : (['vertex', 'edge', 'face'] as SelectMode[])
+    for (const entry of this.editViews.values()) entry.view.setPickKinds(wanted)
     const ratio = this.pixelRatio
     const buffer = this.picking.region(renderer, this.camera, x * ratio, y * ratio, width * ratio, height * ratio)
     const readWidth = Math.max(1, Math.round(width * ratio))
@@ -758,14 +770,21 @@ export class SceneViewport {
      * with the last pixel's is two comparisons; decoding them and touching three sets is not, and
      * over a million pixels the difference is the whole cost of a box selection.
      */
+    /*
+     * The pixels are read four bytes at a time. The number that comes out is not a colour in any
+     * particular order — the packing depends on the machine — but it is the same number for the
+     * same four bytes, which is all an "is this the same as the last one" test needs. Only when it
+     * differs are the bytes taken apart.
+     */
+    const packed = new Uint32Array(buffer.buffer, buffer.byteOffset, (buffer.length / 4) | 0)
     let lastKey = -1
     let lastInside = true
     for (let row = 0; row < readHeight; row += 1) {
       for (let column = 0; column < readWidth; column += 1) {
-        const offset = (row * readWidth + column) * 4
-        const alpha = buffer[offset + 3]!
-        if (alpha === 0) continue
-        const key = (alpha << 24) | (buffer[offset]! << 16) | (buffer[offset + 1]! << 8) | buffer[offset + 2]!
+        const pixel = row * readWidth + column
+        const offset = pixel * 4
+        if (buffer[offset + 3] === 0) continue
+        const key = packed[pixel]!
         const shape = inside ? inside(x + column / ratio, y + (readHeight - 1 - row) / ratio) : true
         if (key === lastKey && shape === lastInside) continue
         lastKey = key
@@ -786,6 +805,7 @@ export class SceneViewport {
         else entry.faces.add(elementIndex)
       }
     }
+    for (const entry of this.editViews.values()) entry.view.setPickKinds(['vertex', 'edge', 'face'])
     return found
   }
 

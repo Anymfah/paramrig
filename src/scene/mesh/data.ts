@@ -155,8 +155,20 @@ export function cloneMesh(mesh: MeshData): MeshData {
  * face with fewer than three distinct corners, a repeated id — each one is a mesh the editor could
  * not draw, so each one is repaired where the repair is obvious and dropped where it is not.
  */
+/**
+ * The meshes this build has already read and found sound.
+ *
+ * Validating a mesh walks every coordinate, every edge and every corner of it, which is right for
+ * something that has just come off a disk and wasteful for one the editor itself made a moment ago
+ * — and the sanitiser runs on every save. A mesh is never written to in place, so an object that
+ * has been validated once is still valid; the set holds them weakly, so nothing is kept alive by
+ * having been checked.
+ */
+const validated = new WeakSet<object>()
+
 export function validateMeshData(value: unknown): MeshData | null {
   if (!value || typeof value !== 'object') return null
+  if (validated.has(value)) return value as MeshData
   const source = value as Partial<MeshData>
   const rawVertices = Array.isArray(source.vertices) ? source.vertices : null
   if (!rawVertices) return null
@@ -247,7 +259,7 @@ export function validateMeshData(value: unknown): MeshData | null {
     ? { enabled: !!source.autoSmooth.enabled, angle: clampNumber(source.autoSmooth.angle, 0, 180, 30) }
     : undefined
 
-  return {
+  return markValidated({
     vertices,
     vertexIds,
     nextVertexId: highest(vertexIds, nextVertexId),
@@ -257,7 +269,7 @@ export function validateMeshData(value: unknown): MeshData | null {
     nextFaceId: highest(faceIds, nextFaceId),
     attributes,
     ...(autoSmooth ? { autoSmooth } : {}),
-  }
+  })
 }
 
 function readAttributes(value: unknown, faceCount: number, edgeCount: number, faceKeep: number[], edgeKeep: number[]): MeshAttributes {
@@ -308,6 +320,12 @@ export function clampNumber(value: unknown, min: number, max: number, fallback: 
  * A cheap stamp of the mesh's shape. Two meshes with the same stamp draw the same, so the viewport
  * can keep its triangulation and its BVH instead of rebuilding them every frame.
  */
+/** Marks a mesh as sound without re-reading it: for the ones this build has just constructed. */
+export function markValidated(mesh: MeshData): MeshData {
+  validated.add(mesh)
+  return mesh
+}
+
 export function meshFingerprint(mesh: MeshData): string {
   let hash = 2166136261
   const mix = (value: number) => {

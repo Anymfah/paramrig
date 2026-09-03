@@ -78,6 +78,11 @@ export function elementTargets(
     if (!object || object.data.kind !== 'mesh') continue
     const data = meshOf(document, object)
     if (!data) continue
+    // Nothing selected here means nothing to move, and asking that of the *selection* rather than
+    // of the mesh is what keeps opening a hundred thousand vertices from building their adjacency
+    // to find out there was nothing to do.
+    const stored = selection.elements?.[objectId]
+    if (!stored || (stored.vertices.length === 0 && stored.edges.length === 0 && stored.faces.length === 0)) continue
     // Read only: the targets are measured from the mesh, never written to it.
     const mesh = readOnlyAdjacency(data)
     const elements = toElements(selection, objectId)

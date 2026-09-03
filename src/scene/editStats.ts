@@ -41,19 +41,29 @@ export function editStats(document: SceneDocument, selection: SceneSelection): E
     stats.triangles += cachedTriangulation(mesh).triangleCount
     const stored = selection.elements?.[id]
     if (!stored) continue
-    // The stored ids may name geometry an operator has since removed; only what the mesh still
-    // holds is counted, or the bar would say five of four.
-    const vertexIds = new Set(mesh.vertexIds)
-    const faceIds = new Set(mesh.faceIds)
-    for (const entry of stored.vertices) if (vertexIds.has(Number(entry))) stats.vertices.selected += 1
-    for (const entry of stored.faces) if (faceIds.has(Number(entry))) stats.faces.selected += 1
-    const edgeKeys = new Set<string>()
-    for (const [a, b] of mesh.edges) {
-      const first = mesh.vertexIds[a] ?? -1
-      const second = mesh.vertexIds[b] ?? -1
-      edgeKeys.add(first < second ? `${first}:${second}` : `${second}:${first}`)
+    /*
+     * The stored ids may name geometry an operator has since removed, so only what the mesh still
+     * holds is counted — or the bar would say five of four. Each index is built only when there is
+     * something to look up in it: on a mesh of two hundred thousand edges, building the keys for a
+     * selection of none is most of what opening it used to cost.
+     */
+    if (stored.vertices.length > 0) {
+      const vertexIds = new Set(mesh.vertexIds)
+      for (const entry of stored.vertices) if (vertexIds.has(Number(entry))) stats.vertices.selected += 1
     }
-    for (const entry of stored.edges) if (edgeKeys.has(entry)) stats.edges.selected += 1
+    if (stored.faces.length > 0) {
+      const faceIds = new Set(mesh.faceIds)
+      for (const entry of stored.faces) if (faceIds.has(Number(entry))) stats.faces.selected += 1
+    }
+    if (stored.edges.length > 0) {
+      const edgeKeys = new Set<string>()
+      for (const [a, b] of mesh.edges) {
+        const first = mesh.vertexIds[a] ?? -1
+        const second = mesh.vertexIds[b] ?? -1
+        edgeKeys.add(first < second ? `${first}:${second}` : `${second}:${first}`)
+      }
+      for (const entry of stored.edges) if (edgeKeys.has(entry)) stats.edges.selected += 1
+    }
   }
   return stats
 }

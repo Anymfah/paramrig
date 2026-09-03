@@ -18,9 +18,14 @@ export type ViewportLines = {
   object: LineSegments2
   material: LineMaterial
   setPositions: (positions: number[] | Float32Array) => void
+  /** A colour for each end of each segment, which is how one set draws several states at once. */
+  setColours: (colours: number[] | Float32Array) => void
   setColour: (colour: string | number) => void
   dispose: () => void
 }
+
+/** What a line set is given when it has nothing to draw: one degenerate segment, allocated once. */
+const EMPTY_SEGMENT = new Float32Array([0, 0, 0, 0, 0, 0])
 
 export function createLines(options: {
   positions?: number[] | Float32Array
@@ -59,10 +64,24 @@ export function createLines(options: {
     object,
     material,
     setPositions: (positions) => {
-      const list = Array.from(positions)
-      geometry.setPositions(list.length >= 6 ? list : [0, 0, 0, 0, 0, 0])
-      object.visible = list.length >= 6
+      /*
+       * The array goes straight through. `LineSegmentsGeometry` keeps a `Float32Array` as it is and
+       * copies anything else, so turning one into a plain array first — which this used to do —
+       * allocated a million numbers on a heavy mesh and threw them away a line later.
+       */
+      const enough = positions.length >= 6
+      const buffer = enough
+        ? (positions instanceof Float32Array ? positions : Float32Array.from(positions))
+        : EMPTY_SEGMENT
+      geometry.setPositions(buffer)
+      object.visible = enough
       if (options.dashed) object.computeLineDistances()
+    },
+    setColours: (colours) => {
+      if (colours.length < 6) return
+      geometry.setColors(colours instanceof Float32Array ? colours : Float32Array.from(colours))
+      material.vertexColors = true
+      material.needsUpdate = true
     },
     setColour: (colour) => material.color.set(colour),
     dispose: () => {

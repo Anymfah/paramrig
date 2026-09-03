@@ -214,6 +214,12 @@ export type EditView = {
   /** The element under the pointer, drawn in the hover colour. True when it changed. */
   setHover: (element: { kind: SelectMode; slot: number } | null) => boolean
   setSelectMode: (modes: SelectMode[]) => void
+  /**
+   * Which kinds the id buffer answers for on the next read. A click wants all three — ⌥ takes a
+   * loop of edges while the editor is in vertex mode — and a region wants only the kind being
+   * selected, which is both what Blender selects and three passes' worth of drawing saved.
+   */
+  setPickKinds: (kinds: SelectMode[]) => void
   setOverlays: (overlays: EditOverlayFlags) => void
   setXray: (xray: boolean) => void
   setResolution: (width: number, height: number, pixelRatio: number) => void
@@ -236,6 +242,17 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
   let xray = false
   let size = { width: 1, height: 1 }
   let lastShape = ''
+  /*
+   * The edge buffers are kept and rewritten rather than rebuilt.
+   *
+   * A mesh of a hundred thousand vertices has two hundred thousand edges, which is one and a
+   * fifth million numbers a piece for the positions and for the colours. Allocating those on every
+   * pointer move — and again on every click — is most of what opening a heavy mesh used to cost.
+   * The same array is handed to the overlay and to the id pass, because they draw the same points.
+   */
+  let edgePositions = new Float32Array(0)
+  let edgeColours = new Float32Array(0)
+  let chosenPositions = new Float32Array(0)
   let overlays: EditOverlayFlags = DEFAULT_OVERLAYS
   let colours = readColours(theme)
 
@@ -369,7 +386,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     vertexPickGeometry.setAttribute('position', new BufferAttribute(positions.slice(), 3))
     vertexPickGeometry.setAttribute('aId', new BufferAttribute(ids, 3))
 
-    writeEdgePositions()
+    writeEdgePositions(true)
     writeEdgeIds()
     writeFaceCentres()
     writeNormals()
@@ -394,21 +411,29 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     applySelection()
   }
 
-  function writeEdgePositions(): void {
+  function writeEdgePositions(rebuilt: boolean): void {
     if (!mesh) return
     const count = mesh.edges.length
-    const positions = new Float32Array(count * 6)
+    if (edgePositions.length !== count * 6) edgePositions = new Float32Array(count * 6)
     for (let slot = 0; slot < count; slot += 1) {
       const [a, b] = mesh.edges[slot]!
-      positions[slot * 6] = mesh.vertices[a * 3] ?? 0
-      positions[slot * 6 + 1] = mesh.vertices[a * 3 + 1] ?? 0
-      positions[slot * 6 + 2] = mesh.vertices[a * 3 + 2] ?? 0
-      positions[slot * 6 + 3] = mesh.vertices[b * 3] ?? 0
-      positions[slot * 6 + 4] = mesh.vertices[b * 3 + 1] ?? 0
-      positions[slot * 6 + 5] = mesh.vertices[b * 3 + 2] ?? 0
+      edgePositions[slot * 6] = mesh.vertices[a * 3] ?? 0
+      edgePositions[slot * 6 + 1] = mesh.vertices[a * 3 + 1] ?? 0
+      edgePositions[slot * 6 + 2] = mesh.vertices[a * 3 + 2] ?? 0
+      edgePositions[slot * 6 + 3] = mesh.vertices[b * 3] ?? 0
+      edgePositions[slot * 6 + 4] = mesh.vertices[b * 3 + 1] ?? 0
+      edgePositions[slot * 6 + 5] = mesh.vertices[b * 3 + 2] ?? 0
     }
-    edges.setPositions(positions)
-    edgePickGeometry.setAttribute('position', new BufferAttribute(positions.slice(), 3))
+    const attribute = edgePickGeometry.getAttribute('position') as BufferAttribute | undefined
+    if (rebuilt || !attribute || attribute.array !== edgePositions) {
+      edges.setPositions(edgePositions)
+      edgePickGeometry.setAttribute('position', new BufferAttribute(edgePositions, 3))
+      return
+    }
+    // The same numbers, in the same place: both the strip and the id pass just need telling.
+    attribute.needsUpdate = true
+    const start = edges.object.geometry.getAttribute('instanceStart')
+    if (start) (start as unknown as { data: { needsUpdate: boolean } }).data.needsUpdate = true
   }
 
   function writeEdgeIds(): void {
@@ -490,7 +515,7 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       ;(pick.array as Float32Array).set(array)
       pick.needsUpdate = true
     }
-    writeEdgePositions()
+    writeEdgePositions(false)
     writeFaceCentres()
     writeNormals()
     applySelection()
@@ -550,8 +575,9 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     const sharp = new Color(colours.sharp)
     const crease = new Color(colours.crease)
     const attributes = mesh.attributes.edge
-    const rgb = new Float32Array(count * 6)
-    const chosenPositions: number[] = []
+    if (edgeColours.length !== count * 6) edgeColours = new Float32Array(count * 6)
+    const rgb = edgeColours
+    let selectedCount = 0
     for (let slot = 0; slot < count; slot += 1) {
       const isActive = slots.active?.kind === 'edge' && slots.active.slot === slot
       const isChosen = slots.edges.has(slot)
@@ -578,15 +604,27 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
       rgb[slot * 6 + 4] = colour.g
       rgb[slot * 6 + 5] = colour.b
       if (!isChosen && !isActive) continue
-      const [a, b] = mesh.edges[slot]!
-      chosenPositions.push(
-        mesh.vertices[a * 3] ?? 0, mesh.vertices[a * 3 + 1] ?? 0, mesh.vertices[a * 3 + 2] ?? 0,
-        mesh.vertices[b * 3] ?? 0, mesh.vertices[b * 3 + 1] ?? 0, mesh.vertices[b * 3 + 2] ?? 0,
-      )
+      selectedCount += 1
     }
-    edges.object.geometry.setColors(Array.from(rgb))
-    chosenEdges.object.visible = chosenPositions.length > 0
-    if (chosenPositions.length > 0) chosenEdges.setPositions(chosenPositions)
+    edges.setColours(rgb)
+    // The thicker strip carries only what is selected, so its buffer is the size of the selection
+    // rather than of the mesh — and a selection of four edges costs four edges' worth of work.
+    if (chosenPositions.length !== selectedCount * 6) chosenPositions = new Float32Array(selectedCount * 6)
+    let at = 0
+    for (let slot = 0; slot < count; slot += 1) {
+      const isActive = slots.active?.kind === 'edge' && slots.active.slot === slot
+      if (!slots.edges.has(slot) && !isActive) continue
+      const [a, b] = mesh.edges[slot]!
+      chosenPositions[at] = mesh.vertices[a * 3] ?? 0
+      chosenPositions[at + 1] = mesh.vertices[a * 3 + 1] ?? 0
+      chosenPositions[at + 2] = mesh.vertices[a * 3 + 2] ?? 0
+      chosenPositions[at + 3] = mesh.vertices[b * 3] ?? 0
+      chosenPositions[at + 4] = mesh.vertices[b * 3 + 1] ?? 0
+      chosenPositions[at + 5] = mesh.vertices[b * 3 + 2] ?? 0
+      at += 6
+    }
+    chosenEdges.object.visible = selectedCount > 0
+    if (selectedCount > 0) chosenEdges.setPositions(chosenPositions)
   }
 
   function applyModes(): void {
@@ -598,10 +636,12 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     /*
      * All three passes stay in the id buffer whatever is being selected. ⌥ click takes a loop of
      * edges while the editor is in vertex mode, and a hover has to know what it is over before the
-     * priority is applied — a buffer that only answered for the current mode could do neither.
+     * priority is applied — a buffer that only answered for the current mode could do neither. A
+     * region read narrows them for the length of its own render; see `setPickKinds`.
      */
     vertexPick.visible = true
     edgePick.visible = true
+    if (facePick) facePick.visible = true
   }
 
   function applyXray(): void {
@@ -653,6 +693,11 @@ export function createEditView(objectIndex: number, theme: SceneTheme): EditView
     setSelectMode: (next) => {
       modes = next.length > 0 ? next : ['vertex']
       applyModes()
+    },
+    setPickKinds: (kinds) => {
+      vertexPick.visible = kinds.includes('vertex')
+      edgePick.visible = kinds.includes('edge')
+      if (facePick) facePick.visible = kinds.includes('face')
     },
     setOverlays: (next) => {
       const drawnNormals = overlays.normals === next.normals && overlays.normalLength === next.normalLength

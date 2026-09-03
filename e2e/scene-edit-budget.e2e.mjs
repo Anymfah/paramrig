@@ -146,13 +146,13 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
   const partialCounts = await page.locator('.scene-status__stats').textContent()
   log(`MEASURE a box over a quarter of the heavy mesh: ${partial.toFixed(0)} ms — ${partialCounts}`)
   /*
-   * The prompt's budget is fifty milliseconds, and this sits on the line: between forty-seven and
-   * fifty-six across runs on this machine, depending on what else the graphics card is doing. The
-   * check guards against a regression rather than pretending the budget is met every time, and the
-   * measurement above says what it really cost.
+   * The prompt's budget is fifty milliseconds and this sits on the line — between forty-five and
+   * sixty across runs, most of it the five megabytes the id buffer has to hand back from the
+   * graphics card. The measurement above says what it really cost; the check guards the order of
+   * magnitude rather than pretending a number this close is met every time.
    */
   log(`  budget 50 ms — ${partial < 50 ? 'met' : `over by ${(partial - 50).toFixed(0)} ms`}`)
-  check('a box selection of ten thousand elements stays in the same order as its budget', partial < 75,
+  check('a box selection of ten thousand elements stays in the order of its budget', partial < 75,
     `${partial.toFixed(0)} ms against a budget of 50`)
 
   await page.locator('#main').focus()
@@ -263,14 +263,13 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
   const vertices = Number((heavyCounts.match(/Verts \d[\d\u202f\u00a0 ]*\/([\d\u202f\u00a0 ]+)/)?.[1] ?? '0').replace(/\D/g, ''))
   log(`MEASURE Tab on ${vertices.toLocaleString()} vertices: ${heavyOpen.toFixed(0)} ms`)
   /*
-   * Over the prompt's three hundred milliseconds, and knowingly so: opening a hundred thousand
-   * vertices builds four buffers of two hundred thousand edges apiece, and the honest number is
-   * about six hundred. It is written down here and in the bilan rather than hidden behind a budget
-   * this build does not meet; the check keeps it from getting worse.
+   * On the line, like the box selection: between two hundred and sixty and three hundred and ten
+   * across runs, against a budget of three hundred. What is left is the fifteen megabytes of
+   * buffers that opening two hundred thousand edges has to write and hand to the graphics card.
    */
-  log(`  budget 300 ms — over by ${(heavyOpen - 300).toFixed(0)} ms`)
-  check('Tab on a hundred thousand vertices stays under a second', vertices > 90000 && heavyOpen < 1000,
-    `${heavyOpen.toFixed(0)} ms for ${vertices.toLocaleString()} vertices, against a budget of 300`)
+  log(`  budget 300 ms — ${heavyOpen < 300 ? 'met' : `over by ${(heavyOpen - 300).toFixed(0)} ms`}`)
+  check('Tab on a hundred thousand vertices stays in the order of its budget',
+    vertices > 90000 && heavyOpen < 400, `${heavyOpen.toFixed(0)} ms for ${vertices.toLocaleString()} vertices`)
 
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))

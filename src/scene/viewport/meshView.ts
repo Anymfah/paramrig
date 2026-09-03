@@ -33,6 +33,8 @@ export type MeshView = {
   triangleFace: Int32Array
   triangleCount: number
   fingerprint: string
+  /** The mesh this view was built from, compared by identity before anything is measured. */
+  source: MeshData | null
   dispose: () => void
 }
 
@@ -58,6 +60,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
     triangleFace: triangulation.triangleFace,
     triangleCount: triangulation.triangleCount,
     fingerprint: meshFingerprint(mesh),
+    source: mesh,
     dispose: () => {
       geometry.disposeBoundsTree?.()
       geometry.dispose()
@@ -93,6 +96,13 @@ export function refreshMeshBounds(view: MeshView): void {
 }
 
 export function meshViewIsCurrent(view: MeshView, mesh: MeshData): boolean {
+  /*
+   * The same object is the same mesh. A fingerprint walks every face and every coordinate, which on
+   * a hundred thousand vertices is milliseconds — and this is asked on every change to the
+   * document, most of which are about something else entirely. A mesh is never written to in
+   * place, so identity settles it without reading a single number.
+   */
+  if (view.source === mesh) return true
   return view.fingerprint === meshFingerprint(mesh)
 }
 
