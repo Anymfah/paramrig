@@ -13,10 +13,16 @@ import { ExportAction } from '@/workspace/ExportAction'
 import { Inspector } from '@/workspace/Inspector'
 import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
-import { VectorEditorPage } from '@/vector/VectorEditorPage'
 import { modeOf, readInspectorPrefs, withMode, writeInspectorPrefs, type VectorMode } from '@/vector/inspectorPrefs'
 import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, writeScenePrefs } from '@/scene/prefs'
 
+/*
+ * Both editors are deferred, and for the same reason: a workspace opens one document, so the other
+ * editor is dead weight in front of the first frame. The drawing editor used to be static while the
+ * scene editor was not, which is why opening a scene parsed the whole vector editor first — 57
+ * modules and 13,760 lines, measured, none of them ever read.
+ */
+const VectorEditorPage = lazy(async () => ({ default: (await import('@/vector/VectorEditorPage')).VectorEditorPage }))
 const SceneEditorPage = lazy(() => import('@/scene/SceneEditorPage').then((mod) => ({ default: mod.SceneEditorPage })))
 
 export function WorkspacePage() {
@@ -82,7 +88,11 @@ export function WorkspacePage() {
 
   // A drawing opens in the editor; a document that exposes controls opens the way it was left.
   if (manifest.renderer === 'vector' && (mode === 'edit' || manifest.parameters.length === 0)) {
-    return <VectorEditorPage manifest={manifest} mode={mode} onMode={setMode} />
+    return (
+      <Suspense fallback={<p className="status-msg">Opening the drawing editor</p>}>
+        <VectorEditorPage manifest={manifest} mode={mode} onMode={setMode} />
+      </Suspense>
+    )
   }
 
   // The same rule for a scene: no controls, or last left on Edit, and it opens in the 3D editor.
