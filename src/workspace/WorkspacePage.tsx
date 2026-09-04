@@ -121,7 +121,7 @@ export function WorkspacePage() {
     >
       <h1 className="visually-hidden">{manifest.name}</h1>
       <div className="workspace-toolbar">
-        {manifest.renderer === 'vector' ? (
+        {manifest.renderer === 'vector' || manifest.renderer === 'scene' ? (
           <div className="workspace-toolbar__group">
             <Button variant="quiet" size="sm" onClick={() => setMode('edit')}>Edit</Button>
           </div>
@@ -150,7 +150,7 @@ export function WorkspacePage() {
           <ExportAction session={session} />
         </div>
       </div>
-      <div className={`preview-stage${manifest.renderer === 'three' ? ' preview-stage--scene' : ''}`} id="main" tabIndex={-1}>
+      <div className={`preview-stage${manifest.renderer === 'three' || manifest.renderer === 'scene' ? ' preview-stage--scene' : ''}`} id="main" tabIndex={-1}>
         <RigPreview
           rigId={manifest.id}
           renderer={manifest.renderer}

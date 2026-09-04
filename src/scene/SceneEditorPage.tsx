@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
 import { EditorModal } from '@/editor/EditorModal'
+import { ensureSession } from '@/state/workspace'
+import { resolveSceneValues } from '@/scene/rig'
+import type { ParamValue } from '@/rigs/types'
 import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
 import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
 import { LiveRegion } from '@/editor/LiveRegion'
@@ -77,6 +80,9 @@ const CONTEXT_IDS = [
 
 const SELECT_TOOLS: SceneTool[] = ['select-box', 'select-circle', 'select-lasso']
 
+/** Handed to the resolver when a document has no controls, so its identity never changes. */
+const NO_VALUES: Record<string, ParamValue> = {}
+
 /** B and C name a way of selecting, not a selection: the key picks up the tool. */
 const SELECT_TOOL_FOR = new Map<string, SceneTool>([
   ['select.box', 'select-box'],
@@ -134,6 +140,27 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const { document, selection, selectObjects, setView, undo, redo, runOperator } = editor
   const tab = tabOf(prefs, documentId)
 
+  /*
+   * The controls of a rigged document, and the values they are set to.
+   *
+   * The session belongs to the workbench rather than to this page — the same one the inspector and
+   * Tune mode use — so a value set here is the value seen there, and it is persisted per document
+   * without this page knowing how.
+   */
+  const session = document?.rig ? ensureSession(documentId) : null
+  useSyncExternalStore(
+    useCallback((listener: () => void) => session?.subscribe(listener) ?? (() => undefined), [session]),
+    () => session?.getRevision() ?? 0,
+    () => 0,
+  )
+  /*
+   * A document that carries controls is drawn as those controls say, while every edit still writes
+   * to the raw document. It is the whole idea of a rig, and it is why the viewport, the render and
+   * the exports are handed `shown` while the operators are handed `document`.
+   */
+  const rigValues = session?.previewValues() ?? NO_VALUES
+  const shown = document && document.rig && session ? resolveSceneValues(document, rigValues) : document
+
   const savePrefs = useCallback((next: typeof prefs) => {
     setPrefs(next)
     writeScenePrefs(next)
@@ -174,17 +201,18 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     if (!document) return
     try {
       const objectIds = selection.objectIds.length > 0 ? selection.objectIds : undefined
-      const written = await writeModel(document, format, { objectIds })
+      if (!shown) return
+      const written = await writeModel(shown, format, { objectIds })
       downloadBlob(written.blob, written.fileName)
       if (format === 'obj') {
-        const library = await writeMaterialLibrary(document, { objectIds })
+        const library = await writeMaterialLibrary(shown, { objectIds })
         downloadBlob(library.blob, library.fileName)
       }
       editor.setMessage(`Exported ${written.fileName}.`)
     } catch (cause) {
       editor.setMessage(cause instanceof Error ? cause.message : 'The export did not finish.')
     }
-  }, [document, editor, selection.objectIds])
+  }, [document, editor, selection.objectIds, shown])
 
   /** Framing has to know how wide the viewport is, and the page is the only one that does. */
   const viewportAspect = useCallback(() => {
@@ -521,10 +549,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     )
   }
 
+  // `mode` and `onMode` are the workbench's Edit/Tune switch; the Controls tab uses them.
   void mode
   void onMode
 
-  const counts = sceneCounts(document)
+  // Past the guard above, both are documents rather than maybes.
+  const drawn = shown ?? document
+  const counts = sceneCounts(drawn)
   const context = editor.operatorContext()
   const panels = panelsOf(document.view)
   const commands: SceneCommand[] = [
@@ -647,7 +678,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           </div>
           <div className="scene-body">
             <SceneStage
-              document={document}
+              document={drawn}
+              keepKey={documentId}
               selection={selection}
               preferences={preferences}
               onView={setView}
@@ -774,7 +806,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         </div>
       </WorkspaceShell>
 
-      <SceneRenderDialog document={document} open={rendering} onClose={() => setRendering(false)} />
+      <SceneRenderDialog document={drawn} open={rendering} onClose={() => setRendering(false)} />
       <EditorCommandPalette prefix="scene" commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <EditorModal prefix="scene" label="Keyboard" open={keymapOpen} onClose={() => setKeymapOpen(false)}>
         <KeymapSheet />

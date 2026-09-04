@@ -701,3 +701,26 @@
   height: 100%;
   object-fit: contain;
 }
+
+/*
+ * The scene in Tune mode: the editor's viewport with nothing to edit.
+ *
+ * It fills the stage the workbench gives it — the same rectangle a drawing's preview gets — and
+ * carries one surface over the canvas for the pointer, since orbiting is the whole of what can be
+ * done here.
+ */
+.scene-preview {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+}
+.scene-preview__surface {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  cursor: grab;
+}
+.scene-preview__surface:active { cursor: grabbing; }

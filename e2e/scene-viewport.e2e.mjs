@@ -61,7 +61,12 @@ export default run('scene-viewport', async ({ page, check, log, helpers, shot })
   // a reload would throw the window away and take the counters with it.
   await page.goBack()
   await page.waitForSelector('.rig-grid')
-  await page.waitForTimeout(600)
+  /*
+   * Long enough for the viewport to be given back rather than merely handed over: it is kept for a
+   * few seconds after a page unmounts, because switching between editing a scene and tuning it
+   * unmounts one tree before mounting the other and must not cost a second WebGL context.
+   */
+  await page.waitForTimeout(5000)
   const leaks = await page.evaluate(() => window.__paramrigSceneLeaks ?? null)
   log(`MEASURE after closing: ${JSON.stringify(leaks)}`)
   check('and gives all of it back when the scene is closed',

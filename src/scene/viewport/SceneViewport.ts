@@ -222,9 +222,9 @@ const GLYPH_PICK_PX = 11
 
 export class SceneViewport {
   readonly canvas: HTMLCanvasElement
-  private readonly container: HTMLElement
+  private container: HTMLElement
   private renderer: WebGLRenderer | null = null
-  private readonly options: SceneViewportOptions
+  private options: SceneViewportOptions
   private readonly scene = new Scene()
   private readonly overlay = new Scene()
   private readonly objectRoot = new Group()
@@ -461,6 +461,26 @@ export class SceneViewport {
     this.transform?.setResolution(buffer.width, buffer.height)
     this.gizmos?.setResolution(buffer.width, buffer.height)
     this.notes?.setResolution(buffer.width, buffer.height)
+  }
+
+  /**
+   * Moves the canvas into another container, keeping the context it already has.
+   *
+   * Switching between editing a scene and tuning it is a switch between two React trees, and
+   * rebuilding the viewport across it would mean a new WebGL context, a new shader cache and a
+   * black frame every time. The canvas is the context; moving the element moves the lot.
+   */
+  reparent(container: HTMLElement, options: SceneViewportOptions = {}): void {
+    if (this.disposed) return
+    this.options = { ...this.options, ...options }
+    if (container === this.container) return
+    this.observer?.unobserve(this.container)
+    this.container = container
+    container.appendChild(this.canvas)
+    this.observer?.observe(container)
+    // A different tree may sit under a different theme, and the size is almost certainly new.
+    this.setTheme()
+    this.resize()
   }
 
   get pixelSize(): { width: number; height: number } {

@@ -14,6 +14,14 @@ const TidalPlanetPreview = lazy(() =>
   import('@/renderers/three/TidalPlanetPreview').then((mod) => ({ default: mod.TidalPlanetPreview })),
 )
 
+/**
+ * The scene preview carries the whole 3D editor's viewport with it, so it is loaded only when a
+ * scene is actually being tuned — the same reason the three.js example is lazy.
+ */
+const SceneRigPreview = lazy(() =>
+  import('@/renderers/scene/SceneRigPreview').then((mod) => ({ default: mod.SceneRigPreview })),
+)
+
 type PreviewProps = { values: Record<string, ParamValue> }
 
 type ScenePreviewProps = { session: RigSession; values: Record<string, ParamValue> }
@@ -58,7 +66,9 @@ export function RigPreview({ rigId, renderer, values, name, session }: RigPrevie
       {renderer === 'vector' ? (
         <VectorRigPreview documentId={rigId} values={session?.previewValues() ?? values} name={name} />
       ) : renderer === 'scene' ? (
-        <StatusMessage>Tune mode arrives with the scene rig prompt. Open this scene from the library to edit it.</StatusMessage>
+        <Suspense fallback={<p className="status-msg">Starting the 3D view</p>}>
+          <SceneRigPreview documentId={rigId} session={session ?? null} values={values} name={name} />
+        </Suspense>
       ) : renderer === 'three' && session && ThreePreview ? (
         <Suspense fallback={<p className="status-msg">Starting the 3D view</p>}>
           <ThreePreview session={session} values={values} />

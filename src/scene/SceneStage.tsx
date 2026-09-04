@@ -81,6 +81,7 @@ export function SceneStage({
   onContextMenu,
   onAnnotate,
   onMeasure,
+  keepKey,
   onMaterialDrop,
   onModelDrop,
   onTransform,
@@ -101,6 +102,11 @@ export function SceneStage({
   onSelect: (ids: string[], active: string | null) => void
   /** What a box, lasso or circle covered, and how it should be combined with the selection. */
   onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
+  /**
+   * Keeps the viewport alive under this name when the stage unmounts, so that switching to Tune
+   * mode and back moves one WebGL context rather than building a second.
+   */
+  keepKey?: string
   /** A material dragged out of the asset list and let go over the viewport. */
   onMaterialDrop: (materialId: string, objectId: string, faceId: number | null) => void
   /** A file dropped on the viewport, which is how a model usually arrives. */
@@ -489,6 +495,7 @@ export function SceneStage({
       selection={selection}
       view={document.view}
       hoverId={hover.current}
+      keepKey={keepKey}
       onReady={ready}
       createViewport={createViewport}
       options={options}

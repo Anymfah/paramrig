@@ -17,6 +17,7 @@ import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scen
 import { importProject as importSceneProject } from '@/scene/project'
 import { SceneThumb } from '@/scene/SceneThumb'
 import { createVectorDocument, documentThumbnail, getVectorDocument, saveVectorDocument } from '@/vector/document'
+import { resolveSceneValues, sceneRigDefaults } from '@/scene/rig'
 import { resolveRigValues, rigDefaults } from '@/vector/rig'
 import { getProjectHandle, listRecentProjects, type RecentProject } from '@/vector/fileHandles'
 import { importProject } from '@/vector/project'
@@ -316,7 +317,10 @@ function RigThumb({ rig }: { rig: RigManifest }) {
   const id = rig.id
   if (rig.renderer === 'scene') {
     const stored = getSceneDocument(id)
-    return stored ? <SceneThumb document={stored} /> : null
+    if (!stored) return null
+    // A rigged scene is shown the way its controls rest, which is what it looks like new.
+    const document = stored.rig ? resolveSceneValues(stored, sceneRigDefaults(stored.rig)) : stored
+    return <SceneThumb document={document} />
   }
   if (rig.renderer === 'vector') {
     const stored = getVectorDocument(id)

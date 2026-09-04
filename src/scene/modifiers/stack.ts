@@ -1,3 +1,12 @@
+/*
+ * Loading the stack loads the modifiers themselves.
+ *
+ * Registration is a side effect of importing a module, and the stack is what every drawing path
+ * goes through — the viewport, a thumbnail, a render, the preview in Tune mode. Leaving the import
+ * to the editor page meant that a scene drawn anywhere else was drawn without its modifiers, which
+ * looks exactly like a scene that has none.
+ */
+import '@/scene/modifiers'
 import { meshOf } from '@/scene/document'
 import { meshFingerprint } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'

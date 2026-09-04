@@ -44,6 +44,7 @@ function createViewportDouble(recorded: Recorded): (container: HTMLElement) => S
       render: nothing,
       resize: nothing,
       dispose: () => { recorded.disposed += 1; canvas.remove() },
+      reparent: (next: HTMLElement) => { next.appendChild(canvas) },
       pick: () => null,
       pickObject: () => null,
       pickRegion: () => [],
@@ -122,12 +123,25 @@ describe('the scene editor page', () => {
     expect(screen.getByText('Faces 6')).toBeInTheDocument()
   })
 
-  it('gives the viewport back when the page goes', () => {
-    const view = open(recorded, documentId)
+  it('keeps the viewport for a moment when the page goes, then gives it back', () => {
+    vi.useFakeTimers()
+    try {
+      const view = open(recorded, documentId)
 
-    view.unmount()
-    expect(recorded.disposed).toBe(1)
-    expect(window.document.querySelector('.scene-canvas')).toBeNull()
+      /*
+       * Unmounting no longer destroys it: switching to Tune mode unmounts this page before the
+       * preview mounts, and rebuilding would mean a second WebGL context and a black frame. It is
+       * kept for a moment, and given back when nobody comes for it.
+       */
+      view.unmount()
+      expect(recorded.disposed).toBe(0)
+
+      vi.advanceTimersByTime(10_000)
+      expect(recorded.disposed).toBe(1)
+      expect(window.document.querySelector('.scene-canvas')).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('says so, rather than showing an empty editor, when the scene is not in this browser', () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { installSceneDebug, markFirstFrame } from '@/scene/viewport/debug'
+import { acquireSceneViewport, releaseSceneViewport } from '@/scene/viewport/keep'
 import { SceneViewport, type SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import type { SceneDocument, SceneSelection, ViewState } from '@/scene/types'
 
@@ -20,6 +21,7 @@ export function SceneViewportHost({
   selection,
   view,
   hoverId = null,
+  keepKey,
   onReady,
   createViewport,
   options,
@@ -29,6 +31,11 @@ export function SceneViewportHost({
   selection: SceneSelection
   view: ViewState
   hoverId?: string | null
+  /**
+   * Keeps the viewport alive under this name when the host unmounts, so that editing a scene and
+   * tuning it — two React trees — share one WebGL context rather than building a second.
+   */
+  keepKey?: string
   onReady?: (viewport: SceneViewport | null) => void
   /** A test hands over a double; the editor uses the real one. */
   createViewport?: (container: HTMLElement, options: SceneViewportOptions) => SceneViewport
@@ -49,24 +56,30 @@ export function SceneViewportHost({
     const container = host.current
     if (!container) return
     const build = make.current ?? ((element: HTMLElement, given: SceneViewportOptions) => new SceneViewport(element, given))
-    const instance = build(container, {
+    const given: SceneViewportOptions = {
       ...settings.current,
       onError: (message) => setError(message),
       onFrame: (info) => {
         markFirstFrame()
         settings.current?.onFrame?.(info)
       },
-    })
+    }
+    const instance = keepKey
+      ? acquireSceneViewport(keepKey, container, () => build(container, given), given)
+      : build(container, given)
     viewport.current = instance
     const uninstall = installSceneDebug(instance)
     ready.current?.(instance)
     return () => {
       uninstall()
       ready.current?.(null)
-      instance.dispose()
+      // A kept viewport is handed back rather than destroyed: the other tree may be about to ask
+      // for it, and rebuilding it would mean a new context and a black frame.
+      if (keepKey) releaseSceneViewport(keepKey)
+      else instance.dispose()
       viewport.current = null
     }
-  }, [])
+  }, [keepKey])
 
   useEffect(() => {
     viewport.current?.setView(view)
