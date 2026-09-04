@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
 import { EditorModal } from '@/editor/EditorModal'
 import { ensureSession } from '@/state/workspace'
@@ -20,14 +20,25 @@ import { describeKeymap, resolveKey } from '@/scene/keymap'
 import { getOperator } from '@/scene/operators/registry'
 import {
   isOpen as sectionIsOpen,
+  readSceneSettings,
   readScenePrefs,
   tabOf,
+  toggleFavorite,
   withSection,
   withTab,
   writeScenePrefs,
-  DEFAULT_PREFERENCES,
+  writeSceneSettings,
   type SceneMode,
+  type SceneSettings,
 } from '@/scene/prefs'
+/*
+ * Loaded when it is first opened rather than with the editor: a dialog nobody has asked for yet is
+ * a dialog that should not be between a person and their first frame.
+ */
+const ScenePreferencesDialog = lazy(async () => ({ default: (await import('@/scene/ScenePreferencesDialog')).ScenePreferencesDialog }))
+import { SceneFavoritesContext, type SceneFavoritesValue } from '@/scene/favorites'
+import { setTooltipDelay } from '@/ui/tooltipDelay'
+import { withRecentCommand } from '@/editor/commands'
 import { SceneFileMenu } from '@/scene/SceneFileMenu'
 import { SceneHeader } from '@/scene/SceneHeader'
 import { SceneHints, SceneKeymapHint } from '@/scene/SceneHints'
@@ -92,7 +103,7 @@ const SELECT_TOOL_FOR = new Map<string, SceneTool>([
   ['select.lasso', 'select-lasso'],
 ])
 
-type PieKind = 'pivot' | 'orientation' | 'shading' | 'snap' | 'mode'
+type PieKind = 'pivot' | 'orientation' | 'shading' | 'snap' | 'mode' | 'views'
 type Pie = { kind: PieKind; at: { x: number; y: number } } | null
 
 /**
@@ -109,13 +120,17 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   createViewport?: (container: HTMLElement, options: SceneViewportOptions) => SceneViewport
   viewportOptions?: SceneViewportOptions
 }) {
-  const editor = useSceneDocument(documentId)
+  const [settings, setSettings] = useState(() => readSceneSettings())
+  const editor = useSceneDocument(documentId, { undoSteps: settings.preferences.undoSteps })
   const file = useSceneFile(editor.document)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const [prefs, setPrefs] = useState(() => readScenePrefs())
   const [announcement, setAnnouncement] = useState('')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [keymapOpen, setKeymapOpen] = useState(false)
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
+  /** Where the Q menu opens, or nothing when it is closed. */
+  const [favoritesAt, setFavoritesAt] = useState<{ x: number; y: number } | null>(null)
   const [rendering, setRendering] = useState(false)
   const [redoExpanded, setRedoExpanded] = useState(false)
   const [pie, setPie] = useState<Pie>(null)
@@ -137,7 +152,17 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [renaming, setRenaming] = useState<string | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
-  const preferences = prefs.preferences ?? DEFAULT_PREFERENCES
+  const preferences = settings.preferences
+
+  const changeSettings = useCallback((next: SceneSettings) => {
+    setSettings(next)
+    writeSceneSettings(next)
+  }, [])
+
+  // Every tooltip in the application shares one delay, so it is set rather than passed.
+  useEffect(() => {
+    setTooltipDelay(preferences.tooltipDelayMs)
+  }, [preferences.tooltipDelayMs])
 
   const { document, selection, selectObjects, setView, undo, redo, runOperator } = editor
   const tab = tabOf(prefs, documentId)
@@ -589,6 +614,26 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         event.preventDefault()
         setPie({ kind: 'shading', at: stage.current?.pointerPage() ?? pointerCentre() })
         return
+      case 'pie.views':
+        event.preventDefault()
+        setPie({ kind: 'views', at: stage.current?.pointerPage() ?? pointerCentre() })
+        return
+      case 'favorites':
+        event.preventDefault()
+        setFavoritesAt(stage.current?.pointerPage() ?? pointerCentre())
+        return
+      case 'preferences':
+        event.preventDefault()
+        setPreferencesOpen(true)
+        return
+      case 'spacebar':
+        event.preventDefault()
+        if (preferences.spacebarAction === 'search') setPaletteOpen(true)
+        else if (preferences.spacebarAction === 'tools') {
+          patchView({ panels: { ...panelsOf(document.view), toolbar: !panelsOf(document.view).toolbar } })
+        }
+        // Play belongs to the workbench's own clock, which the editor does not carry: nothing to do.
+        return
       case 'mode.pie':
         event.preventDefault()
         setPie({ kind: 'mode', at: stage.current?.pointerPage() ?? pointerCentre() })
@@ -626,6 +671,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       undo,
       redo,
       palette: () => setPaletteOpen(true),
+      favorites: () => setFavoritesAt(stage.current?.pointerPage() ?? pointerCentre()),
+      preferences: () => setPreferencesOpen(true),
       redoPanel: () => setRedoExpanded((current) => !current),
       keymapSheet: () => setKeymapOpen(true),
       repeatLast: () => editor.repeatLastOperation(),
@@ -638,6 +685,23 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   ]
 
   const contextEntries = menuEntries(CONTEXT_IDS, context, (id) => run(id)) as SceneMenuEntry[]
+
+  /*
+   * The Q menu: whatever was put on it, in the order it was added, as the commands they name.
+   *
+   * A favourite that no longer exists — an operator from a build that had it, a command renamed —
+   * is simply not shown. It stays in the list, because a person who goes back to a build that has
+   * it should find it where they left it.
+   */
+  const favoriteEntries: SceneMenuEntry[] = settings.favorites.flatMap((id) => {
+    const command = commands.find((entry) => entry.id === id)
+    return command ? [command as SceneMenuEntry] : []
+  })
+
+  const favorites: SceneFavoritesValue = {
+    has: (id) => settings.favorites.includes(id),
+    toggle: (id) => changeSettings(toggleFavorite(settings, id)),
+  }
 
   /*
    * What the panels need to turn a field into a control. It is one context rather than a dozen
@@ -656,6 +720,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   }
 
   return (
+    <SceneFavoritesContext.Provider value={favorites}>
     <SceneExposeContext.Provider value={exposeContext}>
     <ContextMenuRoot>
       <WorkspaceShell
@@ -733,7 +798,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           className="scene-stage"
           id="main"
           tabIndex={-1}
-          data-scene-theme={preferences.theme === 'blender-classic' ? 'blender-classic' : undefined}
+          data-scene-theme={preferences.theme === 'paramrig' ? undefined : preferences.theme}
         >
           <div className="scene-titlebar">
             <SceneFileMenu
@@ -822,11 +887,21 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
               onEditDocument={(edit) => editor.editDocument(edit, 'Transform', false)}
               onGestureStart={editor.beginGesture}
-              onGestureEnd={editor.endGesture}
+              onGestureEnd={(label) => {
+                editor.endGesture(label)
+                /*
+                 * Auto merge: vertices dropped onto one another are welded as the gesture ends, the
+                 * way Blender's own option does it. It is off by default because a merge that
+                 * nobody asked for is a merge nobody can see happening.
+                 */
+                if (document.view.mode === 'edit' && preferences.autoMergeDistance > 0) {
+                  runOperator('mesh.mergeByDistance', { distance: preferences.autoMergeDistance })
+                }
+              }}
               onGestureCancel={editor.cancelGesture}
               onReady={(handle) => { stage.current = handle }}
               createViewport={createViewport}
-              options={viewportOptions}
+              options={{ ...viewportOptions, pixelScale: preferences.resolutionScale }}
             >
               <SceneHints />
             </SceneStage>
@@ -896,7 +971,24 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       </WorkspaceShell>
 
       <SceneRenderDialog document={drawn} open={rendering} onClose={() => setRendering(false)} />
-      <EditorCommandPalette prefix="scene" commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <EditorCommandPalette
+        prefix="scene"
+        commands={commands}
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        recent={settings.recentCommands}
+        onRun={(id) => changeSettings({ ...settings, recentCommands: withRecentCommand(settings.recentCommands, id) })}
+      />
+      {preferencesOpen ? (
+        <Suspense fallback={null}>
+          <ScenePreferencesDialog
+            open
+            onClose={() => setPreferencesOpen(false)}
+            preferences={preferences}
+            onChange={(patch) => changeSettings({ ...settings, preferences: { ...preferences, ...patch } })}
+          />
+        </Suspense>
+      ) : null}
       <EditorModal prefix="scene" label="Keyboard" open={keymapOpen} onClose={() => setKeymapOpen(false)}>
         <KeymapSheet />
       </EditorModal>
@@ -930,16 +1022,26 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           open
           at={pie.at}
           label={PIE_LABELS[pie.kind]}
+          animate={preferences.pieAnimation}
           items={pieItems(pie.kind, context)}
-          onPick={(id) => {
+          onPick={(id, params) => {
             setPie(null)
             if (pie.kind === 'pivot') patchView({ pivot: id as ViewState['pivot'] })
             else if (pie.kind === 'orientation') patchView({ orientation: id as ViewState['orientation'] })
             else if (pie.kind === 'shading') patchView({ shading: id as ViewState['shading'] })
             else if (pie.kind === 'mode') run(id === 'object' ? 'mode.object' : id === 'edit' ? 'mode.edit' : 'mode.sculpt')
-            else run(id)
+            else run(id, params as OperatorParams | undefined)
           }}
           onClose={() => setPie(null)}
+        />
+      ) : null}
+      {favoritesAt ? (
+        <SceneMenu
+          label="Quick favourites"
+          entries={favoriteEntries}
+          at={favoritesAt}
+          open
+          onOpenChange={(open) => { if (!open) setFavoritesAt(null) }}
         />
       ) : null}
       {pointerMenu ? (
@@ -989,6 +1091,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       <LiveRegion name="scene" message={announcement} />
     </ContextMenuRoot>
     </SceneExposeContext.Provider>
+    </SceneFavoritesContext.Provider>
   )
 }
 
@@ -1038,12 +1141,30 @@ const MODE_ITEMS: ScenePieItem[] = [
   { id: 'sculpt', label: 'Sculpt mode', disabled: true, reason: 'Sculpt mode arrives with the horizon prompt.' },
 ]
 
+/**
+ * The `~` pie: the six axis views and the camera, at the angles the numpad puts them.
+ *
+ * The positions are Blender's, which is the whole point of a pie — top at the top, front at the
+ * bottom, left on the left. Learning the gesture once should mean knowing it in both editors.
+ */
+const VIEW_ITEMS: ScenePieItem[] = [
+  { id: 'view.top', label: 'Top' },
+  { id: 'view.right', label: 'Right' },
+  { id: 'view.camera', label: 'Camera' },
+  { id: 'view.back', label: 'Back' },
+  { id: 'view.bottom', label: 'Bottom' },
+  { id: 'view.left', label: 'Left' },
+  { id: 'view.frameAll', label: 'Frame all' },
+  { id: 'view.front', label: 'Front' },
+]
+
 const PIE_LABELS: Record<PieKind, string> = {
   pivot: 'Pivot point',
   orientation: 'Transform orientation',
   shading: 'Viewport shading',
   snap: 'Snap',
   mode: 'Mode',
+  views: 'View',
 }
 
 function pieItems(kind: PieKind, context: OperatorContext | null): ScenePieItem[] {
@@ -1051,13 +1172,28 @@ function pieItems(kind: PieKind, context: OperatorContext | null): ScenePieItem[
   if (kind === 'orientation') return ORIENTATION_ITEMS
   if (kind === 'shading') return SHADING_ITEMS
   if (kind === 'mode') return MODE_ITEMS
-  // The snap pie is the operators themselves, so what it offers and what it refuses come from them.
-  return SNAP_PIE.map((id) => {
+  if (kind === 'views') {
+    return VIEW_ITEMS.map((item) => {
+      const operator = getOperator(item.id)
+      const availability = operator && context ? operator.available(context) : true
+      return { ...item, ...(availability === true ? {} : { disabled: true, reason: availability }) }
+    })
+  }
+  /*
+   * The snap pie is the operators themselves, so what it offers and what it refuses come from them.
+   *
+   * Blender's pie carries "Selection to cursor" twice — the fourth slice keeps the offset and the
+   * eighth does not — which here is one operator at two settings. The last slice therefore names
+   * its own parameters and says so in its label, rather than being a second copy of the fourth.
+   */
+  return SNAP_PIE.map((id, position) => {
     const operator = getOperator(id)
     const availability = operator && context ? operator.available(context) : true
+    const flattened = id === 'cursor.selectionToCursor' && position === SNAP_PIE.length - 1
     return {
       id,
-      label: operator?.label ?? id,
+      label: flattened ? 'Selection to cursor, all on it' : operator?.label ?? id,
+      ...(flattened ? { params: { keepOffset: false } } : {}),
       ...(operator?.icon ? { icon: operator.icon } : {}),
       ...(availability === true ? {} : { disabled: true, reason: availability }),
     }

@@ -58,7 +58,7 @@ describe('the scene editor pie menu', () => {
     expect(entries[0]).not.toHaveAttribute('data-highlighted')
 
     fireEvent.pointerUp(menu)
-    expect(onPick).toHaveBeenCalledWith('cursor')
+    expect(onPick).toHaveBeenCalledWith('cursor', undefined)
     expect(onClose).toHaveBeenCalledOnce()
   })
 
@@ -84,14 +84,37 @@ describe('the scene editor pie menu', () => {
     expect(entries[1]).toHaveAttribute('data-highlighted', 'true')
 
     fireEvent.keyDown(menu, { key: 'Enter' })
-    expect(onPick).toHaveBeenCalledWith('cursor')
+    expect(onPick).toHaveBeenCalledWith('cursor', undefined)
+  })
+
+  it('picks an entry by its number, counting from the top', () => {
+    const { menu, onPick } = openPie()
+    fireEvent.keyDown(menu, { key: '2' })
+    expect(onPick).toHaveBeenCalledWith(PIVOTS[1]!.id, undefined)
+  })
+
+  it('hands over the settings a slice carries, for two slices of one operator', () => {
+    const onPick = vi.fn()
+    const items = [
+      { id: 'cursor.selectionToCursor', label: 'Selection to cursor' },
+      { id: 'cursor.selectionToCursor', label: 'Selection to cursor, all on it', params: { keepOffset: false } },
+    ]
+    render(<ScenePieMenu open at={AT} label="Snap" items={items} onPick={onPick} onClose={vi.fn()} />)
+    fireEvent.keyDown(screen.getByRole('menu', { name: 'Snap' }), { key: '2' })
+    expect(onPick).toHaveBeenCalledWith('cursor.selectionToCursor', { keepOffset: false })
+  })
+
+  it('ignores a number with no entry under it', () => {
+    const { menu, onPick } = openPie()
+    fireEvent.keyDown(menu, { key: '8' })
+    expect(onPick).not.toHaveBeenCalled()
   })
 
   it('picks an entry from a single tap', () => {
     const { menu, onPick } = openPie()
 
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Individual origins' }))
-    expect(onPick).toHaveBeenCalledWith('individual')
+    expect(onPick).toHaveBeenCalledWith('individual', undefined)
   })
 
   it('opens with the first entry under the keyboard, closes on Escape and hands the focus back', async () => {

@@ -120,7 +120,10 @@ function actionOf(entry: KeymapEntry): string {
 }
 
 function chord(shortcut: string): string {
-  return `\`${cell(shortcut)}\``
+  // A chord that is itself a backtick needs the doubled fence, with the spaces Markdown eats back.
+  const fence = shortcut.includes('`') ? '``' : '`'
+  const pad = shortcut.includes('`') ? ' ' : ''
+  return `${fence}${pad}${cell(shortcut)}${pad}${fence}`
 }
 
 function table(entries: KeymapEntry[]): string[] {

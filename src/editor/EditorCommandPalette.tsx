@@ -3,17 +3,21 @@ import { filterCommands, type EditorCommand } from '@/editor/commands'
 import { EditorModal } from '@/editor/EditorModal'
 
 /** Every command in one filterable list: a way to run them, and the list of what exists. */
-export function EditorCommandPalette<Command extends EditorCommand>({ commands, open, onClose, prefix = 'editor', label = 'Commands' }: {
+export function EditorCommandPalette<Command extends EditorCommand>({ commands, open, onClose, prefix = 'editor', label = 'Commands', recent = [], onRun }: {
   commands: Command[]
   open: boolean
   onClose: () => void
   prefix?: string
   label?: string
+  /** What was run from here before, most recent first: it opens on the last choice. */
+  recent?: string[]
+  /** Told what was run, so the editor can remember it across sessions. */
+  onRun?: (id: string) => void
 }) {
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const listRef = useRef<HTMLUListElement>(null)
-  const results = useMemo(() => filterCommands(commands, query), [commands, query])
+  const results = useMemo(() => filterCommands(commands, query, recent), [commands, query, recent])
 
   useEffect(() => {
     if (open) return
@@ -32,6 +36,7 @@ export function EditorCommandPalette<Command extends EditorCommand>({ commands, 
   const run = (command: Command) => {
     if (command.disabled) return
     onClose()
+    onRun?.(command.id)
     command.run()
   }
 

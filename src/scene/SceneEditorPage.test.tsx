@@ -45,6 +45,7 @@ function createViewportDouble(recorded: Recorded): (container: HTMLElement) => S
       resize: nothing,
       dispose: () => { recorded.disposed += 1; canvas.remove() },
       reparent: (next: HTMLElement) => { next.appendChild(canvas) },
+      setOptions: nothing,
       pick: () => null,
       pickObject: () => null,
       pickRegion: () => [],

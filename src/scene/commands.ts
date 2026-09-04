@@ -84,6 +84,8 @@ const EDITOR_ACTIONS: Array<{ id: string; label: string; section: string }> = [
   { id: 'repeatLast', label: 'Repeat last', section: 'Edit' },
   { id: 'redoPanel', label: 'Adjust last operation', section: 'Edit' },
   { id: 'palette', label: 'Command palette', section: 'View' },
+  { id: 'favorites', label: 'Quick favourites', section: 'View' },
+  { id: 'preferences', label: 'Preferences', section: 'Edit' },
   { id: 'keymapSheet', label: 'Keymap sheet', section: 'View' },
   { id: 'panel.toolbar', label: 'Toolbar', section: 'View' },
   { id: 'panel.sidebar', label: 'Sidebar', section: 'View' },

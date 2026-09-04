@@ -415,6 +415,21 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
     run: () => onMode(entry.value),
   }))
 
+  /*
+   * The Edit menu is the editor's own, not the document's: its entries are actions rather than
+   * operators, so it is built here instead of coming from a list of operator ids like the others.
+   */
+  const editEntries: SceneMenuEntry[] = [
+    { id: 'undo', label: 'Undo', ...(chordFor('undo') ? { shortcut: chordFor('undo') } : {}), run: () => onCommand('undo') },
+    { id: 'redo', label: 'Redo', ...(chordFor('redo') ? { shortcut: chordFor('redo') } : {}), run: () => onCommand('redo') },
+    { id: 'repeatLast', label: 'Repeat last', ...(chordFor('repeatLast') ? { shortcut: chordFor('repeatLast') } : {}), run: () => onCommand('repeatLast') },
+    { id: 'redoPanel', label: 'Adjust last operation', ...(chordFor('redoPanel') ? { shortcut: chordFor('redoPanel') } : {}), run: () => onCommand('redoPanel') },
+    { separator: true },
+    { id: 'favorites', label: 'Quick favourites', ...(chordFor('favorites') ? { shortcut: chordFor('favorites') } : {}), run: () => onCommand('favorites') },
+    { separator: true },
+    { id: 'preferences', label: 'Preferences…', ...(chordFor('preferences') ? { shortcut: chordFor('preferences') } : {}), run: () => onCommand('preferences') },
+  ]
+
   const orientationEntries: SceneMenuEntry[] = ORIENTATIONS.map((entry) => ({
     id: `orientation.${entry.value}`,
     label: entry.label,
@@ -668,6 +683,7 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
         </div>
       ) : null}
       <div className="scene-header__group scene-header__menus">
+        <SceneMenu label="Edit" entries={editEntries} />
         {menus.map((menu) => (
           <SceneMenu key={menu.label} label={menu.label} entries={menuEntries(menu.ids, context, runOperator)} />
         ))}

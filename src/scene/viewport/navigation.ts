@@ -48,6 +48,7 @@ export type NavigatorCallbacks = {
 export type NavigationGesture = 'orbit' | 'pan' | 'zoom' | null
 
 const ORBIT_TAU = 120
+/** How long a view change takes when the preferences say nothing. Blender's own default. */
 const TRANSITION_MS = 200
 const ORBIT_DEGREES_PER_PIXEL = 0.4
 const TRACKBALL_DEGREES_PER_PIXEL = 0.35
@@ -64,7 +65,13 @@ export class ViewNavigator {
   private moved = false
   private animating = false
   private lastTick = 0
-  private transition: { until: number; from: { yaw: number; pitch: number; distance: number; centre: Vec3 }; projection: ViewState['projection'] } | null = null
+  private transition: {
+    until: number
+    /** How long this one lasts: the preference at the moment it started, not the constant. */
+    length: number
+    from: { yaw: number; pitch: number; distance: number; centre: Vec3 }
+    projection: ViewState['projection']
+  } | null = null
   private commitTimer: ReturnType<typeof setTimeout> | null = null
   /** Set once a real middle button has been seen; the ⌥ emulation then steps aside. */
   private sawMiddleButton = false
@@ -215,8 +222,8 @@ export class ViewNavigator {
    */
   wheel(event: { deltaY: number; deltaMode: number; ctrlKey: boolean; shiftKey: boolean }, x: number, y: number): void {
     // A trackpad reports pixels, a wheel reports lines; a line is worth about sixteen pixels.
-    const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY
-    this.zoomBy(delta, x, y)
+    const raw = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaMode === 2 ? event.deltaY * 400 : event.deltaY
+    this.zoomBy(this.preferences.invertZoomWheel ? -raw : raw, x, y)
   }
 
   zoomBy(delta: number, x?: number, y?: number): void {
@@ -232,10 +239,20 @@ export class ViewNavigator {
     this.tickSoon()
   }
 
-  /** Two fingers on a trackpad: a pan by default, an orbit with no modifier in Blender's scheme. */
+  /**
+   * Two fingers on a trackpad.
+   *
+   * Blender orbits with them and pans with ⇧, which is what a modeller expects; macOS means two
+   * fingers as a scroll, which is a pan. Both are right, so which one it is is a preference — and
+   * the modifier swaps them either way, so neither habit loses a gesture.
+   */
   trackpad(dx: number, dy: number, modifiers: { shift: boolean; ctrl: boolean }): void {
-    if (modifiers.ctrl) this.zoomBy(dy * 3)
-    else if (modifiers.shift) this.pan(dx, dy)
+    if (modifiers.ctrl) {
+      this.zoomBy(this.preferences.invertZoomWheel ? -dy * 3 : dy * 3)
+      return
+    }
+    const pans = this.preferences.trackpadNatural ? !modifiers.shift : modifiers.shift
+    if (pans) this.pan(dx, dy)
     else this.orbit(dx, dy)
   }
 
@@ -283,7 +300,8 @@ export class ViewNavigator {
       centre: to.centre ? [...to.centre] : this.target.centre,
     }
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (options.animate === false || reduced) {
+    const length = this.preferences.smoothViewMs ?? TRANSITION_MS
+    if (options.animate === false || reduced || length <= 0) {
       this.view = this.destination()
       this.transition = null
       this.animating = false
@@ -291,7 +309,7 @@ export class ViewNavigator {
       this.scheduleCommit()
       return
     }
-    this.transition = { until: now() + TRANSITION_MS, from, projection: this.view.projection }
+    this.transition = { until: now() + length, length, from, projection: this.view.projection }
     this.animating = true
     this.tickSoon()
   }
@@ -313,7 +331,7 @@ export class ViewNavigator {
         this.scheduleCommit()
         return false
       }
-      const t = 1 - remaining / TRANSITION_MS
+      const t = 1 - remaining / this.transition.length
       const eased = t * t * (3 - 2 * t)
       const from = this.transition.from
       this.view = {

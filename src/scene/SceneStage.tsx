@@ -203,6 +203,9 @@ export function SceneStage({
   bridge.current = operatorBridge
   const toolSettings = useRef(toolOptions)
   toolSettings.current = toolOptions
+  /** The preferences as they are now, for the parts built once and kept for the page's whole life. */
+  const settings = useRef(preferences)
+  settings.current = preferences
   const modalOp = useRef<ModalOperator | null>(null)
   if (!modalOp.current) {
     modalOp.current = new ModalOperator({
@@ -215,6 +218,7 @@ export function SceneStage({
       restore: (document, selection) => bridge.current.restore(document, selection),
       message: (text) => bridge.current.message(text),
       pointer: () => pointer.current,
+      cancelRemovesExtrusion: () => settings.current.cancelRemovesExtrusion,
       edgeUnder: (x, y) => viewport.current?.pickElements(x, y, ELEMENT_RADIUS).edge?.slot ?? null,
       showPreview: (lines) => {
         const instance = viewport.current

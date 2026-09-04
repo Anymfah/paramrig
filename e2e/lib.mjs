@@ -308,6 +308,12 @@ export function pageHelpers(page) {
       localStorage.removeItem('paramrig.vector-documents.v1')
       localStorage.removeItem('paramrig.drafts.v1')
       localStorage.removeItem('paramrig.tabs.v1')
+      // The preferences follow the person, and the browser profile outlives a run: a script that
+      // did not set them must find the defaults rather than what the last script left behind. The
+      // per-document store goes too: it held the preferences before they moved, and is read once
+      // when the new key is absent.
+      localStorage.removeItem('paramrig.scene-prefs.v1')
+      localStorage.removeItem('paramrig.scene-inspector.v1')
     })
     await page.reload({ waitUntil: 'networkidle' })
     await page.click('[aria-label="New scene"]')

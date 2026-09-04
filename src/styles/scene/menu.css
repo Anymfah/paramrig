@@ -146,6 +146,11 @@
   animation: scene-pie-in var(--duration-fast) var(--ease-out);
 }
 
+/* A pie that is not animated simply appears, which is what somebody asked for by turning it off. */
+.scene-pie[data-animate='off'] {
+  animation: none;
+}
+
 .scene-pie__centre {
   position: absolute;
   display: flex;
@@ -253,3 +258,32 @@
   color: var(--text-muted);
 }
 .scene-menu__heading:first-child { margin-top: 0; }
+
+/*
+ * The one-entry menu the right button opens on any menu row: put this on the Q menu, or take it
+ * off. It is drawn at the pointer rather than beside the row, because the pointer is where the
+ * gesture happened and the row it belongs to may be an inch of a very long list.
+ */
+.scene-menu__favorite {
+  position: fixed;
+  z-index: var(--z-popover);
+  padding: var(--space-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  box-shadow: var(--elevation-overlay);
+}
+
+.scene-menu__favorite button {
+  min-height: 32px;
+  padding-inline: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.scene-menu__favorite button:hover,
+.scene-menu__favorite button:focus-visible { background: var(--accent-subtle); }

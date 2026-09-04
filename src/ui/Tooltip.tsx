@@ -10,6 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
+import { tooltipDelay } from '@/ui/tooltipDelay'
 import { createPortal } from 'react-dom'
 
 export type TooltipSide = 'top' | 'bottom' | 'left' | 'right'
@@ -26,7 +27,6 @@ type TooltipProps = {
 const GAP = 8
 const VIEWPORT_PAD = 8
 const ARROW_INSET = 14
-const OPEN_DELAY = 400
 const FOLLOW_DELAY = 60
 const GROUP_IDLE = 300
 const OPPOSITE: Record<TooltipSide, TooltipSide> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' }
@@ -187,7 +187,7 @@ export function Tooltip({ content, children, side = 'top', instant = false, bloc
 
   const onPointerEnter = (e: ReactPointerEvent<HTMLSpanElement>) => {
     if (e.pointerType === 'touch') return
-    show(instant ? 0 : groupIsWarm() ? FOLLOW_DELAY : OPEN_DELAY)
+    show(instant ? 0 : groupIsWarm() ? FOLLOW_DELAY : tooltipDelay())
   }
 
   const onFocus = (e: ReactFocusEvent<HTMLSpanElement>) => {

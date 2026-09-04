@@ -63,13 +63,16 @@ describe('the scene editor header', () => {
     const first = screen.getByRole('button', { name: 'Object mode' })
     first.focus()
     fireEvent.keyDown(first, { key: 'ArrowRight' })
+    const edit = screen.getByRole('button', { name: 'Edit' })
+    expect(edit).toHaveFocus()
+    fireEvent.keyDown(edit, { key: 'ArrowRight' })
     expect(screen.getByRole('button', { name: 'View' })).toHaveFocus()
   })
 
   it('names the menus of the mode it is in', () => {
     renderHeader()
 
-    for (const name of ['View', 'Select', 'Add', 'Object']) {
+    for (const name of ['Edit', 'View', 'Select', 'Add', 'Object']) {
       expect(screen.getByRole('button', { name })).toBeInTheDocument()
     }
     for (const name of ['Mesh', 'Vertex', 'Edge', 'Face']) {

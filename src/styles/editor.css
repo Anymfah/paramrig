@@ -86,6 +86,7 @@
 }
 
 .editor-modal,
+.scene-modal,
 .vector-modal {
   position: fixed;
   inset: 0;
@@ -102,6 +103,7 @@
   to { opacity: 1; }
 }
 .editor-modal__panel,
+.scene-modal__panel,
 .vector-modal__panel {
   display: flex;
   flex-direction: column;
@@ -114,6 +116,7 @@
   box-shadow: var(--elevation-overlay);
 }
 .editor-palette__input,
+.scene-palette__input,
 .vector-palette__input {
   width: 100%;
   min-height: 44px;
@@ -127,8 +130,10 @@
   user-select: text;
 }
 .editor-palette__input:focus-visible,
+.scene-palette__input:focus-visible,
 .vector-palette__input:focus-visible { outline: none; box-shadow: inset 0 -2px 0 0 var(--focus-ring); }
 .editor-palette__list,
+.scene-palette__list,
 .vector-palette__list {
   flex: 1;
   min-height: 0;
@@ -138,12 +143,14 @@
   list-style: none;
 }
 .editor-palette__empty,
+.scene-palette__empty,
 .vector-palette__empty {
   padding: var(--space-4);
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 .editor-palette__item,
+.scene-palette__item,
 .vector-palette__item {
   display: flex;
   align-items: center;
@@ -160,12 +167,16 @@
   cursor: pointer;
 }
 .editor-palette__item[data-active],
+.scene-palette__item[data-active],
 .vector-palette__item[data-active] { background: var(--accent-subtle); }
 .editor-palette__item[aria-disabled='true'],
+.scene-palette__item[aria-disabled='true'],
 .vector-palette__item[aria-disabled='true'] { color: var(--text-muted); cursor: not-allowed; }
 .editor-palette__item:focus-visible,
+.scene-palette__item:focus-visible,
 .vector-palette__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
 .editor-palette__section,
+.scene-palette__section,
 .vector-palette__section {
   width: 5.5rem;
   flex: none;
@@ -176,8 +187,10 @@
   white-space: nowrap;
 }
 .editor-palette__label,
+.scene-palette__label,
 .vector-palette__label { flex: 1; }
 .editor-palette__item kbd,
+.scene-palette__item kbd,
 .vector-palette__item kbd {
   color: var(--text-muted);
   font: inherit;
@@ -186,6 +199,7 @@
 
 @media (pointer: coarse) {
   .editor-palette__item,
+  .scene-palette__item,
   .vector-palette__item { min-height: 44px; }
 }
 

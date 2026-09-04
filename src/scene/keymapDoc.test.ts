@@ -12,7 +12,8 @@ function tableRows(page: string): Array<{ chord: string; action: string }> {
   return page
     .split('\n')
     .flatMap((line) => {
-      const [, chord, action] = /^\| `(.+)` \| (.+) \|$/.exec(line) ?? []
+      // A chord that is itself a backtick is printed inside the doubled fence, spaces and all.
+      const [, chord, action] = /^\| ``? ?(.+?) ?``? \| (.+) \|$/.exec(line) ?? []
       return chord && action ? [{ chord, action }] : []
     })
 }

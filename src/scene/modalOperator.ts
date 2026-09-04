@@ -85,7 +85,19 @@ export type ModalOperatorDeps = {
   edgeUnder?: (x: number, y: number) => number | null
   /** Draws the preview lines, in world space, or clears them with null. */
   showPreview?: (lines: Vec3[][] | null) => void
+  /** The preference: whether Escape after an extrusion takes the new geometry away with it. */
+  cancelRemovesExtrusion?: () => boolean
 }
+
+/** The operators whose gesture makes geometry before it moves it, which is what the preference is about. */
+const EXTRUSIONS = new Set([
+  'mesh.extrudeRegion',
+  'mesh.extrudeEdges',
+  'mesh.extrudeVertices',
+  'mesh.extrudeManifold',
+  'mesh.extrudeAlongNormals',
+  'mesh.extrudeIndividual',
+])
 
 export class ModalOperator {
   private readonly deps: ModalOperatorDeps
@@ -267,8 +279,24 @@ export class ModalOperator {
   cancel(): void {
     const before = this.before
     const spec = this.spec
+    const params = this.params
     this.close()
-    if (spec && before) this.deps.restore(before, this.beforeSelection)
+    if (!spec || !before) return
+    this.deps.restore(before, this.beforeSelection)
+    if (this.deps.cancelRemovesExtrusion?.() !== false || !EXTRUSIONS.has(spec.operatorId)) return
+    /*
+     * Blender's preference, off: escaping an extrusion keeps the geometry it made and leaves it
+     * where it started, so the new faces are there to be moved afterwards. On — the default — the
+     * restore above is the whole of it, and the extrusion goes with the gesture.
+     */
+    const offset = ModalOperator.zeroOf(params.offset)
+    const error = this.deps.commit(spec.operatorId, { ...params, offset }, before, this.beforeSelection)
+    if (error) this.deps.message(error)
+  }
+
+  /** The same shape as the offset the gesture was driving, at nothing. */
+  private static zeroOf(value: OperatorParams[string] | undefined): OperatorParams[string] {
+    return Array.isArray(value) ? value.map(() => 0) : 0
   }
 
   private typing = ''

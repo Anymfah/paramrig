@@ -77,6 +77,11 @@ export type SceneViewportOptions = {
   createRenderer?: (canvas: HTMLCanvasElement) => WebGLRenderer
   /** Device pixel ratio ceiling. Two is the point past which nobody can see the difference. */
   maxPixelRatio?: number
+  /**
+   * What the viewport renders at, against the display's own pixels. Below one it draws fewer and
+   * the card has less to do; above one it supersamples. The ceiling above still applies.
+   */
+  pixelScale?: number
   onError?: (message: string) => void
   onFrame?: (info: FrameInfo) => void
 }
@@ -431,7 +436,8 @@ export class SceneViewport {
   resize(): void {
     const width = Math.max(1, this.container.clientWidth)
     const height = Math.max(1, this.container.clientHeight)
-    const ratio = Math.min(this.options.maxPixelRatio ?? 2, typeof devicePixelRatio === 'number' ? devicePixelRatio : 1)
+    const display = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1
+    const ratio = Math.min(this.options.maxPixelRatio ?? 2, Math.max(0.25, display * (this.options.pixelScale ?? 1)))
     if (width === this.size.width && height === this.size.height && ratio === this.pixelRatio) return
     this.size = { width, height }
     this.pixelRatio = ratio
@@ -470,6 +476,17 @@ export class SceneViewport {
    * rebuilding the viewport across it would mean a new WebGL context, a new shader cache and a
    * black frame every time. The canvas is the context; moving the element moves the lot.
    */
+  /**
+   * Changes an option on a viewport that is already running, and redraws at the new setting. Only
+   * the ones that mean something after construction: the renderer itself is not rebuilt.
+   */
+  setOptions(options: Pick<SceneViewportOptions, 'pixelScale' | 'maxPixelRatio'>): void {
+    if (this.disposed) return
+    this.options = { ...this.options, ...options }
+    this.resize()
+    this.invalidate()
+  }
+
   reparent(container: HTMLElement, options: SceneViewportOptions = {}): void {
     if (this.disposed) return
     this.options = { ...this.options, ...options }

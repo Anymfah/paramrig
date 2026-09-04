@@ -1,5 +1,6 @@
 import { readStore, writeStore, type StorageResult } from '@/editor/storage'
 import { BUNDLED_SCENES } from '@/rigs/examples/paper-lantern'
+import { readSceneSettings } from '@/scene/prefs'
 import type { RigManifest } from '@/rigs/types'
 import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
@@ -141,6 +142,9 @@ function newId(prefix: string): string {
 export function createSceneDocument(name = 'Untitled'): SceneDocument {
   const now = new Date().toISOString()
   const meshId = newId('mesh')
+  // The matcap a new scene wears is a preference: it is what this person likes to model against.
+  const view: ViewState = structuredClone(DEFAULT_VIEW)
+  if (view.solid) view.solid.matcap = readSceneSettings().preferences.matcap
   const document: SceneDocument = {
     version: 1,
     id: newId('scene'),
@@ -211,7 +215,7 @@ export function createSceneDocument(name = 'Untitled'): SceneDocument {
     materials: [{ ...DEFAULT_MATERIAL }],
     world: { ...DEFAULT_WORLD },
     cursor: { position: [0, 0, 0], rotation: [0, 0, 0] },
-    view: structuredClone(DEFAULT_VIEW),
+    view,
     units: { ...DEFAULT_UNITS },
     createdAt: now,
     updatedAt: now,

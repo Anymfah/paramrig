@@ -53,8 +53,8 @@ describe('resolving a keystroke', () => {
   })
 
   it('answers nothing for a chord the table does not carry', () => {
-    expect(resolveKey(press('KeyQ'), context())).toBeNull()
     expect(resolveKey(press('F7'), context())).toBeNull()
+    expect(resolveKey(press('KeyJ', { altKey: true }), context())).toBeNull()
   })
 
   it('separates the two dots: one frames the selection, the other opens the pivot pie', () => {

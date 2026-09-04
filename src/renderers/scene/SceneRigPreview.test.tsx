@@ -43,6 +43,7 @@ function createViewportDouble(container: HTMLElement): SceneViewport {
     resize: nothing,
     dispose: () => { canvas.remove() },
     reparent: (next: HTMLElement) => { next.appendChild(canvas) },
+    setOptions: nothing,
     pick: () => null,
     pickObject: () => null,
     pickRegion: () => [],

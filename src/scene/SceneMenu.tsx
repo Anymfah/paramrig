@@ -8,6 +8,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useSceneFavorites } from '@/scene/favorites'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { IconCheck, IconChevron } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
@@ -98,6 +99,29 @@ function MenuItem({ command, highlighted, onHighlight, onRun }: {
   onHighlight: () => void
   onRun: (command: SceneMenuCommand) => void
 }) {
+  const favorites = useSceneFavorites()
+  const [asking, setAsking] = useState<{ x: number; y: number } | null>(null)
+  /*
+   * The one-entry menu closes on the next press anywhere else, or on Escape. It does not close on
+   * losing the focus: the menu it sits over moves the focus onto its own rows as the pointer
+   * travels, and a popover that vanished when that happened would never be reachable.
+   */
+  useEffect(() => {
+    if (!asking) return
+    const dismiss = (event: Event) => {
+      const target = event.target
+      if (target instanceof Node && favoriteRef.current?.contains(target)) return
+      setAsking(null)
+    }
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') setAsking(null) }
+    window.document.addEventListener('pointerdown', dismiss, true)
+    window.document.addEventListener('keydown', onKey, true)
+    return () => {
+      window.document.removeEventListener('pointerdown', dismiss, true)
+      window.document.removeEventListener('keydown', onKey, true)
+    }
+  }, [asking])
+  const favoriteRef = useRef<HTMLDivElement>(null)
   const Icon = sceneIcon(command.icon)
   const choice = command.choice ?? (command.checked === undefined ? undefined : 'radio')
   const role = choice === 'check' ? 'menuitemcheckbox' : choice === 'radio' ? 'menuitemradio' : 'menuitem'
@@ -116,6 +140,12 @@ function MenuItem({ command, highlighted, onHighlight, onRun }: {
       data-disabled={command.disabled || undefined}
       onPointerEnter={onHighlight}
       onClick={() => onRun(command)}
+      onContextMenu={favorites ? (event) => {
+        // Blender's own gesture: the right button on any entry offers to put it on the Q menu.
+        event.preventDefault()
+        event.stopPropagation()
+        setAsking({ x: event.clientX, y: event.clientY })
+      } : undefined}
     >
       {choice ? <span className="scene-menu__mark">{command.checked ? <IconCheck /> : null}</span> : null}
       {Icon ? <Icon className="scene-menu__glyph" /> : null}
@@ -125,8 +155,34 @@ function MenuItem({ command, highlighted, onHighlight, onRun }: {
       {command.shortcut ? <>{' '}<kbd className="scene-menu__key">{command.shortcut}</kbd></> : null}
     </button>
   )
-  if (!command.disabled || !command.reason) return item
-  return <Tooltip content={command.reason} side="right" instant block>{item}</Tooltip>
+  const wrapped = command.disabled && command.reason
+    ? <Tooltip content={command.reason} side="right" instant block>{item}</Tooltip>
+    : item
+  if (!favorites || !asking) return wrapped
+  const on = favorites.has(command.id)
+  return (
+    <>
+      {wrapped}
+      {createPortal(
+        <div
+          ref={favoriteRef}
+          className="scene-menu__favorite"
+          data-scene-favorite=""
+          style={{ left: asking.x, top: asking.y }}
+          role="presentation"
+        >
+          <button
+            type="button"
+            className="menu menu__item scene-menu__item"
+            onClick={() => { favorites.toggle(command.id); setAsking(null) }}
+          >
+            {on ? 'Remove from quick favourites' : 'Add to quick favourites'}
+          </button>
+        </div>,
+        window.document.body,
+      )}
+    </>
+  )
 }
 
 export function SceneMenu({
@@ -226,6 +282,9 @@ export function SceneMenu({
       const target = event.target
       if (!(target instanceof Node)) return
       if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      // The favourite popover is portaled out of the panel but belongs to it: a press inside it is
+      // not a press outside the menu, and closing here would take the popover down with the menu.
+      if (target instanceof Element && target.closest('[data-scene-favorite]')) return
       setOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown, true)

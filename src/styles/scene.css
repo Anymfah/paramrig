@@ -163,6 +163,27 @@
   --scene-grid-major: #ffffff33;
 }
 
+/*
+ * The high-contrast preset. Every pair here clears 4.5:1 against the viewport it is drawn on, for
+ * somebody who cannot pick an amber outline out of a grey scene — which is a reason to have it
+ * rather than a third taste.
+ */
+[data-scene-theme='high-contrast'] {
+  --scene-viewport: #101014;
+  --scene-viewport-gradient: #101014;
+  --scene-selected: #ffd400;
+  --scene-active: #ffffff;
+  --scene-hover: #ffd400cc;
+  --scene-vertex: #ffffff;
+  --scene-vertex-selected: #ffd400;
+  --scene-edge-selected: #ffd400;
+  --scene-face-selected: #ffd4004d;
+  --scene-grid: #ffffff40;
+  --scene-grid-major: #ffffff73;
+  --scene-cursor-ring: #ff5a5a;
+  --scene-cursor-ground: #ffffff;
+}
+
 /* -------------------------------------------------------------- the stage */
 
 .scene-stage {
@@ -724,3 +745,96 @@
   cursor: grab;
 }
 .scene-preview__surface:active { cursor: grabbing; }
+
+/* ------------------------------------------------------- Edit · Preferences */
+
+/*
+ * The preferences dialog: sections down the side, the settings beside them.
+ *
+ * It is wider than the palette and taller, because a preference is read rather than run — somebody
+ * is here to compare two settings, not to pick one thing quickly and leave.
+ */
+.scene-prefs {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  min-height: 0;
+  max-height: 60vh;
+}
+
+.scene-prefs__tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
+  border-right: 1px solid var(--border-hairline);
+}
+
+.scene-prefs__tab {
+  min-height: 32px;
+  padding-inline: var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: start;
+  cursor: pointer;
+}
+
+.scene-prefs__tab:hover { background: var(--surface-raised); color: var(--text-primary); }
+.scene-prefs__tab[aria-selected='true'] { background: var(--accent-subtle); color: var(--text-primary); }
+.scene-prefs__tab:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.scene-prefs__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.scene-prefs__search {
+  min-height: 32px;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.scene-prefs__empty { margin: 0; color: var(--text-muted); font-size: var(--text-sm); }
+
+.scene-prefs__keys h3 {
+  margin: var(--space-3) 0 var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.scene-prefs__keys ul { margin: 0; padding: 0; list-style: none; }
+
+.scene-prefs__keys li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-height: 26px;
+  font-size: var(--text-sm);
+}
+
+.scene-prefs__keys kbd {
+  flex: none;
+  width: 6rem;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.scene-prefs__mode { color: var(--text-muted); font-size: var(--text-xs); }
+
+@media (max-width: 640px) {
+  .scene-prefs { grid-template-columns: 1fr; }
+  .scene-prefs__tabs { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border-hairline); }
+}

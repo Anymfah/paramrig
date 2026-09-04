@@ -22,7 +22,9 @@ import type { SceneDocument, SceneObject, SceneSelection, ViewState } from '@/sc
 
 type HistoryEntry = { document: SceneDocument; label: string; at: number }
 
+/** How many steps a document keeps when the preferences say nothing, and the most it will keep. */
 const HISTORY_LIMIT = 100
+const HISTORY_CEILING = 256
 
 export type LastOperation = {
   operatorId: string
@@ -75,7 +77,14 @@ function sameDocument(a: SceneDocument, b: SceneDocument): boolean {
     && JSON.stringify(a.view) === JSON.stringify(b.view)
 }
 
-export function useSceneDocument(documentId: string) {
+export function useSceneDocument(documentId: string, options: { undoSteps?: number } = {}) {
+  /*
+   * How deep the history goes is a preference, and it is read through a ref rather than closed over
+   * so that changing it in the middle of an editing session takes effect on the next step rather
+   * than on the next document.
+   */
+  const limit = useRef(HISTORY_LIMIT)
+  limit.current = Math.max(8, Math.min(HISTORY_CEILING, options.undoSteps ?? HISTORY_LIMIT))
   const initial = useMemo(() => getSceneDocument(documentId), [documentId])
   const [document, setDocumentState] = useState<SceneDocument | null>(initial)
   const [selection, setSelectionState] = useState<SceneSelection>({ objectIds: [], activeObjectId: null })
@@ -130,7 +139,7 @@ export function useSceneDocument(documentId: string) {
     const next = { ...updated, updatedAt: new Date().toISOString() }
     if (record && !gestureStart.current) {
       writeHistory({
-        past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: current, label, at: Date.now() }],
+        past: [...historyRef.current.past.slice(-(limit.current - 1)), { document: current, label, at: Date.now() }],
         future: [],
       })
     }
@@ -166,7 +175,7 @@ export function useSceneDocument(documentId: string) {
     gestureLabel.current = DEFAULT_STEP_LABEL
     if (!current || !start || sameDocument(current, start)) return
     writeHistory({
-      past: [...historyRef.current.past.slice(-(HISTORY_LIMIT - 1)), { document: start, label: name, at: Date.now() }],
+      past: [...historyRef.current.past.slice(-(limit.current - 1)), { document: start, label: name, at: Date.now() }],
       future: [],
     })
     queueMicrotask(() => saveSceneDocument(current))
@@ -385,7 +394,7 @@ export function useSceneDocument(documentId: string) {
     if (!previous || !current) return
     writeHistory({
       past: value.past.slice(0, -1),
-      future: [{ document: current, label: previous.label, at: previous.at }, ...value.future].slice(0, HISTORY_LIMIT),
+      future: [{ document: current, label: previous.label, at: previous.at }, ...value.future].slice(0, limit.current),
     })
     // The view the person is looking through is theirs, not the history's.
     latest.current = { ...previous.document, view: current.view }
@@ -401,7 +410,7 @@ export function useSceneDocument(documentId: string) {
     const current = latest.current
     if (!next || !current) return
     writeHistory({
-      past: [...value.past, { document: current, label: next.label, at: next.at }].slice(-HISTORY_LIMIT),
+      past: [...value.past, { document: current, label: next.label, at: next.at }].slice(-limit.current),
       future: value.future.slice(1),
     })
     latest.current = { ...next.document, view: current.view }

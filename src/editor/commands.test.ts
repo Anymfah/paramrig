@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { filterCommands, type EditorCommand } from '@/editor/commands'
+import { filterCommands, withRecentCommand, type EditorCommand } from '@/editor/commands'
 
 const command = (id: string, label: string, section = 'Object'): EditorCommand => ({ id, label, section, run: () => undefined })
 
@@ -29,5 +29,26 @@ describe('command palette filtering', () => {
 
   it('finds nothing when nothing matches', () => {
     expect(filterCommands(commands, 'zzz')).toEqual([])
+  })
+
+  it('takes the letters spread through a name, and puts those matches last', () => {
+    const loose = [command('smooth', 'Shade smooth by angle'), command('flip', 'Flip horizontal')]
+    // Neither word starts with "sml"; the letters are there in order, which is enough to find it.
+    expect(filterCommands(loose, 'sml').map((item) => item.id)).toEqual(['smooth'])
+    // And a name that plainly contains the query still comes first.
+    expect(filterCommands([...loose, command('fh', 'Flip')], 'fli').map((item) => item.id)).toEqual(['flip', 'fh'])
+  })
+
+  it('opens on what was run last', () => {
+    expect(filterCommands(commands, '', ['outline']).map((item) => item.id))
+      .toEqual(['outline', 'front', 'back', 'flip-h'])
+    // Within a tier, not above it: a better match still wins over a recent one.
+    expect(filterCommands(commands, 'b', ['back']).map((item) => item.id)).toEqual(['front', 'back'])
+  })
+
+  it('remembers the last dozen, each named once and the newest first', () => {
+    expect(withRecentCommand(['a', 'b'], 'b')).toEqual(['b', 'a'])
+    expect(withRecentCommand(['a', 'b'], 'c')).toEqual(['c', 'a', 'b'])
+    expect(withRecentCommand(Array.from({ length: 12 }, (_, index) => `c${index}`), 'new')).toHaveLength(12)
   })
 })

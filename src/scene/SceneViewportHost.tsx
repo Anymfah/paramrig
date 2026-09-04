@@ -81,6 +81,16 @@ export function SceneViewportHost({
     }
   }, [keepKey])
 
+  /*
+   * A preference that changes how many pixels the viewport draws — the resolution scale — reaches a
+   * viewport that already exists, rather than waiting for one to be built again.
+   */
+  useEffect(() => {
+    const instance = viewport.current
+    if (!instance || options?.pixelScale === undefined) return
+    instance.setOptions({ pixelScale: options.pixelScale })
+  }, [options?.pixelScale])
+
   useEffect(() => {
     viewport.current?.setView(view)
   }, [view])

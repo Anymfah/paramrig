@@ -370,6 +370,7 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'Period', action: action('pie.pivot'), label: 'Pivot point pie' },
   { code: 'Comma', action: action('pie.orientation'), label: 'Transform orientation pie' },
   { code: 'KeyZ', action: action('pie.shading'), label: 'Shading pie' },
+  { code: 'Backquote', action: action('pie.views'), label: 'View pie' },
 
   /* the editor itself */
   {
@@ -386,6 +387,21 @@ export const KEYMAP: KeyBinding[] = [
     action: action('keymapSheet'),
     label: 'Keymap sheet',
     note: 'Blender’s F1 opens the manual in a browser. The editor is already in one, so F1 shows the keymap itself.',
+  },
+  { code: 'KeyQ', action: action('favorites'), label: 'Quick favourites' },
+  {
+    code: 'Comma',
+    meta: true,
+    action: action('preferences'),
+    label: 'Preferences',
+    note: 'Blender puts preferences under Edit; ⌘, is where macOS keeps them.',
+  },
+  { code: 'Comma', ctrl: true, action: action('preferences'), label: 'Preferences' },
+  {
+    code: 'Space',
+    action: action('spacebar'),
+    label: 'Play, tools or search',
+    note: 'What it does is a preference: play the animation, open the toolbar, or open the palette.',
   },
   { code: 'KeyT', action: action('panel.toolbar'), label: 'Toolbar' },
   { code: 'KeyN', action: action('panel.sidebar'), label: 'Sidebar' },

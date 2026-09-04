@@ -218,6 +218,7 @@ Every chord in this section is Blender’s own.
 | `.` | Pivot point pie |
 | `,` | Transform orientation pie |
 | `Z` | Shading pie |
+| `` ` `` | View pie |
 
 Every chord in this section is Blender’s own.
 
@@ -281,6 +282,10 @@ Every chord in this section is Blender’s own.
 | `⌘/` | Command palette |
 | `F9` | Adjust last operation |
 | `F1` | Keymap sheet |
+| `Q` | Quick favourites |
+| `⌘,` | Preferences |
+| `⌃,` | Preferences |
+| `Space` | Play, tools or search |
 | `T` | Toolbar |
 | `N` | Sidebar |
 | `⇧R` | Repeat last |
@@ -296,6 +301,8 @@ Where this differs from Blender:
 - `⌃0` — Level nought takes the subdivision modifier off again, so the chords are a round trip rather than a one-way street.
 - `F3` — F3 is the browser’s own find on Windows and Linux, so ⌃/ and ⌘/ open the palette as well.
 - `F1` — Blender’s F1 opens the manual in a browser. The editor is already in one, so F1 shows the keymap itself.
+- `⌘,` — Blender puts preferences under Edit; ⌘, is where macOS keeps them.
+- `Space` — What it does is a preference: play the animation, open the toolbar, or open the palette.
 - `⌘Z`, `⇧⌘Z` — macOS spells undo ⌘Z and Blender spells it ⌃Z. Both are bound, so neither habit has to be unlearned.
 
 ## File

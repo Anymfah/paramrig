@@ -42,6 +42,11 @@ export type ScenePieItem = {
   disabled?: boolean
   /** Why it cannot be picked, shown in the entry's tooltip. */
   reason?: string
+  /**
+   * What the entry runs its operator with, when two slices are the same operator at two settings —
+   * the snap pie carries "Selection to cursor" twice, once keeping the offset and once not.
+   */
+  params?: Record<string, unknown>
 }
 
 function clamp(value: number, low: number, high: number): number {
@@ -63,13 +68,15 @@ function sectorAt(dx: number, dy: number, count: number): number {
   return Math.round((turn - Math.floor(turn)) * count) % count
 }
 
-export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
+export function ScenePieMenu({ open, at, label, items, onPick, onClose, animate = true }: {
   open: boolean
   at: { x: number; y: number }
   label: string
   items: ScenePieItem[]
-  onPick: (id: string) => void
+  onPick: (id: string, params?: Record<string, unknown>) => void
   onClose: () => void
+  /** Off, the pie appears rather than growing: a preference, and what reduced motion asks for. */
+  animate?: boolean
 }) {
   const [active, setActive] = useState(0)
   const [directed, setDirected] = useState(false)
@@ -120,7 +127,7 @@ export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
     const item = items[position]
     if (!item || item.disabled) return
     onClose()
-    onPick(item.id)
+    onPick(item.id, item.params)
   }, [items, onClose, onPick])
 
   const step = useCallback((delta: number) => {
@@ -169,7 +176,15 @@ export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') { event.preventDefault(); step(1); return }
     if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') { event.preventDefault(); step(-1); return }
     if (event.key === 'Home') { event.preventDefault(); setActive(0); return }
-    if (event.key === 'End') { event.preventDefault(); setActive(Math.max(0, items.length - 1)) }
+    if (event.key === 'End') { event.preventDefault(); setActive(Math.max(0, items.length - 1)); return }
+    // The numbers, as Blender has them: 1 is the entry at the top and the rest run clockwise, so a
+    // pie can be driven without the pointer and without counting arrow presses.
+    if (/^[1-8]$/.test(event.key)) {
+      const position = Number(event.key) - 1
+      if (position >= items.length) return
+      event.preventDefault()
+      pick(position)
+    }
   }
 
   if (!mounted || !open) return null
@@ -186,6 +201,7 @@ export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
       <div
         ref={ringRef}
         className="scene-pie"
+        data-animate={animate === false ? 'off' : undefined}
         role="menu"
         aria-label={label}
         style={{ left: `${centre.x}px`, top: `${centre.y}px` }}
@@ -202,7 +218,7 @@ export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
           const Icon = sceneIcon(item.icon)
           const entry = (
             <button
-              key={item.id}
+              key={position}
               type="button"
               role="menuitem"
               className="scene-pie__item"
@@ -219,7 +235,7 @@ export function ScenePieMenu({ open, at, label, items, onPick, onClose }: {
             </button>
           )
           if (!item.disabled || !item.reason) return entry
-          return <Tooltip key={item.id} content={item.reason} instant>{entry}</Tooltip>
+          return <Tooltip key={position} content={item.reason} instant>{entry}</Tooltip>
         })}
       </div>
     </div>,
