@@ -338,6 +338,16 @@ export type Material = {
    */
   baseColorAttribute?: boolean
   backfaceCulling: boolean
+  /**
+   * Whether the surface is a graph rather than the fields above.
+   *
+   * The fields stay where they are when it is on, and the graph stays where it is when it is off:
+   * a switch that threw one of them away would be a switch nobody dares press. Blender's own
+   * "Use Nodes" behaves the same way.
+   */
+  useNodes?: boolean
+  /** The graph, kept whether or not it is being used. Its shape is the vendored engine's. */
+  graph?: unknown
   blendMode: 'opaque' | 'blend' | 'clip'
   textures?: {
     baseColor?: TextureSlot

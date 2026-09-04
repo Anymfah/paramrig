@@ -462,6 +462,30 @@ function objectData(value: unknown, kind: string, meshIds: Set<string>): ObjectD
   }
 }
 
+/**
+ * A node graph, checked for shape and nothing else.
+ *
+ * What a graph *means* is the shader engine's business, and its reader is three thousand lines that
+ * every page loading a document would otherwise have to fetch — including the ones with no shader
+ * editor in them. So the document reader guarantees only that this is a graph-shaped object with
+ * finite numbers and strings in it, capped in size, and the engine's own sanitiser runs when the
+ * graph is first compiled or opened. A graph that gets past here and fails there is dropped there.
+ */
+function graphShape(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as { version?: unknown; nodes?: unknown; edges?: unknown; frames?: unknown }
+  if (!Array.isArray(source.nodes) || !Array.isArray(source.edges)) return undefined
+  const nodes = source.nodes.slice(0, MAX_GRAPH_NODES).filter((entry) => entry && typeof entry === 'object')
+  const edges = source.edges.slice(0, MAX_GRAPH_NODES * 4).filter((entry) => entry && typeof entry === 'object')
+  const frames = Array.isArray(source.frames)
+    ? source.frames.slice(0, MAX_GRAPH_NODES).filter((entry) => entry && typeof entry === 'object')
+    : []
+  return { version: num(source.version, 2, 1, 99), nodes, edges, frames }
+}
+
+/** A ceiling the compiler's own budget sits well under; a file with more than this is not one of ours. */
+const MAX_GRAPH_NODES = 512
+
 function modifiers(value: unknown): Modifier[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((entry): Modifier[] => {
@@ -503,6 +527,8 @@ function material(value: unknown): Material | null {
     normalStrength: num(source.normalStrength, 1, 0, 10),
     backfaceCulling: !!source.backfaceCulling,
     ...(source.baseColorAttribute ? { baseColorAttribute: true } : {}),
+    ...(source.useNodes ? { useNodes: true } : {}),
+    ...(source.graph ? { graph: graphShape(source.graph) } : {}),
     blendMode: pick(source.blendMode, ['opaque', 'blend', 'clip'] as const, 'opaque'),
     ...(source.textures && typeof source.textures === 'object' ? { textures: textureSlots(source.textures) } : {}),
   }

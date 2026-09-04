@@ -208,6 +208,36 @@ export function MaterialPanel({
       {material ? (
         <>
           <SceneSection id="material-surface" title="Surface" {...folds}>
+            <SwitchField
+              label="Use nodes"
+              checked={material.useNodes === true}
+              /*
+               * On, the surface is the graph; off, it is the fields below. Neither throws the other
+               * away: the graph is kept when it is switched off, and the fields are what the graph
+               * is built from the first time it is switched on.
+               */
+              onChange={(useNodes) => {
+                /*
+                 * The conversion is fetched rather than imported: it needs the shader engine's own
+                 * tables, which are thousands of lines a scene with no graph in it should never
+                 * ask for. The switch is a click, so a fetch is a frame — and there is nothing to
+                 * draw until it lands anyway.
+                 */
+                void import('@/scene/shader/material').then((shader) => {
+                  edit(
+                    useNodes
+                      ? { useNodes: true, graph: material.graph ?? shader.principledGraph(material) }
+                      : {
+                        useNodes: false,
+                        ...shader.principledFromGraph(
+                          shader.sanitizeSceneGraph(material.graph) ?? { version: 2, nodes: [], edges: [], frames: [] },
+                        ),
+                      },
+                    useNodes ? 'Use nodes' : 'Plain material',
+                  )
+                })
+              }}
+            />
             <Exposable property={`materials[${material.id}].baseColor`}><ColorField label="Base colour" value={material.baseColor} onChange={(baseColor) => edit({ baseColor }, 'Base colour')} {...gesture} /></Exposable>
             <SwitchField
               label="Color attribute"

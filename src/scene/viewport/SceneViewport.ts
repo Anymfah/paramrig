@@ -23,6 +23,7 @@ import {
   type Camera,
   type Material,
 } from 'three'
+import { onGraphEngine } from '@/scene/viewport/graphMaterial'
 import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/environment'
 import { cameraFrame, type CameraFrame } from '@/scene/viewport/cameraFrame'
 import { solidColour } from '@/scene/viewport/solidColour'
@@ -279,6 +280,9 @@ export class SceneViewport {
   private caretBlink: ReturnType<typeof setInterval> | null = null
 
   private caretLit = true
+
+  /** Unsubscribes from the shader engine landing, when the viewport goes. */
+  private graphEngine: (() => void) | null = null
   private editObjects: string[] = []
   /** Built the first time the face-orientation overlay is switched on, and kept for the session. */
   private orientationMaterial: Material | null = null
@@ -406,6 +410,8 @@ export class SceneViewport {
       entry.curveLine?.dispose()
     }
     this.editViews.clear()
+    this.graphEngine?.()
+    this.graphEngine = null
     this.disposeTextOverlay()
     this.cursor?.dispose()
     this.transform?.dispose()
@@ -1597,6 +1603,16 @@ export class SceneViewport {
     if (!document) return this.views.get(object.id)?.material ?? createSolidMaterial()
     if (!this.materials) {
       this.materials = createMaterialLibrary({ onTextureLoaded: () => this.invalidate() })
+      /*
+       * The shader engine is fetched the first time a graph is drawn, so a material that was a
+       * plain Principled for a frame becomes its graph the moment it lands — and the library has
+       * to be asked again, because the material it built was built without one.
+       */
+      this.graphEngine = onGraphEngine(() => {
+        this.materials?.refresh()
+        if (this.document) this.setDocument(this.document)
+        this.invalidate()
+      })
       this.disposables.push(() => this.materials?.dispose())
     }
     const slots = object.materialSlots.length > 0 ? object.materialSlots : [document.materials[0]?.id ?? '']

@@ -1,3 +1,4 @@
+import { applyGraphMaterial, clearGraphMaterial } from '@/scene/viewport/graphMaterial'
 import {
   Color,
   DoubleSide,
@@ -29,6 +30,8 @@ import type { Material, TextureSlot } from '@/scene/types'
 export type MaterialLibrary = {
   /** The three.js material for a document material, built or remembered. */
   materialFor: (material: Material) => MeshPhysicalMaterial
+  /** Forgets every built material, so a change nothing signed for is picked up. */
+  refresh: () => void
   /** How many are being kept, for the tests and the debug hatch. */
   size: () => number
   dispose: () => void
@@ -49,6 +52,8 @@ export function materialSignature(material: Material): string {
     material.normalStrength,
     material.backfaceCulling,
     material.baseColorAttribute === true,
+    material.useNodes === true,
+    material.useNodes ? material.graph : null,
     material.blendMode,
     material.textures ?? null,
   ])
@@ -105,6 +110,13 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
     // The colour attribute multiplies the base colour, which is what three's `vertexColors` does;
     // a mesh that carries none hands the shader white, and white multiplies to nothing.
     material.vertexColors = source.baseColorAttribute === true
+    /*
+     * A material with nodes on is drawn by the graph rather than by the fields above. The fields are
+     * still written first: they are what the surface falls back to while the engine is fetched, and
+     * what it goes back to the moment the switch is turned off.
+     */
+    if (source.useNodes && source.graph) applyGraphMaterial(material, source.graph)
+    else clearGraphMaterial(material)
     material.map = textureFor(source.textures?.baseColor, true)
     material.roughnessMap = textureFor(source.textures?.roughness, false)
     material.metalnessMap = textureFor(source.textures?.metallic, false)
@@ -132,6 +144,17 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
       return material
     },
     size: () => built.size,
+    /*
+     * Every built material forgotten, so the next read builds it again.
+     *
+     * The shader engine arrives after the materials do: a material that was written before it
+     * landed carries no graph, and its signature has not changed, so nothing would ever ask for it
+     * again. This is how the viewport says "build them all once more".
+     */
+    refresh: () => {
+      for (const entry of built.values()) entry.material.dispose()
+      built.clear()
+    },
     dispose: () => {
       disposed = true
       for (const entry of built.values()) entry.material.dispose()
