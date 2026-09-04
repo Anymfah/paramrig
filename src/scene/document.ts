@@ -21,6 +21,7 @@ import type {
   SceneVersion,
   TextureSlot,
   Transform,
+  UvEditorState,
   Vec2,
   Vec3,
   ViewState,
@@ -60,6 +61,22 @@ export const DEFAULT_MATERIAL: Material = {
 export const DEFAULT_WORLD: World = { color: '#3b3b3b', strength: 1 }
 
 export const DEFAULT_UNITS: SceneUnits = { system: 'metric', scale: 1 }
+
+/**
+ * The UV editor as it opens for the first time.
+ *
+ * The checker rather than the material's own image, which is where this departs from Blender. A
+ * texture only says where a map lands once somebody has painted one; a checker says whether the map
+ * is even and square before anything has been painted at all, which is what a person opening this
+ * for the first time is looking at it to find out.
+ */
+export const DEFAULT_UV_EDITOR: UvEditorState = {
+  open: false,
+  split: 0.55,
+  background: 'checker',
+  grid: true,
+  stretch: 'none',
+}
 
 export const DEFAULT_VIEW: ViewState = {
   target: [0, 0, 0],
@@ -129,6 +146,7 @@ export const DEFAULT_VIEW: ViewState = {
   proportionalFalloff: 'smooth',
   proportionalSize: 1,
   panels: { toolbar: true, sidebar: false, sidebarTab: 'item' },
+  uv: DEFAULT_UV_EDITOR,
 }
 
 function newId(prefix: string): string {
@@ -506,6 +524,7 @@ function viewState(value: unknown): ViewState {
   const overlays = (source.overlays ?? {}) as Partial<ViewState['overlays']>
   const gizmos = (source.gizmos ?? {}) as Partial<ViewState['gizmos']>
   const panels = (source.panels ?? {}) as Partial<NonNullable<ViewState['panels']>>
+  const uv = (source.uv ?? {}) as Partial<UvEditorState>
   const modes = Array.isArray(source.selectMode)
     ? source.selectMode.filter((mode): mode is 'vertex' | 'edge' | 'face' => mode === 'vertex' || mode === 'edge' || mode === 'face')
     : []
@@ -589,6 +608,13 @@ function viewState(value: unknown): ViewState {
       toolbar: panels.toolbar !== false,
       sidebar: !!panels.sidebar,
       sidebarTab: pick(panels.sidebarTab, ['item', 'tool', 'view', 'assets'] as const, 'item'),
+    },
+    uv: {
+      open: !!uv.open,
+      split: num(uv.split, DEFAULT_UV_EDITOR.split, 0.2, 0.8),
+      background: pick(uv.background, ['texture', 'checker', 'none'] as const, DEFAULT_UV_EDITOR.background),
+      grid: flag(uv.grid, DEFAULT_UV_EDITOR.grid),
+      stretch: pick(uv.stretch, ['none', 'angle', 'area'] as const, DEFAULT_UV_EDITOR.stretch),
     },
   }
 }

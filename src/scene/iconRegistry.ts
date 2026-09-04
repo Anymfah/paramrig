@@ -34,6 +34,8 @@ export const SCENE_ICONS: Record<string, SceneIconComponent> = {
   collection: Icons.IconCollection,
   'scene-collection': Icons.IconSceneCollection,
 
+  'uv-editor': Icons.IconUvEditor,
+
   'select-box': Icons.IconSelectBox,
   'select-circle': Icons.IconSelectCircle,
   'select-lasso': Icons.IconSelectLasso,

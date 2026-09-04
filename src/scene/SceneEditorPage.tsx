@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
 import { EditorModal } from '@/editor/EditorModal'
 import { ensureSession } from '@/state/workspace'
@@ -23,7 +23,7 @@ import { Button } from '@/ui/Button'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { ContextMenuRoot } from '@/ui/ContextMenu'
 import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
-import { getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
+import { DEFAULT_UV_EDITOR, getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
 import { describeKeymap, resolveKey } from '@/scene/keymap'
 import { getOperator } from '@/scene/operators/registry'
 import {
@@ -44,6 +44,8 @@ import {
  * a dialog that should not be between a person and their first frame.
  */
 const ScenePreferencesDialog = lazy(async () => ({ default: (await import('@/scene/ScenePreferencesDialog')).ScenePreferencesDialog }))
+/* The same reasoning for the second space: an editor nobody has opened costs nothing to have. */
+const SceneUVEditor = lazy(async () => ({ default: (await import('@/scene/SceneUVEditor')).SceneUVEditor }))
 import { SceneFavoritesContext, type SceneFavoritesValue } from '@/scene/favorites'
 import { setTooltipDelay } from '@/ui/tooltipDelay'
 import { withRecentCommand } from '@/editor/commands'
@@ -61,11 +63,12 @@ import { SceneProperties } from '@/scene/SceneProperties'
 import { SceneRedoPanel } from '@/scene/SceneRedoPanel'
 import { SceneSidebar } from '@/scene/SceneSidebar'
 import { SceneStage, type SceneStageHandle } from '@/scene/SceneStage'
+import { SceneSplitter } from '@/scene/SceneSplitter'
 import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { SceneDocument, SceneSelection, SceneTool, SelectMode, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneSelection, SceneTool, SelectMode, UvEditorState, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/modifiers'
@@ -785,6 +788,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const counts = sceneCounts(drawn)
   const context = editor.operatorContext()
   const panels = panelsOf(document.view)
+  const uvEditor = document.view.uv ?? DEFAULT_UV_EDITOR
+  const patchUv = (patch: Partial<UvEditorState>) => patchView({ uv: { ...uvEditor, ...patch } })
   const commands: SceneCommand[] = [
     ...sceneCommands({ context, runOperator: (id) => run(id) }),
     ...editorCommands({
@@ -798,6 +803,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       repeatLast: () => editor.repeatLastOperation(),
       'panel.toolbar': () => patchView({ panels: { ...panels, toolbar: !panels.toolbar } }),
       'panel.sidebar': () => patchView({ panels: { ...panels, sidebar: !panels.sidebar } }),
+      'panel.uv': () => patchUv({ open: !uvEditor.open }),
       'file.save': () => void file.saveNow(),
       'file.saveAs': () => void file.saveAs(),
       'file.open': () => void openFromDisk(),
@@ -950,144 +956,169 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onCommand={(id) => commands.find((command) => command.id === id)?.run()}
             />
           </div>
-          <div className="scene-body">
-            <SceneStage
-              document={drawn}
-              keepKey={documentId}
-              selection={selection}
-              preferences={preferences}
-              onView={setView}
-              onModelDrop={(picked) => void importModel(picked)}
-              onMaterialDrop={(materialId, objectId, faceId) => run('material.drop', {
-                materialId,
-                objectId,
-                faceId: faceId === null ? '' : String(faceId),
-              })}
-              onSelect={selectObjects}
-              onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
-              operatorBridge={operatorBridge}
-              toolOptions={toolOptions}
-              onPickElement={(hit, pickMode) => {
-                if (!hit) {
-                  run('mesh.selectPick', { slot: -1, extend: pickMode !== 'new' })
-                  return
-                }
-                if (pickMode === 'loop' || pickMode === 'ring') {
-                  run(pickMode === 'loop' ? 'mesh.selectLoop' : 'mesh.selectRing', { edge: hit.slot, extend: false })
-                  return
-                }
-                run('mesh.selectPick', {
-                  kind: hit.kind,
-                  slot: hit.slot,
-                  objectId: hit.objectId,
-                  extend: pickMode === 'extend',
-                  toggle: pickMode === 'toggle',
-                })
-              }}
-              onPolyBuild={(request) => run('mesh.polyBuild', request)}
-              onRegionElements={(found, selectMode) => run('mesh.selectRegion', {
-                mode: selectMode,
-                found: [...found].map(([objectId, entry]) => ({
+          <div
+            className="scene-body"
+            data-uv={uvEditor.open ? 'open' : undefined}
+            style={{ '--scene-uv-split': String(uvEditor.split) } as CSSProperties}
+          >
+            <div className="scene-area">
+              <SceneStage
+                document={drawn}
+                keepKey={documentId}
+                selection={selection}
+                preferences={preferences}
+                onView={setView}
+                onModelDrop={(picked) => void importModel(picked)}
+                onMaterialDrop={(materialId, objectId, faceId) => run('material.drop', {
+                  materialId,
                   objectId,
-                  vertices: [...entry.vertices],
-                  edges: [...entry.edges],
-                  faces: [...entry.faces],
-                })),
-              })}
-              onPlaceCursor={(position, normal) => run('cursor.place', { position, ...(normal ? { normal } : {}) })}
-              onContextMenu={setContextAt}
-              onAnnotate={(points) => editor.editDocument((current) => ({
-                ...current,
-                annotations: [...(current.annotations ?? []), { id: crypto.randomUUID(), color: ANNOTATION_COLOUR, width: 3, points }],
-              }), 'Annotate', false)}
-              onMeasure={(from, to) => editor.editDocument((current) => ({
-                ...current,
-                measurements: [...(current.measurements ?? []), { id: crypto.randomUUID(), from, to }],
-              }), 'Measure', false)}
-              onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
-              onEditDocument={(edit) => editor.editDocument(edit, 'Transform', false)}
-              onGestureStart={editor.beginGesture}
-              onGestureEnd={(label) => {
-                editor.endGesture(label)
-                /*
-                 * Auto merge: vertices dropped onto one another are welded as the gesture ends, the
-                 * way Blender's own option does it. It is off by default because a merge that
-                 * nobody asked for is a merge nobody can see happening.
-                 */
-                if (document.view.mode === 'edit' && preferences.autoMergeDistance > 0) {
-                  runOperator('mesh.mergeByDistance', { distance: preferences.autoMergeDistance })
-                }
-              }}
-              onGestureCancel={editor.cancelGesture}
-              onReady={(handle) => { stage.current = handle }}
-              createViewport={createViewport}
-              options={{
-                ...viewportOptions,
-                pixelScale: preferences.resolutionScale,
-                /*
-                 * A phone draws at most one and a half device pixels for one of ours, and casts no
-                 * shadows: both are the difference between a viewport that turns under a finger and
-                 * one that stutters. Neither is a preference, because neither is a taste.
-                 */
-                ...(coarsePointer ? { maxPixelRatio: 1.5, shadows: false } : {}),
-              }}
-            >
-              <SceneHints />
-            </SceneStage>
+                  faceId: faceId === null ? '' : String(faceId),
+                })}
+                onSelect={selectObjects}
+                onRegionSelect={(ids, selectMode) => run('select.box', { ids, mode: selectMode })}
+                operatorBridge={operatorBridge}
+                toolOptions={toolOptions}
+                onPickElement={(hit, pickMode) => {
+                  if (!hit) {
+                    run('mesh.selectPick', { slot: -1, extend: pickMode !== 'new' })
+                    return
+                  }
+                  if (pickMode === 'loop' || pickMode === 'ring') {
+                    run(pickMode === 'loop' ? 'mesh.selectLoop' : 'mesh.selectRing', { edge: hit.slot, extend: false })
+                    return
+                  }
+                  run('mesh.selectPick', {
+                    kind: hit.kind,
+                    slot: hit.slot,
+                    objectId: hit.objectId,
+                    extend: pickMode === 'extend',
+                    toggle: pickMode === 'toggle',
+                  })
+                }}
+                onPolyBuild={(request) => run('mesh.polyBuild', request)}
+                onRegionElements={(found, selectMode) => run('mesh.selectRegion', {
+                  mode: selectMode,
+                  found: [...found].map(([objectId, entry]) => ({
+                    objectId,
+                    vertices: [...entry.vertices],
+                    edges: [...entry.edges],
+                    faces: [...entry.faces],
+                  })),
+                })}
+                onPlaceCursor={(position, normal) => run('cursor.place', { position, ...(normal ? { normal } : {}) })}
+                onContextMenu={setContextAt}
+                onAnnotate={(points) => editor.editDocument((current) => ({
+                  ...current,
+                  annotations: [...(current.annotations ?? []), { id: crypto.randomUUID(), color: ANNOTATION_COLOUR, width: 3, points }],
+                }), 'Annotate', false)}
+                onMeasure={(from, to) => editor.editDocument((current) => ({
+                  ...current,
+                  measurements: [...(current.measurements ?? []), { id: crypto.randomUUID(), from, to }],
+                }), 'Measure', false)}
+                onTransform={(patches) => editor.updateObjects(patches, 'Transform', false)}
+                onEditDocument={(edit) => editor.editDocument(edit, 'Transform', false)}
+                onGestureStart={editor.beginGesture}
+                onGestureEnd={(label) => {
+                  editor.endGesture(label)
+                  /*
+                   * Auto merge: vertices dropped onto one another are welded as the gesture ends, the
+                   * way Blender's own option does it. It is off by default because a merge that
+                   * nobody asked for is a merge nobody can see happening.
+                   */
+                  if (document.view.mode === 'edit' && preferences.autoMergeDistance > 0) {
+                    runOperator('mesh.mergeByDistance', { distance: preferences.autoMergeDistance })
+                  }
+                }}
+                onGestureCancel={editor.cancelGesture}
+                onReady={(handle) => { stage.current = handle }}
+                createViewport={createViewport}
+                options={{
+                  ...viewportOptions,
+                  pixelScale: preferences.resolutionScale,
+                  /*
+                   * A phone draws at most one and a half device pixels for one of ours, and casts no
+                   * shadows: both are the difference between a viewport that turns under a finger and
+                   * one that stutters. Neither is a preference, because neither is a taste.
+                   */
+                  ...(coarsePointer ? { maxPixelRatio: 1.5, shadows: false } : {}),
+                }}
+              >
+                <SceneHints />
+              </SceneStage>
 
-            <SceneTouchBar
-              mode={document.view.mode}
-              selectMode={document.view.selectMode}
-              onMode={() => run('mode.toggleEdit')}
-              onSelectMode={(kind) => run(`mode.select${kind === 'vertex' ? 'Vertex' : kind === 'edge' ? 'Edge' : 'Face'}`)}
-              onRun={(id) => run(id)}
-              onMore={(at) => setPointerMenu({ title: 'Mesh', ids: MESH_MENU, at })}
-            />
-            <SceneToolbar
-              open={panels.toolbar}
-              tool={document.view.tool}
-              mode={document.view.mode}
-              onTool={(tool) => patchView({ tool })}
-              onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
-            />
-            <SceneSidebar
-              open={panels.sidebar}
-              tab={panels.sidebarTab}
-              onTab={(sidebarTab) => patchView({ panels: { ...panels, sidebarTab } })}
-              onClose={() => patchView({ panels: { ...panels, sidebar: false } })}
-              document={document}
-              selection={selection}
-              activeObject={editor.activeObject}
-              selectedObjects={editor.selectedObjects}
-              onUpdateObject={editor.updateObject}
-              onEditDocument={editor.editDocument}
-              onView={patchView}
-              toolParams={toolOptions[TOOL_OPERATORS[document.view.tool] ?? ''] ?? {}}
-              onToolParams={(params) => {
-                const id = TOOL_OPERATORS[document.view.tool]
-                if (id) setToolOptions((current) => ({ ...current, [id]: params }))
-              }}
-              onGestureStart={() => editor.beginGesture('Change value')}
-              onGestureEnd={() => editor.endGesture('Change value')}
-            />
-            <SceneNavGizmo
-              view={document.view}
-              hasCamera={document.objects.some((object) => object.data.kind === 'camera' && object.data.active)}
-              onAxis={(axis) => run(`view.${axis}`)}
-              onOrbit={(dx, dy) => stage.current?.navigator?.orbit(dx, dy)}
-              onPan={(dx, dy) => stage.current?.navigator?.pan(dx, dy)}
-              onZoom={(delta) => stage.current?.navigator?.zoomBy(delta)}
-              onToggleProjection={() => run('view.togglePerspective')}
-              onCamera={() => run('view.camera')}
-            />
-            <SceneRedoPanel
-              operation={editor.lastOperation
-                ? { operatorId: editor.lastOperation.operatorId, label: editor.lastOperation.label, params: editor.lastOperation.params }
-                : null}
-              expanded={redoExpanded}
-              onExpanded={setRedoExpanded}
-              onAdjust={editor.adjustLastOperation}
-            />
+              <SceneTouchBar
+                mode={document.view.mode}
+                selectMode={document.view.selectMode}
+                onMode={() => run('mode.toggleEdit')}
+                onSelectMode={(kind) => run(`mode.select${kind === 'vertex' ? 'Vertex' : kind === 'edge' ? 'Edge' : 'Face'}`)}
+                onRun={(id) => run(id)}
+                onMore={(at) => setPointerMenu({ title: 'Mesh', ids: MESH_MENU, at })}
+              />
+              <SceneToolbar
+                open={panels.toolbar}
+                tool={document.view.tool}
+                mode={document.view.mode}
+                onTool={(tool) => patchView({ tool })}
+                onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
+              />
+              <SceneSidebar
+                open={panels.sidebar}
+                tab={panels.sidebarTab}
+                onTab={(sidebarTab) => patchView({ panels: { ...panels, sidebarTab } })}
+                onClose={() => patchView({ panels: { ...panels, sidebar: false } })}
+                document={document}
+                selection={selection}
+                activeObject={editor.activeObject}
+                selectedObjects={editor.selectedObjects}
+                onUpdateObject={editor.updateObject}
+                onEditDocument={editor.editDocument}
+                onView={patchView}
+                toolParams={toolOptions[TOOL_OPERATORS[document.view.tool] ?? ''] ?? {}}
+                onToolParams={(params) => {
+                  const id = TOOL_OPERATORS[document.view.tool]
+                  if (id) setToolOptions((current) => ({ ...current, [id]: params }))
+                }}
+                onGestureStart={() => editor.beginGesture('Change value')}
+                onGestureEnd={() => editor.endGesture('Change value')}
+              />
+              <SceneNavGizmo
+                view={document.view}
+                hasCamera={document.objects.some((object) => object.data.kind === 'camera' && object.data.active)}
+                onAxis={(axis) => run(`view.${axis}`)}
+                onOrbit={(dx, dy) => stage.current?.navigator?.orbit(dx, dy)}
+                onPan={(dx, dy) => stage.current?.navigator?.pan(dx, dy)}
+                onZoom={(delta) => stage.current?.navigator?.zoomBy(delta)}
+                onToggleProjection={() => run('view.togglePerspective')}
+                onCamera={() => run('view.camera')}
+              />
+              <SceneRedoPanel
+                operation={editor.lastOperation
+                  ? { operatorId: editor.lastOperation.operatorId, label: editor.lastOperation.label, params: editor.lastOperation.params }
+                  : null}
+                expanded={redoExpanded}
+                onExpanded={setRedoExpanded}
+                onAdjust={editor.adjustLastOperation}
+              />
+            </div>
+            {uvEditor.open ? (
+              <SceneSplitter
+                label="Viewport and UV editor"
+                value={uvEditor.split}
+                onChange={(split) => patchUv({ split })}
+                onReset={() => patchUv({ split: DEFAULT_UV_EDITOR.split })}
+              />
+            ) : null}
+            {uvEditor.open ? (
+              <Suspense fallback={<div className="scene-uv scene-uv--loading" aria-hidden="true" />}>
+                <SceneUVEditor
+                  document={drawn}
+                  selection={selection}
+                  uv={uvEditor}
+                  onUv={patchUv}
+                  onClose={() => patchUv({ open: false })}
+                />
+              </Suspense>
+            ) : null}
           </div>
           <SceneStatusBar
             document={document}

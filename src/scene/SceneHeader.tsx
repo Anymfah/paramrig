@@ -696,6 +696,16 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
             <IconSearch />
           </IconButton>
         </Tooltip>
+        <Tooltip content={tipFor('UV editor', 'panel.uv')}>
+          <IconButton
+            label="UV editor"
+            className="scene-header__button"
+            aria-pressed={view.uv?.open === true}
+            onClick={() => onCommand('panel.uv')}
+          >
+            <SceneGlyph name="uv-editor" />
+          </IconButton>
+        </Tooltip>
         <Tooltip content={tipFor('Keymap sheet', 'keymapSheet')}>
           <IconButton label="Keymap sheet" className="scene-header__button" onClick={() => onCommand('keymapSheet')}>
             <IconDoc />

@@ -323,6 +323,24 @@ export type GizmoFlags = {
 }
 
 /** Where the view is, and everything about how the document is being looked at. */
+/**
+ * The UV editor's own state, kept with the view rather than in a preference.
+ *
+ * It travels with the document because it is a way of looking at *this* model: a person who
+ * unwrapped a character and left the editor open beside the viewport should find it open when they
+ * come back to that file, and should not find it open over an unrelated one.
+ */
+export type UvEditorState = {
+  open: boolean
+  /** How much of the room the viewport keeps, from 0 to 1; the UV editor takes the rest. */
+  split: number
+  /** What is drawn behind the map: the material's own image, a checker, or nothing. */
+  background: 'texture' | 'checker' | 'none'
+  grid: boolean
+  /** Blender's stretch overlays, which colour each face by how badly the map treats it. */
+  stretch: 'none' | 'angle' | 'area'
+}
+
 export type ViewState = {
   /** Where the camera orbits around, in world units. */
   target: Vec3
@@ -386,6 +404,8 @@ export type ViewState = {
   localObjectIds?: string[]
   /** The panels the person left open, so a document reopens the way it was closed. */
   panels?: { toolbar: boolean; sidebar: boolean; sidebarTab: 'item' | 'tool' | 'view' | 'assets' }
+  /** The UV editor: whether the second space is open, how much room it has, and what it draws. */
+  uv?: UvEditorState
   /**
    * Looking through the active camera, with its frame drawn and the rest dimmed. It is a state of
    * the view rather than a place it has moved to: the camera is what is being looked through, so

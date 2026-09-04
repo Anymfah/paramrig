@@ -1,4 +1,5 @@
 import { uvMapsOf } from '@/scene/mesh/uv'
+import { UvMapsSection } from '@/scene/panels/UvMapsSection'
 import { meshOf } from '@/scene/document'
 import { meshCounts } from '@/scene/mesh/data'
 import { Exposable } from '@/scene/SceneExpose'
@@ -197,6 +198,7 @@ function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGe
           onChange={(value) => setAutoSmooth({ angle: value }, 'Auto smooth angle')}
         />
       </SceneSection>
+      <UvMapsSection mesh={mesh} meshId={meshId} onEditDocument={onEditDocument} isOpen={isOpen} onSection={onSection} />
       <SceneSection id="data-mesh-attributes" title="Attributes" meta={`${attributes.length}`} isOpen={isOpen} onSection={onSection}>
         {attributes.length === 0 ? (
           <SceneEmpty>This mesh carries no attributes yet. Marking a seam or a sharp edge makes one.</SceneEmpty>

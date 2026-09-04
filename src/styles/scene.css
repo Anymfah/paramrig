@@ -5,6 +5,7 @@
 @import './scene/properties.css';
 @import './scene/sidebar.css';
 @import './scene/toolbar.css';
+@import './scene/uv.css';
 @import './scene/files.css';
 @import './scene/mobile.css';
 
@@ -639,7 +640,38 @@
 .scene-titlebar > * { min-width: 0; }
 .scene-titlebar > .scene-header { flex: 1; }
 
+/*
+ * One row, and one column until the UV editor opens a second one. The splitter's fraction arrives
+ * as a custom property from the document, so moving it is a change of state rather than a class.
+ */
 .scene-body {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: 1fr;
+  grid-template-columns: minmax(0, 1fr);
+  overflow: hidden;
+}
+.scene-body[data-uv='open'] {
+  grid-template-columns: minmax(0, calc(var(--scene-uv-split, 0.55) * 100%)) auto minmax(0, 1fr);
+}
+
+/*
+ * There is no room to share on a phone, so the second space takes the whole of it and the viewport
+ * waits behind it — which is what the header button then reads as: not a split, but a place to go.
+ * It lives here rather than in `scene/uv.css` because an imported rule is read before this file,
+ * and the split above would otherwise win over it at the same specificity.
+ */
+@media (max-width: 64em) {
+  .scene-body[data-uv='open'] { grid-template-columns: minmax(0, 1fr); }
+  .scene-body[data-uv='open'] > .scene-area,
+  .scene-body[data-uv='open'] > .scene-splitter { display: none; }
+}
+
+/* The viewport and everything that floats over it. The floating panels are positioned against it,
+ * so opening the second space never puts the T bar over the UV map. */
+.scene-area {
   position: relative;
   min-width: 0;
   min-height: 0;

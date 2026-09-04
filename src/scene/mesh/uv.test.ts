@@ -5,10 +5,14 @@ import { boxMesh, planeMesh, uvSphereMesh } from '@/scene/mesh/primitives'
 import {
   activeUv,
   activeUvIndex,
+  addUvMap,
   hasUvs,
   loopCount,
   loopStarts,
   remapUvs,
+  removeUvMap,
+  renameUvMap,
+  setActiveUvMap,
   uniqueUvName,
   uvAt,
   uvMapsOf,
@@ -233,5 +237,57 @@ describe('the primitives', () => {
       const row = data.slice(face * 8, face * 8 + 8)
       expect(row).toEqual([0, 0, 1, 0, 1, 1, 0, 1])
     }
+  })
+})
+
+describe('managing the maps', () => {
+  it('adds a copy of the active map and makes it active', () => {
+    const first = withActiveUv(twoQuads(), new Array(16).fill(0).map((_, index) => index / 16))
+    const second = addUvMap(first)
+    expect(uvMapsOf(second).map((map) => map.name)).toEqual(['UVMap', 'UVMap.001'])
+    expect(activeUvIndex(second)).toBe(1)
+    expect(activeUv(second)).toEqual(activeUv(first))
+    // A copy rather than the same array: editing one map must never write into the other.
+    expect(activeUv(second)).not.toBe(uvMapsOf(second)[0]!.data)
+  })
+
+  it('gives a mesh with no map an empty one of the right length', () => {
+    const mesh = addUvMap(twoQuads())
+    expect(activeUv(mesh)).toEqual(new Array(loopCount(mesh) * 2).fill(0))
+  })
+
+  it('refuses a ninth map rather than dropping one', () => {
+    let mesh = twoQuads()
+    for (let index = 0; index < 12; index += 1) mesh = addUvMap(mesh)
+    expect(uvMapsOf(mesh)).toHaveLength(8)
+  })
+
+  it('removing the map before the active one keeps the same map active', () => {
+    let mesh = addUvMap(addUvMap(addUvMap(twoQuads())))
+    mesh = setActiveUvMap(mesh, 2)
+    const wanted = uvMapsOf(mesh)[2]!.name
+    const after = removeUvMap(mesh, 0)
+    expect(uvMapsOf(after)[activeUvIndex(after)]!.name).toBe(wanted)
+  })
+
+  it('removing the last map leaves a mesh with no UVs at all', () => {
+    const mesh = removeUvMap(addUvMap(twoQuads()), 0)
+    expect(hasUvs(mesh)).toBe(false)
+    expect(uvMapsOf(mesh)).toEqual([])
+  })
+
+  it('renames, and refuses to make two maps of one name', () => {
+    const mesh = addUvMap(addUvMap(twoQuads()))
+    const renamed = renameUvMap(mesh, 1, 'UVMap')
+    expect(uvMapsOf(renamed)[1]!.name).toBe('UVMap.001')
+    expect(uvMapsOf(renameUvMap(mesh, 1, 'Lightmap'))[1]!.name).toBe('Lightmap')
+    expect(renameUvMap(mesh, 1, '   ')).toBe(mesh)
+    expect(renameUvMap(mesh, 9, 'Nowhere')).toBe(mesh)
+  })
+
+  it('will not activate a map that is not there', () => {
+    const mesh = addUvMap(twoQuads())
+    expect(setActiveUvMap(mesh, 4)).toBe(mesh)
+    expect(setActiveUvMap(mesh, -1)).toBe(mesh)
   })
 })

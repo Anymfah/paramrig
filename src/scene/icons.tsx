@@ -824,6 +824,23 @@ export function IconTabData({ className }: SceneIconProps) {
   )
 }
 
+/*
+ * The UV editor's own mark: the image, with an island laid on it.
+ *
+ * It is deliberately not a grid — a grid is what the overlay toggle means everywhere else in the
+ * editor — and deliberately not a texture, because what the second space shows is the *map*, which
+ * is the piece of geometry lying on the picture rather than the picture.
+ */
+export function IconUvEditor({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="1" />
+      <path d="M5 11.5 8.75 4.75 11.75 9.75z" />
+      <Dot cx={5} cy={11.5} r={1.1} />
+    </Glyph>
+  )
+}
+
 export const IconTabControls = fromLucide(SlidersHorizontal)
 export const IconTabHistory = fromLucide(History)
 

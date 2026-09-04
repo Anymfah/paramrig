@@ -1,0 +1,207 @@
+/* The UV editor: the second space, its splitter, and the colours its canvas is painted with. */
+
+/*
+ * The canvas cannot inherit a custom property, so every colour it draws with is read off the
+ * element and handed to the context as a string. That is why these are defined once, in terms of
+ * the tokens the rest of the editor already themes: an override of `--scene-grid` reaches the UV
+ * grid without a second table of colours that could drift out of step with the first.
+ */
+:root {
+  --scene-uv-ground: var(--scene-viewport-gradient);
+  --scene-uv-image: var(--scene-viewport);
+  --scene-uv-grid: var(--scene-grid);
+  --scene-uv-border: var(--scene-grid-major);
+  --scene-uv-edge: var(--scene-proportional);
+  --scene-uv-point: var(--scene-cursor-ground);
+  --scene-uv-halo: var(--scene-outline-halo);
+  --scene-uv-face: var(--scene-face-selected);
+  /*
+   * Blender's stretch ramp, in this editor's own axis colours: cold where the flattening is
+   * faithful, warm where it is not.
+   */
+  --scene-uv-stretch-low: var(--scene-face-front);
+  --scene-uv-stretch-mid: var(--scene-axis-y);
+  --scene-uv-stretch-high: var(--scene-axis-x);
+  /*
+   * The checker keeps its two greys in every theme. It is a reference rather than decoration — the
+   * whole point of it is that a square reads as square and a stretch reads as stretch — and a
+   * reference that changed with the theme would be a different reference in each one.
+   */
+  --scene-uv-checker-light: #8a938f;
+  --scene-uv-checker-dark: #5a6360;
+}
+
+/* ------------------------------------------------------------- the splitter */
+
+/*
+ * A 6-pixel rule with a 32-pixel grip.
+ *
+ * The visible bar is thin because it divides two pictures and should not be a third one; the part
+ * that answers the pointer is the full hit target, reached through a ::before that spills either
+ * side of the bar. A finger gets the coarse target the same way.
+ */
+.scene-splitter {
+  position: relative;
+  z-index: var(--z-overlay);
+  inline-size: 6px;
+  display: grid;
+  place-items: center;
+  border-inline: 1px solid var(--rule);
+  background: var(--surface-raised);
+  cursor: col-resize;
+  touch-action: none;
+}
+.scene-splitter::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline: calc((var(--hit-target) - 6px) / -2);
+}
+.scene-splitter__grip {
+  inline-size: 2px;
+  block-size: 1.75rem;
+  border-radius: 1px;
+  background: var(--border-strong);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.scene-splitter:hover .scene-splitter__grip,
+.scene-splitter:active .scene-splitter__grip { background: var(--accent); }
+.scene-splitter:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .scene-splitter::before { inset-inline: calc((var(--hit-target-coarse) - 6px) / -2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scene-splitter__grip { transition: none; }
+}
+@media (forced-colors: active) {
+  .scene-splitter { border-inline-color: CanvasText; }
+  .scene-splitter__grip { background: CanvasText; }
+}
+
+/* ------------------------------------------------------------- the editor */
+
+.scene-uv {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--scene-uv-ground);
+}
+/* While the module is still arriving, the space is its own ground and nothing else: no flash. */
+.scene-uv--loading { display: block; }
+
+.scene-uv__header,
+.scene-uv__status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding-inline: var(--space-2);
+  background: var(--surface-raised);
+}
+.scene-uv__header {
+  min-block-size: 36px;
+  border-block-end: 1px solid var(--rule);
+}
+.scene-uv__status {
+  min-block-size: 26px;
+  border-block-start: 1px solid var(--rule);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.scene-uv__status > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.scene-uv__title {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.scene-uv__map {
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scene-uv__spacer { flex: 1; min-inline-size: 0; }
+.scene-uv__group { display: flex; align-items: center; gap: 2px; }
+
+.scene-uv__frame {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  overflow: hidden;
+  touch-action: none;
+}
+.scene-uv__canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.scene-uv__notice {
+  position: absolute;
+  inset-block-end: var(--space-4);
+  inset-inline: var(--space-4);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--scene-panel-border);
+  border-radius: var(--scene-panel-radius);
+  background: var(--scene-panel);
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-align: center;
+  backdrop-filter: blur(6px);
+}
+
+/* ------------------------------------------------------ Data > UV maps */
+
+.scene-uv-maps { display: grid; gap: 2px; }
+.scene-uv-maps__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: calc(var(--hit-target) - 4px);
+  padding-inline: 2px;
+  border-radius: var(--radius-xs);
+}
+.scene-uv-maps__row[data-active='true'] { background: var(--surface-inset); }
+.scene-uv-maps__name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.scene-uv-maps__row[data-active='true'] .scene-uv-maps__name { font-weight: 600; }
+.scene-uv-maps__field {
+  flex: 1;
+  min-inline-size: 0;
+  padding: 2px var(--space-1);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-inset);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.scene-uv-maps__mark { flex: none; inline-size: 14px; block-size: 14px; color: var(--accent); }
+.scene-uv-maps__actions { display: flex; align-items: center; gap: 2px; }

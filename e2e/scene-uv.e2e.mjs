@@ -189,4 +189,106 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
   check('and the six faces land in six different places', patches.size === 6, `${patches.size} patches`)
   log(`MEASURE unwrap of a fully seamed cube: ${map.length / 2} corners, ${patches.size} islands`)
   await shot('scene-uv-unwrapped-1440.png')
+
+  /* ------------------------------------------------------- the second space */
+
+  /*
+   * P2. Everything above proves the map exists; this proves a person can see it. The editor is
+   * opened from the header, measured on its own canvas — a 2D canvas can be read back, which a
+   * WebGL one cannot — and then made to share the screen differently by its splitter.
+   */
+  await page.locator('.scene-header__button[aria-label="UV editor"]').click()
+  await page.waitForSelector('.scene-uv')
+  await page.waitForTimeout(600)
+
+  const opened = await page.evaluate(() => {
+    const editor = document.querySelector('.scene-uv')
+    const area = document.querySelector('.scene-area')
+    return {
+      pressed: document.querySelector('.scene-header__button[aria-label="UV editor"]')?.getAttribute('aria-pressed'),
+      map: editor?.querySelector('.scene-uv__map')?.textContent ?? '',
+      label: editor?.querySelector('canvas')?.getAttribute('aria-label') ?? '',
+      status: editor?.querySelector('.scene-uv__status')?.textContent ?? '',
+      editorWidth: Math.round(editor?.getBoundingClientRect().width ?? 0),
+      areaWidth: Math.round(area?.getBoundingClientRect().width ?? 0),
+    }
+  })
+  check('the header button opens the second space and reads as pressed',
+    opened.pressed === 'true' && opened.editorWidth > 200, `pressed ${opened.pressed}, ${opened.editorWidth} px wide`)
+  check('the viewport keeps its share of the screen rather than being replaced',
+    opened.areaWidth > 200 && Math.abs(opened.areaWidth / (opened.areaWidth + opened.editorWidth) - 0.55) < 0.05,
+    `${opened.areaWidth} px viewport, ${opened.editorWidth} px UV editor`)
+  check('it names the map it is showing, and says what is in it',
+    opened.map === 'UVMap' && /24 points/.test(opened.status), `${opened.map} · ${opened.status}`)
+  check('and a reader with no picture is told the same thing',
+    /UV map UVMap, 24 points/.test(opened.label), opened.label)
+
+  /*
+   * What is actually on the canvas. The unwrapped cube is six squares on a checker, so the picture
+   * has to hold both greys of the checker and the light of the edges — three colours at least, and
+   * a flat canvas would hold one.
+   */
+  const painted = await page.evaluate(() => {
+    const canvas = document.querySelector('.scene-uv__canvas')
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data
+    const seen = new Map()
+    for (let index = 0; index < pixels.length; index += 4) {
+      const key = `${pixels[index]},${pixels[index + 1]},${pixels[index + 2]}`
+      seen.set(key, (seen.get(key) ?? 0) + 1)
+    }
+    const ranked = [...seen.entries()].sort((a, b) => b[1] - a[1])
+    return { colours: seen.size, top: ranked.slice(0, 4).map(([key, count]) => `${key} ×${count}`) }
+  })
+  check('the canvas is painted rather than empty: a checker, and lines over it',
+    painted.colours >= 3, `${painted.colours} colours, ${painted.top.join(' / ')}`)
+  log(`MEASURE the UV canvas: ${painted.colours} distinct colours`)
+  await shot('scene-uv-editor-1440.png')
+
+  // The splitter, moved by the keyboard, which is the way it has to work for anyone who cannot drag.
+  await page.locator('[role="separator"][aria-label="Viewport and UV editor"]').focus()
+  for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowRight')
+  await page.waitForTimeout(400)
+  const moved = await page.evaluate(() => ({
+    now: document.querySelector('[role="separator"]')?.getAttribute('aria-valuenow'),
+    areaWidth: Math.round(document.querySelector('.scene-area')?.getBoundingClientRect().width ?? 0),
+  }))
+  check('the splitter moves on the arrow keys and the viewport grows with it',
+    moved.now === '65' && moved.areaWidth > opened.areaWidth, `${moved.now}%, ${moved.areaWidth} px`)
+
+  /* ------------------------------------------------------ Data > UV maps */
+
+  await page.locator('.scene-properties__tab[aria-label="Data"]').click()
+  await page.waitForTimeout(400)
+  const section = page.locator('[data-section="data-mesh-uv"]')
+  await section.waitFor()
+  if (await section.getAttribute('data-open') === 'false') await section.locator('.scene-section__title').click()
+  const rows = await section.locator('.scene-uv-maps__name').allInnerTexts()
+  check('the UV maps section lists the map the mesh carries', rows.join(' / ') === 'UVMap', rows.join(' / ') || 'no rows')
+  await section.locator('.scene-button').click()
+  await page.waitForTimeout(500)
+  const added = await helpers.scene()
+  const names = (Object.values(added.meshes)[0].attributes.loop?.uvMaps ?? []).map((map) => map.name)
+  check('Data > UV maps adds a second map, copied from the first and made active',
+    names.length === 2 && names[1] === 'UVMap.001' && Object.values(added.meshes)[0].attributes.loop.activeUv === 1,
+    names.join(' / '))
+
+  await page.locator('[aria-label="Remove UVMap.001"]').click()
+  await page.waitForTimeout(400)
+  const removed = await helpers.scene()
+  check('and removes it again, leaving the first one active',
+    (Object.values(removed.meshes)[0].attributes.loop?.uvMaps ?? []).length === 1,
+    `${(Object.values(removed.meshes)[0].attributes.loop?.uvMaps ?? []).length} maps`)
+
+  /* --------------------------------------------------- and on a small screen */
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.waitForTimeout(700)
+  const phone = await page.evaluate(() => ({
+    editor: Math.round(document.querySelector('.scene-uv')?.getBoundingClientRect().width ?? 0),
+    area: getComputedStyle(document.querySelector('.scene-area')).display,
+  }))
+  check('at 390 px the second space takes the screen rather than sharing it',
+    phone.area === 'none' && phone.editor > 320, `viewport ${phone.area}, UV editor ${phone.editor} px`)
+  await shot('scene-uv-editor-390.png')
+  await page.setViewportSize({ width: 1440, height: 900 })
 })

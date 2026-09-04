@@ -157,3 +157,47 @@ export function meshExtent(mesh: MeshData): { min: [number, number, number]; siz
   if (!Number.isFinite(min[0])) return { min: [0, 0, 0], size: [1, 1, 1] }
   return { min, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] }
 }
+
+/* ------------------------------------------------------- managing the maps */
+
+/**
+ * A new map, copied from the active one and made active — which is what Blender's + does.
+ *
+ * Copying rather than starting empty is the useful default by a distance: a second map is nearly
+ * always a variation on the first, made to be packed differently or to hold a lightmap, and an
+ * empty one would throw away the unwrap that the person is about to vary.
+ */
+export function addUvMap(mesh: MeshData, name = DEFAULT_UV_NAME): MeshData {
+  const maps = uvMapsOf(mesh)
+  if (maps.length >= MAX_UV_MAPS) return mesh
+  const source = activeUv(mesh)
+  const loops = loopCount(mesh)
+  const data = source ? source.slice(0, loops * 2) : new Array<number>(loops * 2).fill(0)
+  while (data.length < loops * 2) data.push(0)
+  return withUvMaps(mesh, [...maps, { name: uniqueUvName(maps, name), data }], maps.length)
+}
+
+/** The mesh without that map. Removing the last one leaves a mesh with no UVs, as Blender's does. */
+export function removeUvMap(mesh: MeshData, index: number): MeshData {
+  const maps = uvMapsOf(mesh)
+  if (index < 0 || index >= maps.length) return mesh
+  const kept = maps.filter((_, at) => at !== index)
+  const active = activeUvIndex(mesh)
+  // The map after the removed one takes its place, so removing down a list keeps the finger still.
+  return withUvMaps(mesh, kept, Math.min(kept.length - 1, active > index ? active - 1 : active))
+}
+
+export function renameUvMap(mesh: MeshData, index: number, name: string): MeshData {
+  const maps = uvMapsOf(mesh)
+  const wanted = name.trim().slice(0, 64)
+  if (index < 0 || index >= maps.length || wanted.length === 0) return mesh
+  if (maps[index]!.name === wanted) return mesh
+  const unique = uniqueUvName(maps.filter((_, at) => at !== index), wanted)
+  return withUvMaps(mesh, maps.map((map, at) => (at === index ? { ...map, name: unique } : map)), activeUvIndex(mesh))
+}
+
+export function setActiveUvMap(mesh: MeshData, index: number): MeshData {
+  const maps = uvMapsOf(mesh)
+  if (index < 0 || index >= maps.length) return mesh
+  return withUvMaps(mesh, maps, index)
+}

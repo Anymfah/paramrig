@@ -89,6 +89,7 @@ const EDITOR_ACTIONS: Array<{ id: string; label: string; section: string }> = [
   { id: 'keymapSheet', label: 'Keymap sheet', section: 'View' },
   { id: 'panel.toolbar', label: 'Toolbar', section: 'View' },
   { id: 'panel.sidebar', label: 'Sidebar', section: 'View' },
+  { id: 'panel.uv', label: 'UV editor', section: 'View' },
   { id: 'file.save', label: 'Save', section: 'File' },
   { id: 'file.saveAs', label: 'Save as', section: 'File' },
   { id: 'file.open', label: 'Open', section: 'File' },
