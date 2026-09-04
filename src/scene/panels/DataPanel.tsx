@@ -4,9 +4,11 @@ import { ShapeKeysSection } from '@/scene/panels/ShapeKeysSection'
 import { UvMapsSection } from '@/scene/panels/UvMapsSection'
 import { meshOf } from '@/scene/document'
 import { meshCounts } from '@/scene/mesh/data'
+import { curveKnotCount } from '@/scene/curve/data'
+import { outlineFamilies } from '@/scene/curve/font'
 import { Exposable } from '@/scene/SceneExpose'
 import { SceneEmpty, SceneSection } from '@/scene/SceneProperties'
-import type { AreaShape, CameraData, EmptyData, EmptyDisplay, LightData, LightKind, MeshData, SceneDocument, SceneObject, Vec2 } from '@/scene/types'
+import type { AreaShape, CameraData, CurveData, CurveFill, EmptyData, EmptyDisplay, LightData, LightKind, MeshData, SceneDocument, SceneObject, TextAlign, TextData, Vec2 } from '@/scene/types'
 import { BarField } from '@/ui/BarField'
 import { Tooltip } from '@/ui/Tooltip'
 import { ColorField } from '@/ui/ColorField'
@@ -128,6 +130,33 @@ export function DataPanel({
         objectId={activeObject.id}
         unit={unit}
         onChange={(patch, label) => onUpdateObject(activeObject.id, { data: { ...data, ...patch } }, label)}
+        {...gesture}
+        {...folds}
+      />
+    )
+  }
+  if (data.kind === 'curve') {
+    return (
+      <CurveFields
+        data={data}
+        objectId={activeObject.id}
+        objects={document.objects}
+        unit={unit}
+        onChange={(patch, label) => onUpdateObject(activeObject.id, { data: { ...data, ...patch } }, label)}
+        onRunOperator={onRunOperator}
+        {...gesture}
+        {...folds}
+      />
+    )
+  }
+  if (data.kind === 'text') {
+    return (
+      <TextFields
+        data={data}
+        objectId={activeObject.id}
+        unit={unit}
+        onChange={(patch, label) => onUpdateObject(activeObject.id, { data: { ...data, ...patch } }, label)}
+        onRunOperator={onRunOperator}
         {...gesture}
         {...folds}
       />
@@ -597,5 +626,268 @@ function EmptyFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpe
         onGestureEnd={onGestureEnd}
       />
     </SceneSection>
+  )
+}
+
+const CURVE_FILLS: Array<{ value: CurveFill; label: string }> = [
+  { value: 'none', label: 'None' },
+  { value: 'front', label: 'Front' },
+  { value: 'back', label: 'Back' },
+  { value: 'both', label: 'Both' },
+]
+
+const TEXT_ALIGNS: Array<{ value: TextAlign; label: string }> = [
+  { value: 'left', label: 'Left' },
+  { value: 'center', label: 'Centre' },
+  { value: 'right', label: 'Right' },
+]
+
+/**
+ * A curve's own data.
+ *
+ * Blender splits this into Shape, Geometry and Bevel; three sections for eight numbers is more
+ * folding than reading, so it is one — the shape at the top, what it becomes underneath.
+ */
+function CurveFields({ data, objectId, objects, unit, onChange, onRunOperator, onGestureStart, onGestureEnd, isOpen, onSection }: {
+  data: CurveData
+  objectId: string
+  objects: SceneObject[]
+  unit: string | undefined
+  onChange: (patch: Partial<CurveData>, label: string) => void
+  onRunOperator: (id: string, params?: Record<string, unknown>) => void
+} & Gesture & Folds) {
+  const gesture = { onGestureStart, onGestureEnd }
+  const tapers = [
+    { value: '', label: 'None' },
+    ...objects.filter((entry) => entry.data.kind === 'curve' && entry.id !== objectId).map((entry) => ({ value: entry.id, label: entry.name })),
+  ]
+  return (
+    <>
+      <SceneSection id="data-curve" title="Curve" isOpen={isOpen} onSection={onSection}>
+        <dl className="scene-readout">
+          <div className="scene-readout__row"><dt>Splines</dt><dd>{data.splines.length.toLocaleString()}</dd></div>
+          <div className="scene-readout__row"><dt>Points</dt><dd>{curveKnotCount(data).toLocaleString()}</dd></div>
+        </dl>
+        <SelectField
+          label="Dimensions"
+          value={data.dimensions}
+          options={[{ value: '2D', label: '2D' }, { value: '3D', label: '3D' }]}
+          onChange={(value) => onChange({ dimensions: value === '3D' ? '3D' : '2D' }, 'Curve dimensions')}
+        />
+        <Exposable property="curve.resolution" objectId={objectId} min={1} max={64} step={1}>
+          <NumberField
+            label="Resolution"
+            value={data.resolution}
+            min={1}
+            max={64}
+            step={1}
+            variant="field"
+            onChange={(resolution) => onChange({ resolution: Math.round(resolution) }, 'Curve resolution')}
+            {...gesture}
+          />
+        </Exposable>
+        <SelectField
+          label="Fill"
+          value={data.fill}
+          options={CURVE_FILLS}
+          // A 3D curve has no plane to fill, which is why Blender greys this out rather than hiding it.
+          disabled={data.dimensions === '3D'}
+          onChange={(value) => {
+            const fill = CURVE_FILLS.find((entry) => entry.value === value)
+            if (fill) onChange({ fill: fill.value }, 'Curve fill')
+          }}
+        />
+      </SceneSection>
+      <SceneSection id="data-curve-geometry" title="Geometry" isOpen={isOpen} onSection={onSection}>
+        <Exposable property="curve.extrude" objectId={objectId} min={0} max={10} step={0.01}>
+          <NumberField
+            label="Extrude"
+            value={data.extrude}
+            min={0}
+            max={10}
+            step={0.01}
+            unit={unit}
+            variant="field"
+            onChange={(extrude) => onChange({ extrude }, 'Curve extrude')}
+            {...gesture}
+          />
+        </Exposable>
+        <Exposable property="curve.bevelDepth" objectId={objectId} min={0} max={10} step={0.01}>
+          <NumberField
+            label="Bevel depth"
+            value={data.bevelDepth}
+            min={0}
+            max={10}
+            step={0.01}
+            unit={unit}
+            variant="field"
+            onChange={(bevelDepth) => onChange({ bevelDepth }, 'Curve bevel')}
+            {...gesture}
+          />
+        </Exposable>
+        <Exposable property="curve.bevelResolution" objectId={objectId} min={0} max={15} step={1}>
+          <NumberField
+            label="Bevel resolution"
+            value={data.bevelResolution}
+            min={0}
+            max={15}
+            step={1}
+            variant="field"
+            onChange={(value) => onChange({ bevelResolution: Math.round(value) }, 'Bevel resolution')}
+            {...gesture}
+          />
+        </Exposable>
+        <SelectField
+          label="Taper object"
+          value={data.taperObjectId ?? ''}
+          options={tapers}
+          onChange={(value) => onChange(value ? { taperObjectId: value } : { taperObjectId: undefined }, 'Taper object')}
+        />
+        <div className="scene-buttons">
+          <Tooltip content="Replace the curve with the mesh it evaluates to">
+            <button type="button" className="scene-button" onClick={() => onRunOperator('object.convertToMesh')}>Convert to mesh</button>
+          </Tooltip>
+        </div>
+      </SceneSection>
+    </>
+  )
+}
+
+/**
+ * A text object's data.
+ *
+ * The body is edited here as well as in the viewport, because a person who wants to paste a line
+ * into it should not have to find the edit mode first; both write the same field, and both are one
+ * step of history.
+ */
+function TextFields({ data, objectId, unit, onChange, onRunOperator, onGestureStart, onGestureEnd, isOpen, onSection }: {
+  data: TextData
+  objectId: string
+  unit: string | undefined
+  onChange: (patch: Partial<TextData>, label: string) => void
+  onRunOperator: (id: string, params?: Record<string, unknown>) => void
+} & Gesture & Folds) {
+  const gesture = { onGestureStart, onGestureEnd }
+  const families = outlineFamilies().map((family) => ({ value: family, label: family }))
+  return (
+    <>
+      <SceneSection id="data-text" title="Text" isOpen={isOpen} onSection={onSection}>
+        <Exposable property="text.text" objectId={objectId}>
+          <BodyField value={data.body} onChange={(body) => onChange({ body }, 'Text body')} />
+        </Exposable>
+        <SelectField
+          label="Font"
+          value={data.font}
+          options={families}
+          // Only the families the app ships an outline file for can be read; the rest have no glyphs.
+          onChange={(value) => onChange({ font: value }, 'Text font')}
+        />
+        <Exposable property="text.size" objectId={objectId} min={0.01} max={100} step={0.01}>
+          <NumberField
+            label="Size"
+            value={data.size}
+            min={0.01}
+            max={100}
+            step={0.01}
+            unit={unit}
+            variant="field"
+            onChange={(size) => onChange({ size }, 'Text size')}
+            {...gesture}
+          />
+        </Exposable>
+        <SelectField
+          label="Alignment"
+          value={data.align}
+          options={TEXT_ALIGNS}
+          onChange={(value) => {
+            const align = TEXT_ALIGNS.find((entry) => entry.value === value)
+            if (align) onChange({ align: align.value }, 'Text alignment')
+          }}
+        />
+        <NumberField
+          label="Spacing"
+          value={data.spacing}
+          min={-0.5}
+          max={2}
+          step={0.01}
+          variant="field"
+          onChange={(spacing) => onChange({ spacing }, 'Text spacing')}
+          {...gesture}
+        />
+        <NumberField
+          label="Line spacing"
+          value={data.lineSpacing}
+          min={-0.5}
+          max={2}
+          step={0.01}
+          variant="field"
+          onChange={(lineSpacing) => onChange({ lineSpacing }, 'Line spacing')}
+          {...gesture}
+        />
+      </SceneSection>
+      <SceneSection id="data-text-geometry" title="Geometry" isOpen={isOpen} onSection={onSection}>
+        <Exposable property="text.extrude" objectId={objectId} min={0} max={10} step={0.01}>
+          <NumberField
+            label="Extrude"
+            value={data.extrude}
+            min={0}
+            max={10}
+            step={0.01}
+            unit={unit}
+            variant="field"
+            onChange={(extrude) => onChange({ extrude }, 'Text extrude')}
+            {...gesture}
+          />
+        </Exposable>
+        <Exposable property="text.bevelDepth" objectId={objectId} min={0} max={1} step={0.005}>
+          <NumberField
+            label="Bevel depth"
+            value={data.bevelDepth}
+            min={0}
+            max={1}
+            step={0.005}
+            unit={unit}
+            variant="field"
+            onChange={(bevelDepth) => onChange({ bevelDepth }, 'Text bevel')}
+            {...gesture}
+          />
+        </Exposable>
+        <div className="scene-buttons">
+          <Tooltip content="Replace the text with the curves its letters are made of">
+            <button type="button" className="scene-button" onClick={() => onRunOperator('object.convertToCurve')}>To curve</button>
+          </Tooltip>
+          <Tooltip content="Replace the text with the mesh it evaluates to">
+            <button type="button" className="scene-button" onClick={() => onRunOperator('object.convertToMesh')}>To mesh</button>
+          </Tooltip>
+        </div>
+      </SceneSection>
+    </>
+  )
+}
+
+/**
+ * The body, edited in place. Committed on blur rather than on every keystroke: a text object is
+ * rebuilt from its glyphs when it changes, and one step of history a letter is not history.
+ */
+function BodyField({ value, onChange }: { value: string; onChange: (body: string) => void }) {
+  return (
+    <label className="control control--field scene-name-field">
+      <span className="control__label">Body</span>
+      <input
+        type="text"
+        defaultValue={value}
+        key={value}
+        maxLength={200}
+        onBlur={(event) => {
+          if (event.target.value !== value) onChange(event.target.value)
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur()
+          if (event.key !== 'Escape') return
+          event.currentTarget.value = value
+          event.currentTarget.blur()
+        }}
+      />
+    </label>
   )
 }

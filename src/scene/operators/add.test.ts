@@ -49,8 +49,8 @@ function countsOf(document: SceneDocument, object: SceneObject): { vertices: num
 /* ------------------------------------------------------------- the menu */
 
 describe('the Add menu', () => {
-  it('lists Blender’s four sections, in Blender’s order', () => {
-    expect(ADD_MENU.map((section) => section.label)).toEqual(['Mesh', 'Light', 'Camera', 'Empty'])
+  it('lists the sections in Blender’s order', () => {
+    expect(ADD_MENU.map((section) => section.label)).toEqual(['Mesh', 'Curve', 'Text', 'Light', 'Camera', 'Empty'])
   })
 
   it('reaches every Add operator exactly once, and nothing that is not one', () => {

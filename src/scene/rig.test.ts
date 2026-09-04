@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID, sanitizeSceneDocument } from '@/scene/document'
+import { bezierCircleData, DEFAULT_TEXT } from '@/scene/curve/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import '@/scene/modifiers'
 import { clearModifierCache, drawnMesh, modifierCacheSize } from '@/scene/modifiers/stack'
@@ -129,6 +130,70 @@ describe('reading a property path', () => {
   it('takes Blender’s spelling of a spot’s blend as well as the document’s', () => {
     expect(parseSceneProperty('light.spotBlend')).toMatchObject({ kind: 'light', field: 'spotBlend' })
     expect(parseSceneProperty('light.spotBlur')).toMatchObject({ kind: 'light', field: 'spotBlur' })
+  })
+
+  it('reads the shape of a curve and what a text object says', () => {
+    expect(parseSceneProperty('curve.extrude')).toMatchObject({ kind: 'curve', field: 'extrude', type: 'number' })
+    expect(parseSceneProperty('curve.bevelDepth')).toMatchObject({ kind: 'curve', field: 'bevelDepth' })
+    expect(parseSceneProperty('curve.bevelResolution')).toMatchObject({ kind: 'curve', field: 'bevelResolution' })
+    expect(parseSceneProperty('curve.resolution')).toMatchObject({ kind: 'curve', field: 'resolution' })
+    expect(parseSceneProperty('text.text')).toMatchObject({ kind: 'text', field: 'text', type: 'text' })
+    expect(parseSceneProperty('text.size')).toMatchObject({ kind: 'text', field: 'size', type: 'number' })
+    expect(parseSceneProperty('curve.splines')).toBeNull()
+  })
+})
+
+describe('driving a curve and a text object', () => {
+  function curveObject(): SceneObject {
+    return { ...meshObject('curve-1', 'Circle'), kind: 'curve', data: { ...bezierCircleData(), extrude: 0.1 } }
+  }
+
+  function textObject(): SceneObject {
+    return { ...meshObject('text-1', 'Text'), kind: 'text', data: { ...DEFAULT_TEXT, body: 'One' } }
+  }
+
+  it('writes a number into the curve and reads it back', () => {
+    const document = scene([curveObject()])
+    const resolved = resolveSceneValues(
+      rigged(document, { parameters: [numberParameter('depth', 0)], bindings: [binding({ property: 'curve.bevelDepth', parameterId: 'depth', objectId: 'curve-1' })] }),
+      { depth: 0.3 },
+    )
+    expect(resolved.objects[0]!.data).toMatchObject({ kind: 'curve', bevelDepth: 0.3 })
+    expect(currentSceneValue(document, { objectId: 'curve-1', property: 'curve.extrude' })).toBe(0.1)
+  })
+
+  it('rounds the counts, because half a span is not a span', () => {
+    const document = scene([curveObject()])
+    const resolved = resolveSceneValues(
+      rigged(document, { parameters: [numberParameter('steps', 12)], bindings: [binding({ property: 'curve.resolution', parameterId: 'steps', objectId: 'curve-1' })] }),
+      { steps: 7.6 },
+    )
+    expect(resolved.objects[0]!.data).toMatchObject({ resolution: 8 })
+  })
+
+  it('writes what a text object says', () => {
+    const document = scene([textObject()])
+    const resolved = resolveSceneValues(
+      rigged(document, { parameters: [{ kind: 'text', id: 'words', label: 'Words', group: 'main', defaultValue: '' }], bindings: [binding({ property: 'text.text', parameterId: 'words', objectId: 'text-1' })] }),
+      { words: 'Two' },
+    )
+    expect(resolved.objects[0]!.data).toMatchObject({ kind: 'text', body: 'Two' })
+    expect(currentSceneValue(document, { objectId: 'text-1', property: 'text.text' })).toBe('One')
+  })
+
+  it('leaves an object of the wrong kind alone', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const resolved = resolveSceneValues(
+      rigged(document, { parameters: [numberParameter('depth', 0)], bindings: [binding({ property: 'curve.bevelDepth', parameterId: 'depth', objectId: 'object-1' })] }),
+      { depth: 0.3 },
+    )
+    expect(resolved.objects[0]!.data).toEqual({ kind: 'mesh', meshId: MESH })
+  })
+
+  it('names them in a list', () => {
+    const document = scene([curveObject(), textObject()])
+    expect(scenePropertyLabel(document, { objectId: 'curve-1', property: 'curve.bevelDepth' })).toBe('Circle · Bevel depth')
+    expect(scenePropertyLabel(document, { objectId: 'text-1', property: 'text.size' })).toBe('Text · Size')
   })
 })
 

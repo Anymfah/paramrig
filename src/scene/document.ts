@@ -2,6 +2,8 @@ import { readStore, writeStore, type StorageResult } from '@/editor/storage'
 import { BUNDLED_SCENES } from '@/rigs/examples/paper-lantern'
 import { readSceneSettings } from '@/scene/prefs'
 import type { RigManifest } from '@/rigs/types'
+import { sanitizeCurveData, sanitizeTextData } from '@/scene/curve/data'
+import { objectMesh } from '@/scene/curve/evaluate'
 import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { MAX_PITCH } from '@/scene/viewport/view'
@@ -319,7 +321,8 @@ export function sceneCounts(document: SceneDocument): SceneCounts {
   const counts: SceneCounts = { objects: 0, vertices: 0, edges: 0, faces: 0, triangles: 0 }
   for (const object of document.objects) {
     counts.objects += 1
-    const mesh = meshOf(document, object)
+    // What is drawn, so a curve's tube is counted the way a person sees it.
+    const mesh = objectMesh(document, object)
     if (!mesh) continue
     const own = meshCounts(mesh)
     counts.vertices += own.vertices
@@ -446,6 +449,8 @@ function objectData(value: unknown, kind: string, meshIds: Set<string>): ObjectD
       ...(source.active ? { active: true } : {}),
     }
   }
+  if (dataKind === 'curve') return sanitizeCurveData(source)
+  if (dataKind === 'text') return sanitizeTextData(source)
   return {
     kind: 'empty',
     display: pick(source.display, EMPTY_DISPLAYS, 'plain-axes'),

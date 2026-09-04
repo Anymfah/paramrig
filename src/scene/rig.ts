@@ -82,8 +82,16 @@ const LIGHT_FIELDS = {
 
 const CAMERA_FIELDS = { focalLength: 'number', orthoScale: 'number' } as const
 
+/** What a curve offers a control: the numbers that change its shape, not the knots themselves. */
+const CURVE_FIELDS = { extrude: 'number', bevelDepth: 'number', bevelResolution: 'number', resolution: 'number' } as const
+
+/** A text object's, with the body among them: a control can drive what it says. */
+const TEXT_FIELDS = { text: 'text', size: 'number', extrude: 'number', bevelDepth: 'number' } as const
+
 const WORLD_FIELDS = { color: 'color', strength: 'number' } as const
 
+type CurveField = keyof typeof CURVE_FIELDS
+type TextField = keyof typeof TEXT_FIELDS
 type MaterialField = keyof typeof MATERIAL_FIELDS
 type LightField = keyof typeof LIGHT_FIELDS
 
@@ -100,6 +108,8 @@ export type SceneProperty =
   | { kind: 'modifier'; modifierId: string; param: string; type: null; scoped: true }
   | { kind: 'light'; field: LightField; type: 'number' | 'color'; scoped: true }
   | { kind: 'camera'; field: keyof typeof CAMERA_FIELDS; type: 'number'; scoped: true }
+  | { kind: 'curve'; field: CurveField; type: 'number'; scoped: true }
+  | { kind: 'text'; field: TextField; type: 'number' | 'text'; scoped: true }
   | { kind: 'vertex'; vertexId: number; axis: 0 | 1 | 2; type: 'number'; scoped: true }
   | { kind: 'shapeKey'; name: string; type: 'number'; scoped: true }
   | { kind: 'material'; materialId: string; field: MaterialField; type: 'number' | 'color'; scoped: false }
@@ -146,6 +156,17 @@ export function parseSceneProperty(property: string): SceneProperty | null {
   const camera = /^camera\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
   if (camera && Object.hasOwn(CAMERA_FIELDS, camera[1]!)) {
     return { kind: 'camera', field: camera[1] as keyof typeof CAMERA_FIELDS, type: 'number', scoped: true }
+  }
+
+  const curve = /^curve\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
+  if (curve && Object.hasOwn(CURVE_FIELDS, curve[1]!)) {
+    return { kind: 'curve', field: curve[1] as CurveField, type: 'number', scoped: true }
+  }
+
+  const textPath = /^text\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
+  if (textPath && Object.hasOwn(TEXT_FIELDS, textPath[1]!)) {
+    const field = textPath[1] as TextField
+    return { kind: 'text', field, type: TEXT_FIELDS[field], scoped: true }
   }
 
   /*
@@ -210,6 +231,18 @@ export const SCENE_PROPERTY_PATHS: ScenePathDoc[] = [
     takes: takes as ScenePropertyType,
     scope: 'object' as const,
     note: field === 'focalLength' ? 'Millimetres on the sensor the camera declares.' : 'Only used by an orthographic camera.',
+  })),
+  ...Object.entries(CURVE_FIELDS).map(([field, takes]) => ({
+    path: `curve.${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'object' as const,
+    note: field === 'resolution' ? 'How many straight pieces each Bézier span is drawn with.' : 'Metres, except the bevel resolution, which is a count.',
+  })),
+  ...Object.entries(TEXT_FIELDS).map(([field, takes]) => ({
+    path: `text.${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'object' as const,
+    note: field === 'text' ? 'What the object says. A control can drive the words themselves.' : '',
   })),
   ...Object.entries(MATERIAL_FIELDS).map(([field, takes]) => ({
     path: `materials[<id>].${field}`,
@@ -352,6 +385,24 @@ export function applyObjectBinding(
     const amount = number()
     if (amount === null) return object
     return { ...object, data: { ...object.data, [path.field satisfies keyof CameraData]: amount } }
+  }
+
+  if (path.kind === 'curve') {
+    if (object.data.kind !== 'curve') return object
+    const amount = number()
+    if (amount === null) return object
+    // The two counts are whole numbers; a control sweeping through 3.5 spans should read as 4.
+    const written = path.field === 'resolution' || path.field === 'bevelResolution' ? Math.round(amount) : amount
+    return { ...object, data: { ...object.data, [path.field]: Math.max(0, written) } }
+  }
+
+  if (path.kind === 'text') {
+    if (object.data.kind !== 'text') return object
+    // The path is `text.text`, and the field it writes is the body: Blender's own name for it.
+    if (path.field === 'text') return typeof value === 'string' ? { ...object, data: { ...object.data, body: value } } : object
+    const amount = number()
+    if (amount === null) return object
+    return { ...object, data: { ...object.data, [path.field]: Math.max(0, amount) } }
   }
 
   return object
@@ -538,6 +589,14 @@ export function currentSceneValue(document: SceneDocument, binding: Pick<SceneBi
     if (object.data.kind !== 'camera') return null
     return object.data[path.field]
   }
+  if (path.kind === 'curve') {
+    if (object.data.kind !== 'curve') return null
+    return object.data[path.field]
+  }
+  if (path.kind === 'text') {
+    if (object.data.kind !== 'text') return null
+    return path.field === 'text' ? object.data.body : object.data[path.field]
+  }
   if (path.kind === 'vertex') {
     if (object.data.kind !== 'mesh') return null
     const mesh = document.meshes[object.data.meshId]
@@ -573,6 +632,8 @@ export function scenePropertyLabel(document: SceneDocument, binding: Pick<SceneB
   }
   if (path.kind === 'light') return `${owner}${LIGHT_LABELS[path.field]}`
   if (path.kind === 'camera') return `${owner}${path.field === 'focalLength' ? 'Focal length' : 'Orthographic scale'}`
+  if (path.kind === 'curve') return `${owner}${CURVE_LABELS[path.field]}`
+  if (path.kind === 'text') return `${owner}${TEXT_LABELS[path.field]}`
   if (path.kind === 'vertex') return `${owner}Vertex ${path.vertexId} ${'XYZ'[path.axis]}`
   if (path.kind === 'world') return `World ${path.field === 'color' ? 'colour' : 'strength'}`
   if (path.kind === 'shapeKey') return `${owner}${path.name}`
@@ -580,6 +641,20 @@ export function scenePropertyLabel(document: SceneDocument, binding: Pick<SceneB
 }
 
 const CHANNEL_LABELS = { position: 'Location', rotation: 'Rotation', scale: 'Scale' } as const
+
+const CURVE_LABELS: Record<CurveField, string> = {
+  extrude: 'Extrude',
+  bevelDepth: 'Bevel depth',
+  bevelResolution: 'Bevel resolution',
+  resolution: 'Resolution',
+}
+
+const TEXT_LABELS: Record<TextField, string> = {
+  text: 'Text',
+  size: 'Size',
+  extrude: 'Extrude',
+  bevelDepth: 'Bevel depth',
+}
 
 const MATERIAL_LABELS: Record<MaterialField, string> = {
   baseColor: 'Base colour',

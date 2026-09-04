@@ -25,6 +25,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/document'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { cachedTriangulation } from '@/scene/mesh/triangulate'
+import { objectMesh } from '@/scene/curve/evaluate'
 import { drawnMesh } from '@/scene/modifiers/stack'
 import { localMatrix } from '@/scene/objects'
 import { resolveSceneValues } from '@/scene/rig'
@@ -127,11 +128,16 @@ function nodeFor(
   options: GltfExportOptions,
   materialFor: (id: string | undefined) => ThreeMaterial,
 ): Object3D | null {
-  if (object.data.kind === 'mesh') {
+  /*
+   * A curve and a text object leave as the surface they evaluate to: glTF has no splines and no
+   * letters, so exporting one any other way would be exporting nothing. Their evaluated mesh is
+   * what the viewport draws, so the file matches the screen.
+   */
+  if (object.data.kind === 'mesh' || object.data.kind === 'curve' || object.data.kind === 'text') {
     const mesh = options.applyModifiers === false
-      ? document.meshes[object.data.meshId] ?? null
+      ? objectMesh(document, object)
       : drawnMesh(document, object)
-    if (!mesh) return null
+    if (!mesh || mesh.faces.length === 0) return null
     const slots = object.materialSlots.length > 0 ? object.materialSlots : [document.materials[0]?.id ?? '']
     const { geometry, groups } = geometryOf(mesh)
     const used = [...new Set(groups.map((group) => group.material))].sort((a, b) => a - b)

@@ -135,6 +135,18 @@ export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
   await page.waitForTimeout(250)
   await page.keyboard.press('Tab')
   await page.waitForTimeout(800)
+  /*
+   * A reloaded page settles at its own pace, and A then Tab pressed into it too early selects
+   * nothing and opens nothing — which used to show up as a preview over a cube that was never
+   * replaced. The mode is what says the pair landed, so it is waited for rather than slept through.
+   */
+  for (let attempt = 0; attempt < 6 && (await scene()).view.mode !== 'edit'; attempt += 1) {
+    await page.locator('#main').focus()
+    await page.keyboard.press('KeyA')
+    await page.waitForTimeout(250)
+    await page.keyboard.press('Tab')
+    await page.waitForTimeout(400)
+  }
   const heavy = await counts()
   log(`heavy grid: ${heavy.vertices} vertices, ${heavy.faces} faces, mode ${(await scene()).view.mode}`)
 

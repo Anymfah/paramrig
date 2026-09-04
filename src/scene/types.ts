@@ -155,7 +155,79 @@ export type EmptyData = {
   instanceCollectionId?: string
 }
 
-export type ObjectData = MeshRef | LightData | CameraData | EmptyData
+/* ----------------------------------------------------------------- curves */
+
+/**
+ * What holds a Bézier handle, exactly as Blender names them.
+ *
+ * `free` is wherever it was put; `aligned` keeps the two handles of a knot on one line, so the
+ * curve passes through smoothly; `vector` points at the neighbouring knot, which gives a corner
+ * with straight sides; `auto` is computed from the neighbours and moves when they do.
+ */
+export type CurveHandleType = 'free' | 'aligned' | 'vector' | 'auto'
+
+/** One knot of a spline, with its two handles held in the object's own space, as Blender holds them. */
+export type CurvePoint = {
+  co: Vec3
+  left: Vec3
+  right: Vec3
+  leftType: CurveHandleType
+  rightType: CurveHandleType
+  /** Turns the bevel profile about the curve here, in degrees. */
+  tilt?: number
+  /** Scales the bevel profile here; 1 is the bevel's own size. */
+  radius?: number
+}
+
+/**
+ * A spline: Bézier, whose knots carry handles, or poly, whose knots are joined by straight lines.
+ * NURBS is deliberately absent — it is a different evaluator and a different edit mode, and the
+ * roadmap says so.
+ */
+export type CurveSpline = {
+  id: string
+  kind: 'bezier' | 'poly'
+  cyclic: boolean
+  points: CurvePoint[]
+}
+
+export type CurveFill = 'none' | 'front' | 'back' | 'both'
+
+export type CurveData = {
+  kind: 'curve'
+  splines: CurveSpline[]
+  /** A 2D curve is flattened onto its own XY plane and can be filled; a 3D one is left in space. */
+  dimensions: '2D' | '3D'
+  /** How many straight pieces each Bézier span is drawn with. Blender's resolution_u. */
+  resolution: number
+  fill: CurveFill
+  /** Half the depth of the solid a filled curve becomes: Blender extrudes both ways. */
+  extrude: number
+  /** A round profile swept along the curve. Non-zero, it is what the curve becomes. */
+  bevelDepth: number
+  bevelResolution: number
+  /** Another curve object read as a thickness profile along the length. */
+  taperObjectId?: string
+}
+
+export type TextAlign = 'left' | 'center' | 'right'
+
+export type TextData = {
+  kind: 'text'
+  body: string
+  /** A family the font registry can find an outline file for; Public Sans is the one shipped. */
+  font: string
+  size: number
+  align: TextAlign
+  /** Extra room between characters and between lines, as a multiple of the size. */
+  spacing: number
+  lineSpacing: number
+  extrude: number
+  bevelDepth: number
+  bevelResolution: number
+}
+
+export type ObjectData = MeshRef | LightData | CameraData | EmptyData | CurveData | TextData
 
 /**
  * The modifiers a document can name, as a list rather than as a union: the sanitiser has to check a

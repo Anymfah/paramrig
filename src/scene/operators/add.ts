@@ -14,6 +14,7 @@ import {
   uvSphereMesh,
   type CapFill,
 } from '@/scene/mesh/primitives'
+import { DEFAULT_TEXT, bezierCircleData, bezierCurveData, pathData } from '@/scene/curve/data'
 import { registerOperator } from '@/scene/operators/registry'
 import {
   colorParam,
@@ -28,6 +29,7 @@ import {
 import type {
   AreaShape,
   CameraData,
+  CurveData,
   EmptyData,
   EmptyDisplay,
   LightData,
@@ -36,6 +38,7 @@ import type {
   ObjectData,
   SceneDocument,
   SceneObject,
+  TextData,
   Vec3,
   ViewState,
 } from '@/scene/types'
@@ -205,6 +208,8 @@ type NewObject =
   | { kind: 'light'; name: string; data: LightData }
   | { kind: 'camera'; name: string; data: CameraData }
   | { kind: 'empty'; name: string; data: EmptyData }
+  | { kind: 'curve'; name: string; data: CurveData }
+  | { kind: 'text'; name: string; data: TextData }
 
 /**
  * A mesh object's geometry goes into `document.meshes` under a fresh id and the object points at
@@ -660,6 +665,58 @@ addOperator({
   }),
 })
 
+/* ------------------------------------------------------------- the curves */
+
+/*
+ * A curve object is not drawn from a mesh in the document's table: it carries its knots, and the
+ * surface is worked out when it is read. So `make` hands back the data block itself, exactly as a
+ * light does, and adding a circle costs four knots rather than a ring of thirty-two vertices.
+ */
+
+addOperator({
+  id: 'add.bezier',
+  label: 'Bézier',
+  icon: 'curve',
+  description: 'Two knots with handles, an open curve on the ground plane.',
+  entry: 'Add Bézier',
+  params: [],
+  defaults: {},
+  make: () => ({ kind: 'curve', name: 'BézierCurve', data: bezierCurveData() }),
+})
+
+addOperator({
+  id: 'add.bezierCircle',
+  label: 'Circle',
+  icon: 'curve',
+  description: 'Four knots that close into a circle.',
+  entry: 'Add Bézier circle',
+  params: [lengthParam('radius', 'Radius', 1)],
+  defaults: { radius: 1 },
+  make: (params) => ({ kind: 'curve', name: 'BézierCircle', data: bezierCircleData(numberOf(params.radius) ?? 1) }),
+})
+
+addOperator({
+  id: 'add.path',
+  label: 'Path',
+  icon: 'curve',
+  description: 'Five points in a straight line, to follow or to shape.',
+  entry: 'Add path',
+  params: [],
+  defaults: {},
+  make: () => ({ kind: 'curve', name: 'Path', data: pathData() }),
+})
+
+addOperator({
+  id: 'add.text',
+  label: 'Text',
+  icon: 'text',
+  description: 'Letters as geometry, filled and ready to extrude.',
+  entry: 'Add text',
+  params: [],
+  defaults: {},
+  make: () => ({ kind: 'text', name: 'Text', data: { ...DEFAULT_TEXT } }),
+})
+
 /* ---------------------------------------------------------------- the menu */
 
 /**
@@ -675,6 +732,9 @@ export const ADD_MENU: Array<{ label: string; items: string[] }> = [
       'add.cylinder', 'add.cone', 'add.torus', 'add.grid', 'add.paramRigMark',
     ],
   },
+  // Curve and Text sit under Mesh, where Blender puts them.
+  { label: 'Curve', items: ['add.bezier', 'add.bezierCircle', 'add.path'] },
+  { label: 'Text', items: ['add.text'] },
   { label: 'Light', items: ['add.lightPoint', 'add.lightSun', 'add.lightSpot', 'add.lightArea'] },
   { label: 'Camera', items: ['add.camera'] },
   { label: 'Empty', items: ['add.empty'] },

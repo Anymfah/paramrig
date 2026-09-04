@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { StatusMessage } from '@/ui/StatusMessage'
+import { onOutlineFont } from '@/scene/curve/font'
 import { installSceneDebug, markFirstFrame } from '@/scene/viewport/debug'
 import { acquireSceneViewport, releaseSceneViewport } from '@/scene/viewport/keep'
 import { SceneViewport, type SceneViewportOptions } from '@/scene/viewport/SceneViewport'
@@ -99,9 +100,17 @@ export function SceneViewportHost({
     viewport.current?.setView(view)
   }, [view])
 
+  /*
+   * A text object cannot be built until its font file has arrived, and the file arrives long after
+   * the object does. The registry says when; the document is then handed over again, and the
+   * viewport rebuilds every object whose shape changed — which is exactly the text ones.
+   */
+  const [fontGeneration, setFontGeneration] = useState(0)
+  useEffect(() => onOutlineFont(() => setFontGeneration((generation) => generation + 1)), [])
+
   useEffect(() => {
     viewport.current?.setDocument(document)
-  }, [document])
+  }, [document, fontGeneration])
 
   useEffect(() => {
     viewport.current?.setSelection(selection)

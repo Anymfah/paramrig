@@ -1,5 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
-import { meshOf } from '@/scene/document'
+import { objectMesh } from '@/scene/curve/evaluate'
 import type { SceneDocument, SceneObject, Transform, Vec3 } from '@/scene/types'
 
 /**
@@ -99,7 +99,8 @@ export function worldPosition(document: SceneDocument, object: SceneObject): Vec
  */
 export function objectBounds(document: SceneDocument, object: SceneObject): Box | null {
   const matrix = worldMatrix(document, object)
-  const mesh = meshOf(document, object)
+  // The evaluated geometry, so that framing a curve frames the tube it draws rather than its origin.
+  const mesh = objectMesh(document, object)
   if (!mesh || mesh.vertexIds.length === 0) {
     const point = new Vector3().setFromMatrixPosition(matrix)
     return { min: [point.x, point.y, point.z], max: [point.x, point.y, point.z] }

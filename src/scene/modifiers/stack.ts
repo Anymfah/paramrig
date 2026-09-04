@@ -8,6 +8,7 @@
  */
 import '@/scene/modifiers'
 import { meshOf } from '@/scene/document'
+import { clearGeneratedCache, objectMesh } from '@/scene/curve/evaluate'
 import { meshFingerprint } from '@/scene/mesh/data'
 import { shapedMesh } from '@/scene/mesh/shapeKeys'
 import { EditMesh } from '@/scene/mesh/editMesh'
@@ -28,6 +29,8 @@ import type { MeshData, Modifier, SceneDocument, SceneObject } from '@/scene/typ
  * their numbers, and the shape and place of every object they read. Anything else changing — the
  * camera, the selection, another object entirely — hits the cache rather than the arithmetic.
  */
+
+export { objectMesh, clearGeneratedCache } from '@/scene/curve/evaluate'
 
 export type EvaluatedMesh = {
   /** What to draw. */
@@ -50,6 +53,7 @@ const cache = new Map<string, EvaluatedMesh>()
 
 export function clearModifierCache(): void {
   cache.clear()
+  clearGeneratedCache()
 }
 
 export function modifierCacheSize(): number {
@@ -68,7 +72,7 @@ export type EvaluateOptions = {
  * unchanged and uncopied — which is what makes the stack free for the scenes that have none.
  */
 export function evaluateObject(document: SceneDocument, object: SceneObject, options: EvaluateOptions = {}): EvaluatedMesh | null {
-  const stored = meshOf(document, object)
+  const stored = objectMesh(document, object)
   if (!stored) return null
   /*
    * The shape keys are mixed in before anything else sees the mesh — before the modifiers, before
@@ -127,7 +131,7 @@ export function evaluateObject(document: SceneDocument, object: SceneObject, opt
 
 /** The mesh to draw for an object: the evaluated one, or its own when it has no stack. */
 export function drawnMesh(document: SceneDocument, object: SceneObject, options: EvaluateOptions = {}): MeshData | null {
-  return evaluateObject(document, object, options)?.mesh ?? meshOf(document, object)
+  return evaluateObject(document, object, options)?.mesh ?? objectMesh(document, object)
 }
 
 /**

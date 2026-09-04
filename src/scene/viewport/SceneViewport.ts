@@ -122,6 +122,8 @@ type ObjectView = {
   mesh?: Mesh
   meshView?: MeshView
   wire?: ViewportLines
+  /** The object has no surface, so its wire is what there is to see. */
+  wireOnly?: boolean
   glyph?: Glyph
   pickMesh?: Mesh
   pickMaterial?: Material
@@ -742,7 +744,7 @@ export class SceneViewport {
       if (!view) {
         view = this.createObjectView(object, signature)
         this.views.set(object.id, view)
-      } else if (object.data.kind === 'mesh' && view.meshView) {
+      } else if (view.meshView) {
         const mesh = this.drawnMeshOf(object)
         if (mesh && !meshViewIsCurrent(view.meshView, mesh)) {
           updateMeshPositions(view.meshView, mesh)
@@ -1018,7 +1020,12 @@ export class SceneViewport {
     this.objectRoot.add(root)
     const view: ObjectView = { id: object.id, root, signature }
 
-    if (object.data.kind === 'mesh' && this.document) {
+    /*
+     * A curve and a text object are drawn as the surface they evaluate to, so they take the mesh
+     * path whole: the same solid, the same picking, the same outline. What they do not have is a
+     * mesh in the document's table, which is the only thing `drawnMeshOf` knows about them.
+     */
+    if (this.document && object.data.kind !== 'light' && object.data.kind !== 'camera' && object.data.kind !== 'empty') {
       const data = this.drawnMeshOf(object)
       if (data) {
         const meshView = buildMeshView(data)
@@ -1049,6 +1056,9 @@ export class SceneViewport {
         wire.object.visible = false
         root.add(wire.object)
         view.wire = wire
+        // A curve with no fill, no depth and no bevel has no surface: the line *is* the object,
+        // and it is drawn in every shading mode rather than only when wireframes are asked for.
+        view.wireOnly = data.faces.length === 0 && data.edges.length > 0
       }
     } else {
       view.glyph = this.buildGlyph(object)
@@ -1304,7 +1314,7 @@ export class SceneViewport {
     for (const objectView of this.views.values()) {
       const object = this.document?.objects.find((entry) => entry.id === objectView.id)
       if (object) objectView.root.visible = this.isVisible(object)
-      if (objectView.wire) objectView.wire.object.visible = view.shading === 'wireframe' || view.overlays.wireframe
+      if (objectView.wire) objectView.wire.object.visible = objectView.wireOnly === true || view.shading === 'wireframe' || view.overlays.wireframe
     }
     this.applyShading()
   }
