@@ -209,6 +209,13 @@ export function MaterialPanel({
         <>
           <SceneSection id="material-surface" title="Surface" {...folds}>
             <Exposable property={`materials[${material.id}].baseColor`}><ColorField label="Base colour" value={material.baseColor} onChange={(baseColor) => edit({ baseColor }, 'Base colour')} {...gesture} /></Exposable>
+            <SwitchField
+              label="Color attribute"
+              checked={material.baseColorAttribute === true}
+              // Blender wires a Color Attribute node into the base colour socket; this Principled
+              // has no graph yet, so it is a switch on the mapping — the same choice, unwired.
+              onChange={(baseColorAttribute) => edit({ baseColorAttribute }, 'Colour attribute')}
+            />
             <Exposable property={`materials[${material.id}].metallic`} min={0} max={1} step={0.01}><BarField label="Metallic" value={material.metallic} min={0} max={1} step={0.01} defaultValue={0} onChange={(metallic) => edit({ metallic }, 'Metallic')} {...gesture} /></Exposable>
             <Exposable property={`materials[${material.id}].roughness`} min={0} max={1} step={0.01}><BarField label="Roughness" value={material.roughness} min={0} max={1} step={0.01} defaultValue={0.5} onChange={(roughness) => edit({ roughness }, 'Roughness')} {...gesture} /></Exposable>
             <BarField label="Specular" value={material.specular} min={0} max={1} step={0.01} defaultValue={0.5} onChange={(specular) => edit({ specular }, 'Specular')} {...gesture} />

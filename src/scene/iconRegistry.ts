@@ -57,6 +57,10 @@ export const SCENE_ICONS: Record<string, SceneIconComponent> = {
   'sculpt-rotate': Icons.IconSculptRotate,
   'sculpt-mask': Icons.IconSculptMask,
 
+  /* Vertex paint's two brushes borrow the sculpt drawings: they are the same gestures. */
+  'sculpt-paint': Icons.IconSculptDraw,
+  'sculpt-blur': Icons.IconSculptSmooth,
+
   'select-box': Icons.IconSelectBox,
   'select-circle': Icons.IconSelectCircle,
   'select-lasso': Icons.IconSelectLasso,

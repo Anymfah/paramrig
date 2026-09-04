@@ -134,6 +134,30 @@ registerOperator({
   },
 })
 
+registerOperator({
+  id: 'mode.vertexPaint',
+  label: 'Vertex paint mode',
+  section: 'Mode',
+  shortcut: '⌃Tab',
+  description: 'Paint a colour onto the active mesh’s vertices or corners.',
+  params: [],
+  defaults: {},
+  available: (context) => {
+    if (context.document.view.mode === 'vertex-paint') return 'Already in vertex paint mode.'
+    return sculptable(context) ? true : 'Select a mesh to paint first.'
+  },
+  run: (context) => {
+    const id = sculptable(context)
+    if (!id) return { error: 'Select a mesh to paint first.' }
+    // One object, for the same reason sculpt mode takes one: a stroke is a place in space.
+    return {
+      document: withView(context.document, { mode: 'vertex-paint' }),
+      selection: { ...context.selection, objectIds: [id], activeObjectId: id, editObjectIds: [id] },
+      label: 'Vertex paint mode',
+    }
+  },
+})
+
 /** The one mesh sculpt mode would open: the active one, or the only selected one. */
 function sculptable(context: OperatorContext): string | null {
   const ids = editableObjects(context, 'sculpt')

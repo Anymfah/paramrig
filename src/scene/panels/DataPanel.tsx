@@ -329,6 +329,9 @@ function listAttributes(mesh: MeshData): Array<{ name: string; domain: string; t
   if (mesh.attributes.vertex.color) {
     found.push({ name: 'Color', domain: 'point', type: 'colour', count: mesh.vertexIds.length })
   }
+  if (mesh.attributes.loop.color) {
+    found.push({ name: 'Color', domain: 'corner', type: 'colour', count: Math.floor(mesh.attributes.loop.color.length / 3) })
+  }
   if (edge.seam?.some(Boolean)) found.push({ name: 'Seam', domain: 'edge', type: 'boolean', count: edge.seam.filter(Boolean).length })
   if (edge.sharp?.some(Boolean)) found.push({ name: 'Sharp', domain: 'edge', type: 'boolean', count: edge.sharp.filter(Boolean).length })
   if (edge.crease?.some((value) => value > 0)) {

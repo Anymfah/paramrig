@@ -105,8 +105,20 @@ const SCULPT_GROUPS: ToolGroup[] = [
   { id: 'mask', label: 'Mask', tools: ['mask'], shortcut: chord('sculpt.mask') },
 ]
 
+/**
+ * Vertex paint's three brushes, which are the three Blender offers: one that lays colour down, one
+ * that averages what is there, and one that drags it about. Smear is absent — it needs the stroke's
+ * direction carried through the dab, and the honest thing is to leave it out rather than to offer a
+ * button that blurs.
+ */
+const PAINT_GROUPS: ToolGroup[] = [
+  { id: 'paint', label: 'Paint', tools: ['paint'], shortcut: null },
+  { id: 'blur', label: 'Blur', tools: ['blur'], shortcut: null },
+]
+
 function groupsFor(mode: EditorMode, editData: 'mesh' | 'curve' | 'text' = 'mesh'): ToolGroup[] {
   if (mode === 'sculpt') return SCULPT_GROUPS
+  if (mode === 'vertex-paint') return PAINT_GROUPS
   if (mode !== 'edit') return COMMON_GROUPS
   /*
    * The edit tools are a mesh's: a knife, a loop cut and an inset all cut faces, and a curve has
@@ -156,13 +168,15 @@ function ToolbarStrip({ tool, mode, editData, onTool, onClose }: {
     <div
       className="scene-toolbar"
       role="toolbar"
-      aria-label={mode === 'sculpt' ? 'Sculpt mode brushes' : mode === 'edit' ? 'Edit mode tools' : 'Object mode tools'}
+      aria-label={mode === 'sculpt'
+        ? 'Sculpt mode brushes'
+        : mode === 'vertex-paint' ? 'Vertex paint brushes' : mode === 'edit' ? 'Edit mode tools' : 'Object mode tools'}
       data-mode={mode}
       ref={bar}
       style={sizes}
     >
       {groupsFor(mode, editData).map((group) => (
-        <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} prefix={mode === 'sculpt' ? 'sculpt-' : ''} />
+        <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} prefix={mode === 'sculpt' || mode === 'vertex-paint' ? 'sculpt-' : ''} />
       ))}
       <Tooltip content={binding ? `Close toolbar · ${shortcutLabel(binding)}` : 'Close toolbar'} side="right">
         <IconButton label="Close toolbar" className="scene-toolbar__close" onClick={onClose}>

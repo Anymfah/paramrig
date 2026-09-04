@@ -19,6 +19,7 @@ const MODE_NAMES: Record<EditorMode, string> = {
   object: 'Object mode',
   edit: 'Edit mode',
   sculpt: 'Sculpt mode',
+  'vertex-paint': 'Vertex paint mode',
 }
 
 const SELECT_MODE_NAMES: Record<SelectMode, string> = {

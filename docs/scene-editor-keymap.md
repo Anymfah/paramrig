@@ -274,6 +274,8 @@ Every chord in this section is Blender’s own.
 | `U` | UV mapping menu (edit mode) |
 | `⌃F` | Face menu (edit mode) |
 | `⇧D` | Duplicate (edit mode) |
+| `⇧K` | Fill colour (vertex paint mode) |
+| `⇧X` | Swap paint colours (vertex paint mode) |
 | `E` | Extrude curve (editing a curve) |
 | `V` | Set handle type (editing a curve) |
 | `⌥C` | Toggle cyclic (editing a curve) |

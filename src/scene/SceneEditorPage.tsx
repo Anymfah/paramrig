@@ -29,6 +29,7 @@ import { StatusMessage } from '@/ui/StatusMessage'
 import { ContextMenuRoot } from '@/ui/ContextMenu'
 import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
 import { DEFAULT_UV_EDITOR, getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
+import { DEFAULT_PAINT_STATE } from '@/scene/paint/session'
 import { DEFAULT_SCULPT_STATE } from '@/scene/sculpt/session'
 import { describeKeymap, resolveKey } from '@/scene/keymap'
 import { getOperator } from '@/scene/operators/registry'
@@ -74,7 +75,7 @@ import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, UvEditorState, ViewState } from '@/scene/types'
+import type { PaintState, SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, UvEditorState, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/modifiers'
@@ -253,6 +254,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
 
 
   const { document, selection, selectObjects, setView, undo, redo, runOperator } = editor
+  /** Vertex paint's own settings, which the header, the tool bar and ⇧X all read. */
+  const paint = document?.view.paint ?? DEFAULT_PAINT_STATE
 
   /*
    * What a screen reader is told, and when.
@@ -910,6 +913,12 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         if (menu) setPointerMenu({ title: menu.title, ids: menu.ids, at: stage.current?.pointerPage() ?? pointerCentre() })
         return
       }
+      case 'paint.swapColours':
+        // ⇧X in Blender: the brush colour and the one behind it change places, which is how a
+        // painter rubs something out without going to find the colour they started with.
+        event.preventDefault()
+        patchView({ paint: { ...paint, colour: paint.secondary, secondary: paint.colour } })
+        return
       case 'add.menu':
         // ⇧A opens the Add menu where the pointer is, as Blender's does, filterable by typing.
         event.preventDefault()
@@ -954,7 +963,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       default:
         return
     }
-  }, [document, editData, editor, file, openFromDisk, patchView, pie, preferences, redo, run, session, typeText, undo])
+  }, [document, editData, editor, file, openFromDisk, paint, patchView, pie, preferences, redo, run, session, typeText, undo])
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
@@ -1147,9 +1156,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               context={context}
               onRunOperator={run}
               onView={patchView}
-              onMode={(next) => run(next === 'edit' ? 'mode.edit' : next === 'sculpt' ? 'mode.sculpt' : 'mode.object')}
+              onMode={(next) => run(next === 'edit'
+                ? 'mode.edit'
+                : next === 'sculpt' ? 'mode.sculpt' : next === 'vertex-paint' ? 'mode.vertexPaint' : 'mode.object')}
               onCommand={(id) => commands.find((command) => command.id === id)?.run()}
               onSculpt={(patch) => patchView({ sculpt: { ...sculpt, ...patch } })}
+              paint={paint}
+              onPaint={(patch) => patchView({ paint: { ...paint, ...patch } })}
             />
           </div>
           <div
@@ -1230,6 +1243,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 }}
                 onGestureCancel={editor.cancelGesture}
                 sculpt={sculpt}
+                paint={paint}
                 onReady={(handle) => { stage.current = handle }}
                 createViewport={createViewport}
                 options={{
@@ -1256,11 +1270,14 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               />
               <SceneToolbar
                 open={panels.toolbar}
-                tool={document.view.mode === 'sculpt' ? sculpt.brush : document.view.tool}
+                tool={document.view.mode === 'sculpt'
+                  ? sculpt.brush
+                  : document.view.mode === 'vertex-paint' ? paint.brush : document.view.tool}
                 mode={document.view.mode}
                 editData={editData}
                 onTool={(tool) => {
-                  if (document.view.mode === 'sculpt') patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
+                  if (document.view.mode === 'vertex-paint') patchView({ paint: { ...paint, brush: tool as PaintState['brush'] } })
+                  else if (document.view.mode === 'sculpt') patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
                   else patchView({ tool: tool as SceneTool })
                 }}
                 onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
@@ -1410,7 +1427,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             if (pie.kind === 'pivot') patchView({ pivot: id as ViewState['pivot'] })
             else if (pie.kind === 'orientation') patchView({ orientation: id as ViewState['orientation'] })
             else if (pie.kind === 'shading') patchView({ shading: id as ViewState['shading'] })
-            else if (pie.kind === 'mode') run(id === 'object' ? 'mode.object' : id === 'edit' ? 'mode.edit' : 'mode.sculpt')
+            else if (pie.kind === 'mode') {
+              run(id === 'object'
+                ? 'mode.object'
+                : id === 'edit' ? 'mode.edit' : id === 'vertex-paint' ? 'mode.vertexPaint' : 'mode.sculpt')
+            }
             else run(id, params as OperatorParams | undefined)
           }}
           onClose={() => setPie(null)}
@@ -1551,8 +1572,9 @@ const SHADING_ITEMS: ScenePieItem[] = [
 
 const MODE_ITEMS: ScenePieItem[] = [
   { id: 'object', label: 'Object mode' },
-  { id: 'edit', label: 'Edit mode', disabled: true, reason: 'Edit mode arrives with the mesh editing prompt.' },
+  { id: 'edit', label: 'Edit mode' },
   { id: 'sculpt', label: 'Sculpt mode' },
+  { id: 'vertex-paint', label: 'Vertex paint' },
 ]
 
 /**

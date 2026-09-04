@@ -15,12 +15,15 @@ import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import type { OperatorContext } from '@/scene/operators/types'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
 import { getOperator } from '@/scene/operators/registry'
+import { ColorField } from '@/ui/ColorField'
 import { NumberField } from '@/ui/NumberField'
+import { SelectField } from '@/ui/SelectField'
 import { SwitchField } from '@/ui/SwitchField'
 import type {
   EditorMode,
   GizmoFlags,
   OverlayFlags,
+  PaintState,
   PivotPoint,
   SelectMode,
   SculptState,
@@ -129,6 +132,7 @@ const MODES: Array<{ value: EditorMode; label: string }> = [
   { value: 'object', label: 'Object mode' },
   { value: 'edit', label: 'Edit mode' },
   { value: 'sculpt', label: 'Sculpt mode' },
+  { value: 'vertex-paint', label: 'Vertex paint' },
 ]
 
 
@@ -139,12 +143,13 @@ const SOLID_LIGHTING: Array<{ value: 'studio' | 'matcap' | 'flat'; label: string
   { value: 'flat', label: 'Flat' },
 ]
 
-const SOLID_COLOURS: Array<{ value: 'material' | 'object' | 'single' | 'random' | 'texture'; label: string }> = [
+const SOLID_COLOURS: Array<{ value: 'material' | 'object' | 'single' | 'random' | 'texture' | 'attribute'; label: string }> = [
   { value: 'material', label: 'Material' },
   { value: 'object', label: 'Object' },
   { value: 'single', label: 'Single' },
   { value: 'random', label: 'Random' },
   { value: 'texture', label: 'Texture' },
+  { value: 'attribute', label: 'Attribute' },
 ]
 
 /** What the menu shows before a document has said otherwise; the same defaults the document has. */
@@ -378,6 +383,99 @@ function SculptSettingsGroup({ sculpt, onSculpt, onRunOperator, context }: {
   )
 }
 
+/**
+ * Vertex paint's end of the header.
+ *
+ * The colour first, because it is the one thing a painter looks at, then the two numbers a stroke
+ * is made of, then the blend and the mirror. ⇧X swaps the pair, which is the gesture Blender gives
+ * a painter who wants to rub something out.
+ */
+function PaintSettingsGroup({ paint, onPaint, onRunOperator }: {
+  paint: PaintState
+  onPaint: (patch: Partial<PaintState>) => void
+  onRunOperator: (id: string) => void
+}) {
+  return (
+    <>
+      <div className="scene-header__group" role="group" aria-label="Paint colour">
+        <ColorField label="Colour" value={paint.colour} onChange={(colour) => onPaint({ colour })} />
+        <Tooltip content="Swap the two colours">
+          <IconButton
+            label="Swap colours"
+            className="scene-header__button"
+            onClick={() => onPaint({ colour: paint.secondary, secondary: paint.colour })}
+          >
+            <span aria-hidden="true">⇄</span>
+          </IconButton>
+        </Tooltip>
+      </div>
+      <HeaderSettings label="Brush settings">
+        <NumberField
+          label="Size"
+          value={paint.size}
+          min={2}
+          max={500}
+          step={1}
+          unit="px"
+          variant="field"
+          onChange={(size) => onPaint({ size })}
+        />
+        <NumberField
+          label="Strength"
+          value={paint.strength}
+          min={0}
+          max={2}
+          step={0.01}
+          variant="bar"
+          onChange={(strength) => onPaint({ strength })}
+        />
+        <SelectField
+          label="Blend"
+          value={paint.blend}
+          options={PAINT_BLEND_LABELS}
+          onChange={(value) => {
+            const found = PAINT_BLEND_LABELS.find((entry) => entry.value === value)
+            if (found) onPaint({ blend: found.value })
+          }}
+        />
+        <SelectField
+          label="Domain"
+          value={paint.domain}
+          options={[{ value: 'vertex', label: 'Vertex' }, { value: 'corner', label: 'Corner' }]}
+          onChange={(value) => onPaint({ domain: value === 'vertex' ? 'vertex' : 'corner' })}
+        />
+      </HeaderSettings>
+      <div className="scene-header__group" role="group" aria-label="Symmetry">
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <Tooltip key={axis} content={`Paint symmetrically about ${axis.toUpperCase()}`}>
+            <IconButton
+              label={`Symmetry ${axis.toUpperCase()}`}
+              className="scene-header__button scene-header__axis"
+              aria-pressed={paint.symmetry[axis]}
+              onClick={() => onPaint({ symmetry: { ...paint.symmetry, [axis]: !paint.symmetry[axis] } })}
+            >
+              <span aria-hidden="true">{axis.toUpperCase()}</span>
+            </IconButton>
+          </Tooltip>
+        ))}
+      </div>
+      <Tooltip content={`Fill the whole mesh with the brush colour · ${chordFor('paint.fill') ?? '⇧K'}`}>
+        <button type="button" className="scene-header__text-button" onClick={() => onRunOperator('paint.fill')}>
+          Fill
+        </button>
+      </Tooltip>
+    </>
+  )
+}
+
+const PAINT_BLEND_LABELS: Array<{ value: PaintState['blend']; label: string }> = [
+  { value: 'mix', label: 'Mix' },
+  { value: 'add', label: 'Add' },
+  { value: 'multiply', label: 'Multiply' },
+  { value: 'lighten', label: 'Lighten' },
+  { value: 'darken', label: 'Darken' },
+]
+
 function tipFor(label: string, actionId: string): string {
   const chord = chordFor(actionId)
   return chord ? `${label} · ${chord}` : label
@@ -491,7 +589,7 @@ function HeaderSettings({ label, children }: { label: string; children: ReactNod
   )
 }
 
-export function SceneHeader({ view, mode, editData, context, onRunOperator, onView, onMode, onCommand, onSculpt }: {
+export function SceneHeader({ view, mode, editData, context, onRunOperator, onView, onMode, onCommand, onSculpt, paint, onPaint }: {
   view: ViewState
   mode: EditorMode
   /** What the active object being edited is, so edit mode offers the right menus. */
@@ -504,6 +602,9 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
   onCommand: (id: string) => void
   /** Sculpt mode's brush settings, which the header carries a few of. */
   onSculpt?: (patch: Partial<SculptState>) => void
+  /** Vertex paint's, the same way: the colour and the two numbers a person changes as they work. */
+  paint?: PaintState
+  onPaint?: (patch: Partial<PaintState>) => void
 }) {
   const barRef = useRef<HTMLDivElement>(null)
   useRovingFocus(barRef)
@@ -755,6 +856,9 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
       />
       {mode === 'sculpt' && view.sculpt && onSculpt ? (
         <SculptSettingsGroup sculpt={view.sculpt} onSculpt={onSculpt} onRunOperator={runOperator} context={context} />
+      ) : null}
+      {mode === 'vertex-paint' && paint && onPaint ? (
+        <PaintSettingsGroup paint={paint} onPaint={onPaint} onRunOperator={runOperator} />
       ) : null}
       {mode === 'edit' ? (
         <div className="scene-header__group" role="group" aria-label="Mirror editing">

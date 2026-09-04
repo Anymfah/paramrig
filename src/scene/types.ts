@@ -53,6 +53,7 @@ export type MeshAttributes = {
     bevelWeight?: number[]
   }
   vertex: {
+    /** Three floats a vertex, or four when a file brought an alpha; `paint/attribute` reads which. */
     color?: number[]
     /**
      * The sculpt mask: 0 where a brush has its full say and 1 where it has none.
@@ -68,6 +69,14 @@ export type MeshAttributes = {
    * two different points of the same image — that is what a seam is.
    */
   loop: {
+    /**
+     * Colour on the corner domain: three floats a corner, in face order then corner order.
+     *
+     * The domain is a choice a person makes, as it is in Blender. A colour on a vertex is the same
+     * from every face that meets there; a colour on a corner can be red on one face and blue on the
+     * next, which is the difference a hard edge between two painted parts needs.
+     */
+    color?: number[]
     /** Every UV map the mesh carries. The active one is `uvMaps[activeUv]`. */
     uvMaps?: UvMap[]
     /** Which map the viewport samples and the editor edits. */
@@ -321,6 +330,13 @@ export type Material = {
   emissionStrength: number
   alpha: number
   normalStrength: number
+  /**
+   * Whether the mesh's colour attribute multiplies the base colour.
+   *
+   * Blender puts a Color Attribute node into the base colour socket; the Principled here has no
+   * graph yet, so it is a switch on the mapping — the same choice, without the wiring.
+   */
+  baseColorAttribute?: boolean
   backfaceCulling: boolean
   blendMode: 'opaque' | 'blend' | 'clip'
   textures?: {
@@ -354,7 +370,7 @@ export type World = {
 
 export type ShadingMode = 'wireframe' | 'solid' | 'material' | 'rendered'
 export type SelectMode = 'vertex' | 'edge' | 'face'
-export type EditorMode = 'object' | 'edit' | 'sculpt'
+export type EditorMode = 'object' | 'edit' | 'sculpt' | 'vertex-paint'
 export type PivotPoint = 'bounding-box' | 'cursor' | 'individual' | 'median' | 'active'
 export type TransformOrientation = 'global' | 'local' | 'normal' | 'gimbal' | 'view' | 'cursor'
 export type SnapMode = 'increment' | 'vertex' | 'edge' | 'face' | 'volume' | 'edge-center' | 'edge-perpendicular'
@@ -464,6 +480,22 @@ export type SculptState = {
   frontFacesOnly: boolean
 }
 
+/** What vertex paint mode is set to, kept with the view, as sculpt mode's settings are. */
+export type PaintState = {
+  brush: 'paint' | 'blur' | 'smear'
+  /** The colour being painted and the one ⇧X swaps it with, as Blender's pair does. */
+  colour: string
+  secondary: string
+  /** In pixels, like the sculpt brush: a brush is sized against what is on screen. */
+  size: number
+  strength: number
+  falloff: SculptState['falloff']
+  blend: 'mix' | 'add' | 'multiply' | 'lighten' | 'darken'
+  symmetry: { x: boolean; y: boolean; z: boolean }
+  /** Which domain a fresh colour attribute is made on, and which one painting writes. */
+  domain: 'vertex' | 'corner'
+}
+
 export type ViewState = {
   /** Where the camera orbits around, in world units. */
   target: Vec3
@@ -487,7 +519,7 @@ export type ViewState = {
     lighting: 'studio' | 'matcap' | 'flat'
     /** Which matcap, by the name of a file in `public/matcaps`. */
     matcap: string
-    colour: 'material' | 'object' | 'single' | 'random' | 'texture'
+    colour: 'material' | 'object' | 'single' | 'random' | 'texture' | 'attribute'
     single: string
     background: 'theme' | 'world' | 'viewport'
     backfaceCulling: boolean
@@ -531,6 +563,7 @@ export type ViewState = {
   uv?: UvEditorState
   /** Sculpt mode's brush and its settings. */
   sculpt?: SculptState
+  paint?: PaintState
   /**
    * Looking through the active camera, with its frame drawn and the rest dimmed. It is a state of
    * the view rather than a place it has moved to: the camera is what is being looked through, so

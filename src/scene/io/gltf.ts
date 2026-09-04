@@ -26,6 +26,8 @@ import { DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/document'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { cachedTriangulation } from '@/scene/mesh/triangulate'
 import { objectMesh } from '@/scene/curve/evaluate'
+import { colourDomain, cornerColours, srgbToLinear } from '@/scene/paint/attribute'
+import { loopStarts } from '@/scene/mesh/uv'
 import { drawnMesh } from '@/scene/modifiers/stack'
 import { localMatrix } from '@/scene/objects'
 import { resolveSceneValues } from '@/scene/rig'
@@ -180,6 +182,16 @@ function geometryOf(mesh: MeshData): { geometry: BufferGeometry; groups: Array<{
     - (mesh.attributes.face.material[triangulation.triangleFace[second] ?? 0] ?? 0)
   ))
   const positions = new Float32Array(order.length * 9)
+  /*
+   * The colour attribute leaves as glTF's `COLOR_0`, which is the format's own name for it and
+   * what every viewer reads. It is written in linear, as the format requires, from the sRGB the
+   * document holds — and only when the mesh carries one, so an unpainted export stays as small as
+   * it was.
+   */
+  const painted = colourDomain(mesh) !== null
+  const colours = painted ? new Float32Array(order.length * 9) : null
+  const corners = painted ? cornerColours(mesh) : null
+  const starts = painted ? loopStarts(mesh) : null
   const groups: Array<{ material: number; start: number; count: number }> = []
   order.forEach((triangle, index) => {
     for (let corner = 0; corner < 3; corner += 1) {
@@ -187,6 +199,13 @@ function geometryOf(mesh: MeshData): { geometry: BufferGeometry; groups: Array<{
       positions[index * 9 + corner * 3] = mesh.vertices[slot * 3] ?? 0
       positions[index * 9 + corner * 3 + 1] = mesh.vertices[slot * 3 + 1] ?? 0
       positions[index * 9 + corner * 3 + 2] = mesh.vertices[slot * 3 + 2] ?? 0
+      if (colours && corners && starts) {
+        const face = triangulation.triangleFace[triangle] ?? 0
+        const loop = (starts[face] ?? 0) + (triangulation.triangleCorner[triangle * 3 + corner] ?? 0)
+        for (let channel = 0; channel < 3; channel += 1) {
+          colours[index * 9 + corner * 3 + channel] = srgbToLinear(corners[loop * 3 + channel] ?? 1)
+        }
+      }
     }
     const material = mesh.attributes.face.material[triangulation.triangleFace[triangle] ?? 0] ?? 0
     const last = groups[groups.length - 1]
@@ -195,6 +214,7 @@ function geometryOf(mesh: MeshData): { geometry: BufferGeometry; groups: Array<{
   })
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
+  if (colours) geometry.setAttribute('color', new BufferAttribute(colours, 3))
   geometry.computeVertexNormals()
   return { geometry, groups }
 }

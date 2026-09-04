@@ -38,7 +38,7 @@ import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
-import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, writeSculptMask, writeSculptPositions, type MeshView } from '@/scene/viewport/meshView'
+import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, writePaintColours, writeSculptMask, writeSculptPositions, type MeshView } from '@/scene/viewport/meshView'
 import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/scene/viewport/overlays'
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
@@ -592,6 +592,14 @@ export class SceneViewport {
     this.invalidate()
   }
 
+  /** A paint stroke's colours, written into the drawn geometry. The sculpt path's twin. */
+  paintWrite(objectId: string, corners: Float32Array): void {
+    const view = this.views.get(objectId)
+    if (!view?.meshView) return
+    writePaintColours(view.meshView, corners)
+    this.invalidate()
+  }
+
   /**
    * The bounding tree caught up with the sculpted surface.
    *
@@ -863,6 +871,9 @@ export class SceneViewport {
       } : {}),
       xray: view?.xray === true,
       xrayAlpha: view?.xrayAlpha ?? DEFAULT_SOLID_LOOK.xrayAlpha,
+      // "Attribute" is one of solid's colour modes, and the only one the material has to be
+      // compiled for: the rest are a colour written onto it afterwards.
+      colourAttribute: solid?.colour === 'attribute',
     }
   }
 

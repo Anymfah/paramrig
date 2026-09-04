@@ -8,6 +8,7 @@ import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { MAX_PITCH } from '@/scene/viewport/view'
 import { MODIFIER_KINDS } from '@/scene/types'
+import { DEFAULT_PAINT_STATE } from '@/scene/paint/session'
 import { DEFAULT_SCULPT_STATE } from '@/scene/sculpt/session'
 import { sanitizeSceneRig, sceneRigTargets } from '@/scene/rig'
 import type {
@@ -22,6 +23,7 @@ import type {
   SceneObject,
   SceneUnits,
   SceneVersion,
+  PaintState,
   SculptState,
   ShapeKey,
   TextureSlot,
@@ -155,6 +157,7 @@ export const DEFAULT_VIEW: ViewState = {
   panels: { toolbar: true, sidebar: false, sidebarTab: 'item' },
   uv: DEFAULT_UV_EDITOR,
   sculpt: DEFAULT_SCULPT_STATE,
+  paint: DEFAULT_PAINT_STATE,
 }
 
 function newId(prefix: string): string {
@@ -499,6 +502,7 @@ function material(value: unknown): Material | null {
     alpha: num(source.alpha, 1, 0, 1),
     normalStrength: num(source.normalStrength, 1, 0, 10),
     backfaceCulling: !!source.backfaceCulling,
+    ...(source.baseColorAttribute ? { baseColorAttribute: true } : {}),
     blendMode: pick(source.blendMode, ['opaque', 'blend', 'clip'] as const, 'opaque'),
     ...(source.textures && typeof source.textures === 'object' ? { textures: textureSlots(source.textures) } : {}),
   }
@@ -538,6 +542,8 @@ function viewState(value: unknown): ViewState {
   const uv = (source.uv ?? {}) as Partial<UvEditorState>
   const sculpt = (source.sculpt ?? {}) as Partial<SculptState>
   const sculptSymmetry = (sculpt.symmetry ?? {}) as Partial<SculptState['symmetry']>
+  const paint = (source.paint ?? {}) as Partial<PaintState>
+  const paintSymmetry = (paint.symmetry ?? {}) as Partial<PaintState['symmetry']>
   const modes = Array.isArray(source.selectMode)
     ? source.selectMode.filter((mode): mode is 'vertex' | 'edge' | 'face' => mode === 'vertex' || mode === 'edge' || mode === 'face')
     : []
@@ -593,7 +599,7 @@ function viewState(value: unknown): ViewState {
       scale: flag(gizmos.scale, false),
       object: flag(gizmos.object, true),
     },
-    mode: pick(source.mode, ['object', 'edit', 'sculpt'] as const, 'object'),
+    mode: pick(source.mode, ['object', 'edit', 'sculpt', 'vertex-paint'] as const, 'object'),
     selectMode: modes.length ? modes : ['vertex'],
     tool: pick(source.tool, ['select-box', 'select-circle', 'select-lasso', 'cursor', 'move', 'rotate', 'scale', 'transform', 'annotate', 'measure'] as const, 'select-box'),
     pivot: pick(source.pivot, ['bounding-box', 'cursor', 'individual', 'median', 'active'] as const, 'median'),
@@ -643,6 +649,21 @@ function viewState(value: unknown): ViewState {
       },
       autoSmooth: num(sculpt.autoSmooth, DEFAULT_SCULPT_STATE.autoSmooth, 0, 1),
       frontFacesOnly: flag(sculpt.frontFacesOnly, DEFAULT_SCULPT_STATE.frontFacesOnly),
+    },
+    paint: {
+      brush: pick(paint.brush, ['paint', 'blur', 'smear'] as const, DEFAULT_PAINT_STATE.brush),
+      colour: color(paint.colour, DEFAULT_PAINT_STATE.colour),
+      secondary: color(paint.secondary, DEFAULT_PAINT_STATE.secondary),
+      size: num(paint.size, DEFAULT_PAINT_STATE.size, 2, 500),
+      strength: num(paint.strength, DEFAULT_PAINT_STATE.strength, 0, 2),
+      falloff: pick(paint.falloff, FALLOFFS, DEFAULT_PAINT_STATE.falloff),
+      blend: pick(paint.blend, ['mix', 'add', 'multiply', 'lighten', 'darken'] as const, DEFAULT_PAINT_STATE.blend),
+      symmetry: {
+        x: flag(paintSymmetry.x, false),
+        y: flag(paintSymmetry.y, false),
+        z: flag(paintSymmetry.z, false),
+      },
+      domain: pick(paint.domain, ['vertex', 'corner'] as const, DEFAULT_PAINT_STATE.domain),
     },
   }
 }
@@ -709,7 +730,7 @@ function readSolid(value: unknown): NonNullable<ViewState['solid']> {
   return {
     lighting: one(source.lighting, ['studio', 'matcap', 'flat'] as const, fallback.lighting),
     matcap: typeof source.matcap === 'string' && source.matcap.length <= 60 ? source.matcap : fallback.matcap,
-    colour: one(source.colour, ['material', 'object', 'single', 'random', 'texture'] as const, fallback.colour),
+    colour: one(source.colour, ['material', 'object', 'single', 'random', 'texture', 'attribute'] as const, fallback.colour),
     single: typeof source.single === 'string' && source.single.length <= 32 ? source.single : fallback.single,
     background: one(source.background, ['theme', 'world', 'viewport'] as const, fallback.background),
     backfaceCulling: typeof source.backfaceCulling === 'boolean' ? source.backfaceCulling : fallback.backfaceCulling,

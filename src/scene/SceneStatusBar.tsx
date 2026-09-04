@@ -41,7 +41,9 @@ export function SceneStatusBar({ document, selection, counts, message, editData,
    * mean nothing on a curve, and nothing at all on a text object, where the keyboard writes letters
    * rather than running operators.
    */
-  const hints = !editing
+  const hints = document.view.mode === 'vertex-paint'
+    ? [['Paint', 'drag'], ['Second colour', '⌃ drag'], ['Smooth', '⇧ drag'], ['Size', 'F'], ['Fill', '⇧K']]
+    : !editing
     ? [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Add', '⇧A']]
     : editData === 'text'
       ? [['Type', 'letters'], ['Select', '⇧ ←→'], ['Paste', '⌘V'], ['Done', 'Tab']]

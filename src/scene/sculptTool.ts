@@ -1,11 +1,9 @@
-import { Matrix4, Vector3 } from 'three'
-import { localFromWorldPoint, worldMatrix } from '@/scene/objects'
+import { surfaceContact, walkDabs, type SurfaceContact } from '@/scene/brushContact'
 import { meshOf, withMesh } from '@/scene/document'
 import { keysActive, keyValue, shapedMesh } from '@/scene/mesh/shapeKeys'
 import { dabSettings, DEFAULT_SCULPT_STATE, SculptSession } from '@/scene/sculpt/session'
 import type { HudChannel } from '@/scene/viewport/hud'
 import type { SceneViewport } from '@/scene/viewport/SceneViewport'
-import { cameraPosition } from '@/scene/viewport/view'
 import type { MeshData, SceneDocument, SceneObject, SculptState, ShapeKey, Vec3 } from '@/scene/types'
 
 /**
@@ -34,12 +32,6 @@ export type SculptToolDeps = {
   /** What the status bar says when a stroke cannot go where it would have to go. */
   message: (text: string) => void
 }
-
-/** How far apart two dabs are, as a fraction of the radius: Blender's spacing, near enough. */
-const SPACING = 0.25
-
-/** At most this many dabs in one frame, so a flick across the screen cannot stall it. */
-const MAX_DABS = 12
 
 /** How many pixels of drag change the radius by its whole value, when F is held. */
 const SIZE_PIXELS = 200
@@ -298,41 +290,8 @@ export class SculptTool {
    * where the brush actually is — so a brush stays the same size on screen as the view moves, which
    * is what a person sizing it against the model expects.
    */
-  private contact(x: number, y: number, state: SculptState): {
-    objectId: string
-    world: Vec3
-    worldNormal: Vec3
-    worldRadius: number
-    local: Vec3
-    localNormal: Vec3
-    radius: number
-    view: Vec3
-  } | null {
-    const instance = this.deps.viewport()
-    const document = this.deps.document()
-    if (!instance || !document) return null
-    const hit = instance.raycast(x, y)
-    if (!hit) return null
-    const object = document.objects.find((candidate) => candidate.id === hit.objectId)
-    if (!object || object.data.kind !== 'mesh') return null
-    const matrix = worldMatrix(document, object)
-    const inverse = matrix.clone().invert()
-    const local = localFromWorldPoint(matrix, hit.point)
-    const worldRadius = instance.unitsPerPixelAt(hit.point) * state.size
-    const localNormal = direction(hit.normal, inverse)
-    const radius = worldRadius * scaleOf(matrix)
-    const camera = cameraPosition(document.view)
-    const toCamera: Vec3 = [camera[0] - hit.point[0], camera[1] - hit.point[1], camera[2] - hit.point[2]]
-    return {
-      objectId: hit.objectId,
-      world: hit.point,
-      worldNormal: hit.normal,
-      worldRadius,
-      local,
-      localNormal,
-      radius,
-      view: direction([-toCamera[0], -toCamera[1], -toCamera[2]], inverse),
-    }
+  private contact(x: number, y: number, state: SculptState): SurfaceContact | null {
+    return surfaceContact(this.deps.viewport(), this.deps.document(), x, y, state.size)
   }
 
   /** The dabs between where the last one landed and where the pointer is now. */
@@ -346,14 +305,7 @@ export class SculptTool {
     this.push()
   }
 
-  /**
-   * From the last dab to this point, at the brush's own spacing.
-   *
-   * The steps between are found by walking the straight line rather than by casting a ray for each,
-   * which on a curved surface puts them slightly inside or outside it. At a quarter of the radius
-   * apart that is a fraction of the brush's reach, and it is the difference between a stroke that
-   * costs one raycast a frame and one that costs twelve.
-   */
+  /** From the last dab to this point, at the brush's own spacing. */
   private dabTo(point: Vec3, normal: Vec3, radius: number, pressure: number, view: Vec3): void {
     const session = this.session
     if (!session) return
@@ -364,21 +316,7 @@ export class SculptTool {
       this.last = [...point]
       return
     }
-    const span = Math.hypot(point[0] - from[0], point[1] - from[1], point[2] - from[2])
-    const steps = Math.max(1, Math.min(MAX_DABS, Math.round(span / Math.max(1e-6, radius * SPACING))))
-    for (let step = 1; step <= steps; step += 1) {
-      const at = step / steps
-      session.apply({
-        point: [
-          from[0] + (point[0] - from[0]) * at,
-          from[1] + (point[1] - from[1]) * at,
-          from[2] + (point[2] - from[2]) * at,
-        ],
-        normal,
-        view,
-        pressure,
-      }, settings)
-    }
+    walkDabs(from, point, radius, (at) => session.apply({ point: at, normal, view, pressure }, settings))
     this.last = [...point]
   }
 
@@ -394,26 +332,6 @@ export class SculptTool {
 
 function strokeLabel(brush: string): string {
   return brush === 'mask' ? 'Mask' : brush === 'smooth' ? 'Smooth' : 'Sculpt'
-}
-
-/** A direction taken through a matrix, normalised: the movement of a point rather than the point. */
-function direction(vector: Vec3, matrix: Matrix4): Vec3 {
-  const found = new Vector3(vector[0], vector[1], vector[2]).transformDirection(matrix)
-  return [found.x, found.y, found.z]
-}
-
-/**
- * How much wider a world unit is inside the object than outside it.
- *
- * A scaled object is sculpted in its own space, so a brush fifty pixels wide on screen is not fifty
- * pixels wide in the mesh. The average of the three scales is used rather than any one of them: an
- * object scaled twice as wide as it is tall gets a round brush that acts slightly oval, which is
- * what sculpting a scaled object does in Blender too.
- */
-function scaleOf(matrix: Matrix4): number {
-  const scale = new Vector3().setFromMatrixScale(matrix)
-  const average = (scale.x + scale.y + scale.z) / 3
-  return average > 1e-9 ? 1 / average : 1
 }
 
 export type { SculptState }

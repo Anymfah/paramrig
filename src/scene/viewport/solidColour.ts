@@ -21,6 +21,9 @@ export function solidColour(document: SceneDocument, object: SceneObject, view: 
   if (mode === 'single') return view.solid?.single ?? SOLID_DEFAULT
   if (mode === 'object') return object.color ?? SOLID_DEFAULT
   if (mode === 'random') return randomColour(object.id)
+  // The colour attribute multiplies the material's own, so the material's own has to be white or
+  // it would tint every painted vertex on the way past.
+  if (mode === 'attribute') return '#ffffff'
   // Texture falls back to the material until a base-colour map is drawn in solid shading; a
   // material's own colour is the nearest true answer, and a flat grey would say less.
   const material = materialOf(document, object)

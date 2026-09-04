@@ -376,8 +376,8 @@ function range(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index)
 }
 
-/** Vertex to vertex, through the edges: what Smooth averages over. */
-function buildAdjacency(mesh: MeshData, count: number): { start: Int32Array; count: Int32Array; list: Int32Array } {
+/** Vertex to vertex, through the edges: what Smooth averages over, and what painting smooths over. */
+export function buildAdjacency(mesh: MeshData, count: number): { start: Int32Array; count: Int32Array; list: Int32Array } {
   const lists: number[][] = Array.from({ length: count }, () => [])
   for (const [a, b] of mesh.edges) {
     if (a < count && b < count) {
@@ -397,7 +397,8 @@ function buildVertexFaces(mesh: MeshData, count: number): { start: Int32Array; c
   return flatten(lists)
 }
 
-function flatten(lists: number[][]): { start: Int32Array; count: Int32Array; list: Int32Array } {
+/** A list of lists as one array with a start and a count each: what a hot loop can walk. */
+export function flatten(lists: number[][]): { start: Int32Array; count: Int32Array; list: Int32Array } {
   const start = new Int32Array(lists.length)
   const count = new Int32Array(lists.length)
   let total = 0

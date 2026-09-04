@@ -363,6 +363,10 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'KeyF', ctrl: true, mode: 'edit', action: action('menu.face'), label: 'Face menu' },
   { code: 'KeyD', shift: true, mode: 'edit', action: operator('mesh.duplicate'), label: 'Duplicate' },
 
+  /* vertex paint */
+  { code: 'KeyK', shift: true, mode: 'vertex-paint', action: operator('paint.fill'), label: 'Fill colour' },
+  { code: 'KeyX', shift: true, mode: 'vertex-paint', action: action('paint.swapColours'), label: 'Swap paint colours' },
+
   /* editing a curve: Blender's own letters, told apart from the mesh ones by what is being edited */
   { code: 'KeyE', mode: 'edit', editData: 'curve', action: operator('curve.extrude'), label: 'Extrude curve' },
   { code: 'KeyV', mode: 'edit', editData: 'curve', action: operator('curve.setHandleType'), label: 'Set handle type' },

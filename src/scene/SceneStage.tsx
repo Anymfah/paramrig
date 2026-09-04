@@ -10,6 +10,7 @@ import { editLabels, type EditLabel } from '@/scene/editLabels'
 import { LabelChannel, type ViewportLabel } from '@/scene/viewport/labels'
 import { ToolPathChannel } from '@/scene/viewport/toolPath'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
+import { PaintTool } from '@/scene/paintTool'
 import { SculptTool } from '@/scene/sculptTool'
 import { elementTargets } from '@/scene/transform/elements'
 import { TOOL_OPERATORS } from '@/scene/toolOperators'
@@ -20,7 +21,7 @@ import { SceneHud } from '@/scene/SceneHud'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
-import type { SceneDocument, SceneObject, SceneSelection, SculptState, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { PaintState, SceneDocument, SceneObject, SceneSelection, SculptState, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { chipSide, HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneCameraFrame } from '@/scene/SceneCameraFrame'
@@ -76,6 +77,7 @@ export function SceneStage({
   operatorBridge,
   toolOptions,
   sculpt: sculptSettings,
+  paint: paintSettings,
   onPickElement,
   onRegionElements,
   onPolyBuild,
@@ -122,6 +124,8 @@ export function SceneStage({
   toolOptions: Record<string, OperatorParams>
   /** The brush and its settings, read on every dab of a sculpt stroke. */
   sculpt: SculptState
+  /** The same for a paint stroke: the colour, the blend and the size the brush reads. */
+  paint: PaintState
   /** A click on an element in edit mode, with what the modifiers asked for. */
   onPickElement: (hit: ElementPick | null, mode: ElementPickMode) => void
   /** What a box, lasso or circle covered in edit mode, per object being edited. */
@@ -186,15 +190,24 @@ export function SceneStage({
    * that puts the vertices back. Everything else about sculpting is inside the session; this is the
    * one thread that ties it to the document.
    */
-  const closeSculpt = useRef<() => void>(() => {})
+  const closeBrushes = useRef<() => void>(() => {})
   useEffect(() => {
-    closeSculpt.current()
+    closeBrushes.current()
   }, [document.view.mode, document.meshes, selection.activeObjectId])
   const onViewRef = useRef(onView)
   onViewRef.current = onView
-  /** The one place the brush's own settings are written back to the view. */
+  /** The one place a brush's own settings are written back to the view, whichever brush it is. */
   const writeSculpt = useCallback((sized: { kind: 'radius' | 'strength'; value: number }) => {
     const view = latestDocument.current.view
+    if (view.mode === 'vertex-paint') {
+      const current = view.paint
+      if (!current) return
+      onViewRef.current({
+        ...view,
+        paint: sized.kind === 'radius' ? { ...current, size: sized.value } : { ...current, strength: sized.value },
+      })
+      return
+    }
     const current = view.sculpt
     if (!current) return
     onViewRef.current({
@@ -308,6 +321,10 @@ export function SceneStage({
   const sculpt = useRef<SculptTool | null>(null)
   const sculptState = useRef(sculptSettings)
   sculptState.current = sculptSettings
+  /** The paint tool: the same shape, on the colours rather than on the positions. */
+  const paint = useRef<PaintTool | null>(null)
+  const paintState = useRef(paintSettings)
+  paintState.current = paintSettings
   if (!modal.current) {
     sculpt.current = new SculptTool({
       viewport: () => viewport.current,
@@ -319,14 +336,27 @@ export function SceneStage({
       invalidate: () => viewport.current?.invalidate(),
       message: (text) => bridge.current.message(text),
     })
-    closeSculpt.current = () => {
-      const tool = sculpt.current
-      if (!tool) return
+    paint.current = new PaintTool({
+      viewport: () => viewport.current,
+      document: () => latestDocument.current,
+      hud,
+      applyDocument: (edit) => gestures.current.onEditDocument(edit),
+      beginGesture: (label) => gestures.current.onGestureStart(label),
+      endGesture: (label) => gestures.current.onGestureEnd(label),
+      invalidate: () => viewport.current?.invalidate(),
+      message: (text) => bridge.current.message(text),
+    })
+    closeBrushes.current = () => {
       const view = latestDocument.current
-      const active = view.view.mode === 'sculpt' ? latestSelection.current.activeObjectId : null
-      const object = active ? view.objects.find((candidate) => candidate.id === active) : null
-      const mesh = object?.data.kind === 'mesh' ? view.meshes[object.data.meshId] : null
-      if (!active || tool.openOn !== active || (object && mesh && !tool.matches(object, mesh))) tool.close()
+      const closeOne = (tool: SculptTool | PaintTool | null, mode: string) => {
+        if (!tool) return
+        const active = view.view.mode === mode ? latestSelection.current.activeObjectId : null
+        const object = active ? view.objects.find((candidate) => candidate.id === active) : null
+        const mesh = object?.data.kind === 'mesh' ? view.meshes[object.data.meshId] : null
+        if (!active || tool.openOn !== active || (object && mesh && !tool.matches(object, mesh))) tool.close()
+      }
+      closeOne(sculpt.current, 'sculpt')
+      closeOne(paint.current, 'vertex-paint')
     }
     modal.current = new ModalTransform({
       viewport: () => viewport.current,
@@ -438,7 +468,7 @@ export function SceneStage({
          * pointer until a click keeps it or Escape puts it back. It is Blender's gesture, and the
          * reason for it is that a brush is sized against the model rather than against a number.
          */
-        const brush = sculpt.current
+        const brush = latestDocument.current.view.mode === 'vertex-paint' ? paint.current : sculpt.current
         if (brush?.adjusting) {
           if (event.key === 'Escape') {
             const back = brush.cancelSizing()
@@ -451,9 +481,16 @@ export function SceneStage({
           }
           return false
         }
-        if (brush && latestDocument.current.view.mode === 'sculpt' && (event.key === 'f' || event.key === 'F')) {
-          brush.beginSizing(event.shiftKey ? 'strength' : 'radius', pointer.current[0], sculptState.current)
-          return true
+        if (brush && (event.key === 'f' || event.key === 'F')) {
+          const mode = latestDocument.current.view.mode
+          if (mode === 'sculpt' && brush instanceof SculptTool) {
+            brush.beginSizing(event.shiftKey ? 'strength' : 'radius', pointer.current[0], sculptState.current)
+            return true
+          }
+          if (mode === 'vertex-paint' && brush instanceof PaintTool) {
+            brush.beginSizing(event.shiftKey ? 'strength' : 'radius', pointer.current[0], paintState.current)
+            return true
+          }
         }
         // The knife owns the keyboard while a line is being drawn: Enter cuts, Escape throws the
         // line away, and nothing else may run — X would delete the selection mid-cut.
@@ -534,7 +571,7 @@ export function SceneStage({
     if (document.view.gizmos.rotate) kinds.push('rotate')
     if (document.view.gizmos.scale) kinds.push('scale')
     const pivot = selectionPivot(document, selection)
-    if (!pivot || kinds.length === 0 || document.view.mode === 'sculpt') {
+    if (!pivot || kinds.length === 0 || document.view.mode === 'sculpt' || document.view.mode === 'vertex-paint') {
       instance.setGizmos([], [0, 0, 0], { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] })
       return
     }
@@ -672,11 +709,12 @@ export function SceneStage({
           const instance = viewport.current
           if (!nav || !instance) return
           // A click keeps whatever F or ⇧F has arrived at, and starts nothing else.
-          if (sculpt.current?.adjusting) {
+          const adjusting = paint.current?.adjusting ? paint.current : sculpt.current?.adjusting ? sculpt.current : null
+          if (adjusting) {
             event.preventDefault()
-            if (event.button === 0) sculpt.current.endSizing()
+            if (event.button === 0) adjusting.endSizing()
             else {
-              const back = sculpt.current.cancelSizing()
+              const back = adjusting.cancelSizing()
               if (back) writeSculpt(back)
             }
             return
@@ -736,6 +774,23 @@ export function SceneStage({
            */
           if (event.button === 0 && !gesture && latestDocument.current.view.mode === 'sculpt') {
             const started = sculpt.current?.begin(x, y, sculptState.current, event.pressure, {
+              invert: event.ctrlKey || event.metaKey,
+              smoothing: event.shiftKey,
+            })
+            if (started) {
+              event.preventDefault()
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId)
+              } catch {
+                /* Uncaptured: the stroke ends at the edge of the viewport rather than beyond it. */
+              }
+              return
+            }
+          }
+          // Painting takes the press for the same reason sculpting does, and with the same rules:
+          // ⌃ paints the second colour, ⇧ smooths, and a press that misses turns the view.
+          if (event.button === 0 && !gesture && latestDocument.current.view.mode === 'vertex-paint') {
+            const started = paint.current?.begin(x, y, paintState.current, event.pressure, {
               invert: event.ctrlKey || event.metaKey,
               smoothing: event.shiftKey,
             })
@@ -875,8 +930,9 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
-          if (sculpt.current?.adjusting) {
-            const sized = sculpt.current.sizingValue(x)
+          const sizing = paint.current?.adjusting ? paint.current : sculpt.current?.adjusting ? sculpt.current : null
+          if (sizing) {
+            const sized = sizing.sizingValue(x)
             if (sized) {
               writeSculpt(sized)
               hud.set({
@@ -894,6 +950,10 @@ export function SceneStage({
           }
           if (sculpt.current?.active) {
             sculpt.current.move(x, y, event.pressure)
+            return
+          }
+          if (paint.current?.active) {
+            paint.current.move(x, y, event.pressure)
             return
           }
           /*
@@ -916,6 +976,9 @@ export function SceneStage({
             // The brush cursor: a ring on the surface, which is also the answer to whether a press
             // here would sculpt at all.
             sculpt.current?.hover(x, y, sculptState.current)
+          }
+          if (latestDocument.current.view.mode === 'vertex-paint' && !press.current) {
+            paint.current?.hover(x, y, paintState.current)
           }
           const waiting = press.current
           if (waiting?.tool && !waiting.moved && Math.hypot(x - waiting.x, y - waiting.y) > threshold()) {
@@ -1048,6 +1111,11 @@ export function SceneStage({
           const instance = viewport.current
           if (sculpt.current?.active) {
             sculpt.current.end()
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+            return
+          }
+          if (paint.current?.active) {
+            paint.current.end()
             if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
             return
           }

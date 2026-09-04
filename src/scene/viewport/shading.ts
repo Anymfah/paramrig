@@ -118,6 +118,14 @@ export type SolidLook = {
   /** X-ray makes every surface see-through so that what is behind can be picked and judged. */
   xray: boolean
   xrayAlpha: number
+  /**
+   * Whether the mesh's colour attribute is what the surface is coloured by.
+   *
+   * Three.js reads a `color` attribute of its own accord when a material says `vertexColors`, so
+   * this needs no patch of ours — but it does change the compiled programme, which is why it is
+   * part of the look's key rather than a property set afterwards.
+   */
+  colourAttribute: boolean
 }
 
 export const DEFAULT_SOLID_LOOK: SolidLook = {
@@ -129,6 +137,7 @@ export const DEFAULT_SOLID_LOOK: SolidLook = {
   specular: true,
   xray: false,
   xrayAlpha: 0.5,
+  colourAttribute: false,
 }
 
 /** Two looks with the same key can share a material; a different key needs a new one. */
@@ -140,6 +149,7 @@ export function solidLookKey(look: SolidLook): string {
     look.cavity ? `cavity${Math.round(look.cavityStrength * 100)}` : '',
     look.specular ? '' : 'matte',
     look.xray ? `xray${Math.round(look.xrayAlpha * 100)}` : '',
+    look.colourAttribute ? 'attribute' : '',
   ].join('|')
 }
 
@@ -177,6 +187,7 @@ export function createSolidLook(look: SolidLook): MeshStandardMaterial | MeshMat
     transparent: look.xray,
     opacity: look.xray ? Math.min(1, Math.max(0.05, look.xrayAlpha)) : 1,
     depthWrite: !look.xray,
+    vertexColors: look.colourAttribute,
   }
   const material = look.lighting === 'matcap'
     ? new MeshMatcapMaterial({ ...shared, color: new Color(SOLID_BASE_COLOUR), matcap: matcapTexture(look.matcap) })

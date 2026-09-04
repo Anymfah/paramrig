@@ -1,6 +1,7 @@
 import { BufferAttribute, BufferGeometry, Mesh, type Material } from 'three'
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast, type MeshBVH } from 'three-mesh-bvh'
 import { activeUv, loopStarts } from '@/scene/mesh/uv'
+import { colourDomain, cornerColours, srgbToLinear } from '@/scene/paint/attribute'
 import { meshFingerprint } from '@/scene/mesh/data'
 import { faceNormals, vertexNormals } from '@/scene/mesh/normals'
 import { cachedTriangulation, type Triangulation } from '@/scene/mesh/triangulate'
@@ -62,6 +63,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
   const elements = new Float32Array(count)
   const uvs = new Float32Array(count * 2)
   const mask = new Float32Array(count)
+  const colours = new Float32Array(count * 3)
   /*
    * The triangles are written in order of the material slot their face names, so each slot's
    * triangles are one unbroken run and can be drawn with one material. Three.js has no other way of
@@ -71,6 +73,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
   const { order, groups } = groupByMaterial(mesh, triangulation)
   writeAttributes(mesh, triangulation, positions, normals, elements, uvs, order)
   writeMask(mesh, triangulation, mask, order)
+  writeColours(mesh, triangulation, colours, order)
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(normals, 3))
   // Read by the picking material to write a face id, and by the overlay to tint a selected face.
@@ -85,6 +88,12 @@ export function buildMeshView(mesh: MeshData): MeshView {
    * which costs a float a corner and shows nothing.
    */
   geometry.setAttribute('aMask', new BufferAttribute(mask, 1))
+  /*
+   * The colour attribute, one colour a drawn corner, under the name three.js reads when a material
+   * says `vertexColors`. A mesh nobody has painted carries white, which multiplies to nothing at
+   * all — so the attribute is always there and only the materials that ask for it look at it.
+   */
+  geometry.setAttribute('color', new BufferAttribute(colours, 3))
   for (const group of groups) geometry.addGroup(group.start * 3, group.count * 3, group.material)
   geometry.computeBoundingSphere()
   geometry.computeBoundingBox()
@@ -156,6 +165,68 @@ function writeMask(mesh: MeshData, triangulation: Triangulation, out: Float32Arr
       out[position * 3 + corner] = mask[indices[triangle * 3 + corner]!] ?? 0
     }
   }
+}
+
+/**
+ * The colour attribute, read onto the drawn corners.
+ *
+ * The document holds sRGB — what the picker said — and a shader multiplies in linear, so the
+ * conversion happens here, once, on the way to the buffer.
+ */
+function writeColours(mesh: MeshData, triangulation: Triangulation, out: Float32Array, order: Uint32Array): void {
+  /*
+   * A mesh nobody has painted is white throughout, and saying so in one call is the difference
+   * between free and a walk over every corner of a hundred-thousand-vertex mesh — which is a walk
+   * paid for on every Tab, on every rebuild, by every mesh that has no colour at all.
+   */
+  if (!colourDomain(mesh)) {
+    out.fill(1)
+    return
+  }
+  const corners = cornerColours(mesh)
+  const starts = loopStarts(mesh)
+  const { triangleFace, triangleCorner, triangleCount } = triangulation
+  for (let position = 0; position < triangleCount; position += 1) {
+    const triangle = order[position]!
+    const face = triangleFace[triangle]!
+    for (let corner = 0; corner < 3; corner += 1) {
+      const loop = (starts[face] ?? 0) + triangleCorner[triangle * 3 + corner]!
+      const target = (position * 3 + corner) * 3
+      for (let channel = 0; channel < 3; channel += 1) {
+        out[target + channel] = srgbToLinear(corners[loop * 3 + channel] ?? 1)
+      }
+    }
+  }
+}
+
+/**
+ * The colours written again, straight from a paint session.
+ *
+ * The fast path a stroke lives on, and the twin of `writeSculptPositions`: a stroke has no
+ * `MeshData` to rebuild from, only a typed array and sixteen milliseconds.
+ */
+export function writePaintColours(view: MeshView, corners: Float32Array): void {
+  const source = view.source
+  if (!source) return
+  const triangulation = cachedTriangulation(source)
+  if (triangulation.triangleCount !== view.triangleCount) return
+  const attribute = view.geometry.getAttribute('color') as BufferAttribute | undefined
+  if (!attribute) return
+  const out = attribute.array as Float32Array
+  const starts = loopStarts(source)
+  const { triangleFace, triangleCorner, triangleCount } = triangulation
+  for (let position = 0; position < triangleCount; position += 1) {
+    const triangle = view.order[position]!
+    const face = triangleFace[triangle]!
+    for (let corner = 0; corner < 3; corner += 1) {
+      const loop = (starts[face] ?? 0) + triangleCorner[triangle * 3 + corner]!
+      const target = (position * 3 + corner) * 3
+      for (let channel = 0; channel < 3; channel += 1) {
+        out[target + channel] = srgbToLinear(corners[loop * 3 + channel] ?? 1)
+      }
+    }
+  }
+  attribute.needsUpdate = true
 }
 
 /** The mask written again, for a stroke that is painting one. */

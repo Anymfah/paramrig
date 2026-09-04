@@ -30,7 +30,7 @@ function sectionOf(page: string, title: string): string {
 
 /** What the table should print for a binding, mode and all. */
 function expectedAction(binding: KeyBinding): string {
-  const scope = binding.editData === 'curve' ? 'editing a curve' : binding.mode ? `${binding.mode} mode` : ''
+  const scope = binding.editData === 'curve' ? 'editing a curve' : binding.mode ? `${binding.mode.replace('-', ' ')} mode` : ''
   return scope ? `${binding.label} (${scope})` : binding.label
 }
 

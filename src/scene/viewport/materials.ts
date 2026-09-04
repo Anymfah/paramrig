@@ -48,6 +48,7 @@ export function materialSignature(material: Material): string {
     material.alpha,
     material.normalStrength,
     material.backfaceCulling,
+    material.baseColorAttribute === true,
     material.blendMode,
     material.textures ?? null,
   ])
@@ -101,6 +102,9 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
     material.transparent = source.blendMode === 'blend' || source.alpha < 1 || source.transmission > 0
     material.alphaTest = source.blendMode === 'clip' ? 0.5 : 0
     material.side = source.backfaceCulling ? FrontSide : DoubleSide
+    // The colour attribute multiplies the base colour, which is what three's `vertexColors` does;
+    // a mesh that carries none hands the shader white, and white multiplies to nothing.
+    material.vertexColors = source.baseColorAttribute === true
     material.map = textureFor(source.textures?.baseColor, true)
     material.roughnessMap = textureFor(source.textures?.roughness, false)
     material.metalnessMap = textureFor(source.textures?.metallic, false)

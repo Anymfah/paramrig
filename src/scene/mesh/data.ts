@@ -152,6 +152,7 @@ export function cloneMesh(mesh: MeshData): MeshData {
           : {}),
         ...(mesh.attributes.loop?.activeUv === undefined ? {} : { activeUv: mesh.attributes.loop.activeUv }),
         ...(mesh.attributes.loop?.pinned ? { pinned: mesh.attributes.loop.pinned.slice() } : {}),
+        ...(mesh.attributes.loop?.color ? { color: mesh.attributes.loop.color.slice() } : {}),
       },
     },
     ...(mesh.autoSmooth ? { autoSmooth: { ...mesh.autoSmooth } } : {}),
@@ -328,7 +329,7 @@ function readAttributes(value: unknown, faceCount: number, edgeCount: number, fa
  */
 function readLoop(value: unknown, loops: number): MeshAttributes['loop'] {
   if (!value || typeof value !== 'object') return {}
-  const source = value as { uvMaps?: unknown; activeUv?: unknown; uv?: unknown; pinned?: unknown }
+  const source = value as { uvMaps?: unknown; activeUv?: unknown; uv?: unknown; pinned?: unknown; color?: unknown }
   const raw: unknown[] = Array.isArray(source.uvMaps)
     ? source.uvMaps
     : Array.isArray(source.uv) ? [{ name: DEFAULT_UV_NAME, data: source.uv }] : []
@@ -346,9 +347,16 @@ function readLoop(value: unknown, loops: number): MeshAttributes['loop'] {
     ? source.pinned.map((item) => item === true)
     : null
   const pins = pinned?.some(Boolean) ? { pinned } : {}
-  if (maps.length === 0) return pins
+  /*
+   * Colour on the corner domain: three floats a corner, read only when it is exactly that long.
+   * A list of the wrong length is about a different mesh, and it goes the way a wrong map goes.
+   */
+  const colour = Array.isArray(source.color) && source.color.length === loops * 3
+    ? { color: source.color.map((item) => clampNumber(item, 0, 1, 1)) }
+    : {}
+  if (maps.length === 0) return { ...pins, ...colour }
   const active = Math.min(maps.length - 1, Math.max(0, Math.floor(Number(source.activeUv) || 0)))
-  return { uvMaps: maps, activeUv: active, ...pins }
+  return { uvMaps: maps, activeUv: active, ...pins, ...colour }
 }
 
 /** One past the largest id, without spreading a list a big mesh would overflow the stack with. */
