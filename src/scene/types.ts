@@ -1,4 +1,3 @@
-import type { InspectorCategory, ParamGroup, ParameterDef } from '@/rigs/types'
 
 export type Vec3 = [number, number, number]
 export type Vec2 = [number, number]
@@ -402,23 +401,12 @@ export type Measurement = {
 
 /* -------------------------------------------------------------------- rig */
 
-/** A property a control can drive. See section 9 of the plan for the whole list. */
-export type SceneBindingProperty = string
-
-export type SceneBinding = {
-  id: string
-  objectId?: string
-  property: SceneBindingProperty
-  parameterId: string
-  transform?: { multiply?: number; add?: number; clampMin?: number; clampMax?: number }
-}
-
-export type SceneRig = {
-  groups: ParamGroup[]
-  parameters: ParameterDef[]
-  inspectorCategories?: InspectorCategory[]
-  bindings: SceneBinding[]
-}
+/*
+ * The controls a document exposes live in `@/scene/rig`, beside the parsing and the resolution
+ * that give them meaning — as the drawing editor's do in `@/vector/rig`. They are re-exported here
+ * because a document type that mentions them should not force every reader to know where they are.
+ */
+export type { SceneBinding, SceneRig } from '@/scene/rig'
 
 /* --------------------------------------------------------------- document */
 
@@ -458,7 +446,7 @@ export type SceneDocument = {
   colorManagement?: { exposure: number; gamma: number }
   annotations?: Annotation[]
   measurements?: Measurement[]
-  rig?: SceneRig
+  rig?: import('./rig').SceneRig
   versions?: SceneVersion[]
   createdAt: string
   updatedAt: string

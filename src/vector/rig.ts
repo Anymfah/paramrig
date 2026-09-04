@@ -1,21 +1,15 @@
 import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
-import { evaluateExpression } from '@/state/expression'
+import { applyTransform, type BindingTransform } from '@/rigs/binding'
+// The controls themselves are the workbench's, so reading them back is shared with the scene's rig.
+import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
 import { BLEND_MODES } from '@/vector/effects'
 import type { VectorBlendMode, VectorDocument, VectorElement, VectorPaint } from '@/vector/types'
 
-/**
- * How a control reaches a property. A number can be rescaled on the way — `min`/`max` clamp it,
- * `scale` and `offset` map it, and `expression` replaces all of that with arithmetic over the
- * control's value, written as `value`.
- */
-export type BindingTransform = {
-  min?: number
-  max?: number
-  scale?: number
-  offset?: number
-  expression?: string
-}
+// The transform, the id maker and the arithmetic between a control and a property are shared with
+// the scene's rig: a rig file written for one editor has to mean the same thing to the other.
+export { applyTransform, controlId, type BindingTransform } from '@/rigs/binding'
+export { sanitizeParameter } from '@/rigs/sanitize'
 
 /** One control writing to one property of one object. */
 export type VectorBinding = {
@@ -104,25 +98,6 @@ export const KINDS_FOR_TYPE: Record<PropertyType, string[]> = {
 /** The kind of control a property asks for when it is first exposed. */
 export function kindForProperty(type: PropertyType): string {
   return KINDS_FOR_TYPE[type][0]!
-}
-
-/** A number put through a binding's transform. Anything that is not finite is left alone. */
-export function applyTransform(value: number, transform: BindingTransform | undefined, resolve: (id: string) => number): number {
-  if (!transform) return value
-  let next = value
-  if (transform.expression) {
-    try {
-      next = evaluateExpression(transform.expression, (id) => (id === 'value' ? value : resolve(id)))
-    } catch {
-      return value
-    }
-  } else {
-    if (typeof transform.scale === 'number') next *= transform.scale
-    if (typeof transform.offset === 'number') next += transform.offset
-  }
-  if (typeof transform.min === 'number') next = Math.max(transform.min, next)
-  if (typeof transform.max === 'number') next = Math.min(transform.max, next)
-  return Number.isFinite(next) ? next : value
 }
 
 function asNumber(value: ParamValue): number | null {
@@ -287,95 +262,6 @@ const LABELS: Partial<Record<SimpleProperty, string>> = {
   innerRatio: 'Star points', arcStart: 'Arc start', arcSweep: 'Arc sweep', blendMode: 'Blend mode',
 }
 
-const NUMBER_VIEWS = ['field', 'stepper', 'bar', 'knob', 'angle', 'seed']
-const MAX_PARAMETERS = 200
-const MAX_BINDINGS = 500
-
-function text(value: unknown, max: number): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim().slice(0, max) : null
-}
-
-function finite(value: unknown, fallback: number): number {
-  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function hex(value: unknown, fallback: string): string {
-  return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback
-}
-
-function options(value: unknown): Array<{ value: string; label: string }> {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((item) => {
-    if (!item || typeof item !== 'object') return []
-    const entry = item as { value?: unknown; label?: unknown }
-    const id = text(entry.value, 60)
-    return id ? [{ value: id, label: text(entry.label, 60) ?? id }] : []
-  })
-}
-
-/**
- * One control, read from a file that could say anything. A control whose kind, id or group is
- * missing is dropped rather than repaired: a rig with a control that writes nowhere is worse than
- * a rig with one control fewer.
- */
-export function sanitizeParameter(value: unknown, groupIds: Set<string>): ParameterDef | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-  const source = value as Record<string, unknown>
-  const id = text(source.id, 60)
-  const kind = text(source.kind, 20)
-  if (!id || !kind) return null
-  const label = text(source.label, 80) ?? id
-  const group = text(source.group, 60) ?? ''
-  if (!groupIds.has(group)) return null
-  const base = { id, label, group, ...(source.hidden === true ? { hidden: true as const } : {}) }
-  if (kind === 'number') {
-    const min = finite(source.min, 0)
-    const max = finite(source.max, min + 1)
-    const view = text(source.view, 20)
-    return {
-      ...base,
-      kind: 'number',
-      min,
-      max: max > min ? max : min + 1,
-      step: Math.max(0, finite(source.step, 1)),
-      defaultValue: finite(source.defaultValue, min),
-      ...(text(source.unit, 12) ? { unit: text(source.unit, 12)! } : {}),
-      ...(view && NUMBER_VIEWS.includes(view) ? { view: view as 'bar' } : {}),
-    }
-  }
-  if (kind === 'color') return { ...base, kind: 'color', defaultValue: hex(source.defaultValue, '#D4E7E1'), ...(source.alpha === true ? { alpha: true } : {}) }
-  if (kind === 'switch') return { ...base, kind: 'switch', defaultValue: source.defaultValue === true }
-  if (kind === 'select') {
-    const list = options(source.options)
-    if (list.length === 0) return null
-    const fallback = list[0]!.value
-    const chosen = text(source.defaultValue, 60)
-    return { ...base, kind: 'select', options: list, defaultValue: chosen && list.some((item) => item.value === chosen) ? chosen : fallback }
-  }
-  if (kind === 'text') {
-    return { ...base, kind: 'text', defaultValue: typeof source.defaultValue === 'string' ? source.defaultValue.slice(0, 2000) : '', ...(source.multiline === true ? { multiline: true } : {}) }
-  }
-  if (kind === 'gradient') {
-    const stops = Array.isArray(source.defaultValue)
-      ? source.defaultValue.flatMap((stop) => {
-        if (!stop || typeof stop !== 'object') return []
-        const entry = stop as { t?: unknown; color?: unknown }
-        return typeof entry.t === 'number' ? [{ t: Math.min(1, Math.max(0, entry.t)), color: hex(entry.color, '#D4E7E1') }] : []
-      })
-      : []
-    return { ...base, kind: 'gradient', defaultValue: stops.length > 1 ? stops : [{ t: 0, color: '#1C1D1E' }, { t: 1, color: '#D4E7E1' }] }
-  }
-  if (kind === 'vector') {
-    const values = Array.isArray(source.defaultValue) ? source.defaultValue.map((item) => finite(item, 0)) : [0, 0]
-    const axes = Array.isArray(source.axes) ? source.axes.flatMap((axis) => (text(axis, 8) ? [text(axis, 8)!] : [])) : ['X', 'Y']
-    if (values.length < 2 || axes.length !== values.length) return null
-    const min = finite(source.min, 0)
-    const max = finite(source.max, min + 1)
-    return { ...base, kind: 'vector', defaultValue: values, axes, min, max: max > min ? max : min + 1, step: Math.max(0, finite(source.step, 1)) }
-  }
-  return null
-}
-
 /** A binding is kept only when both ends of it exist. */
 function sanitizeBinding(value: unknown, elementIds: Set<string>, parameterIds: Set<string>): VectorBinding | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -411,14 +297,7 @@ function sanitizeBinding(value: unknown, elementIds: Set<string>, parameterIds: 
 export function sanitizeRig(value: unknown, elementIds: Set<string>): VectorRig | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
   const source = value as Record<string, unknown>
-  const groups = Array.isArray(source.groups)
-    ? source.groups.flatMap((group) => {
-      if (!group || typeof group !== 'object') return []
-      const entry = group as { id?: unknown; label?: unknown; defaultOpen?: unknown; tab?: unknown }
-      const id = text(entry.id, 60)
-      return id ? [{ id, label: text(entry.label, 80) ?? id, ...(entry.tab ? { tab: text(entry.tab, 60) ?? undefined } : {}), ...(entry.defaultOpen === false ? { defaultOpen: false } : {}) }] : []
-    })
-    : []
+  const groups = sanitizeGroups(source.groups)
   if (groups.length === 0) return undefined
   const groupIds = new Set(groups.map((group) => group.id))
   const parameters = (Array.isArray(source.parameters) ? source.parameters : [])
@@ -435,14 +314,7 @@ export function sanitizeRig(value: unknown, elementIds: Set<string>): VectorRig 
       const clean = sanitizeBinding(binding, elementIds, seen)
       return clean ? [clean] : []
     })
-  const categories = Array.isArray(source.inspectorCategories)
-    ? source.inspectorCategories.flatMap((category) => {
-      if (!category || typeof category !== 'object') return []
-      const entry = category as { id?: unknown; label?: unknown }
-      const id = text(entry.id, 60)
-      return id ? [{ id, label: text(entry.label, 80) ?? id }] : []
-    })
-    : []
+  const categories = sanitizeCategories(source.inspectorCategories)
   return {
     groups,
     parameters: unique,
@@ -487,17 +359,6 @@ export function currentValue(element: VectorElement, property: string): ParamVal
   if (path.kind === 'region') return !(element.regionsOff ?? []).includes(path.key)
   const node = element.network?.nodes.find((item) => item.id === path.nodeId)
   return node ? node[path.axis] : 0
-}
-
-/** A control id from what it was called, kept unique against the ones already there. */
-export function controlId(label: string, taken: Set<string>): string {
-  const base = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'control'
-  if (!taken.has(base)) return base
-  for (let index = 2; index < 500; index += 1) {
-    const candidate = `${base}-${index}`
-    if (!taken.has(candidate)) return candidate
-  }
-  return `${base}-${crypto.randomUUID().slice(0, 8)}`
 }
 
 /** A control built for a property, taking its default from what the drawing says today. */

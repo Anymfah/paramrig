@@ -764,6 +764,57 @@ describe('the clipboard', () => {
     expect(next.objects).toHaveLength(2)
   })
 
+  it('carries the controls that were driving what was copied', () => {
+    const base = withMeshObject(emptyScene(), { name: 'Cube' })
+    const rigged: SceneDocument = {
+      ...base,
+      objects: base.objects.map((object) => ({
+        ...object,
+        modifiers: [{
+          id: 'modifier-1',
+          kind: 'subsurf' as const,
+          name: 'Subdivision',
+          enabled: { viewport: true, render: true, editMode: true, onCage: false },
+          params: { levels: 1 },
+        }],
+      })),
+      rig: {
+        groups: [{ id: 'main', label: 'Main' }],
+        parameters: [{ kind: 'number', id: 'detail', label: 'Detail', group: 'main', min: 0, max: 6, step: 1, defaultValue: 1 }],
+        bindings: [{ id: 'binding-1', objectId: 'object-Cube', property: 'modifiers[modifier-1].levels', parameterId: 'detail' }],
+      },
+    }
+
+    const payload = serializeObjects(rigged, ['object-Cube'])
+    const next = documentFrom(pasteObjects(rigged, payload, [0, 0, 0]))
+
+    // The copy has a modifier of its own, with an id of its own, and the binding follows it there.
+    const copy = next.objects.find((object) => object.name === 'Cube.001')!
+    expect(next.rig?.bindings).toHaveLength(2)
+    const added = next.rig!.bindings[1]!
+    expect(added.objectId).toBe(copy.id)
+    expect(added.property).toBe(`modifiers[${copy.modifiers[0]!.id}].levels`)
+    expect(added.parameterId).toBe('detail')
+  })
+
+  it('leaves a binding behind when the control is not in the document it lands in', () => {
+    const base = withMeshObject(emptyScene(), { name: 'Cube' })
+    const rigged: SceneDocument = {
+      ...base,
+      rig: {
+        groups: [{ id: 'main', label: 'Main' }],
+        parameters: [{ kind: 'number', id: 'slide', label: 'Slide', group: 'main', min: 0, max: 1, step: 0.1, defaultValue: 0 }],
+        bindings: [{ id: 'binding-1', objectId: 'object-Cube', property: 'transform.position.x', parameterId: 'slide' }],
+      },
+    }
+    const payload = serializeObjects(rigged, ['object-Cube'])
+
+    // Into a document with no rig at all: the geometry arrives, the binding does not.
+    const plain = documentFrom(pasteObjects(emptyScene(), payload, [0, 0, 0]))
+    expect(plain.objects).toHaveLength(1)
+    expect(plain.rig).toBeUndefined()
+  })
+
   it('refuses a clipboard that is not one of ours', () => {
     const document = withMeshObject(emptyScene(), { name: 'Cube' })
 

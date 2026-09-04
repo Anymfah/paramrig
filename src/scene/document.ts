@@ -4,6 +4,7 @@ import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { MAX_PITCH } from '@/scene/viewport/view'
 import { MODIFIER_KINDS } from '@/scene/types'
+import { sanitizeSceneRig, sceneRigTargets } from '@/scene/rig'
 import type {
   Collection,
   EmptyDisplay,
@@ -14,7 +15,6 @@ import type {
   ObjectData,
   SceneDocument,
   SceneObject,
-  SceneRig,
   SceneUnits,
   SceneVersion,
   TextureSlot,
@@ -841,36 +841,10 @@ export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
         }),
       }
       : {}),
-    ...(source.rig ? { rig: sanitizeSceneRig(source.rig, objectIds) } : {}),
+    ...(source.rig ? { rig: sanitizeSceneRig(source.rig, sceneRigTargets({ objects, materials, meshes })) } : {}),
     ...(Array.isArray(source.versions) && source.versions.length ? { versions: sanitizeVersions(source.versions) } : {}),
     createdAt: typeof source.createdAt === 'string' ? source.createdAt : now,
     updatedAt: typeof source.updatedAt === 'string' ? source.updatedAt : now,
-  }
-}
-
-/** Controls arrive with the rig prompt; a file that carries them keeps only what points somewhere. */
-export function sanitizeSceneRig(value: unknown, objectIds: Set<string>): SceneRig {
-  const source = (value ?? {}) as Partial<SceneRig>
-  const parameters = Array.isArray(source.parameters) ? source.parameters : []
-  const parameterIds = new Set(parameters.flatMap((parameter) => (parameter && typeof parameter === 'object' && typeof parameter.id === 'string' ? [parameter.id] : [])))
-  return {
-    groups: Array.isArray(source.groups) ? source.groups : [],
-    parameters,
-    ...(Array.isArray(source.inspectorCategories) ? { inspectorCategories: source.inspectorCategories } : {}),
-    bindings: (Array.isArray(source.bindings) ? source.bindings : []).flatMap((entry) => {
-      if (!entry || typeof entry !== 'object') return []
-      const binding = entry as Partial<SceneRig['bindings'][number]>
-      if (typeof binding.property !== 'string' || typeof binding.parameterId !== 'string') return []
-      if (!parameterIds.has(binding.parameterId)) return []
-      if (binding.objectId !== undefined && !objectIds.has(binding.objectId)) return []
-      return [{
-        id: text(binding.id, `binding-${crypto.randomUUID()}`, 80),
-        ...(binding.objectId ? { objectId: binding.objectId } : {}),
-        property: binding.property.slice(0, 120),
-        parameterId: binding.parameterId,
-        ...(binding.transform && typeof binding.transform === 'object' ? { transform: binding.transform } : {}),
-      }]
-    }),
   }
 }
 

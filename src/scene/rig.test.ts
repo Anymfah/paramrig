@@ -1,0 +1,386 @@
+import { beforeEach, describe, expect, it } from 'vitest'
+import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID, sanitizeSceneDocument } from '@/scene/document'
+import { boxMesh } from '@/scene/mesh/primitives'
+import '@/scene/modifiers'
+import {
+  clearSceneRigCache,
+  currentSceneValue,
+  emptySceneRig,
+  parameterForSceneProperty,
+  parseSceneProperty,
+  resolveSceneValues,
+  sanitizeSceneRig,
+  sceneRigDefaults,
+  sceneRigTargets,
+  scenePropertyLabel,
+  scenePropertyType,
+  type SceneBinding,
+  type SceneRig,
+} from '@/scene/rig'
+import type { ParamValue } from '@/rigs/types'
+import type { Material, SceneDocument, SceneObject } from '@/scene/types'
+
+/**
+ * A scene as a rig.
+ *
+ * Three things are worth testing and the rest follows from them: that a path is read or refused
+ * rather than guessed, that resolving writes what the path names and leaves the raw document
+ * alone, and that a file's bindings are dropped when what they name is not there.
+ */
+
+const MESH = 'mesh-1'
+
+function meshObject(id: string, name: string, patch: Partial<SceneObject> = {}): SceneObject {
+  return {
+    id,
+    name,
+    kind: 'mesh',
+    collectionId: ROOT_COLLECTION_ID,
+    transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    visible: true,
+    selectable: true,
+    renderable: true,
+    data: { kind: 'mesh', meshId: MESH },
+    modifiers: [],
+    materialSlots: ['material-default'],
+    ...patch,
+  }
+}
+
+function scene(objects: SceneObject[], rig?: SceneRig, materials: Material[] = [{ ...DEFAULT_MATERIAL }]): SceneDocument {
+  return { ...createSceneDocument(), objects, meshes: { [MESH]: boxMesh(2) }, materials, ...(rig ? { rig } : {}) }
+}
+
+function rigWith(bindings: SceneBinding[], parameters: SceneRig['parameters'] = []): SceneRig {
+  return { ...emptySceneRig(), parameters, bindings }
+}
+
+function numberParameter(id: string, defaultValue = 0): SceneRig['parameters'][number] {
+  return { kind: 'number', id, label: id, group: 'main', min: -100, max: 100, step: 0.1, defaultValue }
+}
+
+function binding(patch: Partial<SceneBinding> & { property: string; parameterId: string }): SceneBinding {
+  return { id: `binding-${patch.property}`, ...patch }
+}
+
+beforeEach(() => {
+  clearSceneRigCache()
+})
+
+describe('reading a property path', () => {
+  it('reads the paths the plan names', () => {
+    expect(parseSceneProperty('transform.position.x')).toMatchObject({ kind: 'transform', channel: 'position', axis: 0 })
+    expect(parseSceneProperty('transform.rotation.z')).toMatchObject({ kind: 'transform', channel: 'rotation', axis: 2 })
+    expect(parseSceneProperty('transform.scale')).toMatchObject({ kind: 'uniformScale' })
+    expect(parseSceneProperty('visible')).toMatchObject({ kind: 'visible', type: 'boolean' })
+    expect(parseSceneProperty('modifiers[modifier-1].levels')).toMatchObject({ kind: 'modifier', modifierId: 'modifier-1', param: 'levels' })
+    expect(parseSceneProperty('materials[material-red].baseColor')).toMatchObject({ kind: 'material', materialId: 'material-red', field: 'baseColor', type: 'color' })
+    expect(parseSceneProperty('light.power')).toMatchObject({ kind: 'light', field: 'power' })
+    expect(parseSceneProperty('camera.focalLength')).toMatchObject({ kind: 'camera', field: 'focalLength' })
+    expect(parseSceneProperty('mesh.vertices[7].y')).toMatchObject({ kind: 'vertex', vertexId: 7, axis: 1 })
+    expect(parseSceneProperty('world.strength')).toMatchObject({ kind: 'world', field: 'strength' })
+    expect(parseSceneProperty('cursor.position.z')).toMatchObject({ kind: 'cursor', axis: 2 })
+  })
+
+  it('says which paths belong to an object and which to the scene', () => {
+    expect(parseSceneProperty('transform.position.x')?.scoped).toBe(true)
+    expect(parseSceneProperty('light.power')?.scoped).toBe(true)
+    expect(parseSceneProperty('world.color')?.scoped).toBe(false)
+    expect(parseSceneProperty('materials[m].alpha')?.scoped).toBe(false)
+  })
+
+  it('refuses what it does not recognise, rather than guessing', () => {
+    expect(parseSceneProperty('transform.position.w')).toBeNull()
+    expect(parseSceneProperty('transform.wobble.x')).toBeNull()
+    expect(parseSceneProperty('materials[m].shininess')).toBeNull()
+    expect(parseSceneProperty('light.wattage')).toBeNull()
+    expect(parseSceneProperty('camera.sensor')).toBeNull()
+    expect(parseSceneProperty('mesh.vertices[x].y')).toBeNull()
+    expect(parseSceneProperty('constructor')).toBeNull()
+    expect(parseSceneProperty('')).toBeNull()
+  })
+
+  it('refuses a shape key, which arrives with a later prompt', () => {
+    expect(parseSceneProperty('shapeKeys[Smile].value')).toBeNull()
+  })
+
+  it('takes Blender’s spelling of a spot’s blend as well as the document’s', () => {
+    expect(parseSceneProperty('light.spotBlend')).toMatchObject({ kind: 'light', field: 'spotBlend' })
+    expect(parseSceneProperty('light.spotBlur')).toMatchObject({ kind: 'light', field: 'spotBlur' })
+  })
+})
+
+describe('resolving a document', () => {
+  it('gives the document straight back when nothing is bound', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    expect(resolveSceneValues(document, {})).toBe(document)
+  })
+
+  it('writes a number into a transform, and leaves the raw document alone', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith([binding({ objectId: 'object-1', property: 'transform.position.z', parameterId: 'height' })], [numberParameter('height')]),
+    )
+    const resolved = resolveSceneValues(document, { height: 2.5 })
+    expect(resolved.objects[0]!.transform.position).toEqual([0, 0, 2.5])
+    expect(document.objects[0]!.transform.position).toEqual([0, 0, 0])
+  })
+
+  it('scales all three axes from one control', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith([binding({ objectId: 'object-1', property: 'transform.scale', parameterId: 'size' })], [numberParameter('size', 1)]),
+    )
+    expect(resolveSceneValues(document, { size: 3 }).objects[0]!.transform.scale).toEqual([3, 3, 3])
+  })
+
+  it('puts a control through its transform on the way', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith(
+        [binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'slide', transform: { scale: 2, offset: 1, max: 4 } })],
+        [numberParameter('slide')],
+      ),
+    )
+    expect(resolveSceneValues(document, { slide: 1 }).objects[0]!.transform.position[0]).toBe(3)
+    // The clamp is the last word: two times three plus one is seven, and the maximum is four.
+    expect(resolveSceneValues(document, { slide: 3 }).objects[0]!.transform.position[0]).toBe(4)
+  })
+
+  it('reads an expression over the control’s own value', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith(
+        [binding({ objectId: 'object-1', property: 'transform.rotation.z', parameterId: 'turn', transform: { expression: 'value * 90' } })],
+        [numberParameter('turn')],
+      ),
+    )
+    expect(resolveSceneValues(document, { turn: 2 }).objects[0]!.transform.rotation[2]).toBe(180)
+  })
+
+  it('writes a modifier’s parameter in the shape its own schema declares', () => {
+    const object = meshObject('object-1', 'Cube', {
+      modifiers: [{
+        id: 'modifier-1',
+        kind: 'subsurf',
+        name: 'Subdivision',
+        enabled: { viewport: true, render: true, editMode: true, onCage: false },
+        params: { levels: 1 },
+      }],
+    })
+    const document = scene(
+      [object],
+      rigWith([binding({ objectId: 'object-1', property: 'modifiers[modifier-1].levels', parameterId: 'detail' })], [numberParameter('detail', 1)]),
+    )
+    const resolved = resolveSceneValues(document, { detail: 3 })
+    expect(resolved.objects[0]!.modifiers[0]!.params.levels).toBe(3)
+    // A switch takes a boolean rather than the number a slider would send.
+    const simple = resolveSceneValues(
+      scene([object], rigWith([binding({ objectId: 'object-1', property: 'modifiers[modifier-1].simple', parameterId: 'flat' })], [{ kind: 'switch', id: 'flat', label: 'Flat', group: 'main', defaultValue: false }])),
+      { flat: true },
+    )
+    expect(simple.objects[0]!.modifiers[0]!.params.simple).toBe(true)
+  })
+
+  it('writes a material, which every object that names it then wears', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube'), meshObject('object-2', 'Other')],
+      rigWith([binding({ property: 'materials[material-default].baseColor', parameterId: 'tint' })], [{ kind: 'color', id: 'tint', label: 'Tint', group: 'main', defaultValue: '#ffffff' }]),
+    )
+    expect(resolveSceneValues(document, { tint: '#ff0000' }).materials[0]!.baseColor).toBe('#ff0000')
+  })
+
+  it('moves one vertex of a mesh without touching the others', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const vertexId = document.meshes[MESH]!.vertexIds[0]!
+    const rigged = { ...document, rig: rigWith([binding({ objectId: 'object-1', property: `mesh.vertices[${vertexId}].z`, parameterId: 'lift' })], [numberParameter('lift')]) }
+    const resolved = resolveSceneValues(rigged, { lift: 5 })
+    expect(resolved.meshes[MESH]!.vertices[2]).toBe(5)
+    expect(document.meshes[MESH]!.vertices[2]).not.toBe(5)
+    expect(resolved.meshes[MESH]!.vertices[5]).toBe(document.meshes[MESH]!.vertices[5])
+  })
+
+  it('writes the world and the cursor, which belong to no object', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith(
+        [
+          binding({ property: 'world.strength', parameterId: 'sky' }),
+          binding({ property: 'cursor.position.x', parameterId: 'here' }),
+        ],
+        [numberParameter('sky', 1), numberParameter('here')],
+      ),
+    )
+    const resolved = resolveSceneValues(document, { sky: 4, here: -2 })
+    expect(resolved.world.strength).toBe(4)
+    expect(resolved.cursor.position[0]).toBe(-2)
+  })
+
+  it('lets the last binding on a property win', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith(
+        [
+          binding({ id: 'binding-a', objectId: 'object-1', property: 'transform.position.x', parameterId: 'first' }),
+          binding({ id: 'binding-b', objectId: 'object-1', property: 'transform.position.x', parameterId: 'second' }),
+        ],
+        [numberParameter('first'), numberParameter('second')],
+      ),
+    )
+    expect(resolveSceneValues(document, { first: 1, second: 9 }).objects[0]!.transform.position[0]).toBe(9)
+  })
+
+  it('skips a binding whose control is not in the rig', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith([binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'gone' })], []),
+    )
+    expect(resolveSceneValues(document, { gone: 5 }).objects[0]!.transform.position[0]).toBe(0)
+  })
+
+  it('answers the same object for the same values, so a drag costs one evaluation', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith([binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'slide' })], [numberParameter('slide')]),
+    )
+    const first = resolveSceneValues(document, { slide: 1 })
+    expect(resolveSceneValues(document, { slide: 1 })).toBe(first)
+    expect(resolveSceneValues(document, { slide: 2 })).not.toBe(first)
+  })
+})
+
+describe('what a control starts at', () => {
+  it('reads the value the scene has today', () => {
+    const document = scene([meshObject('object-1', 'Cube', { transform: { position: [1, 2, 3], rotation: [0, 0, 0], scale: [1, 1, 1] } })])
+    expect(currentSceneValue(document, { objectId: 'object-1', property: 'transform.position.y' })).toBe(2)
+    expect(currentSceneValue(document, { objectId: 'object-1', property: 'visible' })).toBe(true)
+    expect(currentSceneValue(document, { property: 'world.color' })).toBe(document.world.color)
+  })
+
+  it('builds a control whose bounds come from the modifier’s own schema', () => {
+    const object = meshObject('object-1', 'Cube', {
+      modifiers: [{
+        id: 'modifier-1',
+        kind: 'subsurf',
+        name: 'Subdivision',
+        enabled: { viewport: true, render: true, editMode: true, onCage: false },
+        params: { levels: 2 },
+      }],
+    })
+    const document = scene([object])
+    const parameter = parameterForSceneProperty({
+      id: 'detail',
+      label: 'Detail',
+      group: 'main',
+      document,
+      binding: { objectId: 'object-1', property: 'modifiers[modifier-1].levels' },
+    })
+    expect(parameter).toMatchObject({ kind: 'number', min: 0, max: 6, step: 1, defaultValue: 2 })
+  })
+
+  it('names a control after what it drives', () => {
+    const object = meshObject('object-1', 'Cube', {
+      modifiers: [{
+        id: 'modifier-1',
+        kind: 'subsurf',
+        name: 'Subdivision',
+        enabled: { viewport: true, render: true, editMode: true, onCage: false },
+        params: {},
+      }],
+    })
+    const document = scene([object])
+    expect(scenePropertyLabel(document, { objectId: 'object-1', property: 'modifiers[modifier-1].levels' }))
+      .toBe('Cube · Subdivision levels viewport')
+    expect(scenePropertyLabel(document, { objectId: 'object-1', property: 'transform.position.x' })).toBe('Cube · Location X')
+    expect(scenePropertyLabel(document, { property: 'world.strength' })).toBe('World strength')
+  })
+
+  it('knows a modifier parameter’s type from the module rather than from the path', () => {
+    const object = meshObject('object-1', 'Cube', {
+      modifiers: [{
+        id: 'modifier-1',
+        kind: 'subsurf',
+        name: 'Subdivision',
+        enabled: { viewport: true, render: true, editMode: true, onCage: false },
+        params: {},
+      }],
+    })
+    const document = scene([object])
+    expect(scenePropertyType(document, { objectId: 'object-1', property: 'modifiers[modifier-1].levels' })).toBe('number')
+    expect(scenePropertyType(document, { objectId: 'object-1', property: 'modifiers[modifier-1].simple' })).toBe('boolean')
+    expect(scenePropertyType(document, { objectId: 'object-1', property: 'modifiers[modifier-1].nothing' })).toBeNull()
+  })
+})
+
+describe('reading a rig from a file', () => {
+  const targets = (document: SceneDocument) => sceneRigTargets(document)
+
+  it('keeps a binding whose ends both exist', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const rig = sanitizeSceneRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [numberParameter('slide')],
+      bindings: [{ id: 'b1', objectId: 'object-1', property: 'transform.position.x', parameterId: 'slide' }],
+    }, targets(document))
+    expect(rig?.bindings).toHaveLength(1)
+  })
+
+  it('drops one whose object, control, modifier or vertex is not there', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const rig = sanitizeSceneRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [numberParameter('slide')],
+      bindings: [
+        { objectId: 'object-elsewhere', property: 'transform.position.x', parameterId: 'slide' },
+        { objectId: 'object-1', property: 'transform.position.x', parameterId: 'nothing' },
+        { objectId: 'object-1', property: 'modifiers[modifier-gone].levels', parameterId: 'slide' },
+        { objectId: 'object-1', property: 'mesh.vertices[9999].x', parameterId: 'slide' },
+        { objectId: 'object-1', property: 'transform.wobble', parameterId: 'slide' },
+        { property: 'materials[material-elsewhere].alpha', parameterId: 'slide' },
+      ],
+    }, targets(document))
+    expect(rig?.bindings).toEqual([])
+  })
+
+  it('refuses a rig with no group to put a control in', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    expect(sanitizeSceneRig({ parameters: [numberParameter('slide')], bindings: [] }, targets(document))).toBeUndefined()
+  })
+
+  it('fills in a material binding’s own id from its path', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const rig = sanitizeSceneRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [{ kind: 'color', id: 'tint', label: 'Tint', group: 'main', defaultValue: '#ffffff' }],
+      bindings: [{ property: 'materials[material-default].baseColor', parameterId: 'tint' }],
+    }, targets(document))
+    expect(rig?.bindings[0]).toMatchObject({ materialId: 'material-default' })
+  })
+
+  it('lets the richer control kinds through, which a scene needs and a drawing does not', () => {
+    const document = scene([meshObject('object-1', 'Cube')])
+    const rig = sanitizeSceneRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [{ kind: 'gizmo3d', id: 'place', label: 'Place', group: 'main', defaultValue: { position: [0, 0, 0] } }],
+      bindings: [],
+    }, targets(document))
+    expect(rig?.parameters[0]).toMatchObject({ kind: 'gizmo3d', id: 'place' })
+  })
+
+  it('survives the document sanitiser, bindings and all', () => {
+    const document = scene(
+      [meshObject('object-1', 'Cube')],
+      rigWith([binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'slide' })], [numberParameter('slide')]),
+    )
+    const read = sanitizeSceneDocument(JSON.parse(JSON.stringify(document)))
+    expect(read?.rig?.bindings).toHaveLength(1)
+    expect(read?.rig?.parameters).toHaveLength(1)
+  })
+})
+
+describe('the defaults a rig starts from', () => {
+  it('answers every control’s own default', () => {
+    const rig = rigWith([], [numberParameter('slide', 3), { kind: 'color', id: 'tint', label: 'Tint', group: 'main', defaultValue: '#123456' }])
+    expect(sceneRigDefaults(rig)).toEqual({ slide: 3, tint: '#123456' } satisfies Record<string, ParamValue>)
+  })
+})

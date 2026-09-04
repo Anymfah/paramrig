@@ -13,6 +13,7 @@ import {
 import { cloneMesh } from '@/scene/mesh/data'
 import { faceArea, faceCentre } from '@/scene/mesh/normals'
 import { decomposeMatrix, localMatrix, objectBounds, unionBounds, worldMatrix, type Box } from '@/scene/objects'
+import { DEFAULT_SCENE_GROUP, parseSceneProperty, sanitizeSceneRig, sceneRigTargets, type SceneBinding, type SceneRig } from '@/scene/rig'
 import { registerOperator } from '@/scene/operators/registry'
 import {
   numberParam,
@@ -1087,6 +1088,12 @@ export type ObjectClipboard = {
   meshes: Record<string, MeshData>
   collections: Collection[]
   materials: Material[]
+  /**
+   * The controls that were writing to what was copied, carried along so that pasting into a rig
+   * that has the same controls keeps them working. Only the bindings that belong to an object
+   * travel: a material's binding belongs to the material, which is shared rather than copied.
+   */
+  bindings?: SceneBinding[]
 }
 
 /** An operator result that also carries something for the editor's own clipboard. */
@@ -1095,6 +1102,7 @@ export type ClipboardResult = OperatorResult
 
 export function serializeObjects(document: SceneDocument, ids: string[]): string {
   const objects = document.objects.filter((object) => ids.includes(object.id))
+  const bindings = (document.rig?.bindings ?? []).filter((binding) => binding.objectId && ids.includes(binding.objectId))
   const meshIds = new Set(objects.flatMap((object) => (object.data.kind === 'mesh' ? [object.data.meshId] : [])))
   const meshes: Record<string, MeshData> = {}
   for (const id of meshIds) {
@@ -1124,6 +1132,7 @@ export function serializeObjects(document: SceneDocument, ids: string[]): string
     meshes,
     collections: document.collections.filter((collection) => collectionIds.has(collection.id)),
     materials: document.materials.filter((material) => slots.has(material.id)),
+    ...(bindings.length > 0 ? { bindings } : {}),
   }
   return JSON.stringify(payload)
 }
@@ -1165,6 +1174,25 @@ function readClipboard(payload: string): ObjectClipboard | null {
   const origin = Array.isArray(source.origin) && source.origin.length === 3
     ? source.origin.map((value) => (Number.isFinite(Number(value)) ? Number(value) : 0)) as Vec3
     : [0, 0, 0] as Vec3
+  /*
+   * The bindings are read through the same sanitiser the rest of the payload goes through, against
+   * the clipboard's own objects: a payload naming an object it does not carry is refused here
+   * rather than after it has been pasted. The parameter ids are checked later, against the document
+   * being pasted into — which is the only place that knows them.
+   */
+  const parameterIds = new Set((Array.isArray(source.bindings) ? source.bindings : []).flatMap((binding) => (
+    binding && typeof binding === 'object' && typeof (binding as SceneBinding).parameterId === 'string'
+      ? [(binding as SceneBinding).parameterId]
+      : []
+  )))
+  const bindings = sanitizeSceneRig(
+    {
+      groups: [DEFAULT_SCENE_GROUP],
+      parameters: [...parameterIds].map((id) => ({ kind: 'number', id, label: id, group: 'main', min: 0, max: 1, step: 1, defaultValue: 0 })),
+      bindings: source.bindings ?? [],
+    },
+    sceneRigTargets(read),
+  )?.bindings ?? []
   return {
     kind: CLIPBOARD_KIND,
     version: 1,
@@ -1173,6 +1201,7 @@ function readClipboard(payload: string): ObjectClipboard | null {
     meshes: read.meshes,
     collections: read.collections,
     materials: read.materials,
+    ...(bindings.length > 0 ? { bindings } : {}),
   }
 }
 
@@ -1206,6 +1235,7 @@ export function pasteObjects(document: SceneDocument, payload: string, cursor: V
   const rootId = document.collections[0]?.id ?? ROOT_COLLECTION_ID
   const names = new Set(document.objects.map((object) => object.name))
   const objectIds = new Map<string, string>()
+  const modifierIds = new Map<string, string>()
   const pasted: SceneObject[] = []
   for (const source of clipboard.objects) {
     const id = newId('object')
@@ -1217,6 +1247,11 @@ export function pasteObjects(document: SceneDocument, payload: string, cursor: V
       : copyData(source.data)
     const object = copyObject(source, id, name, data)
     object.collectionId = collectionIds.has(source.collectionId) ? source.collectionId : rootId
+    // A copy gets fresh modifier ids, so any binding that named one has to be told the new name.
+    source.modifiers.forEach((modifier, index) => {
+      const fresh = object.modifiers[index]
+      if (fresh) modifierIds.set(`${source.id}|${modifier.id}`, fresh.id)
+    })
     pasted.push(object)
   }
   const delta: Vec3 = [cursor[0] - clipboard.origin[0], cursor[1] - clipboard.origin[1], cursor[2] - clipboard.origin[2]]
@@ -1233,11 +1268,42 @@ export function pasteObjects(document: SceneDocument, payload: string, cursor: V
     object.transform = { ...object.transform, position: [x + delta[0], y + delta[1], z + delta[2]] }
   }
   const ids = pasted.map((object) => object.id)
+  const rig = pastedBindings(document, clipboard, objectIds, modifierIds)
   return {
-    document: { ...document, objects: [...document.objects, ...pasted], meshes, materials },
+    document: { ...document, objects: [...document.objects, ...pasted], meshes, materials, ...(rig ? { rig } : {}) },
     selection: selectionOf(ids, ids.at(-1) ?? null),
     label: pasted.length === 1 ? 'Paste object' : `Paste ${pasted.length} objects`,
   }
+}
+
+/**
+ * The rig after a paste: the copied bindings re-pointed at the objects that were just made.
+ *
+ * A binding is kept only when the control it names is in *this* document — the same rule the file
+ * reader keeps. Pasting a rigged object into a document with no rig therefore pastes geometry and
+ * nothing else, which is the honest answer: the control it was driven by is not there.
+ */
+function pastedBindings(
+  document: SceneDocument,
+  clipboard: ObjectClipboard,
+  objectIds: Map<string, string>,
+  modifierIds: Map<string, string>,
+): SceneRig | null {
+  const rig = document.rig
+  const carried = clipboard.bindings ?? []
+  if (!rig || carried.length === 0) return null
+  const known = new Set(rig.parameters.map((parameter) => parameter.id))
+  const added = carried.flatMap((binding): SceneBinding[] => {
+    const objectId = binding.objectId ? objectIds.get(binding.objectId) : undefined
+    if (!objectId || !known.has(binding.parameterId)) return []
+    const path = parseSceneProperty(binding.property)
+    if (!path) return []
+    const property = path.kind === 'modifier'
+      ? `modifiers[${modifierIds.get(`${binding.objectId}|${path.modifierId}`) ?? path.modifierId}].${path.param}`
+      : binding.property
+    return [{ ...binding, id: newId('binding'), objectId, property }]
+  })
+  return added.length > 0 ? { ...rig, bindings: [...rig.bindings, ...added] } : null
 }
 
 registerOperator({
