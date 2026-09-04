@@ -97,6 +97,25 @@ describe('unwrapping from the menu', () => {
     expect(new Set(centres).size).toBe(6)
   })
 
+  it('lays each island square with the image rather than on its corner', () => {
+    const next = run(seamedCube, 'uv.unwrap')
+    const uv = activeUv(next.meshes[MESH]!)!
+    /*
+     * A conformal flattening is only defined up to a rotation, so a square face comes back standing
+     * on a corner as readily as lying flat — and a diamond needs twice the room of the square it is.
+     * Every face of a cube is square, so every island's sides have to end up along the axes.
+     */
+    for (let face = 0; face < 6; face += 1) {
+      for (let corner = 0; corner < 4; corner += 1) {
+        const from = (face * 4 + corner) * 2
+        const to = (face * 4 + ((corner + 1) % 4)) * 2
+        const du = Math.abs((uv[to] ?? 0) - (uv[from] ?? 0))
+        const dv = Math.abs((uv[to + 1] ?? 0) - (uv[from + 1] ?? 0))
+        expect(Math.min(du, dv), `face ${face} side ${corner}`).toBeLessThan(0.01)
+      }
+    }
+  })
+
   it('makes a map on a mesh that had none, and keeps the one it had otherwise', () => {
     const before = seamedCube.meshes[MESH]!
     expect(uvMapsOf(before)).toHaveLength(1)

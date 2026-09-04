@@ -7,6 +7,7 @@ import { islandsFromSeams, seamsFromIslands, type UvIsland } from '@/scene/uv/is
 import { lscmUnwrap } from '@/scene/uv/lscm'
 import { packIslands, placementsFor, type IslandBox } from '@/scene/uv/pack'
 import { cubeProjection, cylinderProjection, planarProjection, resetProjection, sphereProjection } from '@/scene/uv/project'
+import { minimumAreaAngle } from '@/scene/uv/orient'
 import { minimizeStretch } from '@/scene/uv/stretch'
 import { smartProject } from '@/scene/uv/smart'
 import type { MeshData, UvMap } from '@/scene/types'
@@ -121,6 +122,39 @@ function islandBox(mesh: MeshData, island: UvIsland, data: number[], starts: num
 }
 
 /**
+ * An island turned so that it lies in the smallest box it fits in.
+ *
+ * A conformal flattening is only defined up to a rotation, so LSCM hands back the square face of a
+ * cube standing on a corner as readily as lying on a side — and a diamond needs twice the room in
+ * the image of the square it is. Packing measures room by the bounding box, so laying every island
+ * on its narrowest side before packing is not a tidying step: it is most of the difference between
+ * a cube that unwraps into six squares and one that unwraps into six diamonds.
+ */
+function layFlat(mesh: MeshData, island: UvIsland, data: number[], starts: number[]): void {
+  const points: number[] = []
+  const loops: number[] = []
+  for (const face of island.faces) {
+    const start = starts[face]
+    const corners = mesh.faces[face]
+    if (start === undefined || !corners) continue
+    for (let corner = 0; corner < corners.length; corner += 1) {
+      loops.push(start + corner)
+      points.push(data[(start + corner) * 2] ?? 0, data[(start + corner) * 2 + 1] ?? 0)
+    }
+  }
+  const angle = minimumAreaAngle(points)
+  if (angle === 0) return
+  const cos = Math.cos(-angle)
+  const sin = Math.sin(-angle)
+  for (let index = 0; index < loops.length; index += 1) {
+    const u = points[index * 2]!
+    const v = points[index * 2 + 1]!
+    data[loops[index]! * 2] = u * cos - v * sin
+    data[loops[index]! * 2 + 1] = u * sin + v * cos
+  }
+}
+
+/**
  * Islands laid into the square.
  *
  * The packer works on boxes and knows nothing about meshes, so this is the part that turns islands
@@ -134,6 +168,7 @@ function packInto(
   starts: number[],
   options: { margin?: number; rotate?: boolean; scaleToFit?: boolean } = {},
 ): void {
+  if (options.rotate ?? true) for (const island of islands) layFlat(mesh, island, data, starts)
   const boxes: IslandBox[] = []
   const extents = islands.map((island) => islandBox(mesh, island, data, starts))
   for (let index = 0; index < islands.length; index += 1) {
