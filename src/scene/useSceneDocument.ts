@@ -22,6 +22,23 @@ import type { SceneDocument, SceneObject, SceneSelection, ViewState } from '@/sc
 
 type HistoryEntry = { document: SceneDocument; label: string; at: number }
 
+const EMPTY_SELECTION: SceneSelection = { objectIds: [], activeObjectId: null }
+
+/**
+ * What was selected in each document, kept for as long as the tab is open.
+ *
+ * Crossing between editing a scene and tuning its controls unmounts one React tree and mounts
+ * another, and a selection that came back empty from that would make the crossing a cost rather
+ * than a switch. It is memory rather than storage on purpose: a selection is where somebody is in
+ * a session, not something a document carries.
+ */
+const lastSelection = new Map<string, SceneSelection>()
+
+/** Forgets it, for a test that opens the same document twice and expects a clean start. */
+export function clearSceneSelectionMemory(): void {
+  lastSelection.clear()
+}
+
 /** How many steps a document keeps when the preferences say nothing, and the most it will keep. */
 const HISTORY_LIMIT = 100
 const HISTORY_CEILING = 256
@@ -87,7 +104,7 @@ export function useSceneDocument(documentId: string, options: { undoSteps?: numb
   limit.current = Math.max(8, Math.min(HISTORY_CEILING, options.undoSteps ?? HISTORY_LIMIT))
   const initial = useMemo(() => getSceneDocument(documentId), [documentId])
   const [document, setDocumentState] = useState<SceneDocument | null>(initial)
-  const [selection, setSelectionState] = useState<SceneSelection>({ objectIds: [], activeObjectId: null })
+  const [selection, setSelectionState] = useState<SceneSelection>(() => lastSelection.get(documentId) ?? EMPTY_SELECTION)
   const [history, setHistory] = useState<{ past: HistoryEntry[]; future: HistoryEntry[] }>({ past: [], future: [] })
   const [lastOperation, setLastOperation] = useState<LastOperation | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -113,7 +130,8 @@ export function useSceneDocument(documentId: string, options: { undoSteps?: numb
     const next = getSceneDocument(documentId)
     latest.current = next
     setDocumentState(next)
-    setSelectionState({ objectIds: [], activeObjectId: null })
+    // Opening the same document again keeps what was selected in it; another document starts clean.
+    setSelectionState(lastSelection.get(documentId) ?? EMPTY_SELECTION)
     historyRef.current = { past: [], future: [] }
     setHistory(historyRef.current)
     setLastOperation(null)
@@ -193,9 +211,11 @@ export function useSceneDocument(documentId: string, options: { undoSteps?: numb
   const setSelection = useCallback((next: SceneSelection | ((current: SceneSelection) => SceneSelection)) => {
     setSelectionState((current) => {
       const value = typeof next === 'function' ? next(current) : next
-      return sameSelection(current, value) ? current : value
+      if (sameSelection(current, value)) return current
+      lastSelection.set(documentId, value)
+      return value
     })
-  }, [])
+  }, [documentId])
 
   const selectObjects = useCallback((ids: string[], active?: string | null) => {
     setSelection({ objectIds: ids, activeObjectId: active === undefined ? ids.at(-1) ?? null : active })

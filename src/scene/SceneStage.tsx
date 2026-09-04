@@ -162,6 +162,10 @@ export function SceneStage({
    * the view, two pan it and pinch it, a tap picks, and a long press is the right button.
    */
   const touches = useRef(new Map<number, { x: number; y: number }>())
+  /** The crosshair drawn while the pointer is locked, and where it has walked to. */
+  const lockedCursor = useRef<HTMLDivElement>(null)
+  const lockedAt = useRef<[number, number] | null>(null)
+  const [locked, setLocked] = useState(false)
   const pinch = useRef<{ distance: number; centre: [number, number] } | null>(null)
   const longPress = useRef<ReturnType<typeof setTimeout> | null>(null)
   const hover = useRef<string | null>(null)
@@ -203,6 +207,21 @@ export function SceneStage({
   bridge.current = operatorBridge
   const toolSettings = useRef(toolOptions)
   toolSettings.current = toolOptions
+  /*
+   * Whether the pointer is locked, which is what says a crosshair has to be drawn for it. The
+   * event is the browser's own rather than the gesture's: a lock can be lost without the gesture
+   * ending, and the drawn cursor has to go the moment the real one comes back.
+   */
+  useEffect(() => {
+    const onChange = () => {
+      const held = window.document.pointerLockElement === surface.current
+      setLocked(held)
+      if (!held) lockedAt.current = null
+    }
+    window.document.addEventListener('pointerlockchange', onChange)
+    return () => window.document.removeEventListener('pointerlockchange', onChange)
+  }, [])
+
   /*
    * A finger lifted anywhere is a finger lifted.
    *
@@ -528,6 +547,13 @@ export function SceneStage({
       <div
         className="scene-surface"
         data-testid="scene-surface"
+        /*
+         * The cursor says what the next press will do, which in a 3D editor is the difference
+         * between placing the cursor and cutting the mesh. The tool is the attribute rather than a
+         * style so that the whole set lives in one place in the stylesheet.
+         */
+        data-tool={document.view.tool}
+        data-mode={document.view.mode}
         data-drop={dropTarget ? '' : undefined}
         onDragOver={(event) => {
           // A file dragged in from the desktop: the drop zone lights up for it as well.
@@ -626,6 +652,7 @@ export function SceneStage({
             if (touches.current.size === 2) {
               // The second finger takes over: whatever the first one had started is abandoned.
               press.current = null
+              if (surface.current) delete surface.current.dataset.gesture
               nav.end()
               const [a, b] = [...touches.current.values()]
               pinch.current = {
@@ -657,6 +684,8 @@ export function SceneStage({
           }
           if (gesture) {
             event.preventDefault()
+            // The pointer says which of the three the drag is, for as long as it lasts.
+            if (surface.current) surface.current.dataset.gesture = gesture
             nav.begin(gesture, event.pointerId, x, y)
             return
           }
@@ -743,6 +772,22 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
+          /*
+           * Under Pointer Lock the system cursor is hidden and clientX stops moving, so the drawn
+           * one follows the movement deltas instead. It is the only pointer there is while a
+           * rotation is passing a full turn, and a gesture nobody can aim is a gesture nobody can
+           * finish.
+           */
+          const drawn = lockedCursor.current
+          if (drawn && window.document.pointerLockElement === event.currentTarget) {
+            const at = lockedAt.current ?? [x, y]
+            lockedAt.current = [
+              Math.max(0, Math.min(box.width, at[0] + event.nativeEvent.movementX)),
+              Math.max(0, Math.min(box.height, at[1] + event.nativeEvent.movementY)),
+            ]
+            drawn.style.left = `${lockedAt.current[0]}px`
+            drawn.style.top = `${lockedAt.current[1]}px`
+          }
           const waiting = press.current
           if (waiting?.tool && !waiting.moved && Math.hypot(x - waiting.x, y - waiting.y) > threshold()) {
             waiting.moved = true
@@ -820,6 +865,7 @@ export function SceneStage({
                 if (longPress.current) clearTimeout(longPress.current)
                 longPress.current = null
                 held.navigating = true
+                if (surface.current) surface.current.dataset.gesture = 'orbit'
                 nav.begin('orbit', event.pointerId, held.x, held.y)
               }
             }
@@ -905,6 +951,7 @@ export function SceneStage({
           }
           if (!nav || !instance || !held) return
           if (held.navigating) {
+            if (surface.current) delete surface.current.dataset.gesture
             nav.end()
             region.current = null
             marquee.clear()
@@ -1021,6 +1068,7 @@ export function SceneStage({
       <SceneToolPath channel={toolPath} />
       <SceneLabels channel={labels} />
       <SceneHud channel={hud} />
+      {locked ? <div ref={lockedCursor} className="scene-locked-cursor" aria-hidden="true" /> : null}
       {children}
     </SceneViewportHost>
   )

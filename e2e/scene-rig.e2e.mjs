@@ -119,5 +119,62 @@ export default run('scene-rig', async ({ page, check, log, helpers, shot }) => {
 
   const kept = await page.evaluate(() => window.__paramrigScene.stats().vertices)
   check('the editor draws what the control was left at', kept === after, `${kept} against ${after}`)
+
+  /* ------------------------------------------- what the switch must not lose */
+
+  // The view and the selection belong to the person rather than to the mode: crossing to Tune and
+  // back is a change of what is on screen, not a reason to be put back at the start.
+  await page.locator('.scene-outliner__row', { hasText: 'Cube' }).first().click()
+  await page.waitForTimeout(300)
+  const box = await helpers.viewportBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down({ button: 'middle' })
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(box.x + box.width / 2 + step * 12, box.y + box.height / 2 + step * 4)
+    await page.waitForTimeout(16)
+  }
+  await page.mouse.up({ button: 'middle' })
+  await page.waitForTimeout(700)
+  const beforeSwitch = {
+    view: (await helpers.scene()).view,
+    selected: await page.locator('.scene-status__stats span').first().textContent(),
+  }
+
+  // The switch a person makes, from the Controls tab, rather than a reload with the mode seeded.
+  await page.locator('.scene-properties__tab[aria-label="Controls"]').click()
+  await page.waitForSelector('.scene-controls__mode', { timeout: 10000 })
+  await page.locator('.scene-controls__mode button', { hasText: 'Tune' }).click()
+  await page.waitForSelector('.scene-preview canvas', { timeout: 20000 })
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+
+  // Tune is not a picture: the viewport keeps drawing and the view can still be turned.
+  const framesBefore = await page.evaluate(() => window.__paramrigScene.frames())
+  await page.locator('.scene-preview__surface').hover({ modifiers: ['Alt'] })
+  await page.keyboard.down('Alt')
+  await page.mouse.down()
+  for (let step = 1; step <= 6; step += 1) {
+    await page.mouse.move(box.x + box.width / 2 + step * 14, box.y + box.height / 2)
+    await page.waitForTimeout(16)
+  }
+  await page.mouse.up()
+  await page.keyboard.up('Alt')
+  await page.waitForTimeout(500)
+  const framesAfter = await page.evaluate(() => window.__paramrigScene.frames())
+  check('Tune keeps drawing rather than freezing on a frame', framesAfter > framesBefore,
+    `${framesBefore} → ${framesAfter} frames`)
+
+  await page.locator('.workspace-toolbar button', { hasText: 'Edit' }).first().click()
+  await page.waitForSelector('.scene-stage', { timeout: 20000 })
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  await page.waitForTimeout(600)
+  const afterSwitch = {
+    view: (await helpers.scene()).view,
+    selected: await page.locator('.scene-status__stats span').first().textContent(),
+  }
+  check('and the crossing keeps the view it was left at',
+    Math.abs(afterSwitch.view.yaw - beforeSwitch.view.yaw) < 1 && Math.abs(afterSwitch.view.pitch - beforeSwitch.view.pitch) < 1,
+    `${beforeSwitch.view.yaw.toFixed(1)}/${beforeSwitch.view.pitch.toFixed(1)} → ${afterSwitch.view.yaw.toFixed(1)}/${afterSwitch.view.pitch.toFixed(1)}`)
+  check('and the selection', afterSwitch.selected === beforeSwitch.selected,
+    `${beforeSwitch.selected} → ${afterSwitch.selected}`)
   void documentId
 })

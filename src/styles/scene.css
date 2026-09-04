@@ -222,6 +222,72 @@
   touch-action: none;
   cursor: default;
 }
+
+/*
+ * A cursor per tool.
+ *
+ * Blender changes the pointer for the tools whose next press is not a selection, and it is the
+ * cheapest way there is of saying what a click will do — a knife that looks like an arrow is a
+ * knife somebody cuts with by accident. Each is an SVG data URI rather than a file, so the whole
+ * set is here to read and there is nothing to fetch at the moment the tool changes. The hotspot is
+ * the pair of numbers after the URL, in the picture's own pixels.
+ *
+ * White with a dark outline, because the viewport behind them is any colour at all.
+ */
+.scene-surface[data-tool='cursor'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cg fill='none' stroke='%23000' stroke-width='3'%3E%3Cpath d='M12 2v6M12 16v6M2 12h6M16 12h6'/%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/g%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.4'%3E%3Cpath d='M12 2v6M12 16v6M2 12h6M16 12h6'/%3E%3Ccircle cx='12' cy='12' r='4'/%3E%3C/g%3E%3C/svg%3E") 12 12, crosshair;
+}
+
+.scene-surface[data-tool='measure'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cg fill='none' stroke='%23000' stroke-width='3'%3E%3Cpath d='M3 15 15 3l6 6L9 21z'/%3E%3Cpath d='M7 11l2 2M11 7l2 2M9.5 16.5l2 2'/%3E%3C/g%3E%3Cg fill='none' stroke='%23fff' stroke-width='1.4'%3E%3Cpath d='M3 15 15 3l6 6L9 21z'/%3E%3C/g%3E%3C/svg%3E") 3 21, crosshair;
+}
+
+.scene-surface[data-tool='annotate'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M3 21l1.5-5L16 4.5 19.5 8 8 19.5z' fill='%23fff' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 3 21, crosshair;
+}
+
+.scene-surface[data-tool='knife'],
+.scene-surface[data-tool='bisect'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M4 20 14 4l4 3-9 14z' fill='%23fff' stroke='%23000' stroke-width='2'/%3E%3Cpath d='M4 20l3-1' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 4 20, crosshair;
+}
+
+.scene-surface[data-tool='bevel'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M4 20V9l5-5h11' fill='none' stroke='%23000' stroke-width='4'/%3E%3Cpath d='M4 20V9l5-5h11' fill='none' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E") 4 20, crosshair;
+}
+
+.scene-surface[data-tool='loop-cut'] {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cg fill='none' stroke='%23000' stroke-width='4'%3E%3Cpath d='M12 2v20'/%3E%3C/g%3E%3Cg fill='none' stroke='%23fff' stroke-width='2'%3E%3Cpath d='M12 2v20'/%3E%3C/g%3E%3Ccircle cx='12' cy='12' r='3' fill='%23fff' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 12 12, crosshair;
+}
+
+/* The three navigation gestures, while they are running. */
+.scene-surface[data-gesture='pan'] { cursor: grabbing; }
+.scene-surface[data-gesture='orbit'] { cursor: move; }
+.scene-surface[data-gesture='zoom'] { cursor: ns-resize; }
+
+/*
+ * A modal transform takes the pointer away — Pointer Lock hides it so a rotation can pass a full
+ * turn — and a viewport with no pointer at all is a viewport nobody can aim. So one is drawn where
+ * the gesture thinks the pointer is.
+ */
+.scene-locked-cursor {
+  position: absolute;
+  z-index: 3;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  pointer-events: none;
+}
+
+.scene-locked-cursor::before,
+.scene-locked-cursor::after {
+  content: '';
+  position: absolute;
+  background: var(--scene-active, #fff);
+  box-shadow: 0 0 0 1px #0009;
+}
+
+.scene-locked-cursor::before { left: 11px; top: 0; width: 2px; height: 24px; }
+.scene-locked-cursor::after { top: 11px; left: 0; height: 2px; width: 24px; }
 .scene-viewport__error {
   position: absolute;
   inset: 0;
