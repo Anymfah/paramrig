@@ -1,3 +1,4 @@
+import { onOutlineFont } from '@/scene/curve/font'
 import { curveMesh } from '@/scene/curve/geometry'
 import { sampleSpline } from '@/scene/curve/spline'
 import { textMesh } from '@/scene/curve/text'
@@ -43,6 +44,13 @@ const generated = new Map<string, MeshData>()
 export function clearGeneratedCache(): void {
   generated.clear()
 }
+
+/*
+ * A text object built before its font landed is an empty mesh, and an empty mesh kept under the
+ * data's own key would stay empty for ever: nothing about the text changed, so nothing would ask
+ * for it again. The registry says when a font arrives, and everything built without one goes.
+ */
+onOutlineFont(() => { generated.clear() })
 
 /** The first spline of the object a curve names as its taper, read in that object's own space. */
 function taperSpline(document: SceneDocument, taperObjectId: string | undefined) {

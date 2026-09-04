@@ -10,6 +10,7 @@ import { localFromWorldPoint, worldMatrix, worldPointOf } from '@/scene/objects'
 import { symmetryMap } from '@/scene/operators/symmetry'
 import { proportionalWeights, type FalloffKind } from '@/scene/transform/proportional'
 import type { Basis } from '@/scene/transform/math'
+import { curveCage, writeCagePositions } from '@/scene/curve/cage'
 import type { TransformResult, TransformTarget } from '@/scene/transform/session'
 import type { SceneDocument, SceneObject, SceneSelection, Vec3 } from '@/scene/types'
 
@@ -76,8 +77,10 @@ export function elementTargets(
   let tangent: Vec3 | null = null
   for (const objectId of editedObjectIds(selection)) {
     const object = document.objects.find((candidate) => candidate.id === objectId)
-    if (!object || object.data.kind !== 'mesh') continue
-    const data = meshOf(document, object)
+    if (!object) continue
+    // A curve is moved by its cage: the knots and the handles are the vertices, so G, R and S and
+    // everything that reaches them — a typed number, the sidebar, snapping — need no second version.
+    const data = object.data.kind === 'curve' ? curveCage(object.data) : meshOf(document, object)
     if (!data) continue
     // Nothing selected here means nothing to move, and asking that of the *selection* rather than
     // of the mesh is what keeps opening a hundred thousand vertices from building their adjacency
@@ -170,7 +173,20 @@ export function applyElementTargets(
   let next = document
   for (const [objectId, points] of byObject) {
     const object = next.objects.find((candidate) => candidate.id === objectId)
-    if (!object || object.data.kind !== 'mesh') continue
+    if (!object) continue
+    if (object.data.kind === 'curve') {
+      const curve = object.data
+      const matrix = worldMatrix(next, object)
+      /*
+       * A knot carries its handles, and the cage writes that rule; symmetry and the mirror clipping
+       * do not apply — they are about a mesh's own topology, and a curve has none of it.
+       */
+      const moved = points.map(({ vertexId, point }) => ({ vertexId, point: localFromWorldPoint(matrix, point) }))
+      const written = writeCagePositions(curve, moved)
+      next = { ...next, objects: next.objects.map((entry) => (entry.id === objectId ? { ...entry, data: written } : entry)) }
+      continue
+    }
+    if (object.data.kind !== 'mesh') continue
     const data = meshOf(next, object)
     if (!data) continue
     const mesh = { ...data, vertices: [...data.vertices] }

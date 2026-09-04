@@ -80,6 +80,7 @@ function selecting(
   context: OperatorContext,
   work: (target: EditTarget, elements: ElementSelection, mode: SelectMode) => ElementSelection,
   label: string,
+  options: { curves?: boolean } = {},
 ): OperatorResult {
   return runOnMeshes(context, (target) => {
     let elements = toElements(context.selection, target.object.id)
@@ -88,7 +89,7 @@ function selecting(
     // which is what makes moving a face move its vertices.
     const flushed = propagateUp(target.mesh, propagateDown(target.mesh, elements))
     return { select: slotsOf(target, flushed) }
-  }, { label })
+  }, { label, curves: options.curves === true })
 }
 
 /* ------------------------------------------------------------------ the all */
@@ -103,8 +104,8 @@ registerOperator({
   defaults: {},
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context),
-  run: (context) => selecting(context, (target) => selectAll(target.mesh), 'Select all'),
+  available: (context) => requireEdit(context, undefined, { curves: true }),
+  run: (context) => selecting(context, (target) => selectAll(target.mesh), 'Select all', { curves: true }),
 })
 
 registerOperator({
@@ -117,8 +118,8 @@ registerOperator({
   defaults: {},
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context),
-  run: (context) => runOnMeshes(context, () => ({ select: {}, active: null }), { label: 'Select none' }),
+  available: (context) => requireEdit(context, undefined, { curves: true }),
+  run: (context) => runOnMeshes(context, () => ({ select: {}, active: null }), { label: 'Select none', curves: true }),
 })
 
 registerOperator({
@@ -131,12 +132,12 @@ registerOperator({
   defaults: {},
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context),
+  available: (context) => requireEdit(context, undefined, { curves: true }),
   run: (context) => runOnMeshes(context, (target) => {
     let elements = toElements(context.selection, target.object.id)
     for (const mode of modes(context)) elements = invertSelection(target.mesh, elements, mode)
     return { select: slotsOf(target, elements), active: null }
-  }, { label: 'Invert selection' }),
+  }, { label: 'Invert selection', curves: true }),
 })
 
 /* ---------------------------------------------------------------- by degree */
@@ -181,8 +182,8 @@ registerOperator({
   defaults: {},
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context, 'any'),
-  run: (context) => selecting(context, (target, elements) => selectLinked(target.mesh, elements), 'Select linked'),
+  available: (context) => requireEdit(context, 'any', { curves: true }),
+  run: (context) => selecting(context, (target, elements) => selectLinked(target.mesh, elements), 'Select linked', { curves: true }),
 })
 
 registerOperator({
@@ -375,7 +376,7 @@ registerOperator<PickParams>({
   defaults: { kind: 'vertex', slot: -1, extend: false, toggle: false },
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context),
+  available: (context) => requireEdit(context, undefined, { curves: true }),
   run: (context, params) => {
     const kind = params.kind
     const slot = Number(params.slot)
@@ -412,7 +413,7 @@ registerOperator<PickParams>({
       for (const id of picked.faces) base.faces.add(id)
       const flushed = propagateUp(target.mesh, propagateDown(target.mesh, base))
       return { select: slotsOf(target, flushed), active: { kind, slot } }
-    }, { label: 'Select element' })
+    }, { label: 'Select element', curves: true })
   },
 })
 
@@ -439,7 +440,7 @@ registerOperator<RegionParams>({
   defaults: { mode: 'new', found: [] },
   mode: 'edit',
   history: false,
-  available: (context) => requireEdit(context),
+  available: (context) => requireEdit(context, undefined, { curves: true }),
   run: (context, params) => runOnMeshes(context, (target) => {
     const covered = params.found.find((entry) => entry.objectId === target.object.id)
     const base = params.mode === 'new' ? selectNone() : toElements(context.selection, target.object.id)
@@ -459,5 +460,5 @@ registerOperator<RegionParams>({
     for (const key of picked.edges) base.edges.add(key)
     for (const id of picked.faces) base.faces.add(id)
     return { select: slotsOf(target, propagateUp(target.mesh, propagateDown(target.mesh, base))) }
-  }, { label: 'Select region' }),
+  }, { label: 'Select region', curves: true }),
 })

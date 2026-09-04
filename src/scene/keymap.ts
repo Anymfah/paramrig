@@ -39,6 +39,14 @@ export type KeyBinding = {
   mode?: EditorMode
   /** Only when the edit mode is selecting these element kinds. */
   selectMode?: SelectMode
+  /**
+   * Only when the object open for editing is of this kind.
+   *
+   * Curve editing shares edit mode with mesh editing and shares Blender's letters with it: E grows
+   * a spline there and extrudes a face here, V sets a handle type there and rips a vertex here. The
+   * mode alone cannot tell them apart, so the kind of the data does.
+   */
+  editData?: 'mesh' | 'curve'
   action: KeyAction
   label: string
   /** Which of the preferences has to be on for this binding to exist. */
@@ -65,6 +73,8 @@ export type KeyboardEventLike = {
 export type KeyContext = {
   mode: EditorMode
   selectMode: SelectMode[]
+  /** What the active object being edited is, when one is; a mesh unless it is said otherwise. */
+  editData?: 'mesh' | 'curve'
   preferences: ScenePreferences
   /** true when a text field has focus */
   typing: boolean
@@ -79,6 +89,8 @@ export type KeymapEntry = {
   actionId: string
   /** Absent when the binding applies in every mode. */
   mode?: EditorMode
+  /** Set when the binding only applies while a curve is open, so the page can say which E is which. */
+  editData?: 'mesh' | 'curve'
   note?: string
 }
 
@@ -351,6 +363,15 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'KeyF', ctrl: true, mode: 'edit', action: action('menu.face'), label: 'Face menu' },
   { code: 'KeyD', shift: true, mode: 'edit', action: operator('mesh.duplicate'), label: 'Duplicate' },
 
+  /* editing a curve: Blender's own letters, told apart from the mesh ones by what is being edited */
+  { code: 'KeyE', mode: 'edit', editData: 'curve', action: operator('curve.extrude'), label: 'Extrude curve' },
+  { code: 'KeyV', mode: 'edit', editData: 'curve', action: operator('curve.setHandleType'), label: 'Set handle type' },
+  { code: 'KeyC', alt: true, mode: 'edit', editData: 'curve', action: operator('curve.toggleCyclic'), label: 'Toggle cyclic' },
+  { code: 'KeyT', ctrl: true, mode: 'edit', editData: 'curve', action: operator('curve.tilt'), label: 'Tilt' },
+  { code: 'KeyS', alt: true, mode: 'edit', editData: 'curve', action: operator('curve.setRadius'), label: 'Set curve radius' },
+  { code: 'KeyX', mode: 'edit', editData: 'curve', action: operator('curve.delete'), label: 'Delete curve points' },
+  { code: 'Delete', mode: 'edit', editData: 'curve', action: operator('curve.delete'), label: 'Delete curve points' },
+
   /* what a transform does, in both modes */
   { code: 'KeyO', mode: 'edit', action: action('proportional.toggle'), label: 'Proportional editing' },
   { code: 'KeyO', shift: true, mode: 'edit', action: action('proportional.falloff'), label: 'Proportional falloff pie' },
@@ -445,6 +466,7 @@ function modifiersMatch(binding: KeyBinding, event: KeyboardEventLike): boolean 
 function appliesHere(binding: KeyBinding, context: KeyContext): boolean {
   if (binding.mode && binding.mode !== context.mode) return false
   if (binding.selectMode && !context.selectMode.includes(binding.selectMode)) return false
+  if (binding.editData && binding.editData !== (context.editData ?? 'mesh')) return false
   if (binding.requires && !context.preferences[binding.requires]) return false
   return true
 }
@@ -454,7 +476,8 @@ function appliesHere(binding: KeyBinding, context: KeyContext): boolean {
  * more decisive context: ⇧D in edit mode is a different operation, not a variant of the same one.
  */
 function specificity(binding: KeyBinding): number {
-  return (binding.mode ? 2 : 0) + (binding.selectMode ? 1 : 0)
+  // The data's kind is as decisive as the mode: E on a curve is not a variant of E on a mesh.
+  return (binding.mode ? 2 : 0) + (binding.editData ? 2 : 0) + (binding.selectMode ? 1 : 0)
 }
 
 /**
@@ -631,6 +654,7 @@ export function describeKeymap(preferences?: Partial<ScenePreferences>): KeymapS
       label: binding.label,
       actionId: binding.action.id,
       ...(binding.mode ? { mode: binding.mode } : {}),
+      ...(binding.editData ? { editData: binding.editData } : {}),
       ...(binding.note ? { note: binding.note } : {}),
     }
     const section = sectionOf(binding.action.id)

@@ -274,6 +274,13 @@ Every chord in this section is Blender’s own.
 | `U` | UV mapping menu (edit mode) |
 | `⌃F` | Face menu (edit mode) |
 | `⇧D` | Duplicate (edit mode) |
+| `E` | Extrude curve (editing a curve) |
+| `V` | Set handle type (editing a curve) |
+| `⌥C` | Toggle cyclic (editing a curve) |
+| `⌃T` | Tilt (editing a curve) |
+| `⌥S` | Set curve radius (editing a curve) |
+| `X` | Delete curve points (editing a curve) |
+| `Delete` | Delete curve points (editing a curve) |
 | `O` | Proportional editing (edit mode) |
 | `⇧O` | Proportional falloff pie (edit mode) |
 | `⌥O` | Proportional, connected only (edit mode) |

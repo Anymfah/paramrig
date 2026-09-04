@@ -26,6 +26,8 @@ import {
 import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/environment'
 import { cameraFrame, type CameraFrame } from '@/scene/viewport/cameraFrame'
 import { solidColour } from '@/scene/viewport/solidColour'
+import { curveCage } from '@/scene/curve/cage'
+import { curveLinePositions } from '@/scene/curve/geometry'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
@@ -260,7 +262,7 @@ export class SceneViewport {
   private gizmoBasis = { x: [1, 0, 0] as Vec3, y: [0, 1, 0] as Vec3, z: [0, 0, 1] as Vec3 }
   private views = new Map<string, ObjectView>()
   /** One per mesh open for editing, keyed by object id; the index is what its element ids carry. */
-  private editViews = new Map<string, { view: EditView; index: number; cage?: MeshView }>()
+  private editViews = new Map<string, { view: EditView; index: number; cage?: MeshView; curveLine?: ViewportLines }>()
   private editObjects: string[] = []
   /** Built the first time the face-orientation overlay is switched on, and kept for the session. */
   private orientationMaterial: Material | null = null
@@ -385,6 +387,7 @@ export class SceneViewport {
     for (const entry of this.editViews.values()) {
       entry.view.dispose()
       entry.cage?.dispose()
+      entry.curveLine?.dispose()
     }
     this.editViews.clear()
     this.cursor?.dispose()
@@ -430,6 +433,7 @@ export class SceneViewport {
     for (const entry of this.editViews.values()) {
       entry.view.dispose()
       entry.cage?.dispose()
+      entry.curveLine?.dispose()
     }
     this.editViews.clear()
     this.renderer?.resetState()
@@ -857,6 +861,7 @@ export class SceneViewport {
       this.picking?.scene.remove(entry.view.pickRoot)
       entry.view.dispose()
       entry.cage?.dispose()
+      entry.curveLine?.dispose()
       this.editViews.delete(id)
     }
     for (const [id, view] of this.views) {
@@ -873,7 +878,16 @@ export class SceneViewport {
        * geometry rather than borrowing the object's: a face tinted by the index of another mesh's
        * face is a tint on the wrong face.
        */
-      const data = object ? evaluateObject(document, object, { editing: true })?.cage ?? meshOf(document, object) : null
+      /*
+       * A curve open for editing shows its cage — the knots and the handle arms — because that is
+       * what a person moves. The curve itself is not in the cage: a straight line from knot to knot
+       * is not the curve, so it is drawn separately, from the same samples the surface is built on.
+       */
+      const data = object
+        ? (object.data.kind === 'curve'
+          ? curveCage(object.data)
+          : evaluateObject(document, object, { editing: true })?.cage ?? meshOf(document, object))
+        : null
       if (!object || !objectView || !data) return
       let entry = this.editViews.get(id)
       if (!entry) {
@@ -885,6 +899,20 @@ export class SceneViewport {
       if (!entry.cage || !meshViewIsCurrent(entry.cage, data)) {
         entry.cage?.dispose()
         entry.cage = buildMeshView(data)
+      }
+      if (object.data.kind === 'curve') {
+        const positions = curveLinePositions(object.data)
+        if (!entry.curveLine) {
+          entry.curveLine = createLines({ positions, colour: splitAlpha(this.theme.edge).colour, width: 2, opacity: 1 })
+          entry.view.root.add(entry.curveLine.object)
+        } else {
+          entry.curveLine.setPositions(positions)
+        }
+        setLineResolution(entry.curveLine.material, buffer.width, buffer.height)
+      } else if (entry.curveLine) {
+        entry.curveLine.object.removeFromParent()
+        entry.curveLine.dispose()
+        entry.curveLine = undefined
       }
       entry.view.setResolution(buffer.width, buffer.height, this.pixelRatio)
       entry.view.setMesh(data, entry.cage)
@@ -899,7 +927,13 @@ export class SceneViewport {
         normals: overlays?.normals ?? false,
         normalLength: overlays?.normalLength ?? 0.2,
       })
-      entry.view.setXray(this.view?.xray ?? false)
+      /*
+       * A curve's knots and handles lie *inside* the surface the curve generates — the centreline of
+       * a bevelled tube is exactly where they are — so depth-testing them hides every one of them
+       * behind the object they belong to. Blender shows them; the overlay is drawn without the depth
+       * test whenever a curve is what is open, whatever the x-ray switch says.
+       */
+      entry.view.setXray((this.view?.xray ?? false) || object.data.kind === 'curve')
       entry.view.setSelection(editSlots(data, this.selection, id))
       entry.view.setMatrix(objectView.root.matrix)
     })

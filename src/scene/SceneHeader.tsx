@@ -7,7 +7,7 @@ import {
   type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { EDGE_MENU, EDIT_SELECT_MENU, EDIT_VIEW_MENU, FACE_MENU, MESH_MENU, VERTEX_MENU } from '@/scene/editMenus'
+import { CURVE_MENU, EDGE_MENU, EDIT_SELECT_MENU, EDIT_VIEW_MENU, FACE_MENU, MESH_MENU, VERTEX_MENU } from '@/scene/editMenus'
 import { menuEntries } from '@/scene/commands'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { MATCAPS, MATCAP_LABELS } from '@/scene/viewport/matcap'
@@ -76,6 +76,7 @@ const SELECT_MENU: Array<string | '-'> = [
 const ADD_MENU: Array<string | '-'> = [
   'add.plane', 'add.cube', 'add.circle', 'add.uvSphere', 'add.icoSphere',
   'add.cylinder', 'add.cone', 'add.torus', 'add.grid', 'add.paramRigMark', '-',
+  'add.bezier', 'add.bezierCircle', 'add.path', 'add.text', '-',
   'add.lightPoint', 'add.lightSun', 'add.lightSpot', 'add.lightArea', '-',
   'add.camera', 'add.empty',
 ]
@@ -104,6 +105,13 @@ const EDIT_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
   { label: 'Vertex', ids: VERTEX_MENU },
   { label: 'Edge', ids: EDGE_MENU },
   { label: 'Face', ids: FACE_MENU },
+]
+
+/** A curve has knots rather than vertices, edges and faces, so it has one menu rather than four. */
+const CURVE_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
+  { label: 'View', ids: EDIT_VIEW_MENU },
+  { label: 'Select', ids: EDIT_SELECT_MENU },
+  { label: 'Curve', ids: CURVE_MENU },
 ]
 
 /* ------------------------------------------------------- the view's state */
@@ -474,9 +482,11 @@ function HeaderSettings({ label, children }: { label: string; children: ReactNod
   )
 }
 
-export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode, onCommand, onSculpt }: {
+export function SceneHeader({ view, mode, editData, context, onRunOperator, onView, onMode, onCommand, onSculpt }: {
   view: ViewState
   mode: EditorMode
+  /** What the active object being edited is, so edit mode offers the right menus. */
+  editData?: 'mesh' | 'curve'
   context: OperatorContext | null
   onRunOperator: (id: string, params?: Record<string, unknown>) => void
   onView: (patch: Partial<ViewState>) => void
@@ -491,7 +501,9 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
   const narrow = useNarrowHeader(barRef)
 
   const runOperator = (id: string) => onRunOperator(id)
-  const menus = mode === 'edit' ? EDIT_MODE_MENUS : OBJECT_MODE_MENUS
+  const menus = mode !== 'edit'
+    ? OBJECT_MODE_MENUS
+    : editData === 'curve' ? CURVE_MODE_MENUS : EDIT_MODE_MENUS
   const modeLabel = MODES.find((entry) => entry.value === mode)?.label ?? 'Object mode'
 
   const modeEntries: SceneMenuEntry[] = MODES.map((entry) => ({

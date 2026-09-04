@@ -116,7 +116,9 @@ function cell(text: string): string {
 
 /** What a row runs, with the mode it is scoped to when it is scoped to one. */
 function actionOf(entry: KeymapEntry): string {
-  return entry.mode ? `${entry.label} (${entry.mode} mode)` : entry.label
+  // A curve and a mesh share edit mode and share Blender's letters; the scope has to say which.
+  const scope = entry.editData === 'curve' ? 'editing a curve' : entry.mode ? `${entry.mode} mode` : ''
+  return scope ? `${entry.label} (${scope})` : entry.label
 }
 
 function chord(shortcut: string): string {

@@ -52,7 +52,7 @@ export type OperatorResult = {
 export type Availability = true | string
 
 export type OperatorSection =
-  | 'Add' | 'Object' | 'Mesh' | 'Vertex' | 'Edge' | 'Face' | 'UV'
+  | 'Add' | 'Object' | 'Mesh' | 'Vertex' | 'Edge' | 'Face' | 'UV' | 'Curve'
   | 'Select' | 'View' | 'Transform' | 'Collection' | 'File' | 'Mode' | 'Material'
 
 export type Operator<Params extends OperatorParams = OperatorParams> = {

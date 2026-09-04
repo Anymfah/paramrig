@@ -686,7 +686,8 @@ addOperator({
 
 addOperator({
   id: 'add.bezierCircle',
-  label: 'Circle',
+  // Named for what it is rather than for its shape: the mesh circle is one entry above it.
+  label: 'Bézier circle',
   icon: 'curve',
   description: 'Four knots that close into a circle.',
   entry: 'Add Bézier circle',

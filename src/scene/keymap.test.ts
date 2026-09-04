@@ -170,7 +170,7 @@ describe('the chords the browser owns', () => {
   it('gives every chord one meaning', () => {
     const seen = new Map<string, string>()
     for (const binding of KEYMAP) {
-      const scope = `${shortcutLabel(binding)} ${binding.mode ?? 'any mode'} ${binding.selectMode ?? 'any element'}`
+      const scope = `${shortcutLabel(binding)} ${binding.mode ?? 'any mode'} ${binding.selectMode ?? 'any element'} ${binding.editData ?? 'any data'}`
       expect(seen.get(scope)).toBeUndefined()
       seen.set(scope, binding.action.id)
     }

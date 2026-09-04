@@ -1,3 +1,4 @@
+import { curveCage } from '@/scene/curve/cage'
 import { meshOf } from '@/scene/document'
 import { editedObjectIds } from '@/scene/mesh/selection'
 import { cachedTriangulation } from '@/scene/mesh/triangulate'
@@ -31,8 +32,10 @@ export function editStats(document: SceneDocument, selection: SceneSelection): E
   }
   for (const id of editedObjectIds(selection)) {
     const object = document.objects.find((candidate) => candidate.id === id)
-    if (!object || object.data.kind !== 'mesh') continue
-    const mesh = meshOf(document, object)
+    if (!object) continue
+    // A curve is counted through its cage, so the bar says how many of its knots and handles are
+    // in hand — which is the same question the numbers answer for a mesh.
+    const mesh = object.data.kind === 'curve' ? curveCage(object.data) : (object.data.kind === 'mesh' ? meshOf(document, object) : null)
     if (!mesh) continue
     stats.objects += 1
     stats.vertices.total += mesh.vertexIds.length

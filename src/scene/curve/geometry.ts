@@ -472,3 +472,32 @@ export function joinMeshes(parts: readonly MeshData[]): MeshData {
   }
   return mesh
 }
+
+/**
+ * The curve itself as line segments, for the overlay that draws it while it is being edited.
+ *
+ * The same samples the surface is built from, so what is drawn over the knots is exactly the curve
+ * the bevel would sweep along — a second, coarser walk would show a person one curve and give them
+ * another.
+ */
+export function curveLinePositions(data: CurveData): Float32Array {
+  const runs = data.splines
+    .map((spline) => sampleSpline(spline, data.resolution))
+    .filter((entry) => entry.points.length >= 2)
+    .map((entry) => (data.dimensions === '2D' ? flatten(entry) : entry))
+  let segments = 0
+  for (const run of runs) segments += run.points.length - (run.closed ? 0 : 1)
+  const positions = new Float32Array(segments * 6)
+  let at = 0
+  for (const run of runs) {
+    const count = run.points.length
+    const spans = run.closed ? count : count - 1
+    for (let index = 0; index < spans; index += 1) {
+      const a = run.points[index]!
+      const b = run.points[(index + 1) % count]!
+      positions.set([a[0], a[1], a[2], b[0], b[1], b[2]], at)
+      at += 6
+    }
+  }
+  return positions
+}

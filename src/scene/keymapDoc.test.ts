@@ -30,7 +30,8 @@ function sectionOf(page: string, title: string): string {
 
 /** What the table should print for a binding, mode and all. */
 function expectedAction(binding: KeyBinding): string {
-  return binding.mode ? `${binding.label} (${binding.mode} mode)` : binding.label
+  const scope = binding.editData === 'curve' ? 'editing a curve' : binding.mode ? `${binding.mode} mode` : ''
+  return scope ? `${binding.label} (${scope})` : binding.label
 }
 
 describe('the generated keymap page', () => {

@@ -22,11 +22,13 @@ function withView(document: SceneDocument, view: Partial<ViewState>): SceneDocum
   return { ...document, view: { ...document.view, ...view } }
 }
 
-/** Every selected mesh, active first: what Tab opens. */
-function editableObjects(context: OperatorContext): string[] {
+/** Every selected mesh or curve, active first: what Tab opens. */
+function editableObjects(context: OperatorContext, mode: EditorMode = 'edit'): string[] {
   const ids = context.selection.objectIds.filter((id) => {
     const object = context.document.objects.find((candidate) => candidate.id === id)
-    return object?.data.kind === 'mesh' && object.visible
+    if (!object?.visible) return false
+    // A curve is edited by its knots and handles; sculpting one has no meaning, so it stays a mesh act.
+    return object.data.kind === 'mesh' || (mode === 'edit' && object.data.kind === 'curve')
   })
   const active = context.selection.activeObjectId
   if (active && ids.includes(active)) return [active, ...ids.filter((id) => id !== active)]
@@ -34,8 +36,8 @@ function editableObjects(context: OperatorContext): string[] {
 }
 
 function enterEdit(context: OperatorContext, mode: EditorMode): OperatorResult {
-  const ids = editableObjects(context)
-  if (ids.length === 0) return { error: 'Select a mesh to edit first.' }
+  const ids = editableObjects(context, mode)
+  if (ids.length === 0) return { error: mode === 'edit' ? 'Select a mesh or a curve to edit first.' : 'Select a mesh to sculpt first.' }
   const selection: SceneSelection = {
     ...context.selection,
     activeObjectId: ids[0]!,
@@ -65,12 +67,12 @@ registerOperator({
   section: 'Mode',
   shortcut: 'Tab',
   icon: 'mesh',
-  description: 'Open the selected meshes for editing, or close them again.',
+  description: 'Open the selected meshes and curves for editing, or close them again.',
   params: [],
   defaults: {},
   available: (context) => {
     if (context.document.view.mode !== 'object') return true
-    return editableObjects(context).length > 0 ? true : 'Select a mesh to edit first.'
+    return editableObjects(context).length > 0 ? true : 'Select a mesh or a curve to edit first.'
   },
   run: (context) => (context.document.view.mode === 'object' ? enterEdit(context, 'edit') : leaveEdit(context)),
 })
@@ -90,12 +92,12 @@ registerOperator({
   id: 'mode.edit',
   label: 'Edit mode',
   section: 'Mode',
-  description: 'Open the selected meshes for editing.',
+  description: 'Open the selected meshes and curves for editing.',
   params: [],
   defaults: {},
   available: (context) => {
     if (context.document.view.mode === 'edit') return 'Already in edit mode.'
-    return editableObjects(context).length > 0 ? true : 'Select a mesh to edit first.'
+    return editableObjects(context).length > 0 ? true : 'Select a mesh or a curve to edit first.'
   },
   run: (context) => enterEdit(context, 'edit'),
 })
@@ -130,7 +132,7 @@ registerOperator({
 
 /** The one mesh sculpt mode would open: the active one, or the only selected one. */
 function sculptable(context: OperatorContext): string | null {
-  const ids = editableObjects(context)
+  const ids = editableObjects(context, 'sculpt')
   return ids[0] ?? null
 }
 

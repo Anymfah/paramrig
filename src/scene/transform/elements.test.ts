@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { meshOf } from '@/scene/document'
+import { cageId } from '@/scene/curve/cage'
+import { bezierCurveData } from '@/scene/curve/data'
+import { createSceneDocument, meshOf } from '@/scene/document'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { editContext } from '@/scene/operators/editHarness'
 import { applyElementTargets, elementTargetId } from '@/scene/transform/elements'
@@ -107,5 +109,52 @@ describe('mirror clipping', () => {
     const positive = mesh.vertexIds.find((_, slot) => mesh.vertices[slot * 3]! > 0)!
     const next = applyElementTargets(document, [move(object, positive, [-3, 0, 0])])
     expect(positionOf(next, object, positive)[0]).toBeCloseTo(-3, 6)
+  })
+})
+
+describe('moving a curve', () => {
+  function curveScene(): SceneDocument {
+    const document = createSceneDocument()
+    return {
+      ...document,
+      objects: [{
+        id: 'curve-1',
+        name: 'Curve',
+        kind: 'curve',
+        collectionId: document.collections[0]!.id,
+        transform: { position: [1, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+        visible: true,
+        selectable: true,
+        renderable: true,
+        data: bezierCurveData(),
+        modifiers: [],
+        materialSlots: [],
+      }],
+      meshes: {},
+    }
+  }
+
+  it('writes a moved knot back into the curve, in the object’s own space', () => {
+    const document = curveScene()
+    const results: TransformResult[] = [{
+      id: elementTargetId('curve-1', cageId(0, 0, 'knot')),
+      // The target is in the world, and the object sits a metre along X: the knot lands at -1.
+      transform: { position: [0, 3, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    }]
+    const next = applyElementTargets(document, results)
+    const object = next.objects[0]!
+    if (object.data.kind !== 'curve') throw new Error('not a curve')
+    expect(object.data.splines[0]!.points[0]!.co).toEqual([-1, 3, 0])
+    // The handles come with the knot, which is what makes dragging the middle of a Bézier point work.
+    expect(object.data.splines[0]!.points[0]!.left).toEqual([-1.5, 2.5, 0])
+  })
+
+  it('leaves the document alone when the id names no knot', () => {
+    const document = curveScene()
+    const results: TransformResult[] = [{
+      id: elementTargetId('curve-1', -3),
+      transform: { position: [0, 3, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    }]
+    expect(applyElementTargets(document, results).objects[0]!.data).toEqual(document.objects[0]!.data)
   })
 })

@@ -595,6 +595,9 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     const binding = resolveKey(event, {
       mode: document.view.mode,
       selectMode: document.view.selectMode,
+      // Which letters mean what in edit mode depends on what is open: a curve answers to Blender's
+      // curve keys, and a mesh to its own.
+      editData: editor.activeObject?.data.kind === 'curve' ? 'curve' : 'mesh',
       preferences,
       typing,
     })
@@ -772,7 +775,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       case 'menu.normals':
       case 'menu.vertex':
       case 'menu.edge':
-      case 'menu.face': {
+      case 'menu.face':
+      case 'object.deleteConfirm': {
         event.preventDefault()
         const menu = POINTER_MENUS[action.id]
         if (menu) setPointerMenu({ title: menu.title, ids: menu.ids, at: stage.current?.pointerPage() ?? pointerCentre() })
@@ -1011,6 +1015,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             <SceneHeader
               view={document.view}
               mode={document.view.mode}
+              editData={editor.activeObject?.data.kind === 'curve' ? 'curve' : 'mesh'}
               context={context}
               onRunOperator={run}
               onView={patchView}

@@ -47,6 +47,17 @@ export const VERTEX_MENU: MenuIds = [
   'mesh.dissolveVertices', 'mesh.convexHull',
 ]
 
+/**
+ * The Curve menu, which replaces Vertex, Edge and Face while a curve is open: those three are about
+ * a mesh's topology, and a curve has knots instead.
+ */
+export const CURVE_MENU: MenuIds = [
+  'curve.setHandleType', 'curve.toggleCyclic', '-',
+  'curve.subdivide', 'curve.extrude', 'curve.delete', '-',
+  'curve.tilt', 'curve.setRadius', 'curve.smooth', '-',
+  'curve.switchDirection',
+]
+
 export const EDGE_MENU: MenuIds = [
   'mesh.extrudeEdges', 'mesh.bevelEdges', 'mesh.bridgeEdgeLoops', '-',
   'mesh.subdivide', 'mesh.unsubdivide', 'mesh.subdivideEdgeRing', '-',
@@ -135,4 +146,10 @@ export const POINTER_MENUS: Record<string, { title: string; ids: MenuIds }> = {
   'menu.vertex': { title: 'Vertex', ids: VERTEX_MENU },
   'menu.edge': { title: 'Edge', ids: EDGE_MENU },
   'menu.face': { title: 'Face', ids: FACE_MENU },
+  'menu.curve': { title: 'Curve', ids: CURVE_MENU },
+  /*
+   * X in object mode. Blender asks before it deletes, and asking is a menu of one entry rather than
+   * a dialogue: the pointer is already where the answer goes, and Escape is how you say no.
+   */
+  'object.deleteConfirm': { title: 'Delete', ids: ['object.delete'] },
 }

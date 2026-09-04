@@ -1,10 +1,11 @@
+import { curveCage } from '@/scene/curve/cage'
 import { meshOf, withMesh } from '@/scene/document'
 import { edgeKey } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { remapShapeKeys } from '@/scene/mesh/shapeKeys'
 import { editedObjectIds, fromElements, selectNone, toElements, type ElementSelection } from '@/scene/mesh/selection'
 import type { Availability, OperatorContext, OperatorResult } from '@/scene/operators/types'
-import type { ElementRef, MeshData, SceneDocument, SceneObject, SceneSelection, SelectMode } from '@/scene/types'
+import type { CurveData, ElementRef, MeshData, SceneDocument, SceneObject, SceneSelection, SelectMode } from '@/scene/types'
 
 /**
  * What every mesh operator stands on.
@@ -24,7 +25,10 @@ import type { ElementRef, MeshData, SceneDocument, SceneObject, SceneSelection, 
 /** One object open for editing, its mesh built, its selection resolved to slots. */
 export type EditTarget = {
   object: SceneObject
+  /** Empty for a curve: its cage belongs to no mesh in the document. */
   meshId: string
+  /** The curve the cage was built from, when the object open for editing is one. */
+  curve?: CurveData
   mesh: EditMesh
   /** The selection as slots in `mesh`. Faces and edges do not imply their vertices here. */
   vertices: Set<number>
@@ -72,19 +76,29 @@ export function inEditMode(context: OperatorContext): boolean {
  * Every mesh open for editing, active first. An object whose mesh is missing, or which is not a
  * mesh at all, is not a target: an operator never has to check what kind of object it was handed.
  */
-export function editTargets(context: OperatorContext): EditTarget[] {
+export function editTargets(context: OperatorContext, options: { curves?: boolean } = {}): EditTarget[] {
   const ids = editedObjectIds(context.selection)
   const targets: EditTarget[] = []
   for (const id of ids) {
     const object = context.document.objects.find((candidate) => candidate.id === id)
-    if (!object || object.data.kind !== 'mesh') continue
-    const data = meshOf(context.document, object)
+    if (!object) continue
+    /*
+     * A curve open for editing wears a cage: a mesh of its knots and handles, so that the selection
+     * operators — click, box, ⌘A, invert — work on it without a second copy of themselves. Only the
+     * operators that ask for it see one, because an operator that changes geometry would otherwise
+     * be handed a mesh that no document holds and would quietly write it nowhere.
+     */
+    const curve = object.data.kind === 'curve' ? object.data : null
+    if (curve && !options.curves) continue
+    if (!curve && object.data.kind !== 'mesh') continue
+    const data = curve ? curveCage(curve) : meshOf(context.document, object)
     if (!data) continue
     const mesh = EditMesh.from(data)
     const elements = toElements(context.selection, id)
     targets.push({
       object,
-      meshId: object.data.meshId,
+      meshId: object.data.kind === 'mesh' ? object.data.meshId : '',
+      ...(curve ? { curve } : {}),
       mesh,
       vertices: slotsOfVertices(mesh, elements),
       edges: slotsOfEdges(mesh, elements),
@@ -118,7 +132,7 @@ export function hasSelection(target: EditTarget): boolean {
  * folded into one, because “Nothing is selected” and “This works on faces” send a person to two
  * different places.
  */
-export function requireEdit(context: OperatorContext, needs?: SelectMode | 'any'): Availability {
+export function requireEdit(context: OperatorContext, needs?: SelectMode | 'any', options: { curves?: boolean } = {}): Availability {
   if (context.mode !== 'edit') return 'This works in edit mode. Press Tab.'
   /*
    * Answered from the document and the selection, without building a single adjacency.
@@ -131,9 +145,10 @@ export function requireEdit(context: OperatorContext, needs?: SelectMode | 'any'
    */
   const objects = editedObjectIds(context.selection).filter((id) => {
     const object = context.document.objects.find((candidate) => candidate.id === id)
+    if (options.curves && object?.data.kind === 'curve') return true
     return object?.data.kind === 'mesh' && context.document.meshes[object.data.meshId] !== undefined
   })
-  if (objects.length === 0) return 'Open a mesh for editing first.'
+  if (objects.length === 0) return options.curves ? 'Open a mesh or a curve for editing first.' : 'Open a mesh for editing first.'
   if (!needs) return true
   const some = objects.some((id) => {
     const stored = context.selection.elements?.[id]
@@ -174,9 +189,9 @@ function withRemappedShapeKeys(document: SceneDocument, meshId: string, mesh: Me
 export function runOnMeshes(
   context: OperatorContext,
   work: (target: EditTarget) => EditOutcome,
-  options: { label?: string } = {},
+  options: { label?: string; curves?: boolean } = {},
 ): OperatorResult {
-  const targets = editTargets(context)
+  const targets = editTargets(context, { curves: options.curves === true })
   if (targets.length === 0) return { error: 'Open a mesh for editing first.' }
   let document = context.document
   let selection = context.selection
@@ -191,6 +206,12 @@ export function runOnMeshes(
     }
     if (outcome === null) continue
     changed = true
+    if (target.curve) {
+      // A cage is not a mesh the document holds: what an operator says about the *selection* stands,
+      // and what it says about the geometry is dropped, because there is nowhere to put it.
+      selection = writeSelection(selection, target, outcome.select, outcome.active)
+      continue
+    }
     const built = target.mesh.toData()
     document = withMesh(document, target.meshId, built)
     /*
