@@ -7,7 +7,8 @@ import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import type { SceneDocument, SceneVersion } from '@/scene/types'
 import { CoformSymbol } from '@/ui/BrandMark'
 import { Button, IconButton } from '@/ui/Button'
-import { IconDoc, IconDownload, IconFolderOpen, IconImport, IconKeyframe, IconReset, IconTrash } from '@/ui/icons'
+import { MODEL_ACCEPT } from '@/scene/io/models'
+import { IconDoc, IconDownload, IconFolderOpen, IconImport, IconKeyframe, IconReset, IconSnapshot, IconTrash } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 
 /**
@@ -25,6 +26,9 @@ export function SceneFileMenu({
   onRename,
   onOpen,
   onImport,
+  onImportModel,
+  onExportModel,
+  onRender,
   onExport,
   onRevert,
   onSaveVersion,
@@ -37,6 +41,10 @@ export function SceneFileMenu({
   onRename: (name: string) => void
   onOpen: () => void
   onImport: (file: File) => void
+  /** A model file — glTF, OBJ or STL — brought into the scene rather than opened as a project. */
+  onImportModel: (file: File) => void
+  onExportModel: (format: 'gltf' | 'obj' | 'stl') => void
+  onRender: () => void
   onExport: () => void
   onRevert: () => void
   onSaveVersion: (name: string) => void
@@ -44,6 +52,7 @@ export function SceneFileMenu({
   onDeleteVersion: (id: string) => void
 }) {
   const importInput = useRef<HTMLInputElement>(null)
+  const modelInput = useRef<HTMLInputElement>(null)
   const [versionsOpen, setVersionsOpen] = useState(false)
 
   const commit = (field: HTMLInputElement) => {
@@ -95,6 +104,13 @@ export function SceneFileMenu({
             <DropdownMenu.Separator className="menu__sep" />
             <FileItem label="Import project" onSelect={() => importInput.current?.click()}><IconImport /></FileItem>
             <FileItem label="Export project" onSelect={onExport}><IconDoc /></FileItem>
+            <DropdownMenu.Separator className="menu__sep" />
+            <FileItem label="Import model…" onSelect={() => modelInput.current?.click()}><IconImport /></FileItem>
+            <FileItem label="Export glTF (.glb)" onSelect={() => onExportModel('gltf')}><IconDownload /></FileItem>
+            <FileItem label="Export OBJ" onSelect={() => onExportModel('obj')}><IconDownload /></FileItem>
+            <FileItem label="Export STL" onSelect={() => onExportModel('stl')}><IconDownload /></FileItem>
+            <DropdownMenu.Separator className="menu__sep" />
+            <FileItem label="Render image…" shortcut="F12" onSelect={onRender}><IconSnapshot /></FileItem>
             <FileItem label="Revert" onSelect={onRevert}><IconReset /></FileItem>
             <DropdownMenu.Separator className="menu__sep" />
             <FileItem
@@ -112,6 +128,19 @@ export function SceneFileMenu({
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+      <input
+        ref={modelInput}
+        type="file"
+        accept={MODEL_ACCEPT}
+        aria-label="Model file to import"
+        className="visually-hidden"
+        tabIndex={-1}
+        onChange={(event) => {
+          const picked = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (picked) onImportModel(picked)
+        }}
+      />
       <input
         ref={importInput}
         type="file"

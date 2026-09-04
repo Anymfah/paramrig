@@ -191,3 +191,56 @@
   .scene-versions__field { min-height: 44px; }
   .scene-versions__item { min-height: 52px; }
 }
+
+/*
+ * The render dialog: a progress bar while it draws, the picture once it is drawn.
+ *
+ * The image is shown fitted by default and at full size on a click, because a render is looked at
+ * in two ways — is the framing right, and is that edge clean — and they need different sizes.
+ */
+.scene-render {
+  display: grid;
+  gap: var(--space-3);
+  /* Wide enough to judge a render by, never wider than the window it is shown in. */
+  min-width: min(72vw, 480px);
+  max-width: min(88vw, 1200px);
+}
+.scene-render__size { margin: 0; color: var(--text-muted); font-size: var(--text-xs); }
+.scene-render__frame {
+  display: block;
+  max-height: 60vh;
+  padding: 0;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(var(--surface-inset) 0% 25%, var(--surface-base) 0% 50%) 50% / 16px 16px;
+  overflow: auto;
+  cursor: zoom-in;
+}
+.scene-render__frame[data-zoomed] { cursor: zoom-out; }
+/*
+ * Fitted, an image is shown at its own size unless it is bigger than the window: a 320-pixel render
+ * blown up to fill the dialog would be judged on its blur rather than on its content. Zoomed, it is
+ * always its own size and the frame scrolls.
+ */
+.scene-render__frame img {
+  display: block;
+  margin: 0 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 60vh;
+}
+.scene-render__frame[data-zoomed] img { max-width: none; max-height: none; }
+.scene-render__progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+.scene-render__bar { display: block; height: 100%; background: var(--accent); transition: width 120ms linear; }
+.scene-render__error { margin: 0; color: var(--danger); }
+.scene-render__actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-render__bar { transition: none; }
+}

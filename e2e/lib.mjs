@@ -245,6 +245,31 @@ export function pageHelpers(page) {
   }
 
   /**
+   * The same trick for a file that is not text: the bytes come back as numbers.
+   *
+   * Only the head is carried over the bridge — a GLB or a PNG is megabytes, and what a check needs
+   * is the signature and the length rather than the whole file.
+   */
+  const captureDownload = async (open, head = 32) => {
+    const probe = page.evaluate((take) => new Promise((resolve) => {
+      const original = HTMLAnchorElement.prototype.click
+      HTMLAnchorElement.prototype.click = function patched() {
+        HTMLAnchorElement.prototype.click = original
+        fetch(this.href)
+          .then((response) => response.arrayBuffer())
+          .then((buffer) => resolve({
+            download: this.download,
+            size: buffer.byteLength,
+            head: [...new Uint8Array(buffer.slice(0, take))],
+          }))
+      }
+      setTimeout(() => { HTMLAnchorElement.prototype.click = original; resolve(null) }, 20000)
+    }), head)
+    await open()
+    return probe
+  }
+
+  /**
    * Opens the detail of a paint layer. A fill or a stroke is a 32 px line in the inspector; its
    * type, its colour and its opacity live in the popover that line opens.
    */
@@ -332,5 +357,5 @@ export function pageHelpers(page) {
    */
   const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, openPaint, closePaint, openSection }
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection }
 }

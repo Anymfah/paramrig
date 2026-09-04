@@ -82,6 +82,7 @@ export function SceneStage({
   onAnnotate,
   onMeasure,
   onMaterialDrop,
+  onModelDrop,
   onTransform,
   onEditDocument,
   onGestureStart,
@@ -102,6 +103,8 @@ export function SceneStage({
   onRegionSelect: (ids: string[], mode: 'new' | 'extend' | 'subtract') => void
   /** A material dragged out of the asset list and let go over the viewport. */
   onMaterialDrop: (materialId: string, objectId: string, faceId: number | null) => void
+  /** A file dropped on the viewport, which is how a model usually arrives. */
+  onModelDrop: (file: File) => void
   /** How a pointer-driven operator previews, keeps and abandons its work. */
   operatorBridge: OperatorBridge
   /** What each tool is set to in the sidebar; a gesture starts from its own operator's entry. */
@@ -495,6 +498,13 @@ export function SceneStage({
         data-testid="scene-surface"
         data-drop={dropTarget ? '' : undefined}
         onDragOver={(event) => {
+          // A file dragged in from the desktop: the drop zone lights up for it as well.
+          if ([...event.dataTransfer.types].includes('Files')) {
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'copy'
+            setDropTarget('file')
+            return
+          }
           if (!isMaterialDrag(event.dataTransfer)) return
           // Without this the browser refuses the drop and the gesture ends in a flying-back icon.
           event.preventDefault()
@@ -509,8 +519,14 @@ export function SceneStage({
           setDropTarget(null)
         }}
         onDrop={(event) => {
-          const material = draggedMaterialId(event.dataTransfer)
+          const file = event.dataTransfer.files[0]
           setDropTarget(null)
+          if (file) {
+            event.preventDefault()
+            onModelDrop(file)
+            return
+          }
+          const material = draggedMaterialId(event.dataTransfer)
           if (!material) return
           event.preventDefault()
           const instance = viewport.current

@@ -308,7 +308,9 @@ Where this differs from Blender:
 | `⇧⌘S` | Save as |
 | `⌃O` | Open |
 | `⌘O` | Open |
+| `F12` | Render image |
 
 Where this differs from Blender:
 
 - `⌃S`, `⌘S`, `⇧⌃S`, `⇧⌘S`, `⌃O`, `⌘O` — The browser would save or open a page of its own. The editor takes the chord for the document and stops it there.
+- `F12` — The browser keeps F12 for its own tools on Windows and Linux; the File menu renders as well.

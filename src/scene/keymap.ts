@@ -403,6 +403,7 @@ export const KEYMAP: KeyBinding[] = [
   { code: 'KeyS', shift: true, meta: true, action: action('file.saveAs'), label: 'Save as', note: NOTE_BROWSER_FILE },
   { code: 'KeyO', ctrl: true, action: action('file.open'), label: 'Open', note: NOTE_BROWSER_FILE },
   { code: 'KeyO', meta: true, action: action('file.open'), label: 'Open', note: NOTE_BROWSER_FILE },
+  { code: 'F12', action: action('file.render'), label: 'Render image', note: 'The browser keeps F12 for its own tools on Windows and Linux; the File menu renders as well.' },
 ]
 
 /* ----------------------------------------------------------- resolution */

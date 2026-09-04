@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
 import { EditorModal } from '@/editor/EditorModal'
+import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
+import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
 import { LiveRegion } from '@/editor/LiveRegion'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
@@ -106,6 +108,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [announcement, setAnnouncement] = useState('')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [keymapOpen, setKeymapOpen] = useState(false)
+  const [rendering, setRendering] = useState(false)
   const [redoExpanded, setRedoExpanded] = useState(false)
   const [pie, setPie] = useState<Pie>(null)
   const [contextAt, setContextAt] = useState<{ x: number; y: number } | null>(null)
@@ -139,6 +142,49 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const patchView = useCallback((patch: Partial<ViewState>) => {
     setView((current) => ({ ...current, ...patch }))
   }, [setView])
+
+  /**
+   * A model file, brought in at the cursor and selected.
+   *
+   * Everything an import decides — where it lands, how its names avoid the ones already there,
+   * what the sanitiser makes of it — belongs to `io/models.ts`; the page only says what happened.
+   */
+  const importModel = useCallback(async (picked: File) => {
+    try {
+      const imported = await readModelFile(picked)
+      if (imported.objects.length === 0) {
+        editor.setMessage(`${picked.name} held no geometry this editor could read.`)
+        return
+      }
+      let ids: string[] = []
+      editor.editDocument((current) => {
+        const next = withImported(current, imported)
+        ids = next.objectIds
+        return next.document
+      }, `Import ${picked.name}`)
+      if (ids.length > 0) editor.selectObjects(ids, ids[ids.length - 1] ?? null)
+      editor.setMessage(`${picked.name}: ${imported.objects.length} ${imported.objects.length === 1 ? 'object' : 'objects'}.`)
+    } catch (cause) {
+      editor.setMessage(cause instanceof Error ? cause.message : `${picked.name} could not be read.`)
+    }
+  }, [editor])
+
+  /** An export writes what is visible, or what is selected when there is a selection. */
+  const exportModel = useCallback(async (format: ModelFormat) => {
+    if (!document) return
+    try {
+      const objectIds = selection.objectIds.length > 0 ? selection.objectIds : undefined
+      const written = await writeModel(document, format, { objectIds })
+      downloadBlob(written.blob, written.fileName)
+      if (format === 'obj') {
+        const library = await writeMaterialLibrary(document, { objectIds })
+        downloadBlob(library.blob, library.fileName)
+      }
+      editor.setMessage(`Exported ${written.fileName}.`)
+    } catch (cause) {
+      editor.setMessage(cause instanceof Error ? cause.message : 'The export did not finish.')
+    }
+  }, [document, editor, selection.objectIds])
 
   /** Framing has to know how wide the viewport is, and the page is the only one that does. */
   const viewportAspect = useCallback(() => {
@@ -404,6 +450,10 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         event.preventDefault()
         void openFromDisk()
         return
+      case 'file.render':
+        event.preventDefault()
+        setRendering(true)
+        return
       case 'escape':
         if (pie) {
           event.preventDefault()
@@ -573,6 +623,9 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onRename={editor.rename}
               onOpen={() => void openFromDisk()}
               onImport={(dropped) => void file.openFromDisk(dropped)}
+              onImportModel={(picked) => void importModel(picked)}
+              onExportModel={(format) => void exportModel(format)}
+              onRender={() => setRendering(true)}
               onExport={file.downloadProject}
               onRevert={() => {
                 const stored = getSceneDocument(documentId)
@@ -598,6 +651,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               selection={selection}
               preferences={preferences}
               onView={setView}
+              onModelDrop={(picked) => void importModel(picked)}
               onMaterialDrop={(materialId, objectId, faceId) => run('material.drop', {
                 materialId,
                 objectId,
@@ -720,6 +774,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         </div>
       </WorkspaceShell>
 
+      <SceneRenderDialog document={document} open={rendering} onClose={() => setRendering(false)} />
       <EditorCommandPalette prefix="scene" commands={commands} open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <EditorModal prefix="scene" label="Keyboard" open={keymapOpen} onClose={() => setKeymapOpen(false)}>
         <KeymapSheet />
