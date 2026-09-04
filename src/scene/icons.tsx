@@ -939,6 +939,22 @@ export function IconUvEditor({ className }: SceneIconProps) {
   )
 }
 
+/**
+ * The shader editor's tab: two nodes and the cable between them.
+ *
+ * Not a swatch and not a sphere — those are what a *material* is elsewhere in the editor. What the
+ * third space shows is the wiring, so the glyph is the wiring.
+ */
+export function IconShaderEditor({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <rect x="1.75" y="3.25" width="4.5" height="4" rx="1" />
+      <rect x="9.75" y="8.75" width="4.5" height="4" rx="1" />
+      <path d="M6.25 5.25h1.5c1 0 1.25.6 1.25 1.5v3.5c0 .9.25 1.5 1.25 1.5" />
+    </Glyph>
+  )
+}
+
 export const IconTabControls = fromLucide(SlidersHorizontal)
 export const IconTabHistory = fromLucide(History)
 

@@ -35,6 +35,7 @@ export const SCENE_ICONS: Record<string, SceneIconComponent> = {
   'scene-collection': Icons.IconSceneCollection,
 
   'uv-editor': Icons.IconUvEditor,
+  'shader-editor': Icons.IconShaderEditor,
 
   /* The sculpt brushes, by family: nineteen names on nine drawings. */
   'sculpt-draw': Icons.IconSculptDraw,

@@ -464,6 +464,15 @@ export type UvEditorState = {
   stretch: 'none' | 'angle' | 'area'
 }
 
+/** The shader editor's own state: whether it is open, how much room it takes, and on what. */
+export type ShaderEditorState = {
+  open: boolean
+  /** How much of the room the viewport keeps, from 0 to 1; the shader editor takes the rest. */
+  split: number
+  /** The node the sidebar describes, when one is chosen. */
+  activeNode?: string
+}
+
 /** The brushes sculpt mode offers, in the order the tool bar shows them. */
 export type SculptBrush =
   | 'draw' | 'draw-sharp' | 'clay' | 'clay-strips' | 'inflate' | 'blob' | 'crease'
@@ -574,6 +583,7 @@ export type ViewState = {
   /** Sculpt mode's brush and its settings. */
   sculpt?: SculptState
   paint?: PaintState
+  shader?: ShaderEditorState
   /**
    * Looking through the active camera, with its frame drawn and the rest dimmed. It is a state of
    * the view rather than a place it has moved to: the camera is what is being looked through, so

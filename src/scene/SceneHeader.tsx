@@ -923,6 +923,16 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
             <SceneGlyph name="uv-editor" />
           </IconButton>
         </Tooltip>
+        <Tooltip content={tipFor('Shader editor', 'panel.shader')}>
+          <IconButton
+            label="Shader editor"
+            className="scene-header__button"
+            aria-pressed={view.shader?.open === true}
+            onClick={() => onCommand('panel.shader')}
+          >
+            <SceneGlyph name="shader-editor" />
+          </IconButton>
+        </Tooltip>
         <Tooltip content={tipFor('Keymap sheet', 'keymapSheet')}>
           <IconButton label="Keymap sheet" className="scene-header__button" onClick={() => onCommand('keymapSheet')}>
             <IconDoc />

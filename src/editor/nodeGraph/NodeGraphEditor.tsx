@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { replaceNodeInputConnection } from '@/editor/nodeGraph/connections'
 import {
   autoLayout, boxesOverlap, cablePath, graphBounds, nodeBox, nodeHeight, portPoint, snapped,
@@ -68,8 +68,20 @@ export function NodeGraphEditor({
   errors = {},
 }: NodeGraphEditorProps) {
   const surface = useRef<HTMLDivElement>(null)
+  /*
+   * The world is moved by writing its transform rather than by re-rendering.
+   *
+   * A pan changes nothing about the graph — not a node, not a cable, not a selection — so putting
+   * it through React state would re-render five hundred cards and recompute five hundred paths to
+   * move a single `translate`. On five hundred nodes that is a hundred and fifty milliseconds a
+   * frame; written straight to the element it is none. The state catches up when the hand lets go,
+   * so everything that reads the view still reads the truth.
+   */
+  const world = useRef<HTMLDivElement>(null)
   const [view, setView] = useState<{ pan: [number, number]; zoom: number }>({ pan: [40, 40], zoom: 1 })
   const [drag, setDrag] = useState<Drag | null>(null)
+  /** Where a pan has got to, while it is happening: state would be a re-render a frame. */
+  const panned = useRef<[number, number] | null>(null)
   /** The port waiting for a second one, which is how a connection is made from the keyboard. */
   const [pending, setPending] = useState<{ node: string; port: string; side: 'in' | 'out'; tone: NodeSocketTone } | null>(null)
   const [palette, setPalette] = useState<{ at: [number, number]; world: [number, number]; from: Drag & { kind: 'cable' } | null } | null>(null)
@@ -203,10 +215,12 @@ export function NodeGraphEditor({
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!drag) return
     if (drag.kind === 'pan') {
-      setView((current) => ({
-        ...current,
-        pan: [drag.pan[0] + (event.clientX - drag.from[0]), drag.pan[1] + (event.clientY - drag.from[1])],
-      }))
+      const pan: [number, number] = [
+        drag.pan[0] + (event.clientX - drag.from[0]),
+        drag.pan[1] + (event.clientY - drag.from[1]),
+      ]
+      panned.current = pan
+      if (world.current) world.current.style.transform = `translate(${pan[0]}px, ${pan[1]}px) scale(${view.zoom})`
       return
     }
     const at = toWorld(event.clientX, event.clientY)
@@ -244,6 +258,14 @@ export function NodeGraphEditor({
   const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
     if (!drag) return
+    if (drag.kind === 'pan') {
+      // The state catches up here, once, with wherever the hand left the world.
+      const pan = panned.current
+      panned.current = null
+      if (pan) setView((current) => ({ ...current, pan }))
+      setDrag(null)
+      return
+    }
     if (drag.kind === 'box') {
       const box = {
         x: Math.min(drag.from[0], drag.at[0]),
@@ -456,6 +478,7 @@ export function NodeGraphEditor({
     <div className="graph" ref={surface} tabIndex={0} onKeyDown={onKeyDown} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <div
         className="graph__world"
+        ref={world}
         style={{ transform: `translate(${view.pan[0]}px, ${view.pan[1]}px) scale(${view.zoom})` }}
       >
         <svg className="graph__cables" style={{ left: bounds.x - 200, top: bounds.y - 200, width: bounds.width + 400, height: bounds.height + 400 }} viewBox={`${bounds.x - 200} ${bounds.y - 200} ${bounds.width + 400} ${bounds.height + 400}`}>
@@ -552,7 +575,7 @@ function drawingPath(
   return drag.from.side === 'out' ? cablePath(anchor, to) : cablePath(to, anchor)
 }
 
-function NodeCard({
+const NodeCard = memo(function NodeCard({
   node, info, selected, error, pending, compatible, renderWidget,
   onSelect, onDragStart, onFold, onPortDown, onPortUp, onPortActivate,
 }: {
@@ -622,7 +645,7 @@ function NodeCard({
       {node.collapsed ? null : <div className="graph-node__body">{rows}</div>}
     </div>
   )
-}
+})
 
 function Port({ node, port, side, pending, compatible, onDown, onUp, onActivate }: {
   node: string

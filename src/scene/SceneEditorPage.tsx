@@ -28,7 +28,7 @@ import { Button } from '@/ui/Button'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { ContextMenuRoot } from '@/ui/ContextMenu'
 import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
-import { DEFAULT_UV_EDITOR, getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
+import { DEFAULT_SHADER_EDITOR, DEFAULT_UV_EDITOR, getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
 import { DEFAULT_PAINT_STATE } from '@/scene/paint/session'
 import { DEFAULT_SCULPT_STATE } from '@/scene/sculpt/session'
 import { describeKeymap, resolveKey } from '@/scene/keymap'
@@ -53,6 +53,11 @@ import {
 const ScenePreferencesDialog = lazy(async () => ({ default: (await import('@/scene/ScenePreferencesDialog')).ScenePreferencesDialog }))
 /* The same reasoning for the second space: an editor nobody has opened costs nothing to have. */
 const SceneUVEditor = lazy(async () => ({ default: (await import('@/scene/SceneUVEditor')).SceneUVEditor }))
+/*
+ * The shader editor carries the whole vendored engine, so it is fetched when it is opened and never
+ * before: a scene with no graph in it should not pay for a compiler it will not run.
+ */
+const SceneShaderEditor = lazy(async () => ({ default: (await import('@/scene/SceneShaderEditor')).SceneShaderEditor }))
 import { SceneFavoritesContext, type SceneFavoritesValue } from '@/scene/favorites'
 import { setTooltipDelay } from '@/ui/tooltipDelay'
 import { withRecentCommand } from '@/editor/commands'
@@ -75,7 +80,7 @@ import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { PaintState, SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, UvEditorState, ViewState } from '@/scene/types'
+import type { PaintState, SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, ShaderEditorState, UvEditorState, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/modifiers'
@@ -988,8 +993,10 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const context = editor.operatorContext()
   const panels = panelsOf(document.view)
   const uvEditor = document.view.uv ?? DEFAULT_UV_EDITOR
+  const shaderEditor = document.view.shader ?? DEFAULT_SHADER_EDITOR
   const sculpt = document.view.sculpt ?? DEFAULT_SCULPT_STATE
   const patchUv = (patch: Partial<UvEditorState>) => patchView({ uv: { ...uvEditor, ...patch } })
+  const patchShader = (patch: Partial<ShaderEditorState>) => patchView({ shader: { ...shaderEditor, ...patch } })
   const commands: SceneCommand[] = [
     ...sceneCommands({ context, runOperator: (id) => run(id) }),
     ...editorCommands({
@@ -1004,6 +1011,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       'panel.toolbar': () => patchView({ panels: { ...panels, toolbar: !panels.toolbar } }),
       'panel.sidebar': () => patchView({ panels: { ...panels, sidebar: !panels.sidebar } }),
       'panel.uv': () => patchUv({ open: !uvEditor.open }),
+      // The two spaces share the room beside the viewport, so opening one closes the other.
+      'panel.shader': () => {
+        patchView({
+          shader: { ...shaderEditor, open: !shaderEditor.open },
+          ...(shaderEditor.open ? {} : { uv: { ...uvEditor, open: false } }),
+        })
+      },
       'anim.keyframe': () => setKeyframeAt(stage.current?.pointerPage() ?? pointerCentre()),
       ...(session ? { 'anim.play': () => session.setPlaying(!session.isPlaying()) } : {}),
       'file.save': () => void file.saveNow(),
@@ -1167,8 +1181,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           </div>
           <div
             className="scene-body"
-            data-uv={uvEditor.open ? 'open' : undefined}
-            style={{ '--scene-uv-split': String(uvEditor.split) } as CSSProperties}
+            data-uv={uvEditor.open || shaderEditor.open ? 'open' : undefined}
+            style={{ '--scene-uv-split': String(uvEditor.open ? uvEditor.split : shaderEditor.split) } as CSSProperties}
           >
             <div className="scene-area">
               <SceneStage
@@ -1328,6 +1342,29 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 onChange={(split) => patchUv({ split })}
                 onReset={() => patchUv({ split: DEFAULT_UV_EDITOR.split })}
               />
+            ) : null}
+            {shaderEditor.open ? (
+              <SceneSplitter
+                label="Viewport and shader editor"
+                value={shaderEditor.split}
+                onChange={(split) => patchShader({ split })}
+                onReset={() => patchShader({ split: DEFAULT_SHADER_EDITOR.split })}
+              />
+            ) : null}
+            {shaderEditor.open ? (
+              <Suspense fallback={<div className="scene-shader scene-shader--loading" aria-hidden="true" />}>
+                <SceneShaderEditor
+                  document={document}
+                  activeObject={editor.activeObject}
+                  activeSlot={selection.activeMaterialSlot ?? 0}
+                  onShader={patchShader}
+                  onClose={() => patchShader({ open: false })}
+                  onEditDocument={editor.editDocument}
+                  onMessage={editor.setMessage}
+                  onGestureStart={editor.beginGesture}
+                  onGestureEnd={editor.endGesture}
+                />
+              </Suspense>
             ) : null}
             {uvEditor.open ? (
               <Suspense fallback={<div className="scene-uv scene-uv--loading" aria-hidden="true" />}>

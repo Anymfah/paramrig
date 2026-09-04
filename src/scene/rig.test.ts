@@ -119,7 +119,12 @@ describe('reading a property path', () => {
   it('accepts every path the documentation lists', () => {
     // The docs page renders this table; if a row here stopped parsing, the page would be a lie.
     for (const row of SCENE_PROPERTY_PATHS) {
-      const path = row.path.replace('<id>', 'thing').replace('<index>', '3').replace('<param>', 'levels')
+      const path = row.path
+        .replace('<id>', 'thing')
+        .replace('<index>', '3')
+        .replace('<param>', 'levels')
+        .replace('<nodeId>', 'noise-1')
+        .replace('<setting>', 'noiseDetail')
       const parsed = parseSceneProperty(path)
       expect(parsed, row.path).not.toBeNull()
       expect(parsed!.scoped, row.path).toBe(row.scope === 'object')
@@ -130,6 +135,38 @@ describe('reading a property path', () => {
   it('takes Blender’s spelling of a spot’s blend as well as the document’s', () => {
     expect(parseSceneProperty('light.spotBlend')).toMatchObject({ kind: 'light', field: 'spotBlend' })
     expect(parseSceneProperty('light.spotBlur')).toMatchObject({ kind: 'light', field: 'spotBlur' })
+  })
+
+  it('reads a shader node’s own setting, by the node and the setting', () => {
+    expect(parseSceneProperty('materials[m-1].nodes[noise-1].noiseDetail')).toMatchObject({
+      kind: 'shaderNode',
+      materialId: 'm-1',
+      nodeId: 'noise-1',
+      setting: 'noiseDetail',
+      scoped: false,
+    })
+    // The plain material path still reads as one: the two cannot be confused.
+    expect(parseSceneProperty('materials[m-1].roughness')).toMatchObject({ kind: 'material', field: 'roughness' })
+  })
+
+  it('drives a node’s setting inside the material’s graph', () => {
+    const graph = { version: 2, nodes: [{ id: 'noise-1', type: 'noise-texture', x: 0, y: 0, settings: { noiseDetail: 4 } }], edges: [], frames: [] }
+    const document = scene([meshObject('object-1', 'Cube')], undefined, [{ ...DEFAULT_MATERIAL, id: 'm-1', graph }])
+    const property = 'materials[m-1].nodes[noise-1].noiseDetail'
+    expect(currentSceneValue(document, { objectId: 'object-1', property })).toBe(4)
+    const resolved = resolveSceneValues(
+      rigged(document, { parameters: [numberParameter('detail', 4)], bindings: [binding({ property, parameterId: 'detail' })] }),
+      { detail: 7 },
+    )
+    const written = resolved.materials[0]!.graph as { nodes: Array<{ settings: { noiseDetail: number } }> }
+    expect(written.nodes[0]!.settings.noiseDetail).toBe(7)
+    // The graph it was given is not written into: the resolved document is a new one.
+    expect(graph.nodes[0]!.settings.noiseDetail).toBe(4)
+  })
+
+  it('says nothing about a node the graph has not got', () => {
+    const document = scene([meshObject('object-1', 'Cube')], undefined, [{ ...DEFAULT_MATERIAL, id: 'm-1' }])
+    expect(currentSceneValue(document, { objectId: 'object-1', property: 'materials[m-1].nodes[ghost].noiseDetail' })).toBeNull()
   })
 
   it('reads the shape of a curve and what a text object says', () => {

@@ -25,6 +25,7 @@ import type {
   SceneVersion,
   PaintState,
   SculptState,
+  ShaderEditorState,
   ShapeKey,
   TextureSlot,
   Transform,
@@ -77,6 +78,8 @@ export const DEFAULT_UNITS: SceneUnits = { system: 'metric', scale: 1 }
  * is even and square before anything has been painted at all, which is what a person opening this
  * for the first time is looking at it to find out.
  */
+export const DEFAULT_SHADER_EDITOR: ShaderEditorState = { open: false, split: 0.55 }
+
 export const DEFAULT_UV_EDITOR: UvEditorState = {
   open: false,
   split: 0.55,
@@ -156,6 +159,7 @@ export const DEFAULT_VIEW: ViewState = {
   proportionalSize: 1,
   panels: { toolbar: true, sidebar: false, sidebarTab: 'item' },
   uv: DEFAULT_UV_EDITOR,
+  shader: DEFAULT_SHADER_EDITOR,
   sculpt: DEFAULT_SCULPT_STATE,
   paint: DEFAULT_PAINT_STATE,
 }
@@ -568,6 +572,7 @@ function viewState(value: unknown): ViewState {
   const uv = (source.uv ?? {}) as Partial<UvEditorState>
   const sculpt = (source.sculpt ?? {}) as Partial<SculptState>
   const sculptSymmetry = (sculpt.symmetry ?? {}) as Partial<SculptState['symmetry']>
+  const shader = (source.shader ?? {}) as Partial<ShaderEditorState>
   const paint = (source.paint ?? {}) as Partial<PaintState>
   const paintSymmetry = (paint.symmetry ?? {}) as Partial<PaintState['symmetry']>
   const modes = Array.isArray(source.selectMode)
@@ -675,6 +680,11 @@ function viewState(value: unknown): ViewState {
       },
       autoSmooth: num(sculpt.autoSmooth, DEFAULT_SCULPT_STATE.autoSmooth, 0, 1),
       frontFacesOnly: flag(sculpt.frontFacesOnly, DEFAULT_SCULPT_STATE.frontFacesOnly),
+    },
+    shader: {
+      open: flag(shader.open, DEFAULT_SHADER_EDITOR.open),
+      split: num(shader.split, DEFAULT_SHADER_EDITOR.split, 0.2, 0.85),
+      ...(typeof shader.activeNode === 'string' ? { activeNode: shader.activeNode.slice(0, 120) } : {}),
     },
     paint: {
       brush: pick(paint.brush, ['paint', 'blur', 'smear'] as const, DEFAULT_PAINT_STATE.brush),

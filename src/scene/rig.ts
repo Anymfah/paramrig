@@ -113,6 +113,7 @@ export type SceneProperty =
   | { kind: 'vertex'; vertexId: number; axis: 0 | 1 | 2; type: 'number'; scoped: true }
   | { kind: 'shapeKey'; name: string; type: 'number'; scoped: true }
   | { kind: 'material'; materialId: string; field: MaterialField; type: 'number' | 'color'; scoped: false }
+  | { kind: 'shaderNode'; materialId: string; nodeId: string; setting: string; type: 'number'; scoped: false }
   | { kind: 'world'; field: keyof typeof WORLD_FIELDS; type: 'number' | 'color'; scoped: false }
   | { kind: 'cursor'; axis: 0 | 1 | 2; type: 'number'; scoped: false }
 
@@ -140,6 +141,15 @@ export function parseSceneProperty(property: string): SceneProperty | null {
 
   const modifier = /^modifiers\[([^\]]+)\]\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
   if (modifier) return { kind: 'modifier', modifierId: modifier[1]!, param: modifier[2]!, type: null, scoped: true }
+
+  /*
+   * A node's own setting, which is how a control reaches inside a shader graph. The node's id may
+   * hold anything but a closing bracket, as a material's may: both are made rather than typed.
+   */
+  const node = /^materials\[([^\]]+)\]\.nodes\[([^\]]+)\]\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
+  if (node) {
+    return { kind: 'shaderNode', materialId: node[1]!, nodeId: node[2]!, setting: node[3]!, type: 'number', scoped: false }
+  }
 
   const material = /^materials\[([^\]]+)\]\.([A-Za-z][A-Za-z0-9]*)$/.exec(property)
   if (material && Object.hasOwn(MATERIAL_FIELDS, material[2]!)) {
@@ -232,6 +242,12 @@ export const SCENE_PROPERTY_PATHS: ScenePathDoc[] = [
     scope: 'object' as const,
     note: field === 'focalLength' ? 'Millimetres on the sensor the camera declares.' : 'Only used by an orthographic camera.',
   })),
+  {
+    path: 'materials[<id>].nodes[<nodeId>].<setting>',
+    takes: 'number' as ScenePropertyType,
+    scope: 'document' as const,
+    note: 'Any number a shader node is set to, by the node’s own id and the setting’s own name.',
+  },
   ...Object.entries(CURVE_FIELDS).map(([field, takes]) => ({
     path: `curve.${field}`,
     takes: takes as ScenePropertyType,
@@ -482,7 +498,7 @@ export function resolveSceneValues(document: SceneDocument, values: Record<strin
     if (!known.has(binding.parameterId)) continue
     const path = parseSceneProperty(binding.property)
     if (!path) continue
-    if (path.kind === 'material') materialBindings.push(binding)
+    if (path.kind === 'material' || path.kind === 'shaderNode') materialBindings.push(binding)
     else if (!path.scoped) sceneBindings.push(binding)
     else if (binding.objectId) byObject.set(binding.objectId, [...(byObject.get(binding.objectId) ?? []), binding])
   }
@@ -512,6 +528,16 @@ export function resolveSceneValues(document: SceneDocument, values: Record<strin
   let materials = document.materials
   for (const binding of materialBindings) {
     const path = parseSceneProperty(binding.property)
+    if (path?.kind === 'shaderNode') {
+      const amount = asNumber(values[binding.parameterId] ?? null)
+      if (amount === null) continue
+      materials = materials.map((material) => (
+        material.id === path.materialId
+          ? withShaderSetting(material, path.nodeId, path.setting, applyTransform(amount, binding.transform, resolve))
+          : material
+      ))
+      continue
+    }
     if (path?.kind !== 'material') continue
     materials = materials.map((material) => (
       material.id === path.materialId ? withMaterial(material, path, values[binding.parameterId] ?? null, binding, resolve) : material
@@ -565,6 +591,10 @@ export function currentSceneValue(document: SceneDocument, binding: Pick<SceneBi
   if (path.kind === 'material') {
     const material = document.materials.find((entry) => entry.id === path.materialId)
     return material ? material[path.field] : null
+  }
+  if (path.kind === 'shaderNode') {
+    const material = document.materials.find((entry) => entry.id === path.materialId)
+    return shaderSetting(material?.graph, path.nodeId, path.setting)
   }
   const object = document.objects.find((entry) => entry.id === binding.objectId)
   if (!object) return null
@@ -630,6 +660,10 @@ export function scenePropertyLabel(document: SceneDocument, binding: Pick<SceneB
     const material = document.materials.find((entry) => entry.id === path.materialId)
     return `${material?.name ?? 'Material'} · ${MATERIAL_LABELS[path.field]}`
   }
+  if (path.kind === 'shaderNode') {
+    const material = document.materials.find((entry) => entry.id === path.materialId)
+    return `${material?.name ?? 'Material'} · ${path.setting}`
+  }
   if (path.kind === 'light') return `${owner}${LIGHT_LABELS[path.field]}`
   if (path.kind === 'camera') return `${owner}${path.field === 'focalLength' ? 'Focal length' : 'Orthographic scale'}`
   if (path.kind === 'curve') return `${owner}${CURVE_LABELS[path.field]}`
@@ -638,6 +672,38 @@ export function scenePropertyLabel(document: SceneDocument, binding: Pick<SceneB
   if (path.kind === 'world') return `World ${path.field === 'color' ? 'colour' : 'strength'}`
   if (path.kind === 'shapeKey') return `${owner}${path.name}`
   return `3D cursor ${'XYZ'[path.axis]}`
+}
+
+/**
+ * One setting of one node of a material's graph, read and written without the engine.
+ *
+ * A rig runs on every frame of a scrub and must not fetch a compiler to do it, so the graph is
+ * walked as the plain object the document holds. Nothing here interprets it: a setting that means
+ * nothing to the compiler is a setting the compiler ignores, and that is its business rather than
+ * the rig's.
+ */
+type GraphShape = { nodes?: Array<{ id?: unknown; settings?: Record<string, unknown> }> }
+
+function shaderSetting(graph: unknown, nodeId: string, setting: string): ParamValue {
+  const nodes = (graph as GraphShape | undefined)?.nodes
+  if (!Array.isArray(nodes)) return null
+  const found = nodes.find((node) => node?.id === nodeId)
+  const value = found?.settings?.[setting]
+  return typeof value === 'number' ? value : null
+}
+
+function withShaderSetting(material: Material, nodeId: string, setting: string, value: number): Material {
+  const graph = material.graph as GraphShape | undefined
+  if (!Array.isArray(graph?.nodes)) return material
+  return {
+    ...material,
+    graph: {
+      ...(material.graph as object),
+      nodes: graph.nodes.map((node) => (
+        node?.id === nodeId ? { ...node, settings: { ...(node.settings ?? {}), [setting]: value } } : node
+      )),
+    },
+  }
 }
 
 const CHANNEL_LABELS = { position: 'Location', rotation: 'Rotation', scale: 'Scale' } as const

@@ -90,6 +90,7 @@ const EDITOR_ACTIONS: Array<{ id: string; label: string; section: string }> = [
   { id: 'panel.toolbar', label: 'Toolbar', section: 'View' },
   { id: 'panel.sidebar', label: 'Sidebar', section: 'View' },
   { id: 'panel.uv', label: 'UV editor', section: 'View' },
+  { id: 'panel.shader', label: 'Shader editor', section: 'View' },
   { id: 'anim.keyframe', label: 'Insert keyframe', section: 'Animation' },
   { id: 'anim.play', label: 'Play or pause', section: 'Animation' },
   { id: 'file.save', label: 'Save', section: 'File' },
