@@ -1,6 +1,6 @@
 import { applyTransform, sanitizeTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
-import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
+import type { AnimationDef, AnimTrack, InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
 import { getModifier } from '@/scene/modifiers/types'
 import type {
   CameraData,
@@ -47,6 +47,14 @@ export type SceneRig = {
   parameters: ParameterDef[]
   inspectorCategories?: InspectorCategory[]
   bindings: SceneBinding[]
+  /**
+   * The keyframes the scene carries, in the same shape every other rig's animation has.
+   *
+   * It is here rather than in the session's draft so that an animation travels with the file: a
+   * draft belongs to a browser, and a scene that was keyed and then sent to somebody else should
+   * arrive animated.
+   */
+  animation?: AnimationDef
 }
 
 export type ScenePropertyType = 'number' | 'boolean' | 'color' | 'option' | 'text' | 'vector'
@@ -757,7 +765,49 @@ export function sanitizeSceneRig(value: unknown, targets: SceneRigTargets): Scen
       return clean ? [clean] : []
     })
   const categories = sanitizeCategories(source.inspectorCategories)
-  return { groups, parameters, bindings, ...(categories.length ? { inspectorCategories: categories } : {}) }
+  const animation = sanitizeAnimation(source.animation, seen)
+  return {
+    groups,
+    parameters,
+    bindings,
+    ...(categories.length ? { inspectorCategories: categories } : {}),
+    ...(animation ? { animation } : {}),
+  }
+}
+
+/**
+ * The animation a file carries, kept only where it means something.
+ *
+ * A track whose control is not in this rig is dropped: it would key nothing, and a file that kept
+ * it would grow a track every time a control was renamed. A keyframe with no number is not a
+ * keyframe.
+ */
+function sanitizeAnimation(value: unknown, parameterIds: Set<string>): AnimationDef | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Partial<AnimationDef>
+  const duration = Number.isFinite(source.duration) ? Math.min(600, Math.max(0.1, Number(source.duration))) : 4
+  const fps = Number.isFinite(source.fps) ? Math.min(240, Math.max(1, Math.round(Number(source.fps)))) : 30
+  const tracks = (Array.isArray(source.tracks) ? source.tracks : [])
+    .slice(0, MAX_PARAMETERS)
+    .flatMap((track) => {
+      if (!track || typeof track !== 'object') return []
+      const entry = track as Partial<AnimTrack>
+      if (typeof entry.paramId !== 'string' || !parameterIds.has(entry.paramId)) return []
+      const keyframes = (Array.isArray(entry.keyframes) ? entry.keyframes : []).flatMap((frame) => {
+        if (!frame || typeof frame !== 'object') return []
+        const item = frame as { time?: unknown; value?: unknown; easing?: unknown; id?: unknown }
+        if (!Number.isFinite(Number(item.time)) || !Number.isFinite(Number(item.value))) return []
+        return [{
+          id: typeof item.id === 'string' ? item.id.slice(0, 60) : crypto.randomUUID(),
+          time: Math.min(duration, Math.max(0, Number(item.time))),
+          value: Number(item.value),
+        }]
+      }).sort((one, other) => one.time - other.time)
+      if (keyframes.length === 0) return []
+      return [{ paramId: entry.paramId, interpolation: entry.interpolation === 'step' ? 'step' as const : 'linear' as const, keyframes }]
+    })
+  if (tracks.length === 0) return undefined
+  return { duration, fps, loop: source.loop === true, tracks }
 }
 
 /** What a rig looks like before anything has been exposed. */

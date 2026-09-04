@@ -1113,5 +1113,8 @@ export function sceneManifest(document: SceneDocument): RigManifest {
     groups: rig?.groups ?? [],
     parameters: rig?.parameters ?? [],
     ...(rig?.inspectorCategories ? { inspectorCategories: rig.inspectorCategories } : {}),
+    // The keyframes the scene carries, so that opening it — here or in the workbench — opens it
+    // animated rather than still.
+    ...(rig?.animation ? { animation: rig.animation } : {}),
   }
 }

@@ -1,4 +1,4 @@
-time to the first frame: 1435 ms
+time to the first frame: 1414 ms
 header controls at 1440: 10
 header controls within the window at 1440: 10
 header width at 1440: 527px
@@ -16,19 +16,19 @@ header controls within the window at 320: 1
 header width at 320: 657px
 header view settings folded at 320: yes
 history steps after a hundred moves: 101
-heap before a hundred history steps: 113.7 MB
-heap after a hundred history steps: 191.7 MB
-heap growth over a hundred history steps: 78.0 MB
+heap before a hundred history steps: 108.7 MB
+heap after a hundred history steps: 194.6 MB
+heap growth over a hundred history steps: 85.9 MB
 heavy scene triangles: 100364
 heavy scene draw calls: 11
 orbit frames drawn over 200 moves: 401
 orbit frame time mean: 0.12 ms
 orbit frame time p95: 0.30 ms
 orbit frame interval mean: 8.33 ms
-orbit frame interval p95: 8.90 ms
-orbit move-to-move mean over 200 moves: 8.34 ms
-orbit move-to-move p95 over 200 moves: 8.91 ms
-orbit frame time in wireframe: 0.12 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in solid: 0.16 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in material: 0.17 ms mean, 0.40 ms p95 over 121 frames
-orbit frame time in rendered: 0.17 ms mean, 0.30 ms p95 over 121 frames
+orbit frame interval p95: 9.70 ms
+orbit move-to-move mean over 200 moves: 8.29 ms
+orbit move-to-move p95 over 200 moves: 9.69 ms
+orbit frame time in wireframe: 0.15 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time in solid: 0.15 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time in material: 0.16 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time in rendered: 0.17 ms mean, 0.40 ms p95 over 121 frames

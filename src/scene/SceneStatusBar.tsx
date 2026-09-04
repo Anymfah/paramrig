@@ -11,13 +11,27 @@ import type { SceneDocument, SceneSelection } from '@/scene/types'
  * nothing on screen that says a middle drag orbits — so the status bar teaches the gestures as the
  * context changes, which is what Blender does and what makes the first minute survivable.
  */
-export function SceneStatusBar({ document, selection, counts, message, keymapHint }: {
+export function SceneStatusBar({ document, selection, counts, message, keymapHint, animation }: {
   document: SceneDocument
   selection: SceneSelection
   counts: SceneCounts
   message: string | null
   /** The one-line "press F1 for the keys" affordance, which stays after the hint chip has gone. */
   keymapHint?: ReactNode
+  /**
+   * The transport, shown only once the scene has something to play.
+   *
+   * A timeline is a whole editor of its own and it lives in the workbench; what belongs here is the
+   * frame and the play button, so that a person who has just keyed something can watch it without
+   * leaving the viewport.
+   */
+  animation?: {
+    frame: number
+    frames: number
+    playing: boolean
+    onPlay: (playing: boolean) => void
+    onFrame: (frame: number) => void
+  }
 }) {
   const editing = document.view.mode === 'edit'
   const hints = editing
@@ -43,6 +57,36 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
         ))}
       </div>
       <p className="scene-status__message">{message ?? ''}</p>
+      {animation ? (
+        <div className="scene-status__transport" role="group" aria-label="Playback">
+          <button
+            type="button"
+            className="scene-status__step"
+            aria-label="Step back one frame"
+            onClick={() => animation.onFrame(animation.frame - 1)}
+          >
+            ‹
+          </button>
+          <button
+            type="button"
+            className="scene-status__play"
+            aria-label={animation.playing ? 'Pause' : 'Play'}
+            aria-pressed={animation.playing}
+            onClick={() => animation.onPlay(!animation.playing)}
+          >
+            {animation.playing ? 'Pause' : 'Play'}
+          </button>
+          <button
+            type="button"
+            className="scene-status__step"
+            aria-label="Step forward one frame"
+            onClick={() => animation.onFrame(animation.frame + 1)}
+          >
+            ›
+          </button>
+          <span className="scene-status__frame">Frame {animation.frame} / {animation.frames}</span>
+        </div>
+      ) : null}
       <div className="scene-status__stats">
         {stats ? (
           <>

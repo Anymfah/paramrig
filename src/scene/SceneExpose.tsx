@@ -52,6 +52,12 @@ export function Exposable({ property, objectId, label, min, max, step, children 
     <div
       className="scene-exposable"
       data-bound={binding ? true : undefined}
+      /*
+       * An animated field wears the animation's colour, as Blender's does. It is the only way to
+       * tell, looking at a number, that changing it here will be overwritten by a curve the moment
+       * the playhead moves.
+       */
+      data-animated={binding && context.animated?.has(binding.parameterId) ? true : undefined}
       data-dropping={dropping || undefined}
       onDragOver={context.onDropParameter ? (event) => {
         if (!event.dataTransfer.types.includes('application/x-paramrig-parameter')) return

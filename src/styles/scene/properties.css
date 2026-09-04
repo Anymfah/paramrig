@@ -700,3 +700,16 @@ input.scene-controls__name {
 /* The inspector brings its own frame; inside a properties tab it only needs somewhere to sit. */
 .scene-controls__inspector { display: grid; min-height: 0; }
 .scene-controls__inspector .inspector { border: 0; }
+
+/*
+ * An animated field, in the animation's own colour.
+ *
+ * It is a statement about where the number comes from rather than about the field: a value under a
+ * curve will be overwritten the moment the playhead moves, and a person typing into it deserves to
+ * know that before they type. Blender colours the whole field; this colours its edge, which reads
+ * the same on a slider, a stepper and a colour swatch.
+ */
+.scene-exposable[data-animated] .scene-exposable__field {
+  box-shadow: inset 2px 0 0 var(--scene-animated);
+  border-radius: var(--radius-xs);
+}

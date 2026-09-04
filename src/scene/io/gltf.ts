@@ -1,4 +1,5 @@
 import {
+  AnimationClip,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -10,8 +11,13 @@ import {
   OrthographicCamera,
   PerspectiveCamera,
   PointLight,
+  Quaternion,
+  QuaternionKeyframeTrack,
   Scene,
   SpotLight,
+  VectorKeyframeTrack,
+  Vector3,
+  type KeyframeTrack,
   type Material as ThreeMaterial,
 } from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
@@ -21,6 +27,9 @@ import { meshFromPolygons } from '@/scene/mesh/data'
 import { cachedTriangulation } from '@/scene/mesh/triangulate'
 import { drawnMesh } from '@/scene/modifiers/stack'
 import { localMatrix } from '@/scene/objects'
+import { resolveSceneValues } from '@/scene/rig'
+import { interpolateNumber } from '@/state/values'
+import type { ParamValue } from '@/rigs/types'
 import { fovFromFocalLength } from '@/scene/viewport/view'
 import type { Material, MeshData, SceneDocument, SceneObject, Vec3 } from '@/scene/types'
 
@@ -57,7 +66,11 @@ export type GltfExportOptions = {
 export async function exportGltf(document: SceneDocument, options: GltfExportOptions = {}): Promise<ArrayBuffer | string> {
   const scene = buildScene(document, options)
   const exporter = new GLTFExporter()
-  const result = await exporter.parseAsync(scene, { binary: options.json !== true })
+  const animations = animationClips(document)
+  const result = await exporter.parseAsync(scene, {
+    binary: options.json !== true,
+    ...(animations.length ? { animations } : {}),
+  })
   disposeScene(scene)
   return options.json === true ? JSON.stringify(result) : (result as ArrayBuffer)
 }
@@ -325,4 +338,74 @@ function weldGeometry(geometry: BufferGeometry): MeshData {
     if (new Set(loop).size === 3) faces.push(loop)
   }
   return meshFromPolygons(points, faces)
+}
+
+/* --------------------------------------------------------------- animation */
+
+/**
+ * The scene's keyframes as glTF animation, baked frame by frame.
+ *
+ * A keyframe here is on a *control*, and a control may drive anything through a binding — a
+ * transform, a modifier's parameter, a shape key. glTF animates nodes, so the only faithful way
+ * across is to evaluate: the rig is resolved at every frame and each object's own transform is
+ * written down as it comes out. That covers whatever the controls happen to drive, including the
+ * curves and expressions a driver may hold, at the cost of a sample per frame rather than a
+ * keyframe per key.
+ *
+ * What does not cross: anything that is not a node transform. A control driving a modifier or a
+ * shape key changes the *shape* of a mesh, and glTF has no way of saying that outside morph targets
+ * — so a scene whose animation deforms rather than moves exports still. The bilan says so.
+ */
+export function animationClips(document: SceneDocument): AnimationClip[] {
+  const animation = document.rig?.animation
+  if (!animation || animation.tracks.length === 0) return []
+  const fps = Math.max(1, animation.fps)
+  const frames = Math.max(1, Math.round(animation.duration * fps))
+  const times: number[] = []
+  const channels = new Map<string, { position: number[]; quaternion: number[]; scale: number[]; moved: boolean }>()
+  const at = new Vector3()
+  const rotation = new Quaternion()
+  const scale = new Vector3()
+
+  for (let frame = 0; frame <= frames; frame += 1) {
+    const time = frame / fps
+    times.push(time)
+    const values: Record<string, ParamValue> = {}
+    for (const track of animation.tracks) values[track.paramId] = interpolateNumber(track, time, animation.duration, false)
+    const resolved = resolveSceneValues(document, values)
+    for (const object of resolved.objects) {
+      const entry = channels.get(object.id) ?? { position: [], quaternion: [], scale: [], moved: false }
+      localMatrix(object).decompose(at, rotation, scale)
+      const first = entry.position.length === 0
+      if (!first && !entry.moved) {
+        entry.moved = Math.abs(entry.position[0]! - at.x) > 1e-9
+          || Math.abs(entry.position[1]! - at.y) > 1e-9
+          || Math.abs(entry.position[2]! - at.z) > 1e-9
+          || Math.abs(entry.quaternion[0]! - rotation.x) > 1e-9
+          || Math.abs(entry.quaternion[1]! - rotation.y) > 1e-9
+          || Math.abs(entry.quaternion[2]! - rotation.z) > 1e-9
+          || Math.abs(entry.quaternion[3]! - rotation.w) > 1e-9
+          || Math.abs(entry.scale[0]! - scale.x) > 1e-9
+          || Math.abs(entry.scale[1]! - scale.y) > 1e-9
+          || Math.abs(entry.scale[2]! - scale.z) > 1e-9
+      }
+      entry.position.push(at.x, at.y, at.z)
+      entry.quaternion.push(rotation.x, rotation.y, rotation.z, rotation.w)
+      entry.scale.push(scale.x, scale.y, scale.z)
+      channels.set(object.id, entry)
+    }
+  }
+
+  const tracks: KeyframeTrack[] = []
+  for (const object of document.objects) {
+    const entry = channels.get(object.id)
+    // Only what actually moves: a file with a still track per object is a file three times too big.
+    if (!entry || !entry.moved) continue
+    const name = object.name || object.id
+    tracks.push(new VectorKeyframeTrack(`${name}.position`, times, entry.position))
+    tracks.push(new QuaternionKeyframeTrack(`${name}.quaternion`, times, entry.quaternion))
+    tracks.push(new VectorKeyframeTrack(`${name}.scale`, times, entry.scale))
+  }
+  if (tracks.length === 0) return []
+  return [new AnimationClip('Scene', animation.duration, tracks)]
 }

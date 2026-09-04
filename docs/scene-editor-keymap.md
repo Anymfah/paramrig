@@ -287,6 +287,7 @@ Every chord in this section is Blender’s own.
 | `⌘,` | Preferences |
 | `⌃,` | Preferences |
 | `Space` | Play, tools or search |
+| `I` | Insert keyframe (object mode) |
 | `T` | Toolbar |
 | `N` | Sidebar |
 | `⇧R` | Repeat last |
@@ -304,6 +305,7 @@ Where this differs from Blender:
 - `F1` — Blender’s F1 opens the manual in a browser. The editor is already in one, so F1 shows the keymap itself.
 - `⌘,` — Blender puts preferences under Edit; ⌘, is where macOS keeps them.
 - `Space` — What it does is a preference: play the animation, open the toolbar, or open the palette.
+- `I` — Blender keys the object; here it keys the control the channel is on, making one where there is none.
 - `⌘Z`, `⇧⌘Z` — macOS spells undo ⌘Z and Blender spells it ⌃Z. Both are bound, so neither habit has to be unlearned.
 
 ## File

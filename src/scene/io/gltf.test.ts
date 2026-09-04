@@ -2,7 +2,7 @@ import { Mesh, PerspectiveCamera } from 'three'
 import { describe, expect, it } from 'vitest'
 import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/document'
 import '@/scene/modifiers'
-import { buildScene, readScene } from '@/scene/io/gltf'
+import { animationClips, buildScene, readScene } from '@/scene/io/gltf'
 import { meshCounts } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import type { Material, SceneDocument, SceneObject } from '@/scene/types'
@@ -150,5 +150,53 @@ describe('reading a scene back', () => {
     expect(read.objects[0]!.transform.position).toEqual([1, 2, 3])
     expect(read.objects[0]!.transform.rotationMode).toBe('ZYX')
     expect(read.objects[0]!.transform.rotation[2]).toBeCloseTo(90, 4)
+  })
+})
+
+describe('the animation the export carries', () => {
+  /** A scene whose cube's X location is keyed from 0 to 4 over two seconds. */
+  function keyed(): SceneDocument {
+    const base = createSceneDocument()
+    const cube = base.objects.find((object) => object.kind === 'mesh')!
+    return {
+      ...base,
+      rig: {
+        groups: [{ id: 'main', label: 'Main' }],
+        parameters: [{ kind: 'number', id: 'slide', label: 'Slide', group: 'main', min: -10, max: 10, step: 0.1, defaultValue: 0 }],
+        bindings: [{ id: 'binding-1', objectId: cube.id, property: 'transform.position.x', parameterId: 'slide' }],
+        animation: {
+          duration: 2,
+          fps: 10,
+          loop: false,
+          tracks: [{
+            paramId: 'slide',
+            interpolation: 'linear',
+            keyframes: [{ id: 'a', time: 0, value: 0 }, { id: 'b', time: 2, value: 4 }],
+          }],
+        },
+      },
+    }
+  }
+
+  it('bakes a keyed control into a clip of node transforms', () => {
+    const clips = animationClips(keyed())
+    expect(clips).toHaveLength(1)
+    expect(clips[0]!.duration).toBe(2)
+    const position = clips[0]!.tracks.find((track) => track.name.endsWith('.position'))!
+    expect(position).toBeTruthy()
+    // Twenty-one samples for two seconds at ten a second, from nought to four.
+    expect(position.times).toHaveLength(21)
+    expect(position.values[0]).toBeCloseTo(0, 6)
+    expect(position.values[position.values.length - 3]).toBeCloseTo(4, 6)
+  })
+
+  it('writes nothing for the objects that never move', () => {
+    const clips = animationClips(keyed())
+    const names = new Set(clips[0]!.tracks.map((track) => track.name.split('.')[0]))
+    expect(names.size).toBe(1)
+  })
+
+  it('has no animation to write when nothing is keyed', () => {
+    expect(animationClips(createSceneDocument())).toEqual([])
   })
 })

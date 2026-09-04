@@ -5,6 +5,7 @@ import { ensureSession } from '@/state/workspace'
 import { resolveSceneValues, type SceneBinding } from '@/scene/rig'
 import { SceneExposeContext, type SceneExposeContextValue } from '@/scene/exposeContext'
 import { addControl, bindExisting, exposeProperty, removeControl, unbindProperty, updateControl, type ExposeRequest } from '@/scene/rigEdits'
+import { insertKeyframes, KEY_CHANNELS, type KeyframeEntry } from '@/scene/animate'
 import type { ParamValue } from '@/rigs/types'
 import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
 import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
@@ -120,6 +121,9 @@ const SELECT_TOOL_FOR = new Map<string, SceneTool>([
  * than sixty, short enough that it still feels like an answer to what was just done.
  */
 const ANNOUNCE_DELAY_MS = 300
+
+/** Frames a second, as the timeline counts them: the transport reads a frame, not a fraction. */
+const FPS = 30
 
 /** Whether the pointer is a finger rather than a mouse, which is what a phone answers. */
 function coarsePointerNow(): boolean {
@@ -298,12 +302,61 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     () => 0,
   )
   /*
+   * The playhead has a channel of its own, because it moves sixty times a second and the revision
+   * does not. Subscribing to it here is what makes an animation play in the viewport rather than
+   * only in the workbench.
+   */
+  useSyncExternalStore(
+    useCallback((listener: () => void) => session?.subscribeClock(listener) ?? (() => undefined), [session]),
+    () => session?.displayPlayhead() ?? 0,
+    () => 0,
+  )
+  /*
    * A document that carries controls is drawn as those controls say, while every edit still writes
    * to the raw document. It is the whole idea of a rig, and it is why the viewport, the render and
    * the exports are handed `shown` while the operators are handed `document`.
    */
   const rigValues = session?.previewValues() ?? NO_VALUES
+  /** The controls that carry keyframes: what the transport is for, and what a field is coloured by. */
+  const animatedParameters = new Set(
+    (document?.rig?.parameters ?? []).filter((parameter) => session?.trackFor(parameter.id)).map((parameter) => parameter.id),
+  )
+  const animated = animatedParameters.size > 0
   const shown = document && document.rig && session ? resolveSceneValues(document, rigValues) : document
+
+  /*
+   * A keyframe cannot be added until the control it goes on exists, and a control does not exist
+   * until the document that declares it has been saved and read back as a manifest. So the press
+   * writes the document and leaves the keyframes here; the effect below runs on the next render,
+   * by which time the session has been rebuilt with the new controls in it.
+   */
+  const [pendingKeys, setPendingKeys] = useState<KeyframeEntry[] | null>(null)
+  /** Where the I menu opened, and what it is about to key. */
+  const [keyframeAt, setKeyframeAt] = useState<{ x: number; y: number } | null>(null)
+  useEffect(() => {
+    if (!pendingKeys || !session) return
+    for (const entry of pendingKeys) session.addKeyframe(entry.parameterId, session.playheadTime(), entry.value)
+    setPendingKeys(null)
+    /*
+     * And the tracks are mirrored into the document, so that the animation travels with the file
+     * rather than living in this browser's draft. It is a one-way mirror and it is written here,
+     * where a keyframe is made: the timeline in the workbench edits the draft, as it does for every
+     * other rig, and what it does there stays there until something is keyed from the editor again.
+     */
+    const draft = session.toDraft()
+    editor.editDocument((current) => (current.rig ? {
+      ...current,
+      rig: {
+        ...current.rig,
+        animation: {
+          duration: session.durationTime(),
+          fps: FPS,
+          loop: session.isLoop(),
+          tracks: structuredClone(draft.tracks ?? []),
+        },
+      },
+    } : current), 'Insert keyframe', false)
+  }, [pendingKeys, session, editor])
 
   const savePrefs = useCallback((next: typeof prefs) => {
     setPrefs(next)
@@ -756,7 +809,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         else if (preferences.spacebarAction === 'tools') {
           patchView({ panels: { ...panelsOf(document.view), toolbar: !panelsOf(document.view).toolbar } })
         }
-        // Play belongs to the workbench's own clock, which the editor does not carry: nothing to do.
+        else if (session) session.setPlaying(!session.isPlaying())
+        return
+      case 'anim.keyframe':
+        event.preventDefault()
+        setKeyframeAt(stage.current?.pointerPage() ?? pointerCentre())
         return
       case 'mode.pie':
         event.preventDefault()
@@ -765,7 +822,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       default:
         return
     }
-  }, [document, editor, file, openFromDisk, patchView, pie, preferences, redo, run, undo])
+  }, [document, editor, file, openFromDisk, patchView, pie, preferences, redo, run, session, undo])
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
@@ -806,6 +863,8 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       'panel.toolbar': () => patchView({ panels: { ...panels, toolbar: !panels.toolbar } }),
       'panel.sidebar': () => patchView({ panels: { ...panels, sidebar: !panels.sidebar } }),
       'panel.uv': () => patchUv({ open: !uvEditor.open }),
+      'anim.keyframe': () => setKeyframeAt(stage.current?.pointerPage() ?? pointerCentre()),
+      ...(session ? { 'anim.play': () => session.setPlaying(!session.isPlaying()) } : {}),
       'file.save': () => void file.saveNow(),
       'file.saveAs': () => void file.saveAs(),
       'file.open': () => void openFromDisk(),
@@ -845,6 +904,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     onUnbind: unbind,
     onGoToControl: goToControl,
     onDropParameter: dropParameter,
+    animated: animatedParameters,
   }
 
   return (
@@ -1140,6 +1200,15 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             counts={counts}
             message={editor.message}
             keymapHint={<SceneKeymapHint onOpen={() => setKeymapOpen(true)} />}
+            {...(session && animated ? {
+              animation: {
+                frame: Math.round(session.displayPlayhead() * FPS),
+                frames: Math.round(session.durationTime() * FPS),
+                playing: session.isPlaying(),
+                onPlay: (playing: boolean) => session.setPlaying(playing),
+                onFrame: (frame: number) => session.setPlayhead(frame / FPS),
+              },
+            } : {})}
           />
         </div>
       </WorkspaceShell>
@@ -1242,6 +1311,39 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           at={choiceMenu.at}
           open
           onOpenChange={(open) => { if (!open) setChoiceMenu(null) }}
+        />
+      ) : null}
+      {keyframeAt ? (
+        <SceneMenu
+          label="Insert keyframe"
+          entries={KEY_CHANNELS.map((channel) => ({
+            id: channel.id,
+            label: channel.label,
+            run: () => {
+              setKeyframeAt(null)
+              const object = editor.activeObject
+              if (!object) {
+                editor.setMessage('Select an object to key first.')
+                return
+              }
+              const built = insertKeyframes(document, object, channel.id)
+              if (typeof built === 'string') {
+                editor.setMessage(built)
+                return
+              }
+              /*
+               * Saved at once rather than on the next idle: the controls a keyframe needs reach the
+               * session through the stored manifest, so a keyframe on a channel that has just been
+               * given a control would otherwise land on a control nobody had heard of yet.
+               */
+              editor.editDocument(() => built.document, 'Insert keyframe')
+              saveSceneDocument(built.document)
+              setPendingKeys(built.entries)
+            },
+          }))}
+          at={keyframeAt}
+          open
+          onOpenChange={(open) => { if (!open) setKeyframeAt(null) }}
         />
       ) : null}
       {addAt ? (

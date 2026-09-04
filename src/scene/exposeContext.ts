@@ -26,6 +26,8 @@ export type SceneExposeContextValue = {
   onGoToControl: (binding: SceneBinding) => void
   /** A control dragged out of the Controls tab and dropped on a field. */
   onDropParameter?: (parameterId: string, target: { objectId?: string; property: string }) => void
+  /** The controls that carry keyframes, so an animated field can say so. */
+  animated?: ReadonlySet<string>
 }
 
 export const SceneExposeContext = createContext<SceneExposeContextValue | null>(null)

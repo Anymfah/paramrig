@@ -147,16 +147,96 @@ export default run('scene-shape-keys', async ({ page, check, log, helpers, shot 
   check('turning the key off gives the model back exactly as it was modelled',
     flat < 0.001, `${flat.toFixed(4)} m tall`)
 
+  /* ------------------------------------------------------------ I keys a channel */
+
+  /*
+   * Blender's I makes an action out of nothing. Here it makes a *control* out of nothing and keys
+   * that — one animation system rather than two — so what this checks is the whole chain: the press
+   * makes three controls, the keyframes land on them, and the playhead moves the model.
+   */
+  await page.locator('#main').focus()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.keyboard.press('KeyI')
+  await page.waitForSelector('[role="menu"]')
+  const channels = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts()
+  check('I offers the channels Blender offers', channels.join(' / ').includes('Location'), channels.join(' / '))
+  await page.locator('[role="menuitem"]', { hasText: 'Location, rotation and scale' }).click()
+  await page.waitForTimeout(900)
+
+  const keyed = await helpers.scene()
+  const tracks = keyed.rig?.animation?.tracks ?? []
+  check('one press makes the controls the channels need and keys them all',
+    (keyed.rig?.parameters?.length ?? 0) >= 9 && tracks.length >= 9,
+    `${keyed.rig?.parameters?.length ?? 0} controls, ${tracks.length} tracks`)
+  check('and the transport appears, because there is now something to play',
+    await page.locator('[aria-label="Playback"]').count() === 1,
+    `${await page.locator('[aria-label="Playback"]').count()} transports`)
+
+  // A second keyframe, a second apart, with the object somewhere else.
+  await page.locator('[aria-label="Step forward one frame"]').click({ clickCount: 30, delay: 10 })
+  await page.waitForTimeout(400)
+  const frameText = await page.locator('.scene-status__frame').innerText()
+  const frame = Number(/Frame (\d+)/.exec(frameText)?.[1] ?? 0)
+  check('the transport counts frames, and steps one at a time', frame > 0, frameText)
+
+  await page.locator('#main').focus()
+  await page.keyboard.press('KeyG')
+  await page.waitForTimeout(200)
+  await page.keyboard.press('KeyZ')
+  await page.keyboard.type('3')
+  await page.keyboard.press('Enter')
+  await page.waitForTimeout(500)
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.keyboard.press('KeyI')
+  await page.waitForSelector('[role="menu"]')
+  await page.locator('[role="menuitem"]', { hasText: 'Location, rotation and scale' }).click()
+  await page.waitForTimeout(900)
+
+  const twice = (await helpers.scene()).rig.animation.tracks
+  const keysPerTrack = Math.max(...twice.map((track) => track.keyframes.length))
+  check('a second press at a later frame leaves two keyframes on the channel that changed',
+    keysPerTrack === 2, `${keysPerTrack} keyframes at most`)
+
+  /** Where the object is drawn, which is what an animation is for. */
+  const drawnAt = () => page.evaluate(() => {
+    const bounds = window.__paramrigScene.bounds(['object-slab'])
+    return bounds ? (bounds.min[2] + bounds.max[2]) / 2 : 0
+  })
+  const atEnd = await drawnAt()
+  await page.locator('[aria-label="Step back one frame"]').click({ clickCount: 30, delay: 10 })
+  await page.waitForTimeout(600)
+  const atStart = await drawnAt()
+  check('and the playhead moves the model between them',
+    Math.abs(atEnd - atStart) > 1, `${atStart.toFixed(2)} at the start, ${atEnd.toFixed(2)} at the end`)
+  log(`MEASURE the keyed slide: ${atStart.toFixed(2)} m at frame 0, ${atEnd.toFixed(2)} m at frame 30`)
+
+  // And the field a curve drives says so, in the animation's own colour. The Object tab is where
+  // the location lives, and the location is what has just been keyed.
+  await page.locator('.scene-properties__tab[aria-label="Object"]').click()
+  await page.waitForTimeout(400)
+  const animated = await page.locator('.scene-exposable[data-animated]').count()
+  check('an animated field is marked as one', animated > 0, `${animated} fields`)
+  await shot('scene-shape-keys-animated-1440.png')
+
+  await page.locator('[aria-label="Play"]').click()
+  await page.waitForTimeout(700)
+  const playing = await page.locator('[aria-label="Pause"]').count()
+  check('and it plays', playing === 1, `${playing} pause buttons`)
+  await page.locator('[aria-label="Pause"]').click()
+  await page.waitForTimeout(300)
+
   /* -------------------------------------------------- and a controller drives it */
 
+  await page.locator('.scene-properties__tab[aria-label="Data"]').click()
+  await page.waitForTimeout(400)
   await page.getByLabel(/^Expose Key/).first().click()
   await page.waitForSelector('[aria-label="Expose as control"]')
   await page.locator('[aria-label="Expose as control"] button', { hasText: 'Expose' }).click()
   await page.waitForTimeout(600)
   const rig = (await helpers.scene()).rig
   check('the ◇ makes a control out of the key’s value',
-    (rig?.parameters?.length ?? 0) === 1 && rig.bindings[0].property === 'shapeKeys[Key].value',
-    `${rig?.parameters?.length ?? 0} parameters, ${rig?.bindings?.[0]?.property ?? 'none'}`)
+    (rig?.bindings ?? []).some((binding) => binding.property === 'shapeKeys[Key].value'),
+    `${rig?.parameters?.length ?? 0} parameters, ${(rig?.bindings ?? []).map((binding) => binding.property).join(', ')}`)
 
   await page.locator('.scene-properties__tab[aria-label="Controls"]').click()
   await page.waitForTimeout(400)

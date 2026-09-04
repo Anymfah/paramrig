@@ -404,6 +404,13 @@ export const KEYMAP: KeyBinding[] = [
     label: 'Play, tools or search',
     note: 'What it does is a preference: play the animation, open the toolbar, or open the palette.',
   },
+  {
+    code: 'KeyI',
+    mode: 'object',
+    action: action('anim.keyframe'),
+    label: 'Insert keyframe',
+    note: 'Blender keys the object; here it keys the control the channel is on, making one where there is none.',
+  },
   { code: 'KeyT', action: action('panel.toolbar'), label: 'Toolbar' },
   { code: 'KeyN', action: action('panel.sidebar'), label: 'Sidebar' },
   { code: 'KeyR', shift: true, action: action('repeatLast'), label: 'Repeat last' },

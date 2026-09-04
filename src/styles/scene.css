@@ -57,6 +57,8 @@
   --scene-knife: #f7f9f8;
   --scene-knife-snap: #7fd67f;
   --scene-measure: #7fd6c8;
+  /* Blender's animation green, which nothing else in the editor uses. */
+  --scene-animated: #4bbf6b;
   --scene-face-front: #3a6ea5;
   --scene-face-back: #a53a3a;
   --scene-normal: #5ad2e0;
@@ -358,6 +360,38 @@
   margin-inline-start: auto;
   white-space: nowrap;
   color: var(--text-muted);
+}
+
+/*
+ * The transport: a step either side of a play button, and the frame.
+ *
+ * It is the whole of the timeline that belongs in a viewport — the curves and the keyframes are an
+ * editor of their own, and that editor is the workbench's. What a person needs here is to see the
+ * thing they have just keyed move.
+ */
+.scene-status__transport {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+.scene-status__transport button {
+  min-height: calc(var(--hit-target) - 8px);
+  padding-inline: var(--space-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.scene-status__transport button:hover { background: var(--surface-hover); color: var(--text-primary); }
+.scene-status__play[aria-pressed='true'] { background: var(--accent-subtle); color: var(--text-primary); }
+.scene-status__frame {
+  margin-inline-start: var(--space-2);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 64em) {
