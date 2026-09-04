@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createSceneDocument, meshOf } from '@/scene/document'
 import { exportProject, importProject, projectFileName, serializeProject } from '@/scene/project'
 import { listRigs } from '@/rigs/registry'
+import { paperLantern } from '@/rigs/examples/paper-lantern'
+import { resolveSceneValues, sceneRigDefaults } from '@/scene/rig'
+import '@/scene/modifiers'
 
 beforeEach(() => {
   localStorage.clear()
@@ -18,6 +21,42 @@ describe('a scene saved to a file and read back', () => {
     expect(result.project.document.name).toBe('Lamp')
     expect(result.project.document.objects.map((object) => object.name)).toEqual(['Cube', 'Light', 'Camera'])
     expect(meshOf(result.project.document, result.project.document.objects[0]!)!.faces).toHaveLength(6)
+  })
+
+  it('brings a rig in with the document, in one file', () => {
+    const document = paperLantern()
+    const result = importProject(serializeProject(document))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const rig = result.project.document.rig
+    expect(rig?.parameters.map((parameter) => parameter.id)).toEqual(['roundness', 'paper', 'spin', 'glow', 'brightness'])
+    expect(rig?.bindings).toHaveLength(5)
+    expect(result.note).toBeUndefined()
+    // And it resolves: a file that arrives with a rig arrives usable, not merely parsed.
+    const turned = resolveSceneValues(result.project.document, { ...sceneRigDefaults(rig!), spin: 45 })
+    expect(turned.objects.find((object) => object.name === 'Lantern')!.transform.rotation[2]).toBe(45)
+  })
+
+  it('says which bindings pointed at something the file does not contain', () => {
+    const document = paperLantern()
+    const damaged = {
+      ...document,
+      rig: {
+        ...document.rig!,
+        bindings: [
+          ...document.rig!.bindings,
+          { id: 'ghost-object', objectId: 'object-nowhere', property: 'transform.position.z', parameterId: 'spin' },
+          { id: 'ghost-modifier', objectId: 'object-lantern', property: 'modifiers[nothing].levels', parameterId: 'roundness' },
+        ],
+      },
+    }
+    const result = importProject(JSON.stringify({ ...exportProject(document), document: damaged }))
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.project.document.rig?.bindings).toHaveLength(5)
+    expect(result.note).toBe('2 bindings pointed at something this file does not contain.')
   })
 
   it('names the file after the document', () => {

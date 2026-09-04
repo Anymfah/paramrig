@@ -69,11 +69,17 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
   await page.waitForTimeout(300)
   const parked = await page.evaluate(() => {
     const r = document.querySelector('.vector-selection-bar').getBoundingClientRect()
-    return { left: Math.round(r.left), top: Math.round(r.top) }
+    const canvas = document.querySelector('.vector-canvas').getBoundingClientRect()
+    return { left: Math.round(r.left), top: Math.round(r.top), canvasLeft: Math.round(canvas.left) }
   })
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('paramrig.vector-inspector.v1') ?? '{}').bar)
   log(`MEASURE bar after its grip was dragged: ${JSON.stringify({ parked, stored })}`)
-  check('the grip drags the bar', stored?.dx === -160 && stored.dy === -240, JSON.stringify(stored))
+  // The bar cannot leave the canvas, so a drag towards an edge stops at it, keeping the same 16
+  // pixel margin it parks with. The vertical travel is the whole 240 asked for; the horizontal is
+  // however much room there was.
+  check('the grip drags the bar as far as the canvas allows',
+    stored?.dy === -240 && stored.dx < 0 && parked.left === parked.canvasLeft + 16,
+    JSON.stringify({ stored, left: parked.left, canvasLeft: parked.canvasLeft }))
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.vector-toolbar')
   await page.locator('#main').focus()

@@ -4,7 +4,7 @@ import { DEFAULT_PREFERENCES } from '@/scene/prefs'
 import { resolveSceneValues } from '@/scene/rig'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import { ViewNavigator } from '@/scene/viewport/navigation'
-import type { SceneViewport } from '@/scene/viewport/SceneViewport'
+import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import type { SceneSelection, ViewState } from '@/scene/types'
 import type { ParamValue } from '@/rigs/types'
 import type { RigSession } from '@/state/session'
@@ -25,13 +25,15 @@ import { StatusMessage } from '@/ui/StatusMessage'
 
 const NOTHING_SELECTED: SceneSelection = { objectIds: [], activeObjectId: null }
 
-export function SceneRigPreview({ documentId, session, values, name }: {
+export function SceneRigPreview({ documentId, session, values, name, createViewport }: {
   documentId: string
   /** The workbench's session for this rig; the preview reads it and never writes to it. */
   session: RigSession | null
   /** What the inspector says the controls are, for the moments there is no session to ask. */
   values: Record<string, ParamValue>
   name: string
+  /** A test hands over a double, as the editor page does; the workbench uses the real one. */
+  createViewport?: (container: HTMLElement, options: SceneViewportOptions) => SceneViewport
 }) {
   const viewport = useRef<SceneViewport | null>(null)
   const navigator = useRef<ViewNavigator | null>(null)
@@ -120,6 +122,7 @@ export function SceneRigPreview({ documentId, session, values, name }: {
         selection={NOTHING_SELECTED}
         view={view ?? shown.view}
         keepKey={documentId}
+        {...(createViewport ? { createViewport } : {})}
         onReady={(instance) => {
           viewport.current = instance
           setReady(instance !== null)

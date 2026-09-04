@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID, sanitizeSceneDocument } from '@/scene/document'
 import { boxMesh } from '@/scene/mesh/primitives'
 import '@/scene/modifiers'
+import { clearModifierCache, drawnMesh, modifierCacheSize } from '@/scene/modifiers/stack'
 import {
   clearSceneRigCache,
   currentSceneValue,
@@ -14,6 +15,7 @@ import {
   sceneRigTargets,
   scenePropertyLabel,
   scenePropertyType,
+  SCENE_PROPERTY_PATHS,
   type SceneBinding,
   type SceneRig,
 } from '@/scene/rig'
@@ -59,6 +61,11 @@ function numberParameter(id: string, defaultValue = 0): SceneRig['parameters'][n
   return { kind: 'number', id, label: id, group: 'main', min: -100, max: 100, step: 0.1, defaultValue }
 }
 
+/** A document with a rig of its own, for the families whose objects the startup scene already has. */
+function rigged(document: SceneDocument, rig: Pick<SceneRig, 'parameters' | 'bindings'>): SceneDocument {
+  return { ...document, rig: { ...emptySceneRig(), ...rig } }
+}
+
 function binding(patch: Partial<SceneBinding> & { property: string; parameterId: string }): SceneBinding {
   return { id: `binding-${patch.property}`, ...patch }
 }
@@ -102,6 +109,17 @@ describe('reading a property path', () => {
 
   it('refuses a shape key, which arrives with a later prompt', () => {
     expect(parseSceneProperty('shapeKeys[Smile].value')).toBeNull()
+  })
+
+  it('accepts every path the documentation lists', () => {
+    // The docs page renders this table; if a row here stopped parsing, the page would be a lie.
+    for (const row of SCENE_PROPERTY_PATHS) {
+      const path = row.path.replace('<id>', 'thing').replace('<index>', '3').replace('<param>', 'levels')
+      const parsed = parseSceneProperty(path)
+      expect(parsed, row.path).not.toBeNull()
+      expect(parsed!.scoped, row.path).toBe(row.scope === 'object')
+      if (row.takes !== 'its own' && parsed!.type !== null) expect(parsed!.type, row.path).toBe(row.takes)
+    }
   })
 
   it('takes Blender’s spelling of a spot’s blend as well as the document’s', () => {
@@ -216,6 +234,37 @@ describe('resolving a document', () => {
     expect(resolved.cursor.position[0]).toBe(-2)
   })
 
+  it('writes a light’s watts and a camera’s focal length', () => {
+    const document = createSceneDocument()
+    const light = document.objects.find((object) => object.kind === 'light')!
+    const camera = document.objects.find((object) => object.kind === 'camera')!
+    const resolved = resolveSceneValues(rigged(document, {
+      parameters: [
+        { kind: 'number', id: 'watts', label: 'Watts', group: 'main', min: 0, max: 2000, step: 1, defaultValue: 100 },
+        { kind: 'number', id: 'lens', label: 'Lens', group: 'main', min: 10, max: 200, step: 1, defaultValue: 50 },
+      ],
+      bindings: [
+        { id: 'b1', objectId: light.id, property: 'light.power', parameterId: 'watts' },
+        { id: 'b2', objectId: camera.id, property: 'camera.focalLength', parameterId: 'lens' },
+      ],
+    }), { watts: 250, lens: 85 })
+    const lit = resolved.objects.find((object) => object.id === light.id)!
+    const seen = resolved.objects.find((object) => object.id === camera.id)!
+    expect(lit.data.kind === 'light' && lit.data.power).toBe(250)
+    expect(seen.data.kind === 'camera' && seen.data.focalLength).toBe(85)
+  })
+
+  it('turns an object off with a switch', () => {
+    const document = createSceneDocument()
+    const cube = document.objects[0]!
+    const rig = rigged(document, {
+      parameters: [{ kind: 'switch', id: 'shown', label: 'Shown', group: 'main', defaultValue: true }],
+      bindings: [{ id: 'b1', objectId: cube.id, property: 'visible', parameterId: 'shown' }],
+    })
+    expect(resolveSceneValues(rig, { shown: false }).objects[0]!.visible).toBe(false)
+    expect(resolveSceneValues(rig, { shown: true }).objects[0]!.visible).toBe(true)
+  })
+
   it('lets the last binding on a property win', () => {
     const document = scene(
       [meshObject('object-1', 'Cube')],
@@ -236,6 +285,35 @@ describe('resolving a document', () => {
       rigWith([binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'gone' })], []),
     )
     expect(resolveSceneValues(document, { gone: 5 }).objects[0]!.transform.position[0]).toBe(0)
+  })
+
+  it('re-uses the evaluated mesh when a control comes back to a value it has held', () => {
+    // A control dragged out and back is the common case, and it must not re-subdivide on the way.
+    const object = meshObject('object-1', 'Cube', {
+      modifiers: [{
+        id: 'modifier-1',
+        kind: 'subsurf',
+        name: 'Subdivision',
+        enabled: { viewport: true, render: true, editMode: true, onCage: false },
+        params: { levels: 1, renderLevels: 2, simple: false, optimalDisplay: false, boundarySmooth: 'all', useCreases: true },
+      }],
+    })
+    const document = scene([object], rigWith(
+      [binding({ objectId: 'object-1', property: 'modifiers[modifier-1].levels', parameterId: 'detail' })],
+      [numberParameter('detail', 1)],
+    ))
+    clearModifierCache()
+    const at = (levels: number) => {
+      const resolved = resolveSceneValues(document, { detail: levels })
+      return drawnMesh(resolved, resolved.objects[0]!)
+    }
+    const one = at(1)
+    const two = at(2)
+    expect(modifierCacheSize()).toBe(2)
+    expect(two!.vertices.length).toBeGreaterThan(one!.vertices.length)
+    // Back to one: the same mesh object, and no third entry in the cache.
+    expect(at(1)).toBe(one)
+    expect(modifierCacheSize()).toBe(2)
   })
 
   it('answers the same object for the same values, so a drag costs one evaluation', () => {

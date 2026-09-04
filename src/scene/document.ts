@@ -1,4 +1,5 @@
 import { readStore, writeStore, type StorageResult } from '@/editor/storage'
+import { BUNDLED_SCENES } from '@/rigs/examples/paper-lantern'
 import type { RigManifest } from '@/rigs/types'
 import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
@@ -878,12 +879,35 @@ function readAll(): Record<string, SceneDocument> {
   return readStore(STORAGE_KEY, sanitizeSceneDocument)
 }
 
+/**
+ * Every scene there is: what is stored, then whatever the app ships that has not been opened.
+ *
+ * A bundled example is a document like any other — the same shape, the same editor, the same rig —
+ * so it is served from here rather than from a second registry the library would have to merge. It
+ * stops being bundled the moment it is edited: saving writes it to storage under its own id, and
+ * the stored one is what the next read finds.
+ */
+/** Built once, so a bundled document keeps one identity across every read that memoises on it. */
+let bundled: SceneDocument[] | null = null
+
+function bundledScenes(): SceneDocument[] {
+  if (!bundled) bundled = BUNDLED_SCENES.map((make) => make())
+  return bundled
+}
+
 export function listSceneDocuments(): SceneDocument[] {
-  return Object.values(readAll()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+  const stored = readAll()
+  const bundled = bundledScenes().filter((document) => !stored[document.id])
+  return [...Object.values(stored), ...bundled].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export function getSceneDocument(id: string): SceneDocument | null {
-  return readAll()[id] ?? null
+  return readAll()[id] ?? bundledScenes().find((document) => document.id === id) ?? null
+}
+
+/** Whether a document is the copy the app ships, rather than one this browser has written. */
+export function isBundledScene(id: string): boolean {
+  return bundledScenes().some((document) => document.id === id) && !readAll()[id]
 }
 
 /**
@@ -894,10 +918,22 @@ export function getSceneDocument(id: string): SceneDocument | null {
 export function saveSceneDocument(document: SceneDocument): StorageResult {
   const documents = readAll()
   const clean = sanitizeSceneDocument(document) ?? document
+  /*
+   * Opening a bundled example is not editing it. The editor saves whatever it loads, so without
+   * this a scene the app ships would be copied into storage by being looked at — and would then
+   * be listed as a project of this browser's rather than as the example it still is.
+   */
+  if (!documents[clean.id] && unchangedBundle(clean)) return { ok: true }
   const size = JSON.stringify(clean).length
   documents[clean.id] = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
   if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) return { ok: false, reason: 'quota' }
   return writeStore(STORAGE_KEY, documents)
+}
+
+/** Whether a document is a bundled one that nothing has altered, down to the last number. */
+function unchangedBundle(document: SceneDocument): boolean {
+  const shipped = bundledScenes().find((entry) => entry.id === document.id)
+  return !!shipped && JSON.stringify(sanitizeSceneDocument(shipped) ?? shipped) === JSON.stringify(document)
 }
 
 export function deleteSceneDocument(id: string): StorageResult {
@@ -930,6 +966,7 @@ export function sceneManifest(document: SceneDocument): RigManifest {
   const rig = document.rig
   const controls = rig?.parameters.length ?? 0
   const objects = document.objects.length
+  const bundled = isBundledScene(document.id)
   return {
     id: document.id,
     name: document.name,
@@ -939,10 +976,10 @@ export function sceneManifest(document: SceneDocument): RigManifest {
     description: '',
     renderer: 'scene',
     rendererLabel: 'Scene',
-    collection: 'project',
-    title: 'Projects/Scene',
-    sourceFile: 'Local document',
-    tags: ['scene', '3d', 'project', ...(controls > 0 ? ['rig'] : [])],
+    collection: bundled ? 'examples' : 'project',
+    title: bundled ? 'Examples/Scene' : 'Projects/Scene',
+    sourceFile: bundled ? `src/rigs/examples/${document.id.replace(/^example-/, '')}.ts` : 'Local document',
+    tags: ['scene', '3d', bundled ? 'example' : 'project', ...(controls > 0 ? ['rig'] : [])],
     groups: rig?.groups ?? [],
     parameters: rig?.parameters ?? [],
     ...(rig?.inspectorCategories ? { inspectorCategories: rig.inspectorCategories } : {}),

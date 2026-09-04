@@ -157,6 +157,59 @@ export function parseSceneProperty(property: string): SceneProperty | null {
   return null
 }
 
+/**
+ * Every family of path a binding may name, written once and read by both the docs page and a test.
+ *
+ * The rows that name a field — a material's, a light's, the world's — are generated from the very
+ * maps the parser consults, so a field added to the app is a row in the documentation on the same
+ * commit. The rest are written out, and `rig.test.ts` parses every path here to prove that what is
+ * documented is what the parser accepts.
+ */
+export type ScenePathDoc = {
+  /** As written in a binding, with `<id>` where an id of the document goes. */
+  path: string
+  /** What the control feeding it must produce. A modifier's parameter is whatever its schema says. */
+  takes: ScenePropertyType | 'its own'
+  /** Whether the binding must also name the object it belongs to. */
+  scope: 'object' | 'document'
+  note: string
+}
+
+export const SCENE_PROPERTY_PATHS: ScenePathDoc[] = [
+  { path: 'transform.position.x', takes: 'number', scope: 'object', note: 'Also .y and .z. Metres.' },
+  { path: 'transform.rotation.x', takes: 'number', scope: 'object', note: 'Also .y and .z. Degrees, Blender’s XYZ order.' },
+  { path: 'transform.scale.x', takes: 'number', scope: 'object', note: 'Also .y and .z. A factor, not a size.' },
+  { path: 'transform.scale', takes: 'number', scope: 'object', note: 'All three axes at once.' },
+  { path: 'visible', takes: 'boolean', scope: 'object', note: 'Whether the viewport draws it.' },
+  { path: 'modifiers[<id>].<param>', takes: 'its own', scope: 'object', note: 'Any parameter the modifier’s schema declares, by its own name — levels, thickness, angle.' },
+  { path: 'mesh.vertices[<index>].x', takes: 'number', scope: 'object', note: 'Also .y and .z. One vertex of the object’s mesh, by index.' },
+  ...Object.entries(LIGHT_FIELDS).map(([field, takes]) => ({
+    path: `light.${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'object' as const,
+    note: field === 'power' ? 'Watts, as Blender states them.' : field === 'spotBlur' ? 'Blender calls it blend.' : '',
+  })),
+  ...Object.entries(CAMERA_FIELDS).map(([field, takes]) => ({
+    path: `camera.${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'object' as const,
+    note: field === 'focalLength' ? 'Millimetres on the sensor the camera declares.' : 'Only used by an orthographic camera.',
+  })),
+  ...Object.entries(MATERIAL_FIELDS).map(([field, takes]) => ({
+    path: `materials[<id>].${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'document' as const,
+    note: '',
+  })),
+  ...Object.entries(WORLD_FIELDS).map(([field, takes]) => ({
+    path: `world.${field}`,
+    takes: takes as ScenePropertyType,
+    scope: 'document' as const,
+    note: '',
+  })),
+  { path: 'cursor.position.x', takes: 'number', scope: 'document', note: 'Also .y and .z. The 3D cursor.' },
+]
+
 /** The parameter kinds that can drive a property of that type, best first. */
 export const KINDS_FOR_SCENE_TYPE: Record<ScenePropertyType, string[]> = {
   number: ['number', 'vector', 'curve'],

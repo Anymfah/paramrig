@@ -31,6 +31,11 @@ export function DocsPage() {
         </Link>
       </p>
       <p>
+        <Link className="text-link" to="/docs/scene-rigs">
+          Scene rigs: a 3D scene that carries its own controls
+        </Link>
+      </p>
+      <p>
         <Link className="text-link" to="/">
           Back to the library
         </Link>

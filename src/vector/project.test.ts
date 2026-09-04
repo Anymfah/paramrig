@@ -139,4 +139,18 @@ describe('a project file that carries a rig', () => {
     if (!result.ok) return
     expect(result.note).toBe('1 control and 1 binding in that file could not be read and were left out.')
   })
+
+  it('says it in the singular when one thing was lost', () => {
+    const result = importProject(withRig({
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [{ kind: 'number', id: 'w', label: 'Width', group: 'main', min: 0, max: 100, step: 1, defaultValue: 10 }],
+      bindings: [
+        { id: 'b', elementId: 'a', parameterId: 'w', property: 'width' },
+        { id: 'orphan', elementId: 'gone', parameterId: 'w', property: 'width' },
+      ],
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.note).toBe('1 binding in that file could not be read and was left out.')
+  })
 })

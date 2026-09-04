@@ -66,9 +66,21 @@ export default run('chantier-n2', async ({ page, check, log }) => {
     shell.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }))
     await new Promise((resolve) => setTimeout(resolve, 900))
     const stored = JSON.parse(localStorage.getItem('paramrig.vector-documents.v1') ?? '{}')['vector-dropped-test']
-    return { path: location.pathname, controls: stored?.rig?.parameters?.length ?? 0, bindings: stored?.rig?.bindings?.length ?? 0 }
+    return {
+      path: location.pathname,
+      controls: stored?.rig?.parameters?.length ?? 0,
+      bindings: stored?.rig?.bindings?.length ?? 0,
+      note: [...document.querySelectorAll('.status-msg')].map((node) => node.textContent).join(' | '),
+    }
   })
   log(`MEASURE dropped: ${JSON.stringify(dropped)}`)
-  check('a dropped project opens its document', dropped.path === '/r/vector-dropped-test', dropped.path)
-  check('and brings its rig with it', dropped.controls === 1 && dropped.bindings === 1, JSON.stringify(dropped))
+  // This file carries a binding pointing at nothing, so it stops on the library rather than
+  // opening: the message about what was lost would go with the page that navigated away.
+  check('a dropped project that lost something stays where the message can be read',
+    dropped.path === '/' && /binding/.test(dropped.note), `${dropped.path} · ${dropped.note}`)
+  check('and its rig is stored, minus the binding that pointed at nothing',
+    dropped.controls === 1 && dropped.bindings === 1, JSON.stringify({ controls: dropped.controls, bindings: dropped.bindings }))
+  const listed = await page.locator('.rig-card h2').allTextContents()
+  check('its card is listed at once, ready to open',
+    listed.includes('Dropped'), listed.join(', '))
 })

@@ -69,8 +69,8 @@ export default run('scene-expose', async ({ page, check, log, helpers, shot }) =
   check('turning the control moves the scene the viewport draws', lifted > 1.5, `the cube rose by ${lifted.toFixed(2)}`)
   log(`MEASURE the control at 2 lifts the drawn cube from z=${before?.min?.[2]?.toFixed(2)} to z=${after?.min?.[2]?.toFixed(2)}`)
 
-  const kept = await helpers.scene()
-  const storedZ = kept.objects.find((object) => object.name === 'Cube')?.transform.position[2]
+  const still = await helpers.scene()
+  const storedZ = still.objects.find((object) => object.name === 'Cube')?.transform.position[2]
   check('and leaves the document alone: the control is the only thing that moved',
     storedZ === stored.objects.find((object) => object.name === 'Cube')?.transform.position[2],
     `stored z stays ${storedZ}`)
@@ -88,4 +88,62 @@ export default run('scene-expose', async ({ page, check, log, helpers, shot }) =
   check('unbinding takes the binding and keeps the control',
     unbound?.bindings?.length === 0 && unbound.parameters.length === 1,
     JSON.stringify({ bindings: unbound?.bindings?.length ?? 0, parameters: unbound?.parameters?.length ?? 0 }))
+
+  /* ------------------------------------- a subdivision level, driven, then tuned */
+
+  // ⌃1 is Blender's: a subdivision modifier at level one, on the selected object.
+  const box = await helpers.viewportBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.keyboard.press('Control+1')
+  await page.waitForTimeout(400)
+  await page.locator('.scene-properties__tab[aria-label="Modifiers"]').click()
+  await page.waitForSelector('.scene-modifier', { timeout: 10000 })
+
+  const levels = page.locator('.scene-modifier .scene-exposable', { has: page.getByLabel('Levels viewport') }).first()
+  await levels.hover()
+  await levels.locator('.scene-expose').click()
+  await page.waitForSelector('.scene-expose-popover', { timeout: 10000 })
+  const bounds = await page.locator('.scene-expose-popover').getByLabel('Max').inputValue()
+  check('a modifier’s own schema fills in the bounds', bounds === '6.0', `max ${bounds}`)
+  await page.locator('.scene-expose-popover button[data-action="expose"]').click()
+  await page.waitForTimeout(400)
+
+  await page.locator('.scene-properties__tab[aria-label="Controls"]').click()
+  await page.waitForSelector('.scene-controls__inspector', { timeout: 10000 })
+  const coarse = await page.evaluate(() => window.__paramrigScene.stats().vertices)
+  const detail = page.locator('.scene-controls__inspector .control', { hasText: 'Levels' }).first().locator('input').first()
+  await detail.fill('3')
+  await detail.press('Enter')
+  await page.waitForTimeout(1200)
+  const fine = await page.evaluate(() => window.__paramrigScene.stats().vertices)
+  check('the counts move with the control', fine > coarse, `${coarse} → ${fine} vertices`)
+  log(`MEASURE subdivision driven from the Controls tab: ${coarse} vertices at 1, ${fine} at 3`)
+
+  const editing = await page.evaluate(() => window.__paramrigSceneLeaks?.viewports ?? 0)
+  await page.locator('.scene-controls__mode button', { hasText: 'Tune' }).click()
+  await page.waitForSelector('.scene-preview canvas', { timeout: 20000 })
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  const tuning = await page.evaluate(() => window.__paramrigSceneLeaks?.viewports ?? 0)
+  check('the switch to Tune moves the viewport rather than building one',
+    editing === 1 && tuning === 1, `${editing} in the editor, ${tuning} in the workbench`)
+
+  // The snapshots live behind the inspector's own tab, which Tune mode opens on Controls.
+  await page.locator('.inspector__tabs [role="tab"]', { hasText: 'Snapshots' }).first().click()
+  await page.locator('button', { hasText: 'Snapshot current values' }).first().click()
+  await page.waitForTimeout(400)
+  const snapshots = await page.evaluate(() => {
+    const drafts = JSON.parse(localStorage.getItem('paramrig.drafts.v1') ?? '{}')
+    const id = location.pathname.split('/r/')[1]
+    return drafts[id]?.snapshots?.length ?? 0
+  })
+  check('the workbench takes a snapshot of the rig it is tuning', snapshots === 1, `${snapshots} snapshots`)
+  await shot('scene-expose-tune-1440.png')
+
+  await page.locator('.workspace-toolbar button', { hasText: 'Edit' }).first().click()
+  await page.waitForSelector('.scene-stage', { timeout: 20000 })
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  const back = await page.evaluate(() => window.__paramrigSceneLeaks?.viewports ?? 0)
+  const kept = await page.evaluate(() => window.__paramrigScene.stats().vertices)
+  check('and back in the editor it is the same viewport, at the same subdivision',
+    back === 1 && kept === fine, `${back} viewports, ${kept} vertices`)
 })

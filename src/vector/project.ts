@@ -88,7 +88,8 @@ export function rigNote(raw: unknown, document: VectorDocument): string | null {
   if (wantedParameters > gotParameters) lost.push(`${wantedParameters - gotParameters} ${wantedParameters - gotParameters === 1 ? 'control' : 'controls'}`)
   if (wantedBindings > gotBindings) lost.push(`${wantedBindings - gotBindings} ${wantedBindings - gotBindings === 1 ? 'binding' : 'bindings'}`)
   if (lost.length === 0) return null
-  return `${lost.join(' and ')} in that file could not be read and were left out.`
+  const one = lost.length === 1 && lost[0]!.startsWith('1 ')
+  return `${lost.join(' and ')} in that file could not be read and ${one ? 'was' : 'were'} left out.`
 }
 
 export function projectFileName(document: Pick<VectorDocument, 'name'>): string {

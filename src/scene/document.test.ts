@@ -4,6 +4,7 @@ import {
   createSceneDocument,
   deleteSceneDocument,
   getSceneDocument,
+  isBundledScene,
   listSceneDocuments,
   meshOf,
   meshUsers,
@@ -16,6 +17,7 @@ import {
   withMesh,
 } from '@/scene/document'
 import { boxMesh } from '@/scene/mesh/primitives'
+import { sanitizeSceneRig, sceneRigTargets } from '@/scene/rig'
 import { validateMeshData } from '@/scene/mesh/data'
 import type { SceneDocument } from '@/scene/types'
 
@@ -53,10 +55,38 @@ describe('a new scene', () => {
     const document = createSceneDocument()
 
     expect(getSceneDocument(document.id)?.name).toBe('Untitled')
-    expect(listSceneDocuments().map((entry) => entry.id)).toEqual([document.id])
+    // Beside it, whatever the app ships: a bundled example is a document like any other.
+    expect(listSceneDocuments().map((entry) => entry.id)).toContain(document.id)
 
     deleteSceneDocument(document.id)
     expect(getSceneDocument(document.id)).toBeNull()
+  })
+
+  it('serves the bundled examples until they are edited', () => {
+    const lantern = getSceneDocument('example-paper-lantern')
+    expect(lantern?.name).toBe('Paper lantern')
+    expect(isBundledScene('example-paper-lantern')).toBe(true)
+    expect(sceneManifest(lantern!).title).toBe('Examples/Scene')
+    // Its rig comes with it, so the library card can offer the controls before it is opened.
+    expect(lantern?.rig?.parameters).toHaveLength(5)
+    expect(lantern?.rig?.bindings).toHaveLength(5)
+
+    // Opening it saves it as it was found, which must not count as editing it.
+    saveSceneDocument(lantern!)
+    expect(isBundledScene('example-paper-lantern')).toBe(true)
+
+    saveSceneDocument({ ...lantern!, name: 'Mine' })
+    expect(getSceneDocument('example-paper-lantern')?.name).toBe('Mine')
+    expect(isBundledScene('example-paper-lantern')).toBe(false)
+    expect(sceneManifest(getSceneDocument('example-paper-lantern')!).title).toBe('Projects/Scene')
+    // And it is listed once, not twice.
+    expect(listSceneDocuments().filter((entry) => entry.id === 'example-paper-lantern')).toHaveLength(1)
+  })
+
+  it('keeps every binding of the bundled example pointing at something', () => {
+    const lantern = getSceneDocument('example-paper-lantern')!
+    const kept = sanitizeSceneRig(lantern.rig, sceneRigTargets(lantern))
+    expect(kept?.bindings).toHaveLength(lantern.rig!.bindings.length)
   })
 })
 

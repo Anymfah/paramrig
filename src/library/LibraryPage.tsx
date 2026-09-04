@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
-import { loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
+import { listRigs, loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
 import { IconCube, IconPlus, IconSearch } from '@/ui/icons'
@@ -98,7 +98,16 @@ export function LibraryPage() {
       setRecentError(opened.error)
       return
     }
-    if (opened.note) setNote(opened.note)
+    if (opened.note) {
+      /*
+       * Opening the document would take the message with it, and a file that arrived incomplete is
+       * exactly the file whose reader needs telling. So it stops here, listed and ready to open,
+       * with what it lost said out loud.
+       */
+      setNote(`${opened.note} The rest opened as “${opened.name}”, which is now in the library.`)
+      setRigs(listRigs())
+      return
+    }
     navigate(`/r/${opened.id}`)
   }
 
@@ -298,16 +307,18 @@ function SkeletonCard() {
  * Reads a dropped or reopened project file with whichever editor claims it, stores it, and gives
  * back the id to open. A file that names neither format comes back with the reason.
  */
-function openFileText(text: string): { ok: true; id: string; note?: string } | { ok: false; error: string } {
+function openFileText(text: string): { ok: true; id: string; name: string; note?: string } | { ok: false; error: string } {
   const asScene = importSceneProject(text)
   if (asScene.ok) {
     saveSceneDocument(asScene.project.document)
-    return { ok: true, id: asScene.project.document.id, ...(asScene.note ? { note: asScene.note } : {}) }
+    const { id, name } = asScene.project.document
+    return { ok: true, id, name, ...(asScene.note ? { note: asScene.note } : {}) }
   }
   const asVector = importProject(text)
   if (asVector.ok) {
     saveVectorDocument(asVector.project.document)
-    return { ok: true, id: asVector.project.document.id, ...(asVector.note ? { note: asVector.note } : {}) }
+    const { id, name } = asVector.project.document
+    return { ok: true, id, name, ...(asVector.note ? { note: asVector.note } : {}) }
   }
   // The file said which editor it belongs to, so its own reader gives the better message.
   return { ok: false, error: text.includes('"paramrig.scene"') ? asScene.error : asVector.error }
