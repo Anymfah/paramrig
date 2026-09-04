@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest'
+import { clearSceneDocumentCache } from '@/scene/document'
 
 if (!HTMLElement.prototype.setPointerCapture) {
   HTMLElement.prototype.setPointerCapture = () => undefined
@@ -46,4 +47,17 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     removeListener: () => undefined,
     dispatchEvent: () => false,
   })) as typeof window.matchMedia
+}
+
+/*
+ * The scene store keeps what it read in memory, so a test that clears storage behind its back has
+ * to say so. Patching `clear` here rather than in every test file keeps the win — reads that cost
+ * nothing — without making each test remember a cache it never asked for.
+ */
+if (typeof localStorage !== 'undefined') {
+  const clear = localStorage.clear.bind(localStorage)
+  localStorage.clear = () => {
+    clear()
+    clearSceneDocumentCache()
+  }
 }

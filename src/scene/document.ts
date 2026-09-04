@@ -879,8 +879,34 @@ function sanitizeVersions(value: unknown[]): SceneVersion[] {
 
 /* -------------------------------------------------------------- storage */
 
+/**
+ * The store as it was last read, so that reading it again costs nothing.
+ *
+ * Reading meant parsing every stored document and validating every mesh in it — hundreds of
+ * milliseconds on a scene of a hundred thousand vertices — and every save reads before it writes.
+ * A profile of an orbit over such a scene spent a quarter of its samples inside `validateMeshData`,
+ * and a profile of a vertex move nearly two thirds. Nothing of that was needed: what this tab wrote
+ * it has already validated.
+ *
+ * The cache is dropped when this tab writes, and when another tab does — a `storage` event fires
+ * only in the tabs that did not make the change, which is exactly when it must be re-read.
+ */
+let store: Record<string, SceneDocument> | null = null
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (event) => {
+    if (event.key === null || event.key === STORAGE_KEY) store = null
+  })
+}
+
+/** Forgets the cache, for a test that writes to storage behind the store's back. */
+export function clearSceneDocumentCache(): void {
+  store = null
+}
+
 function readAll(): Record<string, SceneDocument> {
-  return readStore(STORAGE_KEY, sanitizeSceneDocument)
+  if (!store) store = readStore(STORAGE_KEY, sanitizeSceneDocument)
+  return store
 }
 
 /**
@@ -931,7 +957,11 @@ export function saveSceneDocument(document: SceneDocument): StorageResult {
   const size = JSON.stringify(clean).length
   documents[clean.id] = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
   if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) return { ok: false, reason: 'quota' }
-  return writeStore(STORAGE_KEY, documents)
+  const result = writeStore(STORAGE_KEY, documents)
+  // The cache is what was just written, whether or not the write landed: a refused write leaves
+  // storage as it was, and `documents` is that plus the change this tab is holding in memory.
+  store = documents
+  return result
 }
 
 /** Whether a document is a bundled one that nothing has altered, down to the last number. */
@@ -941,8 +971,9 @@ function unchangedBundle(document: SceneDocument): boolean {
 }
 
 export function deleteSceneDocument(id: string): StorageResult {
-  const documents = readAll()
+  const documents = { ...readAll() }
   delete documents[id]
+  store = documents
   return writeStore(STORAGE_KEY, documents)
 }
 

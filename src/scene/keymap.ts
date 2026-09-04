@@ -470,12 +470,36 @@ export function resolveKey(event: KeyboardEventLike, context: KeyContext, bindin
  * The chord that runs an action, for a menu entry or a tooltip. With a context it answers for that
  * context; without one it answers with the first chord in the table, which is the one to print.
  */
+/**
+ * The bindings of one action, best first, built once.
+ *
+ * Every menu entry and every tooltip asks for its chord as it renders, and each of those was a
+ * scan of the whole table with a sort on the end — five per cent of a profile of a vertex move,
+ * spent re-deriving an answer that cannot change. The table is a module constant, so the index is
+ * built on the first question and answers every one after it.
+ */
+let byAction: Map<string, KeyBinding[]> | null = null
+
+function bindingsOf(actionId: string): KeyBinding[] {
+  if (!byAction) {
+    byAction = new Map()
+    const ordered = KEYMAP
+      .map((binding, index) => ({ binding, index }))
+      .sort((a, b) => specificity(b.binding) - specificity(a.binding) || a.index - b.index)
+    for (const { binding } of ordered) {
+      const found = byAction.get(binding.action.id)
+      if (found) found.push(binding)
+      else byAction.set(binding.action.id, [binding])
+    }
+  }
+  return byAction.get(actionId) ?? []
+}
+
 export function bindingFor(actionId: string, context?: KeyContext): KeyBinding | null {
-  const matches = KEYMAP
-    .map((binding, index) => ({ binding, index }))
-    .filter(({ binding }) => binding.action.id === actionId && (!context || appliesHere(binding, context)))
-    .sort((a, b) => specificity(b.binding) - specificity(a.binding) || a.index - b.index)
-  return matches[0]?.binding ?? null
+  for (const binding of bindingsOf(actionId)) {
+    if (!context || appliesHere(binding, context)) return binding
+  }
+  return null
 }
 
 /* --------------------------------------------------------------- labelling */

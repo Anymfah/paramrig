@@ -374,10 +374,12 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
     window.requestAnimationFrame = (callback) => original((time) => {
       const started = performance.now()
       callback(time)
-      window.__orbit.work.push(performance.now() - started)
+      // A frame already queued when the probe is taken down still runs, and has nowhere to report.
+      window.__orbit?.work.push(performance.now() - started)
     })
     // Driven through the untouched original, so the cadence probe never times itself.
     const tick = (time) => {
+      if (!window.__orbit) return
       window.__orbit.marks.push(time)
       if (!window.__orbit.stop) original(tick)
     }
@@ -427,6 +429,142 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   // first. A failure worth acting on is one the frame time above agrees with.
   check('the whole gesture, round trip included, holds the 16 ms mean', moveMean <= 16, `${moveMean.toFixed(2)} ms`)
   check('and its 33 ms p95', moveP95 <= 33, `${moveP95.toFixed(2)} ms`)
+
+  /* ------------------------------------------- the same orbit in every shading */
+
+  /*
+   * Wireframe, solid, material preview and rendered draw the same hundred thousand triangles in
+   * four different ways, and only one of them was measured above. A shading that costs four times
+   * what the others do is a shading nobody can work in, so each is turned on and turned round.
+   */
+  const shadingWork = {}
+  for (const shading of ['wireframe', 'solid', 'material', 'rendered']) {
+    await page.evaluate((mode) => {
+      const key = 'paramrig.scene-documents.v1'
+      const all = JSON.parse(localStorage.getItem(key) ?? '{}')
+      const id = location.pathname.split('/r/')[1]
+      all[id] = { ...all[id], view: { ...all[id].view, shading: mode } }
+      localStorage.setItem(key, JSON.stringify(all))
+    }, shading)
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.waitForSelector('.scene-stage')
+    await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 30000 })
+    await page.waitForTimeout(900)
+    await page.evaluate(() => {
+      const original = window.requestAnimationFrame.bind(window)
+      window.__shade = { work: [] }
+      window.__shadeRestore = () => { window.requestAnimationFrame = original }
+      window.requestAnimationFrame = (callback) => original((time) => {
+        const started = performance.now()
+        callback(time)
+        window.__shade?.work.push(performance.now() - started)
+      })
+    })
+    const shadeBox = await helpers.viewportBox()
+    const shadeCentre = { x: shadeBox.x + shadeBox.width / 2, y: shadeBox.y + shadeBox.height / 2 }
+    const shadeRadius = Math.min(shadeBox.width, shadeBox.height) / 6
+    await page.mouse.move(shadeCentre.x + shadeRadius, shadeCentre.y)
+    await page.mouse.down({ button: 'middle' })
+    for (let index = 1; index <= 60; index += 1) {
+      const angle = (index / 60) * Math.PI * 2
+      await page.mouse.move(shadeCentre.x + Math.cos(angle) * shadeRadius, shadeCentre.y + Math.sin(angle) * shadeRadius * 0.5)
+    }
+    await page.mouse.up({ button: 'middle' })
+    const work = await page.evaluate(() => {
+      window.__shadeRestore()
+      const measured = window.__shade.work
+      delete window.__shade
+      delete window.__shadeRestore
+      return measured
+    })
+    const sorted = [...work].sort((a, b) => a - b)
+    shadingWork[shading] = {
+      mean: mean(work),
+      p95: sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0,
+      frames: work.length,
+    }
+    record(`orbit frame time in ${shading}`,
+      `${shadingWork[shading].mean.toFixed(2)} ms mean, ${shadingWork[shading].p95.toFixed(2)} ms p95 over ${work.length} frames`)
+  }
+  const worst = Object.entries(shadingWork).sort((a, b) => b[1].mean - a[1].mean)[0]
+  check('every shading holds the 16 ms mean frame over a hundred thousand triangles',
+    Object.values(shadingWork).every((entry) => entry.mean <= 16),
+    `worst is ${worst[0]} at ${worst[1].mean.toFixed(2)} ms`)
+  check('and the 33 ms p95',
+    Object.values(shadingWork).every((entry) => entry.p95 <= 33),
+    Object.entries(shadingWork).map(([name, entry]) => `${name} ${entry.p95.toFixed(1)}`).join(', '))
+
+  /* ---------------------------------------------------------------- a profile */
+
+  /*
+   * Where the time actually goes, from the sampling profiler rather than from a guess. The two
+   * gestures the roadmap names are profiled one after the other, and the five most expensive
+   * functions of each are written beside the measurements — a file to compare against after the
+   * next change rather than a number to congratulate ourselves with.
+   */
+  const profiler = await page.context().newCDPSession(page)
+  await profiler.send('Profiler.enable')
+  await profiler.send('Profiler.setSamplingInterval', { interval: 100 })
+  const profiles = []
+
+  const profile = async (name, gesture) => {
+    await profiler.send('Profiler.start')
+    await gesture()
+    const { profile: taken } = await profiler.send('Profiler.stop')
+    const byId = new Map(taken.nodes.map((node) => [node.id, node]))
+    const self = new Map()
+    for (const node of taken.nodes) {
+      const own = node.hitCount ?? 0
+      if (own === 0) continue
+      const frame = node.callFrame
+      const where = frame.url ? `${frame.url.split('/').pop()}:${frame.lineNumber + 1}` : 'native'
+      const label = `${frame.functionName || '(anonymous)'} · ${where}`
+      self.set(label, (self.get(label) ?? 0) + own)
+    }
+    void byId
+    const total = [...self.values()].reduce((sum, value) => sum + value, 0) || 1
+    const top = [...self.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
+    profiles.push(`${name}`)
+    for (const [label, hits] of top) {
+      profiles.push(`  ${((hits / total) * 100).toFixed(1)}%  ${label}`)
+    }
+    log(`MEASURE profile · ${name}: ${top.map(([label, hits]) => `${label.split(' · ')[0]} ${((hits / total) * 100).toFixed(0)}%`).join(', ')}`)
+    return top
+  }
+
+  const orbitTop = await profile('An orbit over a hundred thousand triangles', async () => {
+    const profileBox = await helpers.viewportBox()
+    const at = { x: profileBox.x + profileBox.width / 2, y: profileBox.y + profileBox.height / 2 }
+    const spread = Math.min(profileBox.width, profileBox.height) / 6
+    await page.mouse.move(at.x + spread, at.y)
+    await page.mouse.down({ button: 'middle' })
+    for (let index = 1; index <= 120; index += 1) {
+      const angle = (index / 120) * Math.PI * 4
+      await page.mouse.move(at.x + Math.cos(angle) * spread, at.y + Math.sin(angle) * spread * 0.5)
+    }
+    await page.mouse.up({ button: 'middle' })
+  })
+  check('the orbit profile caught something to look at', orbitTop.length > 0, `${orbitTop.length} functions`)
+
+  await page.locator('#main').focus()
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(2500)
+  await page.keyboard.press('a')
+  await page.waitForTimeout(600)
+  const moveTop = await profile('Moving every vertex of a heavy mesh', async () => {
+    const profileBox = await helpers.viewportBox()
+    const at = { x: profileBox.x + profileBox.width / 2, y: profileBox.y + profileBox.height / 2 }
+    await page.mouse.move(at.x, at.y)
+    await page.keyboard.press('KeyG')
+    for (let index = 1; index <= 60; index += 1) {
+      await page.mouse.move(at.x + index * 2, at.y + Math.sin(index / 8) * 30)
+    }
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(200)
+  })
+  check('the vertex-move profile caught something to look at', moveTop.length > 0, `${moveTop.length} functions`)
+  await profiler.send('Profiler.disable')
+  writeFileSync(join(DIR, 'profile.txt'), `${profiles.join('\n')}\n`)
 
   writeFileSync(join(DIR, 'measurements.txt'), `${measures.join('\n')}\n`)
   log(`Saved to e2e/reference/scene from ${BASE}`)
