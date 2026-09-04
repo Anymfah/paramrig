@@ -43,6 +43,7 @@ export function ModifiersPanel({
   onUpdateObject,
   onUpdateObjects,
   onApply,
+  onApplyAsShapeKey,
   onGestureStart,
   onGestureEnd,
   isOpen,
@@ -57,6 +58,8 @@ export function ModifiersPanel({
   onUpdateObjects: (patches: Array<{ id: string; patch: Partial<SceneObject> }>, label?: string) => void
   /** Writes a modifier's result into the mesh and drops it from the stack, through the operator. */
   onApply: (modifierId: string) => void
+  /** Blender's "Apply as Shape Key": the modifier stays, and what it does becomes a key. */
+  onApplyAsShapeKey: (modifierId: string) => void
   onGestureStart: () => void
   onGestureEnd: () => void
   isOpen: (sectionId: string) => boolean
@@ -200,6 +203,7 @@ export function ModifiersPanel({
                 }}
                 canCopy={selectedObjects.some((object) => object.id !== activeObject.id && object.kind === 'mesh')}
                 onApply={() => onApply(modifier.id)}
+                onApplyAsShapeKey={() => onApplyAsShapeKey(modifier.id)}
                 onGestureStart={onGestureStart}
                 onGestureEnd={onGestureEnd}
               />
@@ -230,6 +234,7 @@ function ModifierCard({
   onCopyToSelected,
   canCopy,
   onApply,
+  onApplyAsShapeKey,
   onGestureStart,
   onGestureEnd,
 }: {
@@ -250,6 +255,7 @@ function ModifierCard({
   onCopyToSelected: () => void
   canCopy: boolean
   onApply: () => void
+  onApplyAsShapeKey: () => void
   onGestureStart: () => void
   onGestureEnd: () => void
 }) {
@@ -263,6 +269,7 @@ function ModifierCard({
 
   const menu: SceneMenuEntry[] = [
     { id: 'apply', label: 'Apply', shortcut: '⌃A', disabled: index > 0, reason: index > 0 ? 'Apply the modifier above this one first.' : undefined, run: onApply },
+    { id: 'apply-as-shape-key', label: 'Apply as shape key', run: onApplyAsShapeKey },
     { id: 'duplicate', label: 'Duplicate', run: onDuplicate },
     { id: 'copy', label: 'Copy to selected', disabled: !canCopy, reason: 'No other mesh is selected.', run: onCopyToSelected },
     { separator: true },

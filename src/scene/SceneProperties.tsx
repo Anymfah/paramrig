@@ -182,6 +182,7 @@ export function SceneProperties({
             onUpdateObject={onUpdateObject}
             onUpdateObjects={onUpdateObjects}
             onApply={(modifierId) => onRunOperator('modifier.apply', { modifierId })}
+            onApplyAsShapeKey={(modifierId) => onRunOperator('modifier.applyAsShapeKey', { modifierId })}
             {...gesture}
             {...folds}
           />

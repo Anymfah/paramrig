@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createSceneDocument, meshOf, objectById, ROOT_COLLECTION_ID } from '@/scene/document'
 import { KEYMAP } from '@/scene/keymap'
 import { meshCounts } from '@/scene/mesh/data'
-import { boxMesh } from '@/scene/mesh/primitives'
+import { boxMesh, gridMesh } from '@/scene/mesh/primitives'
 import '@/scene/modifiers'
 import '@/scene/operators/modifier'
 import { operatorAvailability, runOperator } from '@/scene/operators/registry'
@@ -60,6 +60,37 @@ function contextFor(document: SceneDocument, ids: string[]): OperatorContext {
 function run(document: SceneDocument, id: string, ids: string[], params: OperatorParams = {}) {
   return runOperator(id, contextFor(document, ids), params)
 }
+
+describe('applying a modifier as a shape key', () => {
+  it('keeps the modifier and stores what it does as a key', () => {
+    /*
+     * A cast, because it moves the vertices that are there. A mirror or a subdivision makes new
+     * ones, and a shape key is a set of offsets against the vertices a mesh has — there is nothing
+     * to offset a vertex that did not exist.
+     */
+    const cast = modifier({ id: 'modifier-cast', kind: 'cast', name: 'Cast', params: { castType: 'sphere', factor: 1 } })
+    /*
+     * A grid rather than a cube: every corner of a cube is the same distance from its centre, so
+     * casting one onto a sphere moves nothing at all and the test would be measuring that instead.
+     */
+    const document = scene([meshObject('cube', 'mesh-1', [cast])], { 'mesh-1': gridMesh({ xSubdivisions: 3, ySubdivisions: 3 }) })
+    const result = run(document, 'modifier.applyAsShapeKey', ['cube'], { modifierId: 'modifier-cast' })
+    expect(result.error).toBeUndefined()
+    const object = objectById(result.document!, 'cube')!
+    expect(object.modifiers).toHaveLength(1)
+    expect(object.shapeKeys).toHaveLength(1)
+    expect(object.shapeKeys![0]!.name).toBe('Cast')
+    expect(Object.keys(object.shapeKeys![0]!.offsets).length).toBeGreaterThan(0)
+    // And the mesh is untouched: the key is a difference, not a bake.
+    expect(meshOf(result.document!, object)!.vertices).toEqual(document.meshes['mesh-1']!.vertices)
+  })
+
+  it('refuses a modifier that changes how many vertices there are, and says why', () => {
+    const document = scene([meshObject('cube', 'mesh-1', [modifier()])], { 'mesh-1': boxMesh(2) })
+    const result = run(document, 'modifier.applyAsShapeKey', ['cube'], { modifierId: 'modifier-1' })
+    expect(result.error).toMatch(/changes how many vertices/)
+  })
+})
 
 describe('applying a modifier', () => {
   it('writes the result into the mesh and takes the modifier off', () => {

@@ -69,6 +69,7 @@ function show(options: { objects?: SceneObject[]; active?: string | null; errors
     onUpdateObject: vi.fn(),
     onUpdateObjects: vi.fn(),
     onApply: vi.fn(),
+    onApplyAsShapeKey: vi.fn(),
     onGestureStart: vi.fn(),
     onGestureEnd: vi.fn(),
     onSection: vi.fn(),
@@ -82,6 +83,7 @@ function show(options: { objects?: SceneObject[]; active?: string | null; errors
       onUpdateObject={spies.onUpdateObject}
       onUpdateObjects={spies.onUpdateObjects}
       onApply={spies.onApply}
+      onApplyAsShapeKey={spies.onApplyAsShapeKey}
       onGestureStart={spies.onGestureStart}
       onGestureEnd={spies.onGestureEnd}
       isOpen={() => true}
@@ -180,9 +182,17 @@ describe('the modifiers panel', () => {
     const user = userEvent.setup()
     const spies = show({ objects: [object('object-1', 'Cube', { modifiers: [modifier()] })] })
     await user.click(screen.getByRole('button', { name: 'Mirror actions' }))
-    await user.click(screen.getByRole('menuitem', { name: /Apply/ }))
+    await user.click(screen.getByRole('menuitem', { name: 'Apply ⌃A' }))
     expect(spies.onApply).toHaveBeenCalledWith('modifier-1')
     expect(spies.onUpdateObject).not.toHaveBeenCalled()
+  })
+
+  it('offers Blender’s other apply: the modifier kept, and what it does stored as a shape key', async () => {
+    const user = userEvent.setup()
+    const spies = show({ objects: [object('object-1', 'Cube', { modifiers: [modifier()] })] })
+    await user.click(screen.getByRole('button', { name: 'Mirror actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Apply as shape key' }))
+    expect(spies.onApplyAsShapeKey).toHaveBeenCalledWith('modifier-1')
   })
 
   it('writes what a modifier refused to do under it', () => {

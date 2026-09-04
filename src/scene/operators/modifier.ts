@@ -1,6 +1,7 @@
 import type { ParameterDef } from '@/rigs/types'
 import { meshOf, meshUsers, objectById, withMesh } from '@/scene/document'
 import { EditMesh } from '@/scene/mesh/editMesh'
+import { keyFromShape } from '@/scene/mesh/shapeKeys'
 import { modifierInputs } from '@/scene/modifiers/stack'
 import { getModifier, withModifierDefaults } from '@/scene/modifiers/types'
 import { registerOperator } from '@/scene/operators/registry'
@@ -29,6 +30,64 @@ function activeMesh(context: OperatorContext): SceneObject | null {
 
 /** Which modifier, by id. Not a select: the panel knows the id, and the list changes under it. */
 const MODIFIER_ID: ParameterDef = { kind: 'text', id: 'modifierId', label: 'Modifier', group: 'operator', defaultValue: '', maxLength: 80 }
+
+registerOperator<{ modifierId: string }>({
+  id: 'modifier.applyAsShapeKey',
+  label: 'Apply as shape key',
+  section: 'Object',
+  description: 'Keep the modifier, and store what it does as a shape key of its own.',
+  icon: 'modifier',
+  params: [MODIFIER_ID],
+  defaults: { modifierId: '' },
+  mode: 'object',
+  available: (context) => {
+    const object = activeMesh(context)
+    if (!object) return NO_OBJECT
+    if (object.modifiers.length === 0) return 'This object has no modifiers to store.'
+    return true
+  },
+  run: (context, params) => {
+    const document = context.document
+    const object = activeMesh(context)
+    if (!object || object.data.kind !== 'mesh') return { error: NO_OBJECT }
+    const modifier = object.modifiers.find((entry) => (params.modifierId ? entry.id === params.modifierId : true))
+    if (!modifier) return { error: 'That modifier is not on this object any more.' }
+    const module = getModifier(modifier.kind)
+    if (!module) return { error: `“${modifier.kind}” is not a modifier this build has.` }
+    const data = meshOf(document, object)
+    if (!data) return { error: NO_OBJECT }
+    const mesh = EditMesh.from(data)
+    const outcome = module.apply(mesh, withModifierDefaults(modifier), {
+      inputs: modifierInputs(document, object, modifier, module.objectInputs ?? []),
+      forRender: false,
+      editing: false,
+    })
+    if (typeof outcome === 'string') return { error: outcome }
+    const shape = mesh.toData()
+    /*
+     * A shape key is a set of offsets against the vertices that are there, so a modifier that adds
+     * or removes any cannot become one: a subdivision has no offset to give the mesh it came from.
+     * Blender refuses these too, and for the same reason.
+     */
+    if (shape.vertexIds.length !== data.vertexIds.length) {
+      return { error: `“${modifier.name}” changes how many vertices there are, so it cannot be a shape key.` }
+    }
+    const keys = object.shapeKeys ?? []
+    const key = keyFromShape(data, shape, modifier.name, keys)
+    if (Object.keys(key.offsets).length === 0) {
+      return { error: `“${modifier.name}” moves nothing here, so there is no shape to store.` }
+    }
+    return {
+      document: {
+        ...document,
+        objects: document.objects.map((entry) => (entry.id === object.id
+          ? { ...entry, shapeKeys: [...keys, key], activeShapeKey: keys.length }
+          : entry)),
+      },
+      label: 'Apply as shape key',
+    }
+  },
+})
 
 registerOperator<{ modifierId: string }>({
   id: 'modifier.apply',
