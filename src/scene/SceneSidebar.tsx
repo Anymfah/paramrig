@@ -1,6 +1,7 @@
 import { useId, useMemo, useRef, useState } from 'react'
-import { applyElementTargets, elementTargets } from '@/scene/transform/elements'
+import { applyElementTargets, elementTargets, parseElementTargetId } from '@/scene/transform/elements'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
+import { Exposable } from '@/scene/SceneExpose'
 import { getOperator, type OperatorParams } from '@/scene/operators'
 import { TOOL_OPERATORS } from '@/scene/toolOperators'
 import { MATERIAL_DRAG_TYPE } from '@/scene/materialDrag'
@@ -57,6 +58,19 @@ const EULER_ORDERS = ['XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'] as const
 const FAR = 1e6
 const LENGTH_STEP = 0.01
 const ANGLE_STEP = 1
+
+/**
+ * The range a newly exposed control starts with, by channel.
+ *
+ * `FAR` is how far a person may type, not a distance a control could sweep: a slider running from
+ * minus a million to a million cannot be dragged to 1.5. Nothing in the document declares a range
+ * for a transform, so the popover opens on one that can be dragged, and widening it is a field away.
+ */
+const EXPOSE_RANGES: Record<VectorChannel, { min: number; max: number; step: number }> = {
+  position: { min: -10, max: 10, step: LENGTH_STEP },
+  rotation: { min: -360, max: 360, step: ANGLE_STEP },
+  scale: { min: 0, max: 10, step: LENGTH_STEP },
+}
 
 const TABS: Array<{ id: SidebarTab; label: string }> = [
   { id: 'item', label: 'Item' },
@@ -352,6 +366,15 @@ function EditItemTab({ document, selection, onEditDocument, onGestureStart, onGe
   }
 
   const unit = lengthUnit(document.units)
+  /*
+   * One vertex is a property, and can be driven. Several are a median: a reading of the selection
+   * that no path names and no control could write to, so those fields carry no ◇ at all.
+   *
+   * The field shows the vertex in world space where the path writes it in the mesh's own, so a
+   * control takes over the number the mesh stores rather than the one shown; the two are the same
+   * as long as the object sits at the origin, unturned and unscaled.
+   */
+  const single = targets.length === 1 ? parseElementTargetId(targets[0]!.id) : null
   const move = (axis: AxisIndex, value: number) => {
     const delta = value - median[axis]
     if (!Number.isFinite(delta) || delta === 0) return
@@ -375,6 +398,7 @@ function EditItemTab({ document, selection, onEditDocument, onGestureStart, onGe
         max={FAR}
         step={LENGTH_STEP}
         unit={unit}
+        expose={single ? { property: `mesh.vertices[${single.vertexId}]`, objectId: single.objectId, ...EXPOSE_RANGES.position } : undefined}
         onValue={(axis, value) => move(axis, value)}
         onGestureStart={onGestureStart}
         onGestureEnd={onGestureEnd}
@@ -499,6 +523,8 @@ function ItemTab({
         max={FAR}
         step={LENGTH_STEP}
         unit={unit}
+        // A field writes to the whole selection, but a control drives one property: the active one's.
+        expose={{ property: 'transform.position', objectId: activeObject.id, ...EXPOSE_RANGES.position }}
         onValue={(axis, value) => setAxis('position', 'Location', axis, value)}
         onLock={(axis) => onLock('position', axis)}
         onGestureStart={onGestureStart}
@@ -524,6 +550,7 @@ function ItemTab({
           max={FAR}
           step={ANGLE_STEP}
           unit="°"
+          expose={{ property: 'transform.rotation', objectId: activeObject.id, ...EXPOSE_RANGES.rotation }}
           onValue={(axis, value) => setAxis('rotation', 'Rotation', axis, value)}
           onLock={(axis) => onLock('rotation', axis)}
           onGestureStart={onGestureStart}
@@ -539,12 +566,14 @@ function ItemTab({
         min={-FAR}
         max={FAR}
         step={LENGTH_STEP}
+        expose={{ property: 'transform.scale', objectId: activeObject.id, ...EXPOSE_RANGES.scale }}
         onValue={(axis, value) => setAxis('scale', 'Scale', axis, value)}
         onLock={(axis) => onLock('scale', axis)}
         onGestureStart={onGestureStart}
         onGestureEnd={onGestureEnd}
       />
 
+      {/* A dimension is a measurement of the scale, not a property of the object: nothing to drive. */}
       <AxisFields
         legend="Dimensions"
         values={size}
@@ -567,6 +596,9 @@ function ItemTab({
  * A vector, one field per axis, each with the padlock that keeps a transform session and this panel
  * off that axis. The lock is a button rather than a checkbox because it sits inside the row and
  * carries a glyph, and `aria-pressed` says which way it is.
+ *
+ * The three axes are three properties, so the ◇ belongs on each row rather than on the group: the
+ * composite is handed the prefix of the path and adds the axis to it.
  */
 function AxisFields({
   legend,
@@ -577,6 +609,7 @@ function AxisFields({
   max,
   step,
   unit,
+  expose,
   onValue,
   onLock,
   onGestureStart,
@@ -590,6 +623,8 @@ function AxisFields({
   max: number
   step: number
   unit?: string
+  /** What exposing an axis writes to: the path up to the axis, and whose property it is. */
+  expose?: { property: string; objectId: string; min: number; max: number; step: number }
   onValue: (axis: AxisIndex, value: number) => void
   onLock?: (axis: AxisIndex) => void
   onGestureStart: () => void
@@ -598,8 +633,8 @@ function AxisFields({
   return (
     <div className="scene-sidebar__vector" role="group" aria-label={legend}>
       <span className="scene-sidebar__legend">{legend}</span>
-      {AXIS_INDEXES.map((axis) => (
-        <div className="scene-sidebar__row" key={AXES[axis]}>
+      {AXIS_INDEXES.map((axis) => {
+        const field = (
           <NumberField
             label={`${legend} ${AXES[axis]}`}
             variant="field"
@@ -614,22 +649,37 @@ function AxisFields({
             onGestureStart={onGestureStart}
             onGestureEnd={onGestureEnd}
           />
-          {onLock ? (
-            <Tooltip content={locked[axis] ? `Unlock ${legend.toLowerCase()} ${AXES[axis]}` : `Lock ${legend.toLowerCase()} ${AXES[axis]}`}>
-              <IconButton
-                label={`Lock ${legend.toLowerCase()} ${AXES[axis]}`}
-                className="scene-sidebar__lock"
-                aria-pressed={locked[axis]}
-                onClick={() => onLock(axis)}
+        )
+        return (
+          <div className="scene-sidebar__row" key={AXES[axis]}>
+            {expose ? (
+              <Exposable
+                property={`${expose.property}.${AXES[axis].toLowerCase()}`}
+                objectId={expose.objectId}
+                min={expose.min}
+                max={expose.max}
+                step={expose.step}
               >
-                {locked[axis] ? <IconLock /> : <IconUnlock />}
-              </IconButton>
-            </Tooltip>
-          ) : (
-            <span className="scene-sidebar__lock-spacer" aria-hidden="true" />
-          )}
-        </div>
-      ))}
+                {field}
+              </Exposable>
+            ) : field}
+            {onLock ? (
+              <Tooltip content={locked[axis] ? `Unlock ${legend.toLowerCase()} ${AXES[axis]}` : `Lock ${legend.toLowerCase()} ${AXES[axis]}`}>
+                <IconButton
+                  label={`Lock ${legend.toLowerCase()} ${AXES[axis]}`}
+                  className="scene-sidebar__lock"
+                  aria-pressed={locked[axis]}
+                  onClick={() => onLock(axis)}
+                >
+                  {locked[axis] ? <IconLock /> : <IconUnlock />}
+                </IconButton>
+              </Tooltip>
+            ) : (
+              <span className="scene-sidebar__lock-spacer" aria-hidden="true" />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

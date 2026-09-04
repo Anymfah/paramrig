@@ -101,6 +101,7 @@ export function ScenePanel({ document, unit, onEditDocument, onGestureStart, onG
           step={0.01}
           values={document.cursor.position}
           onChange={(axis, value) => setCursor('position', axis, value)}
+          property="cursor.position"
           {...gesture}
         />
         <SceneAxes

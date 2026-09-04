@@ -99,6 +99,16 @@ function show(options: {
       mode={options.mode ?? 'object'}
       tab={options.tab ?? 'object'}
       onActiveMaterialSlot={spies.onActiveMaterialSlot}
+      controls={{
+        session: null,
+        mode: 'edit',
+        onMode: vi.fn(),
+        onAdd: vi.fn(),
+        onRename: vi.fn(),
+        onMove: vi.fn(),
+        onRemove: vi.fn(),
+        onGoTo: vi.fn(),
+      }}
       onTab={spies.onTab}
       onUpdateObject={spies.onUpdateObject}
       onUpdateObjects={spies.onUpdateObjects}

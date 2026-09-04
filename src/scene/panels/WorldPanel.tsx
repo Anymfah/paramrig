@@ -1,4 +1,5 @@
 import { ResourceField } from '@/scene/panels/ResourceField'
+import { Exposable } from '@/scene/SceneExpose'
 import { SceneEmpty, SceneSection } from '@/scene/SceneProperties'
 import type { SceneDocument, World } from '@/scene/types'
 import { BarField } from '@/ui/BarField'
@@ -40,22 +41,26 @@ export function WorldPanel({ world, onEditDocument, onGestureStart, onGestureEnd
   return (
     <>
       <SceneSection id="world-surface" title="Surface" {...folds}>
-        <ColorField
-          label="Background"
-          value={world.color}
-          onChange={(color) => edit({ color }, 'World colour')}
-          {...gesture}
-        />
-        <BarField
-          label="Strength"
-          value={world.strength}
-          min={0}
-          max={10}
-          sliderMax={2}
-          step={0.01}
-          onChange={(strength) => edit({ strength }, 'World strength')}
-          {...gesture}
-        />
+        <Exposable property="world.color">
+          <ColorField
+            label="Background"
+            value={world.color}
+            onChange={(color) => edit({ color }, 'World colour')}
+            {...gesture}
+          />
+        </Exposable>
+        <Exposable property="world.strength" min={0} max={10} step={0.01}>
+          <BarField
+            label="Strength"
+            value={world.strength}
+            min={0}
+            max={10}
+            sliderMax={2}
+            step={0.01}
+            onChange={(strength) => edit({ strength }, 'World strength')}
+            {...gesture}
+          />
+        </Exposable>
         <SceneEmpty>The background lights whatever no lamp reaches, so a dark world leaves the shadows dark.</SceneEmpty>
       </SceneSection>
 

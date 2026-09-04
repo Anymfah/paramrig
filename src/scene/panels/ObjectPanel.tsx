@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { countedLabel } from '@/editor/history'
 import { descendantObjectIds } from '@/scene/document'
 import { objectBounds } from '@/scene/objects'
+import { Exposable } from '@/scene/SceneExpose'
 import { SceneAxes, SceneEmpty, SceneFold, SceneSection } from '@/scene/SceneProperties'
 import { IDENTITY_TRANSFORM, type EulerOrder, type SceneDocument, type SceneObject, type Transform, type Vec3 } from '@/scene/types'
 import { ColorField } from '@/ui/ColorField'
@@ -76,6 +77,12 @@ export function ObjectPanel({
   const folds = { isOpen, onSection }
   const gesture = { onGestureStart, onGestureEnd }
   const count = selectedObjects.length
+
+  /**
+   * The object a control would drive. A binding names one object, and a field here writes to the
+   * whole selection, so a selection of several offers no diamond rather than picking one of them.
+   */
+  const exposeId = count === 1 ? selectedObjects[0]?.id : undefined
 
   if (count === 0) {
     return (
@@ -175,6 +182,8 @@ export function ObjectPanel({
           locks={locksOf('location')}
           onLock={(axis, locked) => setLock('location', axis, locked)}
           onChange={(axis, value) => setVector('position', axis, value, countedLabel('Move', count))}
+          property="transform.position"
+          objectId={exposeId}
           {...gesture}
         />
         <SceneAxes
@@ -187,6 +196,8 @@ export function ObjectPanel({
           locks={locksOf('rotation')}
           onLock={(axis, locked) => setLock('rotation', axis, locked)}
           onChange={(axis, value) => setVector('rotation', axis, value, countedLabel('Rotate', count))}
+          property="transform.rotation"
+          objectId={exposeId}
           {...gesture}
         />
         <SelectField
@@ -213,6 +224,8 @@ export function ObjectPanel({
           locks={locksOf('scale')}
           onLock={(axis, locked) => setLock('scale', axis, locked)}
           onChange={(axis, value) => setVector('scale', axis, value, countedLabel('Scale', count))}
+          property="transform.scale"
+          objectId={exposeId}
           {...gesture}
         />
         <SceneAxes
@@ -265,12 +278,14 @@ export function ObjectPanel({
       </SceneSection>
 
       <SceneSection id="object-visibility" title="Visibility" {...folds}>
-        <SwitchField
-          label="Show in viewport"
-          checked={visible ?? true}
-          mixed={visible === null}
-          onChange={(next) => apply(() => ({ visible: next }), countedLabel(next ? 'Show' : 'Hide', count))}
-        />
+        <Exposable property="visible" objectId={exposeId}>
+          <SwitchField
+            label="Show in viewport"
+            checked={visible ?? true}
+            mixed={visible === null}
+            onChange={(next) => apply(() => ({ visible: next }), countedLabel(next ? 'Show' : 'Hide', count))}
+          />
+        </Exposable>
         <SwitchField
           label="Selectable"
           checked={selectable ?? true}

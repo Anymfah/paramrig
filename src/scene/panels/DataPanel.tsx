@@ -1,5 +1,6 @@
 import { meshOf } from '@/scene/document'
 import { meshCounts } from '@/scene/mesh/data'
+import { Exposable } from '@/scene/SceneExpose'
 import { SceneEmpty, SceneSection } from '@/scene/SceneProperties'
 import type { AreaShape, CameraData, EmptyData, EmptyDisplay, LightData, LightKind, MeshData, SceneDocument, SceneObject, Vec2 } from '@/scene/types'
 import { BarField } from '@/ui/BarField'
@@ -106,6 +107,7 @@ export function DataPanel({
     return (
       <LightFields
         data={data}
+        objectId={activeObject.id}
         unit={unit}
         onChange={(patch, label) => onUpdateObject(activeObject.id, { data: { ...data, ...patch } }, label)}
         {...gesture}
@@ -117,6 +119,7 @@ export function DataPanel({
     return (
       <CameraFields
         data={data}
+        objectId={activeObject.id}
         unit={unit}
         onChange={(patch, label) => onUpdateObject(activeObject.id, { data: { ...data, ...patch } }, label)}
         {...gesture}
@@ -255,8 +258,10 @@ function listAttributes(mesh: MeshData): Array<{ name: string; domain: string; t
   return found
 }
 
-function LightFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpen, onSection }: {
+function LightFields({ data, objectId, unit, onChange, onGestureStart, onGestureEnd, isOpen, onSection }: {
   data: LightData
+  /** The object the light belongs to, which is what a control writing to it binds against. */
+  objectId: string
   unit: string | undefined
   onChange: (patch: Partial<LightData>, label: string) => void
 } & Gesture & Folds) {
@@ -280,30 +285,34 @@ function LightFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpe
             if (kind) onChange({ light: kind.value }, 'Light type')
           }}
         />
-        <ColorField label="Colour" value={data.color} onChange={(color) => onChange({ color }, 'Light colour')} {...gesture} />
-        <NumberField
-          // A sun is measured where the light lands, not at the lamp: irradiance, not wattage.
-          label={sun ? 'Strength' : 'Power'}
-          value={data.power}
-          min={0}
-          max={sun ? 100 : 100000}
-          step={sun ? 0.1 : 1}
-          unit={sun ? 'W/m²' : 'W'}
-          variant="field"
-          onChange={(power) => onChange({ power }, 'Light power')}
-          {...gesture}
-        />
-        <NumberField
-          label="Radius"
-          value={data.radius}
-          min={0}
-          max={100}
-          step={0.01}
-          unit={unit}
-          variant="field"
-          onChange={(radius) => onChange({ radius }, 'Light radius')}
-          {...gesture}
-        />
+        <Exposable property="light.color" objectId={objectId}><ColorField label="Colour" value={data.color} onChange={(color) => onChange({ color }, 'Light colour')} {...gesture} /></Exposable>
+        <Exposable property="light.power" objectId={objectId} min={0} max={sun ? 100 : 100000} step={sun ? 0.1 : 1}>
+          <NumberField
+            // A sun is measured where the light lands, not at the lamp: irradiance, not wattage.
+            label={sun ? 'Strength' : 'Power'}
+            value={data.power}
+            min={0}
+            max={sun ? 100 : 100000}
+            step={sun ? 0.1 : 1}
+            unit={sun ? 'W/m²' : 'W'}
+            variant="field"
+            onChange={(power) => onChange({ power }, 'Light power')}
+            {...gesture}
+          />
+        </Exposable>
+        <Exposable property="light.radius" objectId={objectId} min={0} max={100} step={0.01}>
+          <NumberField
+            label="Radius"
+            value={data.radius}
+            min={0}
+            max={100}
+            step={0.01}
+            unit={unit}
+            variant="field"
+            onChange={(radius) => onChange({ radius }, 'Light radius')}
+            {...gesture}
+          />
+        </Exposable>
         <SwitchField label="Shadow" checked={data.shadow} onChange={(shadow) => onChange({ shadow }, 'Light shadow')} />
         <NumberField
           label="Custom distance"
@@ -320,26 +329,30 @@ function LightFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpe
       </SceneSection>
       {data.light === 'spot' ? (
         <SceneSection id="data-light-spot" title="Spot shape" isOpen={isOpen} onSection={onSection}>
-          <NumberField
-            label="Spot size"
-            value={data.spotAngle}
-            min={1}
-            max={180}
-            step={0.5}
-            unit="°"
-            variant="field"
-            onChange={(spotAngle) => onChange({ spotAngle }, 'Spot size')}
-            {...gesture}
-          />
-          <BarField
-            label="Blend"
-            value={data.spotBlur}
-            min={0}
-            max={1}
-            step={0.01}
-            onChange={(spotBlur) => onChange({ spotBlur }, 'Spot blend')}
-            {...gesture}
-          />
+          <Exposable property="light.spotAngle" objectId={objectId} min={1} max={180} step={0.5}>
+            <NumberField
+              label="Spot size"
+              value={data.spotAngle}
+              min={1}
+              max={180}
+              step={0.5}
+              unit="°"
+              variant="field"
+              onChange={(spotAngle) => onChange({ spotAngle }, 'Spot size')}
+              {...gesture}
+            />
+          </Exposable>
+          <Exposable property="light.spotBlend" objectId={objectId} min={0} max={1} step={0.01}>
+            <BarField
+              label="Blend"
+              value={data.spotBlur}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={(spotBlur) => onChange({ spotBlur }, 'Spot blend')}
+              {...gesture}
+            />
+          </Exposable>
         </SceneSection>
       ) : null}
       {data.light === 'area' ? (
@@ -383,8 +396,10 @@ function LightFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpe
   )
 }
 
-function CameraFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOpen, onSection }: {
+function CameraFields({ data, objectId, unit, onChange, onGestureStart, onGestureEnd, isOpen, onSection }: {
   data: CameraData
+  /** The object the camera belongs to, which is what a control writing to it binds against. */
+  objectId: string
   unit: string | undefined
   onChange: (patch: Partial<CameraData>, label: string) => void
 } & Gesture & Folds) {
@@ -404,17 +419,19 @@ function CameraFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOp
         />
         {data.projection === 'perspective' ? (
           <>
-            <NumberField
-              label="Focal length"
-              value={data.focalLength}
-              min={1}
-              max={5000}
-              step={0.1}
-              unit="mm"
-              variant="field"
-              onChange={(focalLength) => onChange({ focalLength }, 'Focal length')}
-              {...gesture}
-            />
+            <Exposable property="camera.focalLength" objectId={objectId} min={1} max={5000} step={0.1}>
+              <NumberField
+                label="Focal length"
+                value={data.focalLength}
+                min={1}
+                max={5000}
+                step={0.1}
+                unit="mm"
+                variant="field"
+                onChange={(focalLength) => onChange({ focalLength }, 'Focal length')}
+                {...gesture}
+              />
+            </Exposable>
             <NumberField
               label="Sensor width"
               value={data.sensor}
@@ -428,16 +445,18 @@ function CameraFields({ data, unit, onChange, onGestureStart, onGestureEnd, isOp
             />
           </>
         ) : (
-          <NumberField
-            label="Ortho scale"
-            value={data.orthoScale}
-            min={0.001}
-            max={10000}
-            step={0.01}
-            variant="field"
-            onChange={(orthoScale) => onChange({ orthoScale }, 'Ortho scale')}
-            {...gesture}
-          />
+          <Exposable property="camera.orthoScale" objectId={objectId} min={0.001} max={10000} step={0.01}>
+            <NumberField
+              label="Ortho scale"
+              value={data.orthoScale}
+              min={0.001}
+              max={10000}
+              step={0.01}
+              variant="field"
+              onChange={(orthoScale) => onChange({ orthoScale }, 'Ortho scale')}
+              {...gesture}
+            />
+          </Exposable>
         )}
         <NumberField
           label="Clip start"

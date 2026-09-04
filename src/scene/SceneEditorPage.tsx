@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { EditorCommandPalette } from '@/editor/EditorCommandPalette'
 import { EditorModal } from '@/editor/EditorModal'
 import { ensureSession } from '@/state/workspace'
-import { resolveSceneValues } from '@/scene/rig'
+import { resolveSceneValues, type SceneBinding } from '@/scene/rig'
+import { SceneExposeContext, type SceneExposeContextValue } from '@/scene/exposeContext'
+import { addControl, bindExisting, exposeProperty, removeControl, unbindProperty, updateControl, type ExposeRequest } from '@/scene/rigEdits'
 import type { ParamValue } from '@/rigs/types'
 import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
 import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
@@ -213,6 +215,70 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       editor.setMessage(cause instanceof Error ? cause.message : 'The export did not finish.')
     }
   }, [document, editor, selection.objectIds, shown])
+
+  /*
+   * The rig, as the panels edit it.
+   *
+   * Every one of these is a document edit like any other — it goes through the history, it is
+   * undone with ⌃Z, it is saved with the document — because a control is part of the document
+   * rather than part of the interface looking at it.
+   */
+  const expose = useCallback((request: ExposeRequest) => {
+    let made: string | null = null
+    editor.editDocument((current) => {
+      const result = exposeProperty(current, request)
+      if (!result) return current
+      made = result.parameterId
+      return result.document
+    }, `Expose ${request.label}`)
+    if (made) editor.setMessage(`${request.label} is now a control.`)
+  }, [editor])
+
+  const unbind = useCallback((binding: SceneBinding) => {
+    editor.editDocument((current) => unbindProperty(current, binding.id), 'Unbind control')
+  }, [editor])
+
+  const goToControl = useCallback((binding: SceneBinding) => {
+    // The control lives in the Controls tab; the object it writes to is what should be selected.
+    if (binding.objectId) editor.selectObjects([binding.objectId], binding.objectId)
+    savePrefs(withTab(prefs, documentId, 'controls'))
+  }, [documentId, editor, prefs, savePrefs])
+
+  const dropParameter = useCallback((parameterId: string, target: { objectId?: string; property: string }) => {
+    editor.editDocument((current) => bindExisting(current, parameterId, target), 'Bind control')
+  }, [editor])
+
+  /** A control that drives nothing yet: a rig built from the controls down rather than up. */
+  const addPlainControl = useCallback(() => {
+    const count = (editor.document?.rig?.parameters.length ?? 0) + 1
+    editor.editDocument((current) => addControl(current, {
+      kind: 'number',
+      id: `control-${count}`,
+      label: `Control ${count}`,
+      group: current.rig?.groups[0]?.id ?? 'main',
+      min: 0,
+      max: 1,
+      step: 0.01,
+      defaultValue: 0,
+    }), 'Add control')
+  }, [editor])
+
+  const renameControl = useCallback((parameterId: string, label: string) => {
+    editor.editDocument((current) => updateControl(current, parameterId, { label }), 'Rename control')
+  }, [editor])
+
+  const moveControl = useCallback((parameterId: string, group: string) => {
+    editor.editDocument((current) => updateControl(current, parameterId, { group }), 'Move control')
+  }, [editor])
+
+  const deleteControl = useCallback((parameterId: string) => {
+    editor.editDocument((current) => removeControl(current, parameterId), 'Delete control')
+  }, [editor])
+
+  const goToBinding = useCallback((parameterId: string) => {
+    const binding = editor.document?.rig?.bindings.find((entry) => entry.parameterId === parameterId)
+    if (binding?.objectId) editor.selectObjects([binding.objectId], binding.objectId)
+  }, [editor])
 
   /** Framing has to know how wide the viewport is, and the page is the only one that does. */
   const viewportAspect = useCallback(() => {
@@ -549,10 +615,6 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     )
   }
 
-  // `mode` and `onMode` are the workbench's Edit/Tune switch; the Controls tab uses them.
-  void mode
-  void onMode
-
   // Past the guard above, both are documents rather than maybes.
   const drawn = shown ?? document
   const counts = sceneCounts(drawn)
@@ -577,7 +639,24 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
 
   const contextEntries = menuEntries(CONTEXT_IDS, context, (id) => run(id)) as SceneMenuEntry[]
 
+  /*
+   * What the panels need to turn a field into a control. It is one context rather than a dozen
+   * props because a field is written where it belongs — in its own panel — and threading the rig
+   * through every component between here and a row would be a worse cost than a context.
+   */
+  const exposeContext: SceneExposeContextValue = {
+    document,
+    groups: document.rig?.groups ?? [],
+    parameters: document.rig?.parameters ?? [],
+    bindings: document.rig?.bindings ?? [],
+    onExpose: expose,
+    onUnbind: unbind,
+    onGoToControl: goToControl,
+    onDropParameter: dropParameter,
+  }
+
   return (
+    <SceneExposeContext.Provider value={exposeContext}>
     <ContextMenuRoot>
       <WorkspaceShell
         rigs={listRigs()}
@@ -619,6 +698,16 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             tab={tab}
             onTab={(next) => savePrefs(withTab(prefs, documentId, next))}
             onActiveMaterialSlot={(slot) => editor.setSelection({ ...selection, activeMaterialSlot: slot })}
+            controls={{
+              session,
+              mode,
+              onMode,
+              onAdd: addPlainControl,
+              onRename: renameControl,
+              onMove: moveControl,
+              onRemove: deleteControl,
+              onGoTo: goToBinding,
+            }}
             onUpdateObject={editor.updateObject}
             onUpdateObjects={editor.updateObjects}
             onEditDocument={editor.editDocument}
@@ -899,6 +988,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       ) : null}
       <LiveRegion name="scene" message={announcement} />
     </ContextMenuRoot>
+    </SceneExposeContext.Provider>
   )
 }
 

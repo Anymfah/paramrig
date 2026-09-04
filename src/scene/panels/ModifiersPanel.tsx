@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { listModifiers, type ModifierCategory, type ModifierModule } from '@/scene/modifiers'
+import { Exposable } from '@/scene/SceneExpose'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
 import { SceneEmpty } from '@/scene/SceneProperties'
 import type { Modifier, SceneDocument, SceneObject } from '@/scene/types'
@@ -21,7 +22,9 @@ import { Tooltip } from '@/ui/Tooltip'
  * an operator's: a modifier that gains a parameter gains a field here without a line being written.
  * The one thing the schema cannot describe is another object — the list of what is in the scene is
  * not the modifier's to know — so a parameter named in `objectInputs` is drawn from the document
- * instead, which is also what lets its options stay right as objects are added and renamed.
+ * instead, which is also what lets its options stay right as objects are added and renamed. It is
+ * for the same reason the only field here without a ◇: it points at an object rather than holding a
+ * value, and there is no control that could drive it.
  */
 
 const CATEGORY_TITLES: Record<ModifierCategory, string> = {
@@ -373,17 +376,19 @@ function ModifierCard({
                 )
               }
               return (
-                <ParameterField
-                  key={param.id}
-                  param={param}
-                  value={value}
-                  onChange={(next) => onPatch(
-                    { params: { ...modifier.params, [param.id]: next as Modifier['params'][string] } },
-                    `${param.label} of ${modifier.name.toLowerCase()}`,
-                  )}
-                  onGestureStart={onGestureStart}
-                  onGestureEnd={onGestureEnd}
-                />
+                // The bounds the popover starts from are the module's own, read back off the path.
+                <Exposable key={param.id} property={`modifiers[${modifier.id}].${param.id}`} objectId={object.id}>
+                  <ParameterField
+                    param={param}
+                    value={value}
+                    onChange={(next) => onPatch(
+                      { params: { ...modifier.params, [param.id]: next as Modifier['params'][string] } },
+                      `${param.label} of ${modifier.name.toLowerCase()}`,
+                    )}
+                    onGestureStart={onGestureStart}
+                    onGestureEnd={onGestureEnd}
+                  />
+                </Exposable>
               )
             })
           )}

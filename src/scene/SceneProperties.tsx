@@ -4,12 +4,15 @@ import { sceneIcon } from '@/scene/iconRegistry'
 import { DataPanel } from '@/scene/panels/DataPanel'
 import { HistoryPanel } from '@/scene/panels/HistoryPanel'
 import { MaterialPanel } from '@/scene/panels/MaterialPanel'
+import { ControlsPanel } from '@/scene/panels/ControlsPanel'
 import { ModifiersPanel } from '@/scene/panels/ModifiersPanel'
 import { ObjectPanel } from '@/scene/panels/ObjectPanel'
 import { ScenePanel } from '@/scene/panels/ScenePanel'
 import { WorldPanel } from '@/scene/panels/WorldPanel'
 import { evaluateObject } from '@/scene/modifiers/stack'
-import { PROPERTIES_TABS, type PropertiesTab } from '@/scene/prefs'
+import { PROPERTIES_TABS, type PropertiesTab, type SceneMode } from '@/scene/prefs'
+import type { RigSession } from '@/state/session'
+import { Exposable } from '@/scene/SceneExpose'
 import type { EditorMode, SceneDocument, SceneObject, SceneSelection, SceneVersion } from '@/scene/types'
 import { IconButton } from '@/ui/Button'
 import { IconChevron, IconLock, IconUnlock } from '@/ui/icons'
@@ -44,6 +47,7 @@ export function SceneProperties({
   tab,
   onTab,
   onActiveMaterialSlot,
+  controls,
   onUpdateObject,
   onUpdateObjects,
   onEditDocument,
@@ -64,6 +68,17 @@ export function SceneProperties({
   onTab: (tab: PropertiesTab) => void
   /** Which material slot the panel is on, which is what the material operators work on. */
   onActiveMaterialSlot: (slot: number) => void
+  /** The rig: its session, the Edit/Tune switch, and what the Controls tab does to a control. */
+  controls: {
+    session: RigSession | null
+    mode: SceneMode
+    onMode: (mode: SceneMode) => void
+    onAdd: () => void
+    onRename: (parameterId: string, label: string) => void
+    onMove: (parameterId: string, group: string) => void
+    onRemove: (parameterId: string) => void
+    onGoTo: (parameterId: string) => void
+  }
   onUpdateObject: (id: string, patch: Partial<SceneObject>, label?: string) => void
   onUpdateObjects: (patches: Array<{ id: string; patch: Partial<SceneObject> }>, label?: string) => void
   onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string) => void
@@ -198,9 +213,18 @@ export function SceneProperties({
           />
         ) : null}
         {tab === 'controls' ? (
-          <div className="scene-properties__notice">
-            <SceneEmpty>No controls yet. Controls arrive with the rig prompt, where a parameter is bound to a property of the scene.</SceneEmpty>
-          </div>
+          <ControlsPanel
+            document={document}
+            session={controls.session}
+            mode={controls.mode}
+            onMode={controls.onMode}
+            onAddControl={controls.onAdd}
+            onRenameControl={controls.onRename}
+            onMoveControl={controls.onMove}
+            onRemoveControl={controls.onRemove}
+            onGoToBinding={controls.onGoTo}
+            {...folds}
+          />
         ) : null}
         {tab === 'history' ? (
           <HistoryPanel
@@ -317,7 +341,7 @@ const AXIS_NAMES = ['X', 'Y', 'Z'] as const
  * "Mixed" state; typing into it then writes the same number to all of them. The padlock is
  * Blender's: it greys the field out so a stray scrub cannot move that axis.
  */
-export function SceneAxes({ label, unit, min, max, step, values, disabled, locks, onLock, onChange, onGestureStart, onGestureEnd }: {
+export function SceneAxes({ label, unit, min, max, step, values, disabled, locks, onLock, onChange, onGestureStart, onGestureEnd, property, objectId }: {
   label: string
   unit?: string
   min: number
@@ -332,6 +356,14 @@ export function SceneAxes({ label, unit, min, max, step, values, disabled, locks
   onChange: (axis: number, value: number) => void
   onGestureStart: () => void
   onGestureEnd: () => void
+  /**
+   * The path the row writes to, without its axis — `transform.position`, `cursor.position`. Three
+   * axes are three properties, so each field carries its own diamond rather than the row carrying
+   * one; a channel that names no path, such as dimensions, simply leaves it out.
+   */
+  property?: string
+  /** The object the path belongs to, for the paths that belong to one. */
+  objectId?: string
 }) {
   const labelId = useId()
   return (
@@ -341,7 +373,7 @@ export function SceneAxes({ label, unit, min, max, step, values, disabled, locks
         {AXIS_NAMES.map((axis, index) => {
           const value = values[index] ?? null
           const locked = locks?.[index] ?? false
-          return (
+          const field = (
             <NumberField
               key={axis}
               label={axis}
@@ -368,6 +400,12 @@ export function SceneAxes({ label, unit, min, max, step, values, disabled, locks
                 </Tooltip>
               ) : undefined}
             />
+          )
+          if (!property) return field
+          return (
+            <Exposable key={axis} property={`${property}.${axis.toLowerCase()}`} objectId={objectId}>
+              {field}
+            </Exposable>
           )
         })}
       </div>

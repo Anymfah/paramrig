@@ -1,5 +1,6 @@
 import { MaterialSwatch } from '@/scene/panels/MaterialSwatch'
 import { ResourceField } from '@/scene/panels/ResourceField'
+import { Exposable } from '@/scene/SceneExpose'
 import { SceneEmpty, SceneSection } from '@/scene/SceneProperties'
 import type { EditorMode, Material, SceneDocument, SceneObject, TextureSlot } from '@/scene/types'
 import { BarField } from '@/ui/BarField'
@@ -207,32 +208,34 @@ export function MaterialPanel({
       {material ? (
         <>
           <SceneSection id="material-surface" title="Surface" {...folds}>
-            <ColorField label="Base colour" value={material.baseColor} onChange={(baseColor) => edit({ baseColor }, 'Base colour')} {...gesture} />
-            <BarField label="Metallic" value={material.metallic} min={0} max={1} step={0.01} defaultValue={0} onChange={(metallic) => edit({ metallic }, 'Metallic')} {...gesture} />
-            <BarField label="Roughness" value={material.roughness} min={0} max={1} step={0.01} defaultValue={0.5} onChange={(roughness) => edit({ roughness }, 'Roughness')} {...gesture} />
+            <Exposable property={`materials[${material.id}].baseColor`}><ColorField label="Base colour" value={material.baseColor} onChange={(baseColor) => edit({ baseColor }, 'Base colour')} {...gesture} /></Exposable>
+            <Exposable property={`materials[${material.id}].metallic`} min={0} max={1} step={0.01}><BarField label="Metallic" value={material.metallic} min={0} max={1} step={0.01} defaultValue={0} onChange={(metallic) => edit({ metallic }, 'Metallic')} {...gesture} /></Exposable>
+            <Exposable property={`materials[${material.id}].roughness`} min={0} max={1} step={0.01}><BarField label="Roughness" value={material.roughness} min={0} max={1} step={0.01} defaultValue={0.5} onChange={(roughness) => edit({ roughness }, 'Roughness')} {...gesture} /></Exposable>
             <BarField label="Specular" value={material.specular} min={0} max={1} step={0.01} defaultValue={0.5} onChange={(specular) => edit({ specular }, 'Specular')} {...gesture} />
             <BarField label="IOR" value={material.ior} min={1} max={2.333} step={0.001} defaultValue={1.45} onChange={(ior) => edit({ ior }, 'IOR')} {...gesture} />
-            <BarField label="Transmission" value={material.transmission} min={0} max={1} step={0.01} defaultValue={0} onChange={(transmission) => edit({ transmission }, 'Transmission')} {...gesture} />
+            <Exposable property={`materials[${material.id}].transmission`} min={0} max={1} step={0.01}><BarField label="Transmission" value={material.transmission} min={0} max={1} step={0.01} defaultValue={0} onChange={(transmission) => edit({ transmission }, 'Transmission')} {...gesture} /></Exposable>
           </SceneSection>
 
           <SceneSection id="material-emission" title="Emission" {...folds}>
-            <ColorField label="Colour" value={material.emission} onChange={(emission) => edit({ emission }, 'Emission colour')} {...gesture} />
-            <BarField
-              label="Strength"
-              value={material.emissionStrength}
-              min={0}
-              max={100}
-              sliderMax={10}
-              step={0.01}
-              defaultValue={0}
-              onChange={(emissionStrength) => edit({ emissionStrength }, 'Emission strength')}
-              {...gesture}
-            />
+            <Exposable property={`materials[${material.id}].emission`}><ColorField label="Colour" value={material.emission} onChange={(emission) => edit({ emission }, 'Emission colour')} {...gesture} /></Exposable>
+            <Exposable property={`materials[${material.id}].emissionStrength`} min={0} max={10} step={0.01}>
+              <BarField
+                label="Strength"
+                value={material.emissionStrength}
+                min={0}
+                max={100}
+                sliderMax={10}
+                step={0.01}
+                defaultValue={0}
+                onChange={(emissionStrength) => edit({ emissionStrength }, 'Emission strength')}
+                {...gesture}
+              />
+            </Exposable>
             <SceneEmpty>An emitting surface is drawn bright; it does not light its neighbours.</SceneEmpty>
           </SceneSection>
 
           <SceneSection id="material-transparency" title="Transparency" {...folds}>
-            <BarField label="Alpha" value={material.alpha} min={0} max={1} step={0.01} defaultValue={1} onChange={(alpha) => edit({ alpha }, 'Alpha')} {...gesture} />
+            <Exposable property={`materials[${material.id}].alpha`} min={0} max={1} step={0.01}><BarField label="Alpha" value={material.alpha} min={0} max={1} step={0.01} defaultValue={1} onChange={(alpha) => edit({ alpha }, 'Alpha')} {...gesture} /></Exposable>
             <SelectField
               label="Blend mode"
               value={material.blendMode}
