@@ -1,11 +1,12 @@
 import { Matrix4, Vector3 } from 'three'
 import { localFromWorldPoint, worldMatrix } from '@/scene/objects'
 import { meshOf, withMesh } from '@/scene/document'
+import { keysActive, keyValue, shapedMesh } from '@/scene/mesh/shapeKeys'
 import { dabSettings, DEFAULT_SCULPT_STATE, SculptSession } from '@/scene/sculpt/session'
 import type { HudChannel } from '@/scene/viewport/hud'
 import type { SceneViewport } from '@/scene/viewport/SceneViewport'
 import { cameraPosition } from '@/scene/viewport/view'
-import type { MeshData, SceneDocument, SculptState, Vec3 } from '@/scene/types'
+import type { MeshData, SceneDocument, SceneObject, SculptState, ShapeKey, Vec3 } from '@/scene/types'
 
 /**
  * Sculpting, from the pointer to the mesh.
@@ -30,6 +31,8 @@ export type SculptToolDeps = {
   beginGesture: (label: string) => void
   endGesture: (label: string) => void
   invalidate: () => void
+  /** What the status bar says when a stroke cannot go where it would have to go. */
+  message: (text: string) => void
 }
 
 /** How far apart two dabs are, as a fraction of the radius: Blender's spacing, near enough. */
@@ -46,6 +49,16 @@ export class SculptTool {
   private session: SculptSession | null = null
   private objectId = ''
   private meshId = ''
+  /*
+   * The mesh as the document stores it, and the keys that were on when the session opened.
+   *
+   * The session works on the *shaped* mesh — what is on screen — because that is what the brush is
+   * touching. Both of these are what the page compares against to know whether the copy the session
+   * holds is still of this object: a key scrubbed while sculpting changes the surface under the
+   * hand, and the session has to be built again.
+   */
+  private storedMesh: MeshData | null = null
+  private storedKeys: ShapeKey[] | undefined
   /** Where the last dab landed, in the object's own space, so the next one can be walked to. */
   private last: Vec3 | null = null
   private stroking = false
@@ -74,9 +87,9 @@ export class SculptTool {
     return this.objectId
   }
 
-  /** Whether the session's copy is still of this mesh, or the document has moved on without it. */
-  matches(mesh: MeshData): boolean {
-    return this.session?.mesh === mesh
+  /** Whether the session's copy is still of this object, or the document has moved on without it. */
+  matches(object: SceneObject, mesh: MeshData): boolean {
+    return this.storedMesh === mesh && this.storedKeys === object.shapeKeys
   }
 
   /** Everything is thrown away: the mode changed, or the object did. */
@@ -156,9 +169,45 @@ export class SculptTool {
     }
     const mesh = this.session.toMeshData()
     const meshId = this.meshId
+    const objectId = this.objectId
+    const intoKey = this.activeKey()
+    if (intoKey) {
+      /*
+       * The stroke goes into the shape key rather than into the mesh.
+       *
+       * What the hand moved is the delta, and the key contributes `offset × value`, so the offset
+       * has to grow by `delta ÷ value` for the surface to stay where the hand left it. This is the
+       * one place the stroke's delta earns its keep: only the vertices that moved are written.
+       */
+      const amount = keyValue(intoKey.key)
+      const offsets: Record<string, Vec3> = { ...intoKey.key.offsets }
+      for (let index = 0; index < stroke.indices.length; index += 1) {
+        const id = String(mesh.vertexIds[stroke.indices[index]!] ?? -1)
+        const previous = offsets[id] ?? [0, 0, 0]
+        offsets[id] = [
+          previous[0] + (stroke.after[index * 3]! - stroke.before[index * 3]!) / amount,
+          previous[1] + (stroke.after[index * 3 + 1]! - stroke.before[index * 3 + 1]!) / amount,
+          previous[2] + (stroke.after[index * 3 + 2]! - stroke.before[index * 3 + 2]!) / amount,
+        ]
+      }
+      const at = intoKey.index
+      this.deps.applyDocument((current) => ({
+        ...current,
+        objects: current.objects.map((object) => (object.id === objectId && object.shapeKeys
+          ? { ...object, shapeKeys: object.shapeKeys.map((key, index) => (index === at ? { ...key, offsets } : key)) }
+          : object)),
+      }))
+      // The stored mesh has not moved; the keys have, so the session says it no longer knows which
+      // ones it holds and is rebuilt on the next stroke against whatever the document now says.
+      this.storedKeys = undefined
+      this.session.rebase(mesh)
+      this.deps.endGesture('Shape key')
+      return
+    }
     this.deps.applyDocument((current) => (current.meshes[meshId] ? withMesh(current, meshId, mesh) : current))
     // The session made this mesh, so it is still the session's own; without this the page would see
     // a mesh the session had never heard of and rebuild the whole thing between every two strokes.
+    this.storedMesh = mesh
     this.session.rebase(mesh)
     this.deps.endGesture(strokeLabel(this.dab(0).brush))
   }
@@ -192,6 +241,29 @@ export class SculptTool {
     this.deps.hud.clear()
   }
 
+  /**
+   * The shape key a stroke would go into, if there is one.
+   *
+   * A key that is on is a key the brush is standing on: what is under the pointer is the mesh plus
+   * that key, and putting the stroke into the mesh would move the surface twice as far as the hand
+   * did. A key at nought cannot be written to at all — no offset times nought is a movement — and
+   * that is said out loud rather than silently sculpting the mesh underneath it.
+   */
+  private activeKey(): { index: number; key: ShapeKey } | null {
+    const document = this.deps.document()
+    const object = document?.objects.find((candidate) => candidate.id === this.objectId)
+    const keys = object?.shapeKeys
+    if (!keys || keys.length === 0) return null
+    const index = Math.min(keys.length - 1, Math.max(0, object?.activeShapeKey ?? 0))
+    const key = keys[index]
+    if (!key) return null
+    if (Math.abs(keyValue(key)) <= 1e-6) {
+      if (keysActive(keys)) this.deps.message(`Set “${key.name}” above nought to sculpt into it.`)
+      return null
+    }
+    return { index, key }
+  }
+
   /** The settings for one dab: what a person set, at the radius the brush has here. */
   private dab(radius: number) {
     return dabSettings(this.state, radius, this.modifiers)
@@ -206,7 +278,14 @@ export class SculptTool {
     if (!document || !object || object.data.kind !== 'mesh') return false
     const mesh = meshOf(document, object)
     if (!mesh) return false
-    this.session = new SculptSession(mesh)
+    /*
+     * The brush touches what is drawn, and what is drawn is the mesh with its shape keys mixed in.
+     * So the session opens on that, and where the stroke ends up — in the mesh or in a key — is
+     * decided when the hand lets go.
+     */
+    this.storedMesh = mesh
+    this.storedKeys = object.shapeKeys
+    this.session = new SculptSession(shapedMesh(mesh, object.shapeKeys))
     this.objectId = objectId
     this.meshId = object.data.meshId
     return true

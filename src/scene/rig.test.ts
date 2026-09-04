@@ -107,8 +107,12 @@ describe('reading a property path', () => {
     expect(parseSceneProperty('')).toBeNull()
   })
 
-  it('refuses a shape key, which arrives with a later prompt', () => {
-    expect(parseSceneProperty('shapeKeys[Smile].value')).toBeNull()
+  it('reads a shape key by name, and refuses one addressed any other way', () => {
+    expect(parseSceneProperty('shapeKeys[Smile].value')).toEqual({ kind: 'shapeKey', name: 'Smile', type: 'number', scoped: true })
+    // A name may hold spaces and dots, as Blender's do; what it may not hold is the bracket.
+    expect(parseSceneProperty('shapeKeys[Mouth open.001].value')).toMatchObject({ name: 'Mouth open.001' })
+    expect(parseSceneProperty('shapeKeys[Smile].min')).toBeNull()
+    expect(parseSceneProperty('shapeKeys[].value')).toBeNull()
   })
 
   it('accepts every path the documentation lists', () => {

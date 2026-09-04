@@ -314,6 +314,7 @@ export function SceneStage({
       beginGesture: (label) => gestures.current.onGestureStart(label),
       endGesture: (label) => gestures.current.onGestureEnd(label),
       invalidate: () => viewport.current?.invalidate(),
+      message: (text) => bridge.current.message(text),
     })
     closeSculpt.current = () => {
       const tool = sculpt.current
@@ -322,7 +323,7 @@ export function SceneStage({
       const active = view.view.mode === 'sculpt' ? latestSelection.current.activeObjectId : null
       const object = active ? view.objects.find((candidate) => candidate.id === active) : null
       const mesh = object?.data.kind === 'mesh' ? view.meshes[object.data.meshId] : null
-      if (!active || tool.openOn !== active || (mesh && !tool.matches(mesh))) tool.close()
+      if (!active || tool.openOn !== active || (object && mesh && !tool.matches(object, mesh))) tool.close()
     }
     modal.current = new ModalTransform({
       viewport: () => viewport.current,

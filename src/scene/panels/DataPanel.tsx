@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { uvMapsOf } from '@/scene/mesh/uv'
+import { ShapeKeysSection } from '@/scene/panels/ShapeKeysSection'
 import { UvMapsSection } from '@/scene/panels/UvMapsSection'
 import { meshOf } from '@/scene/document'
 import { meshCounts } from '@/scene/mesh/data'
@@ -91,6 +92,8 @@ export function DataPanel({
     return mesh
       ? (
         <MeshFields
+          document={document}
+          object={activeObject}
           mesh={mesh}
           meshId={data.meshId}
           editing={document.view.mode === 'edit'}
@@ -149,7 +152,9 @@ export function DataPanel({
  * would be a second way of doing the same thing with none of the context. What the list does offer
  * is the one thing the operators cannot: clearing a whole attribute at once.
  */
-function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGestureStart, onGestureEnd, isOpen, onSection }: {
+function MeshFields({ document, object, mesh, meshId, editing, onEditDocument, onRunOperator, onGestureStart, onGestureEnd, isOpen, onSection }: {
+  document: SceneDocument
+  object: SceneObject
   mesh: MeshData
   meshId: string
   editing: boolean
@@ -205,6 +210,15 @@ function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGe
           onChange={(value) => setAutoSmooth({ angle: value }, 'Auto smooth angle')}
         />
       </SceneSection>
+      <ShapeKeysSection
+        document={document}
+        object={object}
+        onEditDocument={onEditDocument}
+        isOpen={isOpen}
+        onSection={onSection}
+        onGestureStart={onGestureStart}
+        onGestureEnd={onGestureEnd}
+      />
       <UvMapsSection mesh={mesh} meshId={meshId} onEditDocument={onEditDocument} isOpen={isOpen} onSection={onSection} />
       <SceneSection id="data-mesh-attributes" title="Attributes" meta={`${attributes.length}`} isOpen={isOpen} onSection={onSection}>
         {attributes.length === 0 ? (

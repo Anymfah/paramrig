@@ -9,6 +9,7 @@
 import '@/scene/modifiers'
 import { meshOf } from '@/scene/document'
 import { meshFingerprint } from '@/scene/mesh/data'
+import { shapedMesh } from '@/scene/mesh/shapeKeys'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { invert, multiply } from '@/scene/modifiers/matrix'
 import { getModifier, withModifierDefaults, type ModifierInput } from '@/scene/modifiers/types'
@@ -67,8 +68,14 @@ export type EvaluateOptions = {
  * unchanged and uncopied — which is what makes the stack free for the scenes that have none.
  */
 export function evaluateObject(document: SceneDocument, object: SceneObject, options: EvaluateOptions = {}): EvaluatedMesh | null {
-  const data = meshOf(document, object)
-  if (!data) return null
+  const stored = meshOf(document, object)
+  if (!stored) return null
+  /*
+   * The shape keys are mixed in before anything else sees the mesh — before the modifiers, before
+   * the drawn geometry, before a rig reads a vertex. That is Blender's order and the only one that
+   * makes sense: a key is what the shape *is*, and a modifier is something done to a shape.
+   */
+  const data = shapedMesh(stored, object.shapeKeys)
   const forRender = options.forRender === true
   const editing = options.editing === true
   const wanted = object.modifiers.filter((modifier) => (
@@ -139,6 +146,9 @@ function signature(
   editing: boolean,
 ): string {
   const parts: string[] = [object.id, meshFingerprint(data), forRender ? 'render' : 'view', editing ? 'edit' : 'object']
+  // The keys are in the mesh's fingerprint already — they moved its vertices — so they need no
+  // entry of their own here; this comment is where somebody would otherwise come looking for one.
+
   for (const modifier of modifiers) {
     parts.push(modifier.kind, JSON.stringify(withModifierDefaults(modifier)), modifier.enabled.onCage ? 'cage' : '')
     const module = getModifier(modifier.kind)

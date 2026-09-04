@@ -93,6 +93,7 @@ export type SceneProperty =
   | { kind: 'light'; field: LightField; type: 'number' | 'color'; scoped: true }
   | { kind: 'camera'; field: keyof typeof CAMERA_FIELDS; type: 'number'; scoped: true }
   | { kind: 'vertex'; vertexId: number; axis: 0 | 1 | 2; type: 'number'; scoped: true }
+  | { kind: 'shapeKey'; name: string; type: 'number'; scoped: true }
   | { kind: 'material'; materialId: string; field: MaterialField; type: 'number' | 'color'; scoped: false }
   | { kind: 'world'; field: keyof typeof WORLD_FIELDS; type: 'number' | 'color'; scoped: false }
   | { kind: 'cursor'; axis: 0 | 1 | 2; type: 'number'; scoped: false }
@@ -102,9 +103,8 @@ const AXES = { x: 0, y: 1, z: 2 } as const
 /**
  * Reads a property path, or refuses it.
  *
- * `shapeKeys[name].value` is deliberately refused with the rest: shape keys arrive in a later
- * prompt, and a binding that writes to something that does not exist yet is a binding that does
- * nothing while looking as though it works.
+ * A path this does not know is refused rather than guessed at: a binding that writes to something
+ * that does not exist is a binding that does nothing while looking as though it works.
  */
 export function parseSceneProperty(property: string): SceneProperty | null {
   const transform = /^transform\.(position|rotation|scale)\.(x|y|z)$/.exec(property)
@@ -139,6 +139,13 @@ export function parseSceneProperty(property: string): SceneProperty | null {
   if (camera && Object.hasOwn(CAMERA_FIELDS, camera[1]!)) {
     return { kind: 'camera', field: camera[1] as keyof typeof CAMERA_FIELDS, type: 'number', scoped: true }
   }
+
+  /*
+   * A shape key by name rather than by index, because a person adds and removes keys and the index
+   * of "smile" is not a fact about the rig. The name may hold anything but a closing bracket.
+   */
+  const shapeKey = /^shapeKeys\[([^\]]+)\]\.value$/.exec(property)
+  if (shapeKey) return { kind: 'shapeKey', name: shapeKey[1]!, type: 'number', scoped: true }
 
   const vertex = /^mesh\.vertices\[(\d+)\]\.(x|y|z)$/.exec(property)
   if (vertex) {
@@ -183,6 +190,7 @@ export const SCENE_PROPERTY_PATHS: ScenePathDoc[] = [
   { path: 'visible', takes: 'boolean', scope: 'object', note: 'Whether the viewport draws it.' },
   { path: 'modifiers[<id>].<param>', takes: 'its own', scope: 'object', note: 'Any parameter the modifier’s schema declares, by its own name — levels, thickness, angle.' },
   { path: 'mesh.vertices[<index>].x', takes: 'number', scope: 'object', note: 'Also .y and .z. One vertex of the object’s mesh, by index.' },
+  { path: 'shapeKeys[<name>].value', takes: 'number', scope: 'object', note: 'How much of a shape key is mixed in. By name, and only for a key that exists.' },
   ...Object.entries(LIGHT_FIELDS).map(([field, takes]) => ({
     path: `light.${field}`,
     takes: takes as ScenePropertyType,
@@ -293,6 +301,20 @@ export function applyObjectBinding(
     return { ...object, transform: { ...object.transform, scale: [amount, amount, amount] } }
   }
   if (path.kind === 'visible') return { ...object, visible: Boolean(value) }
+
+  if (path.kind === 'shapeKey') {
+    const amount = number()
+    if (amount === null || !object.shapeKeys) return object
+    /*
+     * A key nobody has made is not created by binding to it. A controller that spelled the name
+     * wrongly would otherwise add a key with no offsets, which does nothing and looks like a key.
+     */
+    if (!object.shapeKeys.some((key) => key.name === path.name)) return object
+    return {
+      ...object,
+      shapeKeys: object.shapeKeys.map((key) => (key.name === path.name ? { ...key, value: amount } : key)),
+    }
+  }
 
   if (path.kind === 'modifier') {
     const modifier = object.modifiers.find((entry) => entry.id === path.modifierId)
@@ -514,6 +536,9 @@ export function currentSceneValue(document: SceneDocument, binding: Pick<SceneBi
     const slot = mesh ? mesh.vertexIds.indexOf(path.vertexId) : -1
     return mesh && slot >= 0 ? mesh.vertices[slot * 3 + path.axis] ?? 0 : null
   }
+  if (path.kind === 'shapeKey') {
+    return object.shapeKeys?.find((key) => key.name === path.name)?.value ?? null
+  }
   return null
 }
 
@@ -542,6 +567,7 @@ export function scenePropertyLabel(document: SceneDocument, binding: Pick<SceneB
   if (path.kind === 'camera') return `${owner}${path.field === 'focalLength' ? 'Focal length' : 'Orthographic scale'}`
   if (path.kind === 'vertex') return `${owner}Vertex ${path.vertexId} ${'XYZ'[path.axis]}`
   if (path.kind === 'world') return `World ${path.field === 'color' ? 'colour' : 'strength'}`
+  if (path.kind === 'shapeKey') return `${owner}${path.name}`
   return `3D cursor ${'XYZ'[path.axis]}`
 }
 

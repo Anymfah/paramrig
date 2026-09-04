@@ -21,6 +21,7 @@ import type {
   SceneUnits,
   SceneVersion,
   SculptState,
+  ShapeKey,
   TextureSlot,
   Transform,
   UvEditorState,
@@ -657,6 +658,42 @@ const FALLOFFS = ['smooth', 'sphere', 'root', 'inverse-square', 'sharp', 'linear
  * a collection that are named exist, a mesh an object points at exists, a material slot points at a
  * material, and a mesh is valid on its own terms.
  */
+/**
+ * The shape keys a file carries, read the way everything else here is: kept where it is sound, and
+ * dropped where it is not.
+ *
+ * An offset is three numbers against a vertex *id*, so a key does not have to agree with the mesh's
+ * length to be valid — a key written for a mesh that has since lost a vertex simply has an offset
+ * nobody applies. What is checked is the shape of the thing: a name, a range, and numbers.
+ */
+function shapeKeysOf(object: Partial<SceneObject>): { shapeKeys?: ShapeKey[]; activeShapeKey?: number } {
+  if (!Array.isArray(object.shapeKeys)) return {}
+  const keys: ShapeKey[] = []
+  for (const entry of object.shapeKeys.slice(0, 64)) {
+    if (!entry || typeof entry !== 'object') continue
+    const source = entry as Partial<ShapeKey>
+    const offsets: Record<string, Vec3> = {}
+    for (const [id, offset] of Object.entries(source.offsets ?? {})) {
+      if (!Number.isInteger(Number(id))) continue
+      offsets[id] = vec3(offset, [0, 0, 0])
+    }
+    const min = num(source.min, 0, -1000, 1000)
+    const max = num(source.max, 1, -1000, 1000)
+    keys.push({
+      name: text(source.name, 'Key', 64) || 'Key',
+      min: Math.min(min, max),
+      max: Math.max(min, max),
+      value: num(source.value, 0, -1000, 1000),
+      offsets,
+    })
+  }
+  if (keys.length === 0) return {}
+  return {
+    shapeKeys: keys,
+    activeShapeKey: Math.min(keys.length - 1, Math.max(0, Math.floor(Number(object.activeShapeKey) || 0))),
+  }
+}
+
 /** Solid shading's own settings, each read the way the rest of the view is: a fallback, never a NaN. */
 function readSolid(value: unknown): NonNullable<ViewState['solid']> {
   const source = (value ?? {}) as Partial<NonNullable<ViewState['solid']>>
@@ -786,6 +823,7 @@ export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
         .slice(0, 32),
       ...(object.displayAs ? { displayAs: pick(object.displayAs, ['textured', 'solid', 'wire', 'bounds'] as const, 'textured') } : {}),
       ...(object.inFront ? { inFront: true } : {}),
+      ...shapeKeysOf(object),
       ...(typeof object.color === 'string' ? { color: object.color.slice(0, 40) } : {}),
     })
   }

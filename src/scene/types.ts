@@ -204,6 +204,8 @@ export type SceneObject = {
   /** Material ids; a face's `material` attribute indexes into this list. */
   materialSlots: string[]
   shapeKeys?: ShapeKey[]
+  /** Which key the panel is on, and which one a sculpt stroke writes into. */
+  activeShapeKey?: number
   displayAs?: 'textured' | 'solid' | 'wire' | 'bounds'
   /** Drawn in front of everything else, the way Blender's "in front" does. */
   inFront?: boolean

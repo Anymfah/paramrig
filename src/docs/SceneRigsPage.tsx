@@ -136,7 +136,7 @@ export function SceneRigsPage() {
 
       <h2>Known approximations</h2>
       <ul className="docs-steps">
-        <li>Shape keys are refused. <code>shapeKeys[name].value</code> parses as nothing until they exist, so that a binding cannot look as though it works while doing nothing.</li>
+        <li><code>shapeKeys[name].value</code> writes to a key the object already carries, by name. A name no key answers to is refused rather than created, so a controller cannot look as though it works while doing nothing.</li>
         <li>A vertex binding names an index of the mesh. Editing the mesh renumbers vertices, and a binding that pointed at one may then point at another.</li>
         <li>A driven modifier is evaluated on every change of its control. The stack is cached by its inputs, so a control that returns to a value it has held is instant, and one dragged through new values is not.</li>
         <li>A control cannot add or remove an object, a modifier or a material: it writes to what the file already contains.</li>

@@ -1,9 +1,10 @@
 import { meshOf, withMesh } from '@/scene/document'
 import { edgeKey } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
+import { remapShapeKeys } from '@/scene/mesh/shapeKeys'
 import { editedObjectIds, fromElements, selectNone, toElements, type ElementSelection } from '@/scene/mesh/selection'
 import type { Availability, OperatorContext, OperatorResult } from '@/scene/operators/types'
-import type { ElementRef, SceneDocument, SceneObject, SceneSelection, SelectMode } from '@/scene/types'
+import type { ElementRef, MeshData, SceneDocument, SceneObject, SceneSelection, SelectMode } from '@/scene/types'
 
 /**
  * What every mesh operator stands on.
@@ -157,6 +158,19 @@ export function requireEdit(context: OperatorContext, needs?: SelectMode | 'any'
  * pressed a key wants to know why nothing happened. One target refusing among several is not:
  * the ones that could act have acted, and the reason goes to the status bar as a message.
  */
+/** Every object drawing this mesh, with its shape keys tidied of the vertices the edit removed. */
+function withRemappedShapeKeys(document: SceneDocument, meshId: string, mesh: MeshData): SceneDocument {
+  let changed = false
+  const objects = document.objects.map((object) => {
+    if (object.data.kind !== 'mesh' || object.data.meshId !== meshId || !object.shapeKeys) return object
+    const kept = remapShapeKeys(object.shapeKeys, mesh)
+    if (kept === object.shapeKeys) return object
+    changed = true
+    return { ...object, shapeKeys: kept }
+  })
+  return changed ? { ...document, objects } : document
+}
+
 export function runOnMeshes(
   context: OperatorContext,
   work: (target: EditTarget) => EditOutcome,
@@ -177,7 +191,17 @@ export function runOnMeshes(
     }
     if (outcome === null) continue
     changed = true
-    document = withMesh(document, target.meshId, target.mesh.toData())
+    const built = target.mesh.toData()
+    document = withMesh(document, target.meshId, built)
+    /*
+     * An edit that removed vertices leaves the shape keys holding offsets for vertices that are no
+     * longer there. They do nothing — an offset is applied by id, and the id is not found — but a
+     * file that keeps them grows for ever, so they go here, at the one place every mesh edit passes
+     * through. A vertex the edit *made* gets no offset: it belongs to the basis until somebody
+     * shapes it, and a cut has no way of knowing what it should have been in a shape it was never
+     * part of.
+     */
+    document = withRemappedShapeKeys(document, target.meshId, built)
     if (outcome.message) messages.push(outcome.message)
     if (outcome.select !== undefined || outcome.active !== undefined) {
       selection = writeSelection(selection, target, outcome.select, outcome.active)

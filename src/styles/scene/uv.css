@@ -238,3 +238,27 @@
 }
 .scene-uv-maps__mark { flex: none; inline-size: 14px; block-size: 14px; color: var(--accent); }
 .scene-uv-maps__actions { display: flex; align-items: center; gap: 2px; }
+
+/* ------------------------------------------------------ Data > Shape keys */
+
+/*
+ * A row is a name, a slider and the two buttons that name it and take it away. The slider is on the
+ * row rather than under the list because a person scrubbing a key is watching the model, not the
+ * panel, and reaching for a second control to do it would take their eyes off the thing they are
+ * shaping.
+ */
+.scene-shape-keys { display: grid; gap: 2px; }
+.scene-shape-keys__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-block-size: calc(var(--hit-target) - 4px);
+  padding-inline: 2px;
+  border-radius: var(--radius-xs);
+}
+.scene-shape-keys__row[data-active='true'] { background: var(--surface-inset); }
+.scene-shape-keys__row[data-active='true'] .scene-uv-maps__name { font-weight: 600; }
+.scene-shape-keys__row .scene-uv-maps__name { flex: 0 1 7rem; }
+.scene-shape-keys__value { flex: 1; min-inline-size: 4rem; }
+.scene-shape-keys__value .control { margin: 0; }
+.scene-shape-keys__donor { display: grid; gap: var(--space-1); margin-block-start: var(--space-2); }

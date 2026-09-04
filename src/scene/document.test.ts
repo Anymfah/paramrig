@@ -196,6 +196,40 @@ describe('reading a document that cannot be trusted', () => {
   })
 })
 
+describe('the shape keys a file carries', () => {
+  it('keeps a sound key, holds its range the right way round and clamps the active one', () => {
+    const base = createSceneDocument()
+    const read = sanitizeSceneDocument({
+      ...base,
+      objects: base.objects.map((object) => (object.kind === 'mesh'
+        ? {
+          ...object,
+          activeShapeKey: 9,
+          shapeKeys: [
+            { name: 'Smile', value: 0.5, min: 1, max: 0, offsets: { 3: [0, 0, 1] } },
+            { name: '', value: 'x', min: 0, max: 1, offsets: { nonsense: [0, 0, 1], 4: [1, 'x', null] } },
+          ],
+        }
+        : object)),
+    })!
+    const object = read.objects.find((entry) => entry.kind === 'mesh')!
+    expect(object.shapeKeys).toHaveLength(2)
+    // A range written the wrong way round is not a refusal, it is a range: the two are swapped.
+    expect(object.shapeKeys![0]).toMatchObject({ name: 'Smile', min: 0, max: 1, value: 0.5 })
+    expect(object.shapeKeys![1]!.name).toBe('Key')
+    expect(object.shapeKeys![1]!.value).toBe(0)
+    // An offset against something that is not a vertex id is not an offset.
+    expect(Object.keys(object.shapeKeys![1]!.offsets)).toEqual(['4'])
+    expect(object.shapeKeys![1]!.offsets['4']).toEqual([1, 0, 0])
+    expect(object.activeShapeKey).toBe(1)
+  })
+
+  it('carries none at all when the file has none', () => {
+    const read = sanitizeSceneDocument(createSceneDocument())!
+    expect(read.objects.every((object) => object.shapeKeys === undefined)).toBe(true)
+  })
+})
+
 describe('a mesh that cannot be trusted', () => {
   it('drops an edge that names one vertex twice, or a vertex that is not there', () => {
     const mesh = validateMeshData({ ...boxMesh(2), edges: [[0, 0], [0, 99], [0, 1]] })!
