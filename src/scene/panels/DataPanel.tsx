@@ -1,3 +1,4 @@
+import { uvMapsOf } from '@/scene/mesh/uv'
 import { meshOf } from '@/scene/document'
 import { meshCounts } from '@/scene/mesh/data'
 import { Exposable } from '@/scene/SceneExpose'
@@ -240,7 +241,9 @@ function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGe
 function listAttributes(mesh: MeshData): Array<{ name: string; domain: string; type: string; count: number }> {
   const found: Array<{ name: string; domain: string; type: string; count: number }> = []
   const edge = mesh.attributes.edge
-  if (mesh.attributes.vertex.uv) found.push({ name: 'UVMap', domain: 'corner', type: '2D vector', count: mesh.faces.length })
+  for (const map of uvMapsOf(mesh)) {
+    found.push({ name: map.name, domain: 'corner', type: '2D vector', count: Math.floor(map.data.length / 2) })
+  }
   if (mesh.attributes.vertex.color) {
     found.push({ name: 'Color', domain: 'point', type: 'colour', count: mesh.vertexIds.length })
   }

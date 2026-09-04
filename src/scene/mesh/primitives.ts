@@ -1,4 +1,6 @@
 import { clampNumber, meshFromPolygons } from '@/scene/mesh/data'
+import { withActiveUv } from '@/scene/mesh/uv'
+import { cubeProjection, cylinderProjection, planarProjection, resetProjection, sphereProjection, torusProjection } from '@/scene/uv/project'
 import type { MeshData, Vec2, Vec3 } from '@/scene/types'
 
 /**
@@ -9,6 +11,10 @@ import type { MeshData, Vec2, Vec3 } from '@/scene/types'
  * defaults are Blender's own — a cube two metres across, a circle of thirty-two vertices, a torus
  * of forty-eight by twelve — so a hand used to Blender gets the mesh it expects without having to
  * open the redo panel first.
+ *
+ * Every one arrives with a UV map, as Blender's do. A primitive knows how it is parametrised —
+ * a sphere by its two angles, a cylinder by its angle and its height — so the map it is born with
+ * is the one an unwrapper would have to work to find, and a texture lands on it from the start.
  */
 
 /** What closes the flat end of a circle, a cylinder or a cone; Blender offers exactly these three. */
@@ -28,10 +34,11 @@ const MAX_SEGMENTS = 512
 /** A flat quad on the XY plane, `size` across. */
 export function planeMesh(size = 2): MeshData {
   const half = size / 2
-  return meshFromPolygons(
+  const mesh = meshFromPolygons(
     [[-half, -half, 0], [half, -half, 0], [half, half, 0], [-half, half, 0]],
     [[0, 1, 2, 3]],
   )
+  return withActiveUv(mesh, resetProjection(mesh))
 }
 
 /** A box centred on the origin, `size` across each way. Blender's cube is 2 m. */
@@ -53,7 +60,9 @@ export function boxMesh(size: number | Vec3 = 2): MeshData {
     [2, 3, 7, 6], // +Y
     [3, 0, 4, 7], // -X
   ]
-  return meshFromPolygons(positions, faces)
+  // Blender's cube gives every face the whole image, which is what a checker is read on.
+  const mesh = meshFromPolygons(positions, faces)
+  return withActiveUv(mesh, resetProjection(mesh))
 }
 
 /**
@@ -82,7 +91,8 @@ export function gridMesh(options: { xSubdivisions?: number; ySubdivisions?: numb
       faces.push([corner, corner + 1, corner + columns + 1, corner + columns])
     }
   }
-  return meshFromPolygons(positions, faces)
+  const mesh = meshFromPolygons(positions, faces)
+  return withActiveUv(mesh, planarProjection(mesh, 2))
 }
 
 /**
@@ -95,7 +105,10 @@ export function circleMesh(options: { vertices?: number; radius?: number; fill?:
   const positions = ring(count, radius, 0)
   const rim = positions.map((_, index) => index)
   const fill = options.fill ?? 'none'
-  if (fill !== 'none') return meshFromPolygons(positions, capFaces(positions, rim, 0, fill, true))
+  if (fill !== 'none') {
+    const filled = meshFromPolygons(positions, capFaces(positions, rim, 0, fill, true))
+    return withActiveUv(filled, planarProjection(filled, 2))
+  }
   const wire: Array<[number, number]> = rim.map((slot, index) => [slot, rim[(index + 1) % count]!])
   return withLooseEdges(meshFromPolygons(positions, []), wire)
 }
@@ -128,7 +141,8 @@ export function uvSphereMesh(options: { segments?: number; rings?: number; radiu
   }
   for (let step = 0; step < segments; step += 1) faces.push([south, at(rings - 1, step + 1), at(rings - 1, step)])
   // Spheres are the one family the plan shades smooth on creation; every other primitive is flat.
-  return meshFromPolygons(positions, faces, { smooth: true })
+  const mesh = meshFromPolygons(positions, faces, { smooth: true })
+  return withActiveUv(mesh, sphereProjection(mesh))
 }
 
 /**
@@ -142,7 +156,8 @@ export function icoSphereMesh(options: { subdivisions?: number; radius?: number 
   const points = icosahedronPoints()
   let faces = icosahedronFaces()
   for (let level = 1; level < subdivisions; level += 1) faces = subdivideOnSphere(points, faces)
-  return meshFromPolygons(points.map((point) => scaled(point, radius)), faces, { smooth: true })
+  const mesh = meshFromPolygons(points.map((point) => scaled(point, radius)), faces, { smooth: true })
+  return withActiveUv(mesh, sphereProjection(mesh))
 }
 
 /* ------------------------------------------------------------------ swept */
@@ -190,7 +205,8 @@ export function torusMesh(options: { majorSegments?: number; minorSegments?: num
       faces.push([at(around, through), at(around + 1, through), at(around + 1, through + 1), at(around, through + 1)])
     }
   }
-  return meshFromPolygons(positions, faces)
+  const mesh = meshFromPolygons(positions, faces)
+  return withActiveUv(mesh, torusProjection(mesh, majorRadius))
 }
 
 /**
@@ -251,7 +267,8 @@ export function paramRigMarkMesh(): MeshData {
       faces.push([at(sample, corner), at(sample + 1, corner), at(sample + 1, corner + 1), at(sample, corner + 1)])
     }
   }
-  return meshFromPolygons(positions, faces)
+  const mesh = meshFromPolygons(positions, faces)
+  return withActiveUv(mesh, cubeProjection(mesh))
 }
 
 /* ----------------------------------------------------------------- shared */
@@ -276,7 +293,8 @@ function tubeMesh(count: number, bottomRadius: number, topRadius: number, depth:
   }
   if (fill !== 'none' && topRadius > 0) faces.push(...capFaces(positions, top, half, fill, true))
   if (fill !== 'none' && bottomRadius > 0) faces.push(...capFaces(positions, bottom, -half, fill, false))
-  return meshFromPolygons(positions, faces)
+  const mesh = meshFromPolygons(positions, faces)
+  return withActiveUv(mesh, cylinderProjection(mesh))
 }
 
 /** Appends a ring of points, or one apex when the radius has collapsed, and returns a slot per step. */

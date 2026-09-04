@@ -10,6 +10,7 @@ import {
   sanitizeSceneDocument,
   uniqueName,
 } from '@/scene/document'
+import { activeUvIndex, loopStarts, uvMapsOf } from '@/scene/mesh/uv'
 import { cloneMesh } from '@/scene/mesh/data'
 import { faceArea, faceCentre } from '@/scene/mesh/normals'
 import { decomposeMatrix, localMatrix, objectBounds, unionBounds, worldMatrix, type Box } from '@/scene/objects'
@@ -250,15 +251,18 @@ function transformedMesh(mesh: MeshData, matrix: Matrix4): MeshData {
 }
 
 function reverseWinding(mesh: MeshData): void {
-  const uv = mesh.attributes.vertex.uv
+  const starts = loopStarts(mesh)
+  const maps = uvMapsOf(mesh)
   for (let faceSlot = 0; faceSlot < mesh.faces.length; faceSlot += 1) {
     mesh.faces[faceSlot] = mesh.faces[faceSlot]!.slice().reverse()
-    const row = uv?.[faceSlot]
-    if (!row) continue
-    const corners = Math.floor(row.length / 2)
-    const flipped: number[] = []
-    for (let corner = corners - 1; corner >= 0; corner -= 1) flipped.push(row[corner * 2] ?? 0, row[corner * 2 + 1] ?? 0)
-    uv[faceSlot] = flipped
+    const corners = mesh.faces[faceSlot]!.length
+    const start = starts[faceSlot]!
+    for (const map of maps) {
+      const row = map.data.slice(start * 2, (start + corners) * 2)
+      const flipped: number[] = []
+      for (let corner = corners - 1; corner >= 0; corner -= 1) flipped.push(row[corner * 2] ?? 0, row[corner * 2 + 1] ?? 0)
+      for (let index = 0; index < flipped.length; index += 1) map.data[start * 2 + index] = flipped[index]!
+    }
   }
 }
 
@@ -490,10 +494,13 @@ function edgeFlags(mesh: MeshData): EdgeFlags {
   }
 }
 
-function faceUv(mesh: MeshData, faceSlot: number, corners: number): number[] {
-  const row = mesh.attributes.vertex.uv?.[faceSlot]
-  if (row && row.length >= corners * 2) return row.slice(0, corners * 2)
-  return new Array<number>(corners * 2).fill(0)
+/** One face's corners in one map of another mesh, or nothing where that mesh has no such map. */
+function faceUv(mesh: MeshData, starts: number[], faceSlot: number, corners: number, name: string): number[] {
+  const map = uvMapsOf(mesh).find((entry) => entry.name === name)
+  const start = starts[faceSlot]
+  if (!map || start === undefined) return new Array<number>(corners * 2).fill(0)
+  const row = map.data.slice(start * 2, (start + corners) * 2)
+  return row.length === corners * 2 ? row : new Array<number>(corners * 2).fill(0)
 }
 
 /** A material id's place in the merged list, appended if the joined object brought a new one. */
@@ -505,10 +512,24 @@ function materialIndex(merged: string[], id: string | undefined): number {
   return merged.length - 1
 }
 
-type JoinState = { mesh: MeshData; edges: EdgeFlags; uv: number[][] | null; materials: string[] }
+/**
+ * A join in progress.
+ *
+ * `uv` is one entry per map of the object being joined *into*, each a row per face: the maps of the
+ * active object are the ones the result keeps, and a source is asked for the map of the same name.
+ * A source that has no map of that name contributes nothing rather than something wrong, which is
+ * what Blender does and the only answer that does not invent a texture coordinate.
+ */
+type JoinState = {
+  mesh: MeshData
+  edges: EdgeFlags
+  uv: Array<{ name: string; rows: number[][] }>
+  materials: string[]
+}
 
 function appendMesh(state: JoinState, source: MeshData, matrix: Matrix4, slots: string[]): void {
   const target = state.mesh
+  const sourceStarts = loopStarts(source)
   const offset = target.vertexIds.length
   const point = new Vector3()
   for (let slot = 0; slot < source.vertexIds.length; slot += 1) {
@@ -541,15 +562,16 @@ function appendMesh(state: JoinState, source: MeshData, matrix: Matrix4, slots: 
     target.nextFaceId += 1
     target.attributes.face.smooth.push(source.attributes.face.smooth[faceSlot] ?? false)
     target.attributes.face.material.push(materialIndex(state.materials, slots[source.attributes.face.material[faceSlot] ?? 0]))
-    if (!state.uv) continue
-    const row = faceUv(source, faceSlot, corners)
-    if (!flip) {
-      state.uv.push(row)
-      continue
+    for (const map of state.uv) {
+      const row = faceUv(source, sourceStarts, faceSlot, corners, map.name)
+      if (!flip) {
+        map.rows.push(row)
+        continue
+      }
+      const flipped: number[] = []
+      for (let corner = corners - 1; corner >= 0; corner -= 1) flipped.push(row[corner * 2] ?? 0, row[corner * 2 + 1] ?? 0)
+      map.rows.push(flipped)
     }
-    const flipped: number[] = []
-    for (let corner = corners - 1; corner >= 0; corner -= 1) flipped.push(row[corner * 2] ?? 0, row[corner * 2 + 1] ?? 0)
-    state.uv.push(flipped)
   }
 }
 
@@ -578,12 +600,14 @@ registerOperator({
     if (!active || !activeMesh) return { error: 'Click the object to join into last, so it is the active one.' }
     const sources = meshObjects(selectedObjects(context)).filter((object) => object.id !== active.id)
     const merged = cloneMesh(activeMesh)
-    const wantsUv = merged.attributes.vertex.uv !== undefined
-      || sources.some((object) => meshOf(document, object)?.attributes.vertex.uv !== undefined)
+    const mergedStarts = loopStarts(merged)
     const state: JoinState = {
       mesh: merged,
       edges: edgeFlags(merged),
-      uv: wantsUv ? merged.faces.map((face, faceSlot) => faceUv(merged, faceSlot, face.length)) : null,
+      uv: uvMapsOf(merged).map((map) => ({
+        name: map.name,
+        rows: merged.faces.map((face, faceSlot) => faceUv(merged, mergedStarts, faceSlot, face.length, map.name)),
+      })),
       materials: active.materialSlots.slice(),
     }
     const toActive = worldMatrix(document, active).invert()
@@ -595,7 +619,10 @@ registerOperator({
       removed.add(source.id)
     }
     merged.attributes.edge = state.edges
-    if (state.uv) merged.attributes.vertex.uv = state.uv
+    merged.attributes.loop = state.uv.length === 0 ? {} : {
+      uvMaps: state.uv.map((map) => ({ name: map.name, data: map.rows.flat() })),
+      activeUv: Math.max(0, activeUvIndex(activeMesh)),
+    }
     // Vertex colours are stored flat with no stride the join can read, so a merged mesh drops them
     // rather than carrying an array whose length no longer matches anything.
     delete merged.attributes.vertex.color

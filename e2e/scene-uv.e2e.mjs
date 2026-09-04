@@ -1,0 +1,133 @@
+import { run } from './lib.mjs'
+
+/**
+ * Chantier P: the corner domain, and a texture that lands where it should.
+ *
+ * The first thing this proves is a defect rather than a feature. Until this chantier no mesh in the
+ * application had a UV map and nothing wrote one to the graphics card, so every textured surface
+ * was a single texel of its image stretched over the whole object — a flat colour that looked like
+ * a material with no texture at all.
+ */
+export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
+  await helpers.newScene()
+  await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
+
+  /* ------------------------------------------------ a primitive is born with one */
+
+  const stored = await helpers.scene()
+  const mesh = Object.values(stored.meshes)[0]
+  const corners = mesh.faces.reduce((total, face) => total + face.length, 0)
+  const maps = mesh.attributes.loop?.uvMaps ?? []
+  check('the startup cube arrives with a UV map, as Blender’s does',
+    maps.length === 1 && maps[0].data.length === corners * 2,
+    `${maps.length} maps, ${maps[0]?.data?.length ?? 0} numbers for ${corners} corners`)
+  check('and every face of it takes the whole image',
+    JSON.stringify(maps[0]?.data?.slice(0, 8)) === JSON.stringify([0, 0, 1, 0, 1, 1, 0, 1]),
+    JSON.stringify(maps[0]?.data?.slice(0, 8)))
+
+  const drawn = await page.evaluate(() => {
+    const geometry = window.__paramrigScene.stats()
+    void geometry
+    return { hasUv: true }
+  })
+  void drawn
+
+  /* --------------------------------------------- and a texture lands on the mesh */
+
+  // A checker written straight into the resource store, then named by the cube's material: the
+  // shortest road to the thing being measured, which is whether the image varies across a face.
+  await page.evaluate(async () => {
+    const size = 256
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const ctx = canvas.getContext('2d')
+    for (let y = 0; y < 8; y += 1) {
+      for (let x = 0; x < 8; x += 1) {
+        ctx.fillStyle = (x + y) % 2 === 0 ? '#f0a02e' : '#101010'
+        ctx.fillRect((x * size) / 8, (y * size) / 8, size / 8, size / 8)
+      }
+    }
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    const db = await new Promise((resolve, reject) => {
+      const open = indexedDB.open('paramrig.resources.v1', 1)
+      open.onupgradeneeded = () => { if (!open.result.objectStoreNames.contains('assets')) open.result.createObjectStore('assets') }
+      open.onsuccess = () => resolve(open.result)
+      open.onerror = () => reject(open.error)
+    })
+    const resourceId = 'checker-uv-test'
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('assets', 'readwrite')
+      tx.objectStore('assets').put(new File([blob], 'checker.png', { type: 'image/png' }), resourceId)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+    db.close()
+    const key = 'paramrig.scene-documents.v1'
+    const all = JSON.parse(localStorage.getItem(key) ?? '{}')
+    const id = location.pathname.split('/r/')[1]
+    all[id].materials[0].textures = { baseColor: { resourceId, name: 'checker.png' } }
+    all[id].view.shading = 'material'
+    localStorage.setItem(key, JSON.stringify(all))
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('.scene-stage')
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  await page.waitForTimeout(2500)
+
+  /*
+   * The measurement is the spread of colour across one face.
+   *
+   * A texture sampled at one point paints a face one flat colour, whatever that colour is; a
+   * texture sampled across a UV map paints a checker. So the pixels of the front face are counted
+   * into light and dark, and both have to be there.
+   */
+  const spread = await page.evaluate(() => {
+    const canvas = document.querySelector('.scene-canvas')
+    /*
+     * Drawn again in this very task, because a WebGL canvas hands back an empty image once the
+     * frame it drew has been presented — the debug hatch's synchronous frame is what makes the
+     * pixels readable at all.
+     */
+    window.__paramrigScene.frame()
+    const box = canvas.getBoundingClientRect()
+    const scratch = document.createElement('canvas')
+    scratch.width = canvas.width
+    scratch.height = canvas.height
+    scratch.getContext('2d').drawImage(canvas, 0, 0)
+    const middle = scratch.getContext('2d').getImageData(
+      Math.round(scratch.width * 0.42),
+      Math.round(scratch.height * 0.45),
+      Math.round(scratch.width * 0.16),
+      Math.round(scratch.height * 0.14),
+    )
+    let light = 0
+    let dark = 0
+    for (let index = 0; index < middle.data.length; index += 4) {
+      const luma = 0.2126 * middle.data[index] + 0.7152 * middle.data[index + 1] + 0.0722 * middle.data[index + 2]
+      if (luma > 90) light += 1
+      else dark += 1
+    }
+    void box
+    return { light, dark, total: middle.data.length / 4 }
+  })
+  const minority = Math.min(spread.light, spread.dark) / spread.total
+  check('a texture varies across the face it is on, rather than being one flat texel',
+    minority > 0.15, `${Math.round((spread.light / spread.total) * 100)}% light, ${Math.round((spread.dark / spread.total) * 100)}% dark`)
+  log(`MEASURE checker on the cube: ${spread.light} light and ${spread.dark} dark pixels of ${spread.total}`)
+  await shot('scene-uv-checker-1440.png')
+
+  /* ------------------------------------------------ the maps survive being stored */
+
+  const after = await helpers.scene()
+  const kept = Object.values(after.meshes)[0].attributes.loop?.uvMaps ?? []
+  check('and the map survives the sanitiser it is saved through',
+    kept.length === 1 && kept[0].data.length === corners * 2,
+    `${kept.length} maps, ${kept[0]?.data?.length ?? 0} numbers`)
+
+  await page.locator('.scene-outliner__row', { hasText: 'Cube' }).first().click()
+  await page.locator('.scene-properties__tab[aria-label="Data"]').click()
+  await page.waitForTimeout(500)
+  const attributes = await page.locator('.scene-properties').innerText()
+  check('the Data tab names the map it has', /UVMap/.test(attributes), attributes.split('\n').filter((line) => /UV/.test(line)).join(' / ') || 'not listed')
+})

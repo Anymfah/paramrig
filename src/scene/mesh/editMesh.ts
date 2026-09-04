@@ -1,6 +1,7 @@
 import { cloneMesh, setVertexPosition, vertexPosition } from '@/scene/mesh/data'
 import { dot, faceArea, faceCentre, faceNormal, length, meshBounds, subtract, vertexNormal } from '@/scene/mesh/normals'
-import type { MeshData, Vec3 } from '@/scene/types'
+import { activeUvIndex, loopStarts, uvMapsOf, withUvMaps } from '@/scene/mesh/uv'
+import type { MeshData, UvMap, Vec3 } from '@/scene/types'
 
 /**
  * A mesh with its adjacency built: the form every mesh operator works on.
@@ -32,10 +33,22 @@ export class EditMesh {
   private edgeIndex = new Map<string, number>()
   private vertexIdIndex = new Map<number, number>()
   private faceIdIndex = new Map<number, number>()
+  /**
+   * The UV maps, held a face at a time while the mesh is being edited.
+   *
+   * A stored map is one flat array over every corner of the mesh, which is what a file and a
+   * vertex buffer want; while a face is being split, moved or thrown away, that array would have
+   * to be rebuilt from the middle on every edit. So it is exploded into a row per face on the way
+   * in and flattened on the way out: each row is `face.length * 2` long, and every mutation below
+   * keeps its own row in step.
+   */
+  private uvRows: Array<{ name: string; rows: number[][] }> = []
+  private activeUvMap = 0
 
   private constructor(mesh: MeshData) {
     this.mesh = mesh
     this.rebuild()
+    this.explodeUvs()
   }
 
   static from(mesh: MeshData): EditMesh {
@@ -44,7 +57,7 @@ export class EditMesh {
 
   /** A fresh `MeshData`; it shares no array with the mesh this one was built from, or with itself. */
   toData(): MeshData {
-    return cloneMesh(this.mesh)
+    return withUvMaps(cloneMesh(this.mesh), this.flattenUvs(), this.activeUvMap)
   }
 
   clone(): EditMesh {
@@ -424,7 +437,9 @@ export class EditMesh {
     this.faceIdIndex.set(id, face)
     this.mesh.attributes.face.smooth.push(false)
     this.mesh.attributes.face.material.push(0)
-    this.mesh.attributes.vertex.uv?.push([])
+    // A face made out of nothing has no UVs to inherit; an operator that knows better says so with
+    // `setFaceUv` or `copyFaceUv` straight afterwards.
+    for (const map of this.uvRows) map.rows.push(new Array<number>(loop.length * 2).fill(0))
     const edges: number[] = []
     for (let index = 0; index < loop.length; index += 1) {
       const edge = this.ensureEdge(loop[index]!, loop[(index + 1) % loop.length]!)
@@ -499,9 +514,10 @@ export class EditMesh {
     const order = [0]
     for (let index = loop.length - 1; index >= 1; index -= 1) order.push(index)
     this.mesh.faces[faceSlot] = order.map((index) => loop[index]!)
-    const uv = this.mesh.attributes.vertex.uv?.[faceSlot]
-    if (uv && uv.length === loop.length * 2) {
-      this.mesh.attributes.vertex.uv![faceSlot] = order.flatMap((index) => [uv[index * 2]!, uv[index * 2 + 1]!])
+    for (const map of this.uvRows) {
+      const uv = map.rows[faceSlot]
+      if (!uv || uv.length !== loop.length * 2) continue
+      map.rows[faceSlot] = order.flatMap((index) => [uv[index * 2]!, uv[index * 2 + 1]!])
     }
     const next = this.mesh.faces[faceSlot]!
     const edges: number[] = []
@@ -692,8 +708,10 @@ export class EditMesh {
     this.detachFace(faceSlot)
     this.mesh.faces[faceSlot] = cleaned
     this.attachFace(faceSlot)
-    const uv = this.mesh.attributes.vertex.uv
-    if (uv && cleaned.length !== before) uv[faceSlot] = []
+    // A loop of a different length is a different face: what its corners were is no longer known.
+    if (cleaned.length !== before) {
+      for (const map of this.uvRows) map.rows[faceSlot] = new Array<number>(cleaned.length * 2).fill(0)
+    }
     return true
   }
 
@@ -1179,12 +1197,11 @@ export class EditMesh {
     const attributes = this.mesh.attributes.face
     const smooth = attributes.smooth
     const material = attributes.material
-    const uv = this.mesh.attributes.vertex.uv
     this.mesh.faces = keep.map((face) => faces[face]!)
     this.mesh.faceIds = keep.map((face) => faceIds[face]!)
     attributes.smooth = keep.map((face) => smooth[face] ?? false)
     attributes.material = keep.map((face) => material[face] ?? 0)
-    if (uv) this.mesh.attributes.vertex.uv = keep.map((face) => uv[face] ?? [])
+    for (const map of this.uvRows) map.rows = keep.map((face) => map.rows[face] ?? [])
   }
 
   private compactEdges(drop: Set<number>): void {
@@ -1269,6 +1286,108 @@ export class EditMesh {
    * Builds every adjacency list from the arrays as they stand. Adding geometry keeps the lists up to
    * date as it goes; removing it renumbers everything, so removal pays for one pass instead.
    */
+  /* ------------------------------------------------------------------ UVs */
+
+  /** How many UV maps the mesh carries, so an operator can walk them without knowing their names. */
+  get uvMapCount(): number {
+    return this.uvRows.length
+  }
+
+  /** One face's corners in one map, as a flat `[u, v, u, v, …]`, or null when there is no map. */
+  faceUv(faceSlot: number, map = this.activeUvMap): number[] | null {
+    return this.uvRows[map]?.rows[faceSlot] ?? null
+  }
+
+  /** Writes a face's corners in one map. The length has to match the loop, or nothing is written. */
+  setFaceUv(faceSlot: number, values: number[], map = this.activeUvMap): void {
+    const loop = this.mesh.faces[faceSlot]
+    const row = this.uvRows[map]?.rows
+    if (!loop || !row || values.length !== loop.length * 2) return
+    row[faceSlot] = values.slice()
+  }
+
+  /**
+   * Gives one face the UVs of another, corner for corner where the loops agree.
+   *
+   * This is what an extrusion and a duplication want: the new face is the old one somewhere else,
+   * so its corners carry the same point of the image. Where the loops are of different lengths the
+   * shorter one wins and the rest is left at nothing, which is the only honest answer.
+   */
+  copyFaceUv(fromFace: number, toFace: number): void {
+    for (const map of this.uvRows) {
+      const source = map.rows[fromFace]
+      const target = map.rows[toFace]
+      if (!source || !target) continue
+      for (let index = 0; index < Math.min(source.length, target.length); index += 1) target[index] = source[index]!
+    }
+  }
+
+  /**
+   * Gives a corner of a face the UV that a corner of another face has, in every map.
+   *
+   * Cuts work corner by corner rather than face by face: the two faces a loop cut leaves have the
+   * corners of the one it replaced, plus the new ones along the cut, and only the operator knows
+   * which is which.
+   */
+  copyCornerUv(fromFace: number, fromCorner: number, toFace: number, toCorner: number): void {
+    for (const map of this.uvRows) {
+      const source = map.rows[fromFace]
+      const target = map.rows[toFace]
+      if (!source || !target) continue
+      target[toCorner * 2] = source[fromCorner * 2] ?? 0
+      target[toCorner * 2 + 1] = source[fromCorner * 2 + 1] ?? 0
+    }
+  }
+
+  /** A corner's UV somewhere between two corners of another face: what a cut leaves behind. */
+  blendCornerUv(
+    from: { face: number; corner: number },
+    to: { face: number; corner: number },
+    at: number,
+    target: { face: number; corner: number },
+  ): void {
+    const t = Math.min(1, Math.max(0, at))
+    for (const map of this.uvRows) {
+      const a = map.rows[from.face]
+      const b = map.rows[to.face]
+      const row = map.rows[target.face]
+      if (!a || !b || !row) continue
+      const ax = a[from.corner * 2] ?? 0
+      const ay = a[from.corner * 2 + 1] ?? 0
+      const bx = b[to.corner * 2] ?? 0
+      const by = b[to.corner * 2 + 1] ?? 0
+      row[target.corner * 2] = ax + (bx - ax) * t
+      row[target.corner * 2 + 1] = ay + (by - ay) * t
+    }
+  }
+
+  /** The maps as they arrived, cut into a row per face. */
+  private explodeUvs(): void {
+    const maps = uvMapsOf(this.mesh)
+    this.activeUvMap = Math.max(0, activeUvIndex(this.mesh))
+    const starts = loopStarts(this.mesh)
+    this.uvRows = maps.map((map) => ({
+      name: map.name,
+      rows: this.mesh.faces.map((face, slot) => {
+        const start = starts[slot]!
+        return map.data.slice(start * 2, (start + face.length) * 2)
+      }),
+    }))
+  }
+
+  /** And back: one flat array per map, in the face order the mesh now has. */
+  private flattenUvs(): UvMap[] {
+    return this.uvRows.map((map) => {
+      const data: number[] = []
+      for (let face = 0; face < this.mesh.faces.length; face += 1) {
+        const loop = this.mesh.faces[face]!
+        const row = map.rows[face] ?? []
+        for (let index = 0; index < loop.length * 2; index += 1) data.push(row[index] ?? 0)
+      }
+      return { name: map.name, data }
+    })
+  }
+
   private rebuild(): void {
     const vertexCount = this.mesh.vertexIds.length
     const faceCount = this.mesh.faces.length

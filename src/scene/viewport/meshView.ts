@@ -1,5 +1,6 @@
 import { BufferAttribute, BufferGeometry, Mesh, type Material } from 'three'
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast, type MeshBVH } from 'three-mesh-bvh'
+import { activeUv, loopStarts } from '@/scene/mesh/uv'
 import { meshFingerprint } from '@/scene/mesh/data'
 import { faceNormals, vertexNormals } from '@/scene/mesh/normals'
 import { cachedTriangulation, type Triangulation } from '@/scene/mesh/triangulate'
@@ -39,6 +40,14 @@ export type MeshView = {
   fingerprint: string
   /** The mesh this view was built from, compared by identity before anything is measured. */
   source: MeshData | null
+  /**
+   * The UV array the buffer was filled from, compared by identity for the same reason.
+   *
+   * A map is replaced rather than written into — every operator builds a new array and hands it
+   * over — so a different array is a different map, and the same array is the same map. Hashing
+   * half a million numbers per frame to learn that would cost more than drawing the mesh.
+   */
+  uvSource: number[] | null
   dispose: () => void
 }
 
@@ -51,6 +60,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
   const positions = new Float32Array(count * 3)
   const normals = new Float32Array(count * 3)
   const elements = new Float32Array(count)
+  const uvs = new Float32Array(count * 2)
   /*
    * The triangles are written in order of the material slot their face names, so each slot's
    * triangles are one unbroken run and can be drawn with one material. Three.js has no other way of
@@ -58,11 +68,12 @@ export function buildMeshView(mesh: MeshData): MeshView {
    * them — is left exactly as it was, in face order, with a single group over the whole of it.
    */
   const { order, groups } = groupByMaterial(mesh, triangulation)
-  writeAttributes(mesh, triangulation, positions, normals, elements, order)
+  writeAttributes(mesh, triangulation, positions, normals, elements, uvs, order)
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(normals, 3))
   // Read by the picking material to write a face id, and by the overlay to tint a selected face.
   geometry.setAttribute('element', new BufferAttribute(elements, 1))
+  geometry.setAttribute('uv', new BufferAttribute(uvs, 2))
   for (const group of groups) geometry.addGroup(group.start * 3, group.count * 3, group.material)
   geometry.computeBoundingSphere()
   geometry.computeBoundingBox()
@@ -75,6 +86,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
     groups,
     fingerprint: meshFingerprint(mesh),
     source: mesh,
+    uvSource: activeUv(mesh),
     dispose: () => {
       geometry.disposeBoundsTree?.()
       geometry.dispose()
@@ -96,10 +108,21 @@ export function updateMeshPositions(view: MeshView, mesh: MeshData): void {
   const position = view.geometry.getAttribute('position') as BufferAttribute
   const normal = view.geometry.getAttribute('normal') as BufferAttribute
   const element = view.geometry.getAttribute('element') as BufferAttribute
+  const uv = view.geometry.getAttribute('uv') as BufferAttribute
   // The same order the view was built in: a drag moves corners, it does not reassign materials.
-  writeAttributes(mesh, triangulation, position.array as Float32Array, normal.array as Float32Array, element.array as Float32Array, view.order)
+  writeAttributes(
+    mesh,
+    triangulation,
+    position.array as Float32Array,
+    normal.array as Float32Array,
+    element.array as Float32Array,
+    uv.array as Float32Array,
+    view.order,
+  )
   position.needsUpdate = true
   normal.needsUpdate = true
+  // A vertex that moves changes the projection a mesh without a map of its own is drawn with.
+  uv.needsUpdate = true
 }
 
 /** After a gesture: the bounds and the tree catch up with where the vertices actually are. */
@@ -117,6 +140,7 @@ export function meshViewIsCurrent(view: MeshView, mesh: MeshData): boolean {
    * document, most of which are about something else entirely. A mesh is never written to in
    * place, so identity settles it without reading a single number.
    */
+  if (view.uvSource !== activeUv(mesh)) return false
   if (view.source === mesh) return true
   return view.fingerprint === meshFingerprint(mesh)
 }
@@ -127,12 +151,28 @@ function writeAttributes(
   positions: Float32Array,
   normals: Float32Array,
   elements: Float32Array,
+  uvs: Float32Array,
   order: Uint32Array,
 ): void {
   const perFace = faceNormals(mesh)
   const perVertex = vertexNormals(mesh)
   const smooth = mesh.attributes.face.smooth
-  const { indices, triangleFace, triangleCount } = triangulation
+  /*
+   * The UVs a texture is sampled with.
+   *
+   * A mesh with a map of its own is drawn with it. A mesh without one is drawn with a cube
+   * projection rather than with nothing: an absent attribute reads as (0, 0) in the shader, which
+   * makes every textured surface one flat texel of the image, and a projection at least shows what
+   * the image is. Unwrapping replaces it with something a person chose.
+   *
+   * The fallback is computed here rather than by `cubeProjection` so that it can borrow the face
+   * normals and the extent this loop already has: on a mesh of a hundred thousand vertices,
+   * walking every face a second time to work them out again is a tenth of a second.
+   */
+  const uv = activeUv(mesh)
+  const fallback = uv ? null : fallbackProjection(mesh, perFace)
+  const starts = loopStarts(mesh)
+  const { indices, triangleFace, triangleCorner, triangleCount } = triangulation
   for (let position = 0; position < triangleCount; position += 1) {
     const triangle = order[position]!
     const face = triangleFace[triangle]!
@@ -149,8 +189,67 @@ function writeAttributes(
       normals[target + 1] = source[from + 1] ?? 0
       normals[target + 2] = source[from + 2] ?? 1
       elements[position * 3 + corner] = face
+      const loop = starts[face]! + triangleCorner[triangle * 3 + corner]!
+      const map = uv ?? fallback!
+      uvs[(position * 3 + corner) * 2] = map[loop * 2] ?? 0
+      uvs[(position * 3 + corner) * 2 + 1] = map[loop * 2 + 1] ?? 0
     }
   }
+}
+
+/**
+ * The cube projection a mesh with no UV map of its own is drawn with.
+ *
+ * The same arithmetic as `cubeProjection` in `@/scene/uv/project`, given the face normals the
+ * caller has already computed: this runs on every rebuild of a heavy mesh, and the projection
+ * module's own Newell pass is the one thing in it worth not doing twice.
+ */
+function fallbackProjection(mesh: MeshData, perFace: Float32Array): number[] {
+  let minX = Infinity
+  let minY = Infinity
+  let minZ = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  let maxZ = -Infinity
+  for (let index = 0; index < mesh.vertices.length; index += 3) {
+    const x = mesh.vertices[index]!
+    const y = mesh.vertices[index + 1]!
+    const z = mesh.vertices[index + 2]!
+    if (x < minX) minX = x
+    if (y < minY) minY = y
+    if (z < minZ) minZ = z
+    if (x > maxX) maxX = x
+    if (y > maxY) maxY = y
+    if (z > maxZ) maxZ = z
+  }
+  if (!Number.isFinite(minX)) return []
+  const centre = [(minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2]
+  const span = Math.max(1e-6, Math.max(maxX - minX, maxY - minY, maxZ - minZ))
+  let total = 0
+  for (const face of mesh.faces) total += face.length
+  const data = new Array<number>(total * 2).fill(0)
+  let loop = 0
+  for (let face = 0; face < mesh.faces.length; face += 1) {
+    const nx = perFace[face * 3] ?? 0
+    const ny = perFace[face * 3 + 1] ?? 0
+    const nz = perFace[face * 3 + 2] ?? 1
+    const ax = Math.abs(nx)
+    const ay = Math.abs(ny)
+    const az = Math.abs(nz)
+    const axis = ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2
+    const sign = (axis === 0 ? nx : axis === 1 ? ny : nz) >= 0 ? 1 : -1
+    for (const slot of mesh.faces[face]!) {
+      const x = (mesh.vertices[slot * 3] ?? 0) - centre[0]!
+      const y = (mesh.vertices[slot * 3 + 1] ?? 0) - centre[1]!
+      const z = (mesh.vertices[slot * 3 + 2] ?? 0) - centre[2]!
+      const u = axis === 0 ? (sign > 0 ? -y : y) : axis === 1 ? (sign > 0 ? x : -x) : x
+      const v = axis === 2 ? (sign > 0 ? y : -y) : z
+      data[loop * 2] = u / span + 0.5
+      data[loop * 2 + 1] = v / span + 0.5
+      loop += 1
+    }
+  }
+  return data
 }
 
 /** The wireframe of a mesh: every edge once, as a flat list of segment endpoints. */

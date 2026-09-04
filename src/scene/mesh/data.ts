@@ -1,4 +1,5 @@
-import type { EdgeKey, MeshAttributes, MeshData, Vec3 } from '@/scene/types'
+import { DEFAULT_UV_NAME, MAX_UV_MAPS } from '@/scene/mesh/uv'
+import type { EdgeKey, MeshAttributes, MeshData, UvMap, Vec3 } from '@/scene/types'
 
 /**
  * The mesh as it is stored, and the small operations every other module needs to read it.
@@ -27,6 +28,8 @@ export function emptyAttributes(faces: number, edges: number): MeshAttributes {
     face: { smooth: new Array<boolean>(faces).fill(false), material: new Array<number>(faces).fill(0) },
     edge: { seam: new Array<boolean>(edges).fill(false), sharp: new Array<boolean>(edges).fill(false), crease: new Array<number>(edges).fill(0), bevelWeight: new Array<number>(edges).fill(0) },
     vertex: {},
+    // A mesh has no UV map until something gives it one; an empty map would be a lie about the size.
+    loop: {},
   }
 }
 
@@ -140,8 +143,13 @@ export function cloneMesh(mesh: MeshData): MeshData {
         ...(mesh.attributes.edge.bevelWeight ? { bevelWeight: mesh.attributes.edge.bevelWeight.slice() } : {}),
       },
       vertex: {
-        ...(mesh.attributes.vertex.uv ? { uv: mesh.attributes.vertex.uv.map((row) => row.slice()) } : {}),
         ...(mesh.attributes.vertex.color ? { color: mesh.attributes.vertex.color.slice() } : {}),
+      },
+      loop: {
+        ...(mesh.attributes.loop?.uvMaps
+          ? { uvMaps: mesh.attributes.loop.uvMaps.map((map) => ({ name: map.name, data: map.data.slice() })) }
+          : {}),
+        ...(mesh.attributes.loop?.activeUv === undefined ? {} : { activeUv: mesh.attributes.loop.activeUv }),
       },
     },
     ...(mesh.autoSmooth ? { autoSmooth: { ...mesh.autoSmooth } } : {}),
@@ -254,7 +262,7 @@ export function validateMeshData(value: unknown): MeshData | null {
     }
   }
 
-  const attributes = readAttributes(source.attributes, faces.length, edges.length, faceKeep, edgeKeep)
+  const attributes = readAttributes(source.attributes, faces.length, edges.length, faceKeep, edgeKeep, faces.reduce((total, face) => total + face.length, 0))
   const autoSmooth = source.autoSmooth && typeof source.autoSmooth === 'object'
     ? { enabled: !!source.autoSmooth.enabled, angle: clampNumber(source.autoSmooth.angle, 0, 180, 30) }
     : undefined
@@ -272,7 +280,7 @@ export function validateMeshData(value: unknown): MeshData | null {
   })
 }
 
-function readAttributes(value: unknown, faceCount: number, edgeCount: number, faceKeep: number[], edgeKeep: number[]): MeshAttributes {
+function readAttributes(value: unknown, faceCount: number, edgeCount: number, faceKeep: number[], edgeKeep: number[], loops: number): MeshAttributes {
   const attributes = emptyAttributes(faceCount, edgeCount)
   if (!value || typeof value !== 'object') return attributes
   const source = value as Partial<MeshAttributes>
@@ -292,15 +300,39 @@ function readAttributes(value: unknown, faceCount: number, edgeCount: number, fa
   }
   const vertex = source.vertex
   if (vertex && typeof vertex === 'object') {
-    if (Array.isArray(vertex.uv)) {
-      attributes.vertex.uv = faceKeep.map((index) => {
-        const row = (vertex.uv as unknown[])[index]
-        return Array.isArray(row) ? row.map((item) => Number(item) || 0) : []
-      })
-    }
     if (Array.isArray(vertex.color)) attributes.vertex.color = vertex.color.map((item) => clampNumber(item, 0, 1, 1))
   }
+  attributes.loop = readLoop(source.loop, loops)
   return attributes
+}
+
+/**
+ * The corner domain of a file.
+ *
+ * A map whose length does not match the corners the faces actually have is not repaired, because
+ * there is no way to know which corners it lost: a UV map that is the wrong length is a UV map
+ * about a different mesh. It is dropped, and the mesh keeps its shape.
+ *
+ * A hand-written file may say `loop.uv` and mean "the one map"; that is read as a map named UVMap,
+ * so that the format a person writes is the shorter one.
+ */
+function readLoop(value: unknown, loops: number): MeshAttributes['loop'] {
+  if (!value || typeof value !== 'object') return {}
+  const source = value as { uvMaps?: unknown; activeUv?: unknown; uv?: unknown }
+  const raw: unknown[] = Array.isArray(source.uvMaps)
+    ? source.uvMaps
+    : Array.isArray(source.uv) ? [{ name: DEFAULT_UV_NAME, data: source.uv }] : []
+  const maps: UvMap[] = []
+  for (const entry of raw.slice(0, MAX_UV_MAPS)) {
+    if (!entry || typeof entry !== 'object') continue
+    const map = entry as { name?: unknown; data?: unknown }
+    if (!Array.isArray(map.data) || map.data.length !== loops * 2) continue
+    const name = typeof map.name === 'string' && map.name.trim() ? map.name.trim().slice(0, 60) : DEFAULT_UV_NAME
+    maps.push({ name, data: map.data.map((item) => (Number.isFinite(Number(item)) ? Number(item) : 0)) })
+  }
+  if (maps.length === 0) return {}
+  const active = Math.min(maps.length - 1, Math.max(0, Math.floor(Number(source.activeUv) || 0)))
+  return { uvMaps: maps, activeUv: active }
 }
 
 /** One past the largest id, without spreading a list a big mesh would overflow the stack with. */
@@ -342,5 +374,11 @@ export function meshFingerprint(mesh: MeshData): string {
   for (let index = 0; index < mesh.vertices.length; index += 1) mix(Math.round(mesh.vertices[index]! * 1e5))
   for (let index = 0; index < mesh.attributes.face.smooth.length; index += 1) mix(mesh.attributes.face.smooth[index] ? 1 : 0)
   for (let index = 0; index < mesh.attributes.face.material.length; index += 1) mix(mesh.attributes.face.material[index]!)
+  /*
+   * UVs are deliberately not hashed. This fingerprint is the key of the triangulation cache, and a
+   * triangulation does not depend on a texture coordinate; hashing a map of half a million numbers
+   * on every frame to answer a question about the shape would be the most expensive thing in it.
+   * The drawn view notices a UV change by identity instead — see `meshViewIsCurrent`.
+   */
   return (hash >>> 0).toString(36)
 }

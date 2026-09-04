@@ -53,10 +53,30 @@ export type MeshAttributes = {
     bevelWeight?: number[]
   }
   vertex: {
-    /** One [u, v] per face corner, addressed as `uv[face][corner]`; arrives with the UV prompt. */
-    uv?: number[][]
     color?: number[]
   }
+  /**
+   * The corner domain, which Blender calls a loop: one value per corner of every face, in face
+   * order then corner order. It is where UVs live, because two faces meeting at a vertex may want
+   * two different points of the same image — that is what a seam is.
+   */
+  loop: {
+    /** Every UV map the mesh carries. The active one is `uvMaps[activeUv]`. */
+    uvMaps?: UvMap[]
+    /** Which map the viewport samples and the editor edits. */
+    activeUv?: number
+  }
+}
+
+/**
+ * One UV map: two floats per face corner, in loop order, so `data[loop * 2]` is u.
+ *
+ * A flat array rather than pairs, because that is what a `BufferAttribute` wants and what a file
+ * holds most compactly; the helpers in `@/scene/mesh/uv` are how it is read a corner at a time.
+ */
+export type UvMap = {
+  name: string
+  data: number[]
 }
 
 /** An edge is named by its two vertex ids, smallest first, so it survives renumbering. */
