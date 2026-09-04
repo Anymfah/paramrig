@@ -189,46 +189,63 @@ export function createSolidLook(look: SolidLook): MeshStandardMaterial | MeshMat
         roughness: look.specular ? 0.62 : 1,
         metalness: 0,
       })
-  if (look.cavity) applyCavity(material, look.cavityStrength)
+  applyPatches(material, look.cavity ? look.cavityStrength : 0)
   return material
 }
 
 /**
- * Cavity: creases darkened so that a form reads without lighting doing all the work.
+ * The sculpt mask, greyed over whatever the surface would otherwise be.
  *
- * Blender offers two — a screen-space one from the depth buffer and a curvature one from the
- * geometry. This is the curvature one, and it is a shader patch rather than a pass: the rate at
- * which the surface normal changes across a pixel *is* the curvature, and a graphics card already
- * has it in `fwidth`. That costs one instruction where a screen-space pass costs a full-screen
- * read of depth and normals — and, more to the point here, it cannot flicker while the view turns,
- * because nothing about it depends on the previous frame.
+ * A mask is a place a brush cannot reach, and the only useful way to draw one is on the surface
+ * itself with its own falloff — a mask that is half on at the edge has to *look* half on, or a
+ * person cannot tell where their brush will start to bite. So it is a vertex attribute the shader
+ * mixes towards grey, rather than an overlay drawn on top.
  *
- * It is applied to the lit and matcap materials. A flat colour has no shading to deepen, which is
- * what makes it flat.
+ * The attribute is read by every solid material, masked mesh or not: a geometry that does not carry
+ * it hands the shader a nought, and nought is no mask at all.
  */
-function applyCavity(material: MeshStandardMaterial | MeshMatcapMaterial | MeshBasicMaterial, strength: number): void {
-  if (material instanceof MeshBasicMaterial) return
-  const amount = Math.min(2, Math.max(0, strength))
-  material.onBeforeCompile = (shader) => {
-    shader.uniforms.uCavity = { value: amount }
-    shader.fragmentShader = shader.fragmentShader
-      .replace('void main() {', 'uniform float uCavity;\nvoid main() {')
-      .replace(
-        '#include <dithering_fragment>',
-        `#include <dithering_fragment>
-        {
+const MASK_COLOUR = 'vec3(0.32, 0.33, 0.36)'
+
+/**
+ * The two shader patches, applied together.
+ *
+ * Three.js has one `onBeforeCompile` per material, so the cavity and the mask cannot each have
+ * their own: they are written here as one function, and the cache key names both — without that,
+ * two materials differing only in their cavity would share a compiled shader.
+ */
+function applyPatches(material: MeshStandardMaterial | MeshMatcapMaterial | MeshBasicMaterial, cavity: number): void {
+  // A flat colour has no shading to deepen and no normal to read, which is what makes it flat: the
+  // cavity term is left out of it entirely rather than compiled against a varying it does not have.
+  const amount = material instanceof MeshBasicMaterial ? 0 : Math.min(2, Math.max(0, cavity))
+  const curvature = material instanceof MeshBasicMaterial
+    ? ''
+    : `
           // How fast the normal turns across this pixel: large on a crease, nought on a flat face.
           // Twenty-five is a scale rather than a physical constant: the derivative of a unit normal
           // is a hundredth or so across a crease, and this is what turns that into a shadow a person
           // can see. The cavity strength is measured against it.
           float curvature = length(fwidth(normal)) * 25.0 * uCavity;
-          gl_FragColor.rgb *= clamp(1.0 - curvature, 0.25, 1.0);
+          gl_FragColor.rgb *= clamp(1.0 - curvature, 0.25, 1.0);`
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uCavity = { value: amount }
+    shader.vertexShader = shader.vertexShader
+      .replace('void main() {', 'attribute float aMask;\nvarying float vMask;\nvoid main() {')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  vMask = aMask;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('void main() {', 'uniform float uCavity;\nvarying float vMask;\nvoid main() {')
+      .replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        {${curvature}
+          // The mask, last: it is a statement about the surface rather than a light on it, and it
+          // has to read the same however the surface happens to be lit.
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, ${MASK_COLOUR}, clamp(vMask, 0.0, 1.0) * 0.75);
         }`,
       )
   }
   // The patch is part of what the programme is: without this two materials that differ only in
   // their cavity would share a compiled shader and one of them would be drawn wrong.
-  material.customProgramCacheKey = () => `cavity-${amount}`
+  material.customProgramCacheKey = () => `sculpt-mask-cavity-${amount}-${material instanceof MeshBasicMaterial ? 'flat' : 'lit'}`
 }
 
 export function disposeMaterial(material: Material | Material[] | null | undefined): void {

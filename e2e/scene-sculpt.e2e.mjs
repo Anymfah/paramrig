@@ -162,6 +162,74 @@ export default run('scene-sculpt', async ({ page, check, log, helpers, shot }) =
   check('and one undo takes the whole stroke back', undone.moved === 0, `${undone.moved} vertices still moved`)
   void steps
 
+  /* --------------------------------------------------------------- the mask */
+
+  await page.locator('[role="toolbar"][aria-label="Sculpt mode brushes"] [aria-label="Mask"]').click()
+  await page.waitForTimeout(300)
+  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.42)
+  await page.mouse.down()
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(box.x + box.width * (0.55 + 0.015 * step), box.y + box.height * 0.42)
+    await page.waitForTimeout(30)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+
+  const masked = Object.values((await helpers.scene()).meshes)[0].attributes.vertex.mask ?? []
+  check('the mask brush writes a mask the file keeps',
+    masked.filter((value) => value > 0.01).length > 20,
+    `${masked.filter((value) => value > 0.01).length} of ${masked.length} vertices masked`)
+  check('and it has a soft edge rather than an on and an off',
+    masked.some((value) => value > 0.05 && value < 0.9), `${new Set(masked.map((value) => value.toFixed(1))).size} distinct levels`)
+  await shot('scene-sculpt-mask-1440.png')
+
+  // And a masked vertex does not move: the same stroke over it, with Draw again.
+  await page.locator('[role="toolbar"][aria-label="Sculpt mode brushes"] [aria-label="Draw"]').click()
+  await page.waitForTimeout(300)
+  const beforeMasked = Object.values((await helpers.scene()).meshes)[0]
+  const mostMasked = masked.reduce((best, value, index) => (value > masked[best] ? index : best), 0)
+  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.42)
+  await page.mouse.down()
+  for (let step = 1; step <= 6; step += 1) {
+    await page.mouse.move(box.x + box.width * (0.55 + 0.01 * step), box.y + box.height * 0.42)
+    await page.waitForTimeout(30)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(700)
+  const afterMasked = Object.values((await helpers.scene()).meshes)[0]
+  const held = Math.abs(afterMasked.vertices[mostMasked * 3 + 2] - beforeMasked.vertices[mostMasked * 3 + 2])
+  check('a fully masked vertex is left where it is', held < 0.02, `${held.toFixed(4)} of movement`)
+
+  /* ------------------------------------------------------- F sizes the brush */
+
+  await page.locator('#main').focus()
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5)
+  const sizeBefore = (await helpers.scene()).view.sculpt.size
+  await page.keyboard.press('KeyF')
+  await page.waitForTimeout(200)
+  await page.mouse.move(box.x + box.width * 0.5 + 120, box.y + box.height * 0.5, { steps: 6 })
+  await page.waitForTimeout(200)
+  const hud = await page.locator('.scene-hud').innerText().catch(() => '')
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(400)
+  const sizeAfter = (await helpers.scene()).view.sculpt.size
+  check('F sizes the brush by dragging, and says the number while it is dragged',
+    sizeAfter > sizeBefore * 1.3 && /Radius/.test(hud), `${sizeBefore} → ${Math.round(sizeAfter)} px · ${hud.replace(/\n/g, ' ')}`)
+
+  /* ------------------------------------------------------- the brush in the N panel */
+
+  await page.keyboard.press('KeyN')
+  await page.waitForTimeout(400)
+  await page.locator('.scene-sidebar__tabs button', { hasText: 'Tool' }).click()
+  await page.waitForTimeout(300)
+  const panel = await page.locator('.scene-sidebar').innerText()
+  check('the N sidebar shows the brush and its falloff',
+    /Draw/.test(panel) && /Falloff/.test(panel) && /Symmetry/.test(panel),
+    panel.split('\n').slice(0, 6).join(' / '))
+  await page.keyboard.press('KeyN')
+  await page.waitForTimeout(300)
+
   /* ------------------------------------------------------------ the numbers */
 
   await page.evaluate(() => { window.__sculptSide = 224; window.__sculptId = 'heavy' })

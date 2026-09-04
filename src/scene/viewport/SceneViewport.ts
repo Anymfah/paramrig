@@ -33,7 +33,7 @@ import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
-import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, writeSculptPositions, type MeshView } from '@/scene/viewport/meshView'
+import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, writeSculptMask, writeSculptPositions, type MeshView } from '@/scene/viewport/meshView'
 import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/scene/viewport/overlays'
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
@@ -576,6 +576,14 @@ export class SceneViewport {
    * that finds the brush's contact point is happy with a tree a few frames out of date — the
    * surface has moved by a fraction of the brush's radius. It is rebuilt when the stroke ends.
    */
+  /** The sculpt mask, written into the drawn geometry so the wash follows the brush. */
+  sculptWriteMask(objectId: string, mask: Float32Array): void {
+    const view = this.views.get(objectId)
+    if (!view?.meshView) return
+    writeSculptMask(view.meshView, mask)
+    this.invalidate()
+  }
+
   sculptRefit(objectId: string): void {
     const view = this.views.get(objectId)
     if (!view?.meshView) return

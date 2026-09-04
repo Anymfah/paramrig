@@ -14,6 +14,7 @@ import type {
   SceneSelection,
   SceneTool,
   SceneUnits,
+  SculptState,
   Transform,
   Vec3,
   ViewState,
@@ -713,6 +714,63 @@ function QuaternionFields({ quaternion }: { quaternion: [number, number, number,
 
 /* ------------------------------------------------------------------- tool */
 
+/**
+ * The brush, in the N sidebar, where Blender keeps its Tool tab.
+ *
+ * The header has the three a person changes constantly; this has all of them, with the falloff —
+ * which is the difference between a brush that dents and one that dimples, and which nothing else
+ * in the interface has room for.
+ */
+function SculptToolTab({ sculpt, onView }: { sculpt: SculptState; onView: (patch: Partial<ViewState>) => void }) {
+  const set = (patch: Partial<SculptState>) => onView({ sculpt: { ...sculpt, ...patch } })
+  return (
+    <>
+      <p className="scene-sidebar__title">{brushLabel(sculpt.brush)}</p>
+      <div className="scene-sidebar__section" role="group" aria-label="Brush">
+        <span className="scene-sidebar__legend">Brush</span>
+        <NumberField label="Size" value={sculpt.size} min={2} max={500} step={1} unit="px" variant="field" onChange={(size) => set({ size })} />
+        <NumberField label="Strength" value={sculpt.strength} min={0} max={2} step={0.01} variant="bar" onChange={(strength) => set({ strength })} />
+        <SelectField
+          label="Falloff"
+          value={sculpt.falloff}
+          options={FALLOFF_OPTIONS}
+          onChange={(falloff) => set({ falloff: falloff as SculptState['falloff'] })}
+        />
+        <NumberField label="Auto smooth" value={sculpt.autoSmooth} min={0} max={1} step={0.01} variant="bar" onChange={(autoSmooth) => set({ autoSmooth })} />
+        <SwitchField label="Front faces only" checked={sculpt.frontFacesOnly} onChange={(frontFacesOnly) => set({ frontFacesOnly })} />
+      </div>
+      <div className="scene-sidebar__section" role="group" aria-label="Symmetry">
+        <span className="scene-sidebar__legend">Symmetry</span>
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <SwitchField
+            key={axis}
+            label={axis.toUpperCase()}
+            checked={sculpt.symmetry[axis]}
+            onChange={(on) => set({ symmetry: { ...sculpt.symmetry, [axis]: on } })}
+          />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/** The eight falloff curves, as the proportional editing menu names them. */
+const FALLOFF_OPTIONS = [
+  { value: 'smooth', label: 'Smooth' },
+  { value: 'sphere', label: 'Sphere' },
+  { value: 'root', label: 'Root' },
+  { value: 'inverse-square', label: 'Inverse square' },
+  { value: 'sharp', label: 'Sharp' },
+  { value: 'linear', label: 'Linear' },
+  { value: 'constant', label: 'Constant' },
+  { value: 'random', label: 'Random' },
+]
+
+function brushLabel(brush: SculptState['brush']): string {
+  const words = brush.replace(/-/g, ' ')
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
 function ToolTab({
   view,
   mode,
@@ -739,6 +797,9 @@ function ToolTab({
    */
   const operatorId = TOOL_OPERATORS[view.tool]
   const operator = operatorId ? getOperator(operatorId) : undefined
+
+  // In sculpt mode the tool is the brush, and the settings are the brush's own.
+  if (view.mode === 'sculpt' && view.sculpt) return <SculptToolTab sculpt={view.sculpt} onView={onView} />
 
   return (
     <>

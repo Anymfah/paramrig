@@ -179,6 +179,14 @@ export class SculptTool {
     return { kind: 'strength', value: Math.max(0, Math.min(2, sizing.from + travelled)) }
   }
 
+  /** The value the drag started from, for an Escape that puts it back. */
+  cancelSizing(): { kind: 'radius' | 'strength'; value: number } | null {
+    const sizing = this.sizing
+    this.sizing = null
+    this.deps.hud.clear()
+    return sizing ? { kind: sizing.kind, value: sizing.from } : null
+  }
+
   endSizing(): void {
     this.sizing = null
     this.deps.hud.clear()
@@ -297,7 +305,11 @@ export class SculptTool {
 
   private push(): void {
     if (!this.session) return
-    this.deps.viewport()?.sculptWrite(this.objectId, this.session.positions, this.session.normals)
+    const instance = this.deps.viewport()
+    instance?.sculptWrite(this.objectId, this.session.positions, this.session.normals)
+    // Only when a mask is being painted: the wash is a whole extra pass over the drawn corners, and
+    // a Draw stroke has not changed a single one of them.
+    if (this.state.brush === 'mask') instance?.sculptWriteMask(this.objectId, this.session.mask)
   }
 }
 

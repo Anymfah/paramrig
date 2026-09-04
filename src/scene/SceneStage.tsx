@@ -21,7 +21,7 @@ import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneDocument, SceneObject, SceneSelection, SculptState, SelectMode, Vec3, ViewState } from '@/scene/types'
-import { HudChannel } from '@/scene/viewport/hud'
+import { chipSide, HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneCameraFrame } from '@/scene/SceneCameraFrame'
 import { SceneLightHandles } from '@/scene/SceneLightHandles'
@@ -189,6 +189,16 @@ export function SceneStage({
   }, [document.view.mode, document.meshes, selection.activeObjectId])
   const onViewRef = useRef(onView)
   onViewRef.current = onView
+  /** The one place the brush's own settings are written back to the view. */
+  const writeSculpt = useCallback((sized: { kind: 'radius' | 'strength'; value: number }) => {
+    const view = latestDocument.current.view
+    const current = view.sculpt
+    if (!current) return
+    onViewRef.current({
+      ...view,
+      sculpt: sized.kind === 'radius' ? { ...current, size: sized.value } : { ...current, strength: sized.value },
+    })
+  }, [])
   const onSelectRef = useRef(onSelect)
   onSelectRef.current = onSelect
   const gestures = useRef({ onTransform, onEditDocument, onGestureStart, onGestureEnd, onGestureCancel })
@@ -419,6 +429,28 @@ export function SceneStage({
       },
       startTransform: (mode) => modal.current?.start(mode, surface.current, {}) ?? false,
       handleKey: (event) => {
+        /*
+         * F sizes the brush and ⇧F sets its strength, both by dragging: the value follows the
+         * pointer until a click keeps it or Escape puts it back. It is Blender's gesture, and the
+         * reason for it is that a brush is sized against the model rather than against a number.
+         */
+        const brush = sculpt.current
+        if (brush?.adjusting) {
+          if (event.key === 'Escape') {
+            const back = brush.cancelSizing()
+            if (back) writeSculpt(back)
+            return true
+          }
+          if (event.key === 'Enter') {
+            brush.endSizing()
+            return true
+          }
+          return false
+        }
+        if (brush && latestDocument.current.view.mode === 'sculpt' && (event.key === 'f' || event.key === 'F')) {
+          brush.beginSizing(event.shiftKey ? 'strength' : 'radius', pointer.current[0], sculptState.current)
+          return true
+        }
         // The knife owns the keyboard while a line is being drawn: Enter cuts, Escape throws the
         // line away, and nothing else may run — X would delete the selection mid-cut.
         const line = knife.current
@@ -479,7 +511,7 @@ export function SceneStage({
           : { x: pointer.current[0], y: pointer.current[1] }
       },
     })
-  }, [preferences, projectLabels, pump, toolPath])
+  }, [preferences, projectLabels, pump, toolPath, writeSculpt])
 
   useEffect(() => {
     navigator.current?.setPreferences(preferences)
@@ -634,6 +666,16 @@ export function SceneStage({
           const nav = navigator.current
           const instance = viewport.current
           if (!nav || !instance) return
+          // A click keeps whatever F or ⇧F has arrived at, and starts nothing else.
+          if (sculpt.current?.adjusting) {
+            event.preventDefault()
+            if (event.button === 0) sculpt.current.endSizing()
+            else {
+              const back = sculpt.current.cancelSizing()
+              if (back) writeSculpt(back)
+            }
+            return
+          }
           // A modal transform owns the pointer: the left button confirms it, any other cancels.
           const running = modal.current
           if (running?.active && !running.dragging) {
@@ -828,6 +870,23 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
+          if (sculpt.current?.adjusting) {
+            const sized = sculpt.current.sizingValue(x)
+            if (sized) {
+              writeSculpt(sized)
+              hud.set({
+                visible: true,
+                text: sized.kind === 'radius' ? `Radius ${Math.round(sized.value)} px` : `Strength ${sized.value.toFixed(2)}`,
+                header: sized.kind === 'radius'
+                  ? 'Brush size | Move to size · Click to keep · Escape cancel'
+                  : 'Brush strength | Move to set · Click to keep · Escape cancel',
+                x,
+                y,
+                side: chipSide(x, box.width),
+              })
+            }
+            return
+          }
           if (sculpt.current?.active) {
             sculpt.current.move(x, y, event.pressure)
             return

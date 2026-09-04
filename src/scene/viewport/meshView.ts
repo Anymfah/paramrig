@@ -61,6 +61,7 @@ export function buildMeshView(mesh: MeshData): MeshView {
   const normals = new Float32Array(count * 3)
   const elements = new Float32Array(count)
   const uvs = new Float32Array(count * 2)
+  const mask = new Float32Array(count)
   /*
    * The triangles are written in order of the material slot their face names, so each slot's
    * triangles are one unbroken run and can be drawn with one material. Three.js has no other way of
@@ -69,11 +70,21 @@ export function buildMeshView(mesh: MeshData): MeshView {
    */
   const { order, groups } = groupByMaterial(mesh, triangulation)
   writeAttributes(mesh, triangulation, positions, normals, elements, uvs, order)
+  writeMask(mesh, triangulation, mask, order)
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
   geometry.setAttribute('normal', new BufferAttribute(normals, 3))
   // Read by the picking material to write a face id, and by the overlay to tint a selected face.
   geometry.setAttribute('element', new BufferAttribute(elements, 1))
   geometry.setAttribute('uv', new BufferAttribute(uvs, 2))
+  /*
+   * The sculpt mask, one number per drawn corner.
+   *
+   * It rides with the geometry rather than being an overlay of its own because that is what makes
+   * it a wash over the surface: the shading materials read it and grey what it covers, so a mask
+   * with a soft edge reads as a soft edge. A mesh nobody has masked carries an array of noughts,
+   * which costs a float a corner and shows nothing.
+   */
+  geometry.setAttribute('aMask', new BufferAttribute(mask, 1))
   for (const group of groups) geometry.addGroup(group.start * 3, group.count * 3, group.material)
   geometry.computeBoundingSphere()
   geometry.computeBoundingBox()
@@ -129,6 +140,41 @@ export function updateMeshPositions(view: MeshView, mesh: MeshData): void {
    * name typed — would rewrite every attribute of every mesh and rebuild its bounding tree.
    */
   view.uvSource = activeUv(mesh)
+}
+
+/** The mask, spread from the mesh's vertices onto the corners the triangles are drawn from. */
+function writeMask(mesh: MeshData, triangulation: Triangulation, out: Float32Array, order: Uint32Array): void {
+  const mask = mesh.attributes.vertex.mask
+  if (!mask || mask.length !== mesh.vertexIds.length) {
+    out.fill(0)
+    return
+  }
+  const { indices, triangleCount } = triangulation
+  for (let position = 0; position < triangleCount; position += 1) {
+    const triangle = order[position]!
+    for (let corner = 0; corner < 3; corner += 1) {
+      out[position * 3 + corner] = mask[indices[triangle * 3 + corner]!] ?? 0
+    }
+  }
+}
+
+/** The mask written again, for a stroke that is painting one. */
+export function writeSculptMask(view: MeshView, mask: Float32Array): void {
+  const source = view.source
+  if (!source) return
+  const triangulation = cachedTriangulation(source)
+  if (triangulation.triangleCount !== view.triangleCount) return
+  const attribute = view.geometry.getAttribute('aMask') as BufferAttribute | undefined
+  if (!attribute) return
+  const out = attribute.array as Float32Array
+  const { indices, triangleCount } = triangulation
+  for (let position = 0; position < triangleCount; position += 1) {
+    const triangle = view.order[position]!
+    for (let corner = 0; corner < 3; corner += 1) {
+      out[position * 3 + corner] = mask[indices[triangle * 3 + corner]!] ?? 0
+    }
+  }
+  attribute.needsUpdate = true
 }
 
 /**
