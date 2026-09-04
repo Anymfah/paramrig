@@ -1,0 +1,350 @@
+/* The node graph editor: its canvas, its cards, its sockets and the cables between them. */
+
+/*
+ * Blender's socket colours, in this editor's own palette rather than Blender's own: grey for a
+ * number, violet for a vector, yellow for a colour, green for a shader. They are the one thing in
+ * a node editor a person reads without looking — a cable's colour says what is in it — so they are
+ * tokens, and a theme may move them without every rule following.
+ */
+:root {
+  --editor-graph-ground: var(--surface-inset);
+  --editor-graph-grid: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --editor-graph-node: var(--surface-raised);
+  --editor-graph-node-header: var(--surface-overlay);
+  --editor-graph-node-border: var(--border-default);
+  --editor-graph-node-selected: var(--focus-ring);
+  --editor-graph-cable: color-mix(in srgb, var(--text-primary) 45%, transparent);
+  --editor-graph-tone-scalar: #a6adaa;
+  --editor-graph-tone-vector: #9a7de0;
+  --editor-graph-tone-color: #e0c65a;
+  --editor-graph-tone-shader: #6fc79a;
+  --editor-graph-error: var(--scene-axis-x, #d05a52);
+}
+
+.graph {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background-color: var(--editor-graph-ground);
+  /* The grid is drawn rather than tiled: one gradient, no image to fetch, and it themes itself. */
+  background-image:
+    linear-gradient(var(--editor-graph-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--editor-graph-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  outline: none;
+  touch-action: none;
+  cursor: default;
+}
+
+.graph:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.graph__world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.graph__cables {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.graph__cable {
+  fill: none;
+  stroke: var(--editor-graph-cable);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.graph__cable[data-tone='scalar'] { stroke: var(--editor-graph-tone-scalar); }
+.graph__cable[data-tone='vector'] { stroke: var(--editor-graph-tone-vector); }
+.graph__cable[data-tone='color'] { stroke: var(--editor-graph-tone-color); }
+.graph__cable[data-tone='shader'] { stroke: var(--editor-graph-tone-shader); }
+.graph__cable[data-selected] { stroke-width: 3; }
+.graph__cable--drawing { stroke-dasharray: 6 5; }
+
+/* ------------------------------------------------------------------- a node */
+
+.graph-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--editor-graph-node-border);
+  border-radius: 8px;
+  background: var(--editor-graph-node);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.28);
+  font-size: var(--text-xs);
+  overflow: hidden;
+}
+
+.graph-node[data-selected] {
+  border-color: var(--editor-graph-node-selected);
+  box-shadow: 0 0 0 1px var(--editor-graph-node-selected), 0 6px 18px rgb(0 0 0 / 0.28);
+}
+
+.graph-node[data-error] { border-color: var(--editor-graph-error); }
+
+.graph-node__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  background: var(--editor-graph-node-header);
+  color: var(--text-primary);
+  font-weight: 500;
+  cursor: grab;
+  user-select: none;
+}
+
+.graph-node__header:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.graph-node__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.graph-node__error {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--editor-graph-error);
+  color: var(--surface);
+  font-weight: 700;
+}
+
+.graph-node__body { display: flex; flex-direction: column; }
+
+.graph-node__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  color: var(--text-secondary);
+}
+
+.graph-node__row--out { justify-content: flex-end; }
+.graph-node__row--widget { padding: 0 8px; }
+.graph-node__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/*
+ * A socket is a ten-pixel dot inside a thirty-two-pixel target, which is the rule the rest of the
+ * editor follows: the drawing is small because a node is small, and the thing a pointer has to hit
+ * is not. The button hangs off the edge of the card so that half of the target is outside it,
+ * which is where a person aims when they are dragging a cable *away*.
+ */
+.graph-node__port {
+  position: relative;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: crosshair;
+}
+
+.graph-node__port[data-side='in'] { margin-left: -22px; }
+.graph-node__port[data-side='out'] { margin-right: -22px; }
+
+.graph-node__socket {
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--surface);
+  border-radius: 50%;
+  background: var(--editor-graph-tone-scalar);
+}
+
+.graph-node__port[data-tone='vector'] .graph-node__socket { background: var(--editor-graph-tone-vector); }
+.graph-node__port[data-tone='color'] .graph-node__socket { background: var(--editor-graph-tone-color); }
+.graph-node__port[data-tone='shader'] .graph-node__socket { background: var(--editor-graph-tone-shader); }
+
+.graph-node__port:hover .graph-node__socket { transform: scale(1.25); }
+.graph-node__port:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -4px; border-radius: 50%; }
+
+/* A socket that would take the cable in hand is lit, so it can be seen before it is let go. */
+.graph-node__port[data-compatible] .graph-node__socket {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 55%, transparent);
+}
+
+.graph-node__port[data-pending] .graph-node__socket {
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-node__port:hover .graph-node__socket { transform: none; }
+}
+
+/* ---------------------------------------------------------------- selecting */
+
+.graph__marquee {
+  position: absolute;
+  border: 1px dashed var(--focus-ring);
+  background: color-mix(in srgb, var(--focus-ring) 12%, transparent);
+  pointer-events: none;
+}
+
+.graph__hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+
+/* ----------------------------------------------------------------- the menu */
+
+.graph-palette {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  max-height: 340px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-overlay);
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.4);
+  overflow: hidden;
+}
+
+.graph-palette__filter {
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 1px solid var(--border-default);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.graph-palette__filter:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.graph-palette__list { margin: 0; padding: 4px 0; overflow-y: auto; list-style: none; }
+.graph-palette__list ul { margin: 0; padding: 0; list-style: none; }
+
+.graph-palette__heading {
+  margin: 6px 10px 2px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.graph-palette__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-palette__entry:hover,
+.graph-palette__entry[data-active] { background: var(--accent-subtle); }
+.graph-palette__entry:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.graph-palette__note { color: var(--text-muted); font-size: var(--text-xs); }
+.graph-palette__empty { padding: 10px; color: var(--text-muted); }
+
+@media (forced-colors: active) {
+  .graph-node { border: 1px solid CanvasText; }
+  .graph-node[data-selected] { border: 2px solid Highlight; }
+  .graph-node__socket { border: 1px solid CanvasText; background: CanvasText; }
+  .graph__cable { stroke: CanvasText; }
+}
+
+/* ------------------------------------------------------- the space it lives in */
+
+/*
+ * The shader editor takes the same room the UV editor does, and by the same rule: at 1440 px it
+ * shares the screen with the viewport across a splitter, and on a narrow screen it takes the whole
+ * of it — `scene.css` owns that decision for both spaces, so the two cannot disagree.
+ */
+.scene-shader {
+  position: relative;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: var(--editor-graph-ground);
+}
+
+.scene-shader--loading { display: block; }
+
+.scene-shader__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-inline-size: 0;
+  padding-inline: var(--space-2);
+  padding-block: var(--space-1);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.scene-shader__report {
+  margin: 0;
+  margin-inline-start: auto;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.scene-shader__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+
+.scene-shader__close:hover { background: var(--accent-subtle); color: var(--text-primary); }
+.scene-shader__close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+
+.scene-shader__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-block-size: 0;
+  container-type: inline-size;
+}
+
+.scene-shader__sidebar {
+  inline-size: 240px;
+  padding: var(--space-2);
+  border-left: 1px solid var(--border-hairline);
+  background: var(--surface-raised);
+  overflow-y: auto;
+}
+
+.scene-shader__name { margin: 0 0 var(--space-1); color: var(--text-primary); font-weight: 500; }
+.scene-shader__empty { margin: 0; padding: var(--space-2); color: var(--text-muted); font-size: var(--text-sm); }
+.scene-shader__vector { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+
+/*
+ * When the space itself is narrow the sidebar goes, whatever the window is doing: what matters is
+ * the room this pane has, and a 240-pixel sidebar inside a 400-pixel pane leaves no graph at all.
+ * A container query asks the right question; a media query would ask about the window.
+ */
+@container (max-width: 640px) {
+  .scene-shader__sidebar { display: none; }
+}
+
+@media (max-width: 900px) {
+  .scene-shader__sidebar { display: none; }
+}
