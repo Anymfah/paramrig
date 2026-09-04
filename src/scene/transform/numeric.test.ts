@@ -7,6 +7,7 @@ import {
   formatNumber,
   hasNumericInput,
   numericKey,
+  numericNudge,
   numericValue,
   type NumericEntry,
 } from '@/scene/transform/numeric'
@@ -129,6 +130,40 @@ describe('the buffer a person types into', () => {
 
     expect(numericValue(entry, 0, 'length')).toBeCloseTo(0.2, 9)
     expect(numericValue(entry, 1, 'length')).toBeNull()
+  })
+})
+
+describe('nudging a value with the arrows', () => {
+  it('starts from nothing and steps by whatever it is given', () => {
+    const once = numericNudge(EMPTY_NUMERIC_ENTRY, 1, 3)
+    expect(once.fields[0]).toBe('1')
+    expect(once.active).toBe(true)
+    expect(numericNudge(once, 1, 3).fields[0]).toBe('2')
+    expect(numericNudge(once, -0.1, 3).fields[0]).toBe('0.9')
+  })
+
+  it('starts a scale from one, because a scale of nothing is nothing', () => {
+    expect(numericNudge(EMPTY_NUMERIC_ENTRY, 1, 3, 1).fields[0]).toBe('2')
+  })
+
+  it('carries on from what was typed, and drops the unit with it', () => {
+    const typed = numericKey(EMPTY_NUMERIC_ENTRY, '2', 3, 'length')!
+    expect(numericNudge(typed, 1, 3).fields[0]).toBe('3')
+    const withUnit = numericKey(numericKey(typed, 'c', 3, 'length')!, 'm', 3, 'length')!
+    expect(withUnit.fields[0]).toBe('2cm')
+    expect(numericNudge(withUnit, 1, 3).fields[0]).toBe('3')
+  })
+
+  it('lands in the field Tab left it on', () => {
+    const typed = numericKey(EMPTY_NUMERIC_ENTRY, '1', 3, 'length')!
+    const tabbed = numericKey(typed, 'Tab', 3, 'length')!
+    const nudged = numericNudge(tabbed, 2, 3)
+    expect(nudged.fields).toEqual(['1', '2', ''])
+  })
+
+  it('rounds away what binary cannot hold', () => {
+    const tenth = numericNudge(EMPTY_NUMERIC_ENTRY, 0.1, 1)
+    expect(numericNudge(numericNudge(tenth, 0.1, 1), 0.1, 1).fields[0]).toBe('0.3')
   })
 })
 

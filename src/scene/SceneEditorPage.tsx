@@ -9,6 +9,14 @@ import type { ParamValue } from '@/rigs/types'
 import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
 import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
 import { LiveRegion } from '@/editor/LiveRegion'
+import {
+  elementAnnouncement,
+  modeAnnouncement,
+  selectionAnnouncement,
+  selectModeAnnouncement,
+  toolAnnouncement,
+} from '@/scene/announce'
+import { editStats, type EditStats } from '@/scene/editStats'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { Button } from '@/ui/Button'
@@ -57,7 +65,7 @@ import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { SceneDocument, SceneSelection, SceneTool, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneSelection, SceneTool, SelectMode, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/modifiers'
@@ -103,6 +111,32 @@ const SELECT_TOOL_FOR = new Map<string, SceneTool>([
   ['select.lasso', 'select-lasso'],
 ])
 
+/**
+ * How long the live region waits before it speaks. Long enough that a drag is one sentence rather
+ * than sixty, short enough that it still feels like an answer to what was just done.
+ */
+const ANNOUNCE_DELAY_MS = 300
+
+/**
+ * Whether something in the chrome has the focus, and Tab is therefore the browser's to answer.
+ *
+ * The viewport is not focusable, so a person working in it has the focus on the body, and Tab is
+ * the editor's. The moment they reach a panel it is theirs again.
+ */
+function holdsFocus(): boolean {
+  if (typeof window === 'undefined') return false
+  const active = window.document.activeElement
+  // An Element rather than an HTMLElement: the navigation gizmo's axes are focusable SVG circles,
+  // and taking Tab from them would leave the focus on one of them with no way out.
+  if (!(active instanceof Element) || active === window.document.body) return false
+  return active.matches('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
+}
+
+/** The three numbers the live region cares about: what is selected, not what there is. */
+function selectedElementCounts(stats: EditStats): { vertices: number; edges: number; faces: number } {
+  return { vertices: stats.vertices.selected, edges: stats.edges.selected, faces: stats.faces.selected }
+}
+
 type PieKind = 'pivot' | 'orientation' | 'shading' | 'snap' | 'mode' | 'views'
 type Pie = { kind: PieKind; at: { x: number; y: number } } | null
 
@@ -126,6 +160,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const [prefs, setPrefs] = useState(() => readScenePrefs())
   const [announcement, setAnnouncement] = useState('')
+  const announceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [keymapOpen, setKeymapOpen] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
@@ -164,7 +199,56 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     setTooltipDelay(preferences.tooltipDelayMs)
   }, [preferences.tooltipDelayMs])
 
+
+
   const { document, selection, selectObjects, setView, undo, redo, runOperator } = editor
+
+  /*
+   * What a screen reader is told, and when.
+   *
+   * The viewport is a canvas with nothing in it to read, so everything a sighted person takes in at
+   * a glance is said instead. It is debounced because a drag through a marquee changes the
+   * selection sixty times a second, and a live region that is rewritten that often reads nothing at
+   * all: the pause is what turns a stream of changes into one sentence.
+   */
+  const say = useCallback((text: string) => {
+    if (announceTimer.current !== null) clearTimeout(announceTimer.current)
+    announceTimer.current = setTimeout(() => {
+      announceTimer.current = null
+      // A repeat has to differ or the region will not read it again: the year is never read out.
+      setAnnouncement((current) => (current === text ? `${text} ` : text))
+    }, ANNOUNCE_DELAY_MS)
+  }, [])
+
+  useEffect(() => () => {
+    if (announceTimer.current !== null) clearTimeout(announceTimer.current)
+  }, [])
+
+  const viewMode = document?.view.mode ?? 'object'
+  const selectMode = document?.view.selectMode ?? []
+  const tool = document?.view.tool ?? 'select-box'
+
+  // The selection, said as one sentence per settled change rather than per frame of a drag.
+  useEffect(() => {
+    if (!document) return
+    say(viewMode === 'edit'
+      ? elementAnnouncement(selectedElementCounts(editStats(document, selection)), selectMode)
+      : selectionAnnouncement(document, selection))
+    // The counts are derived from the two below; naming them again would announce twice per change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [document, selection, viewMode, say])
+
+  useEffect(() => { say(modeAnnouncement(viewMode)) }, [viewMode, say])
+  // Joined into one string so the effect depends on what the modes are rather than on the array.
+  const selectModeKey = selectMode.join()
+  useEffect(() => {
+    if (viewMode !== 'edit') return
+    say(selectModeAnnouncement(selectModeKey.split(',').filter(Boolean) as SelectMode[]))
+  }, [selectModeKey, viewMode, say])
+  useEffect(() => { say(toolAnnouncement(tool)) }, [tool, say])
+
+  const lastLabel = editor.lastOperation?.label ?? null
+  useEffect(() => { if (lastLabel) say(lastLabel) }, [lastLabel, say])
   const tab = tabOf(prefs, documentId)
 
   /*
@@ -416,6 +500,12 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     const target = event.target
     const typing = target instanceof HTMLElement
       && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+    /*
+     * Tab toggles edit mode, as Blender's does — but only when the focus is in the viewport or
+     * nowhere. A keyboard has one way of moving between the panels of a page, and taking it away
+     * would make the whole editor a trap: whoever had reached the outliner could never leave it.
+     */
+    if (event.key === 'Tab' && holdsFocus()) return
     const binding = resolveKey(event, {
       mode: document.view.mode,
       selectMode: document.view.selectMode,

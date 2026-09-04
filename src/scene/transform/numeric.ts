@@ -109,6 +109,25 @@ export function numericKey(
   return { fields, index, active: true }
 }
 
+/**
+ * The entry after one arrow key: the value it holds, a step further on.
+ *
+ * A transform driven from the keyboard has to be able to say "one metre that way" without typing
+ * the digit and without a pointer at all, which is what makes G, R and S reachable for somebody who
+ * cannot use a mouse. The buffer becomes a plain number, losing any unit suffix that was typed —
+ * the step is in the session's own unit, so the suffix has nothing left to say.
+ */
+export function numericNudge(entry: NumericEntry, delta: number, fieldCount: number, base = 0): NumericEntry {
+  const count = Math.max(1, Math.min(3, fieldCount))
+  const index = Math.min(entry.index, count - 1)
+  const fields: [string, string, string] = [entry.fields[0], entry.fields[1], entry.fields[2]]
+  const typed = Number.parseFloat(fields[index] ?? '')
+  const current = entry.active && Number.isFinite(typed) ? typed : base
+  // Rounded, because a tenth added to a tenth in binary is 0.30000000000000004 and nobody types that.
+  fields[index] = String(Math.round((current + delta) * 1e4) / 1e4)
+  return { fields, index, active: true }
+}
+
 /** Whether anything at all has been typed, which is one half of "this session changed something". */
 export function hasNumericInput(entry: NumericEntry): boolean {
   return entry.active && entry.fields.some((field) => field !== '')

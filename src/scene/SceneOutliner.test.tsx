@@ -266,14 +266,20 @@ describe('SceneOutliner', () => {
     expect(document.activeElement).toBe(screen.getByRole('treeitem', { name: 'Scene Collection' }))
   })
 
-  it('selects the focused row with Enter, and only the focused row is tabbable', () => {
+  it('selects the focused row with the space bar, and only the focused row is tabbable', () => {
     const { onSelect } = renderOutliner()
     const cube = screen.getByRole('treeitem', { name: 'Cube' })
     expect(screen.getByRole('treeitem', { name: 'Scene Collection' })).toHaveAttribute('tabindex', '0')
     expect(cube).toHaveAttribute('tabindex', '-1')
-    fireEvent.keyDown(cube, { key: 'Enter' })
+    fireEvent.keyDown(cube, { key: ' ' })
     expect(onSelect).toHaveBeenCalledWith(['cube'], 'cube')
     expect(screen.getByRole('treeitem', { name: 'Cube' })).toHaveAttribute('tabindex', '0')
+  })
+
+  it('renames the focused row with Enter, as F2 does', () => {
+    renderOutliner()
+    fireEvent.keyDown(screen.getByRole('treeitem', { name: 'Cube' }), { key: 'Enter' })
+    expect(screen.getByRole('textbox', { name: /Cube/ })).toBeInTheDocument()
   })
 
   it('drops an object into a collection and says so while the pointer is over it', () => {

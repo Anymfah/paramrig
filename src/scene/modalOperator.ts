@@ -1,3 +1,4 @@
+import { takeKeyboard } from '@/scene/modalFocus'
 import { getOperator, type OperatorParams } from '@/scene/operators'
 import type { SceneDocument, SceneSelection, Vec3 } from '@/scene/types'
 import { chipSide, type HudChannel } from '@/scene/viewport/hud'
@@ -145,6 +146,12 @@ export class ModalOperator {
     this.start = options.pointer ?? this.deps.pointer()
     this.cursor = this.start
     this.element = element
+    /*
+     * The gesture takes the keyboard. Whatever had the focus — a row of the outliner, a field of
+     * the properties — would otherwise keep taking the arrows, and the transform they are meant to
+     * drive would never see them.
+     */
+    takeKeyboard(element)
     this.fromDrag = !!options.fromDrag
     this.locked = false
     this.precise = false

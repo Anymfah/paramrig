@@ -1,3 +1,4 @@
+import { takeKeyboard } from '@/scene/modalFocus'
 import { localFromWorld, objectBounds, worldPosition, worldTransform } from '@/scene/objects'
 import { applyElementTargets, elementTargetId, elementTargets } from '@/scene/transform/elements'
 import { basisFromRotation } from '@/scene/transform/orientation'
@@ -170,6 +171,12 @@ export class ModalTransform {
     })
     this.cursor = pointer
     this.element = element
+    /*
+     * The gesture takes the keyboard. Whatever had the focus — a row of the outliner, a field of
+     * the properties — would otherwise keep taking the arrows, and the transform they are meant to
+     * drive would never see them.
+     */
+    takeKeyboard(element)
     this.fromDrag = !!options.fromDrag
     this.deps.beginGesture(transformLabel(this.session))
     this.locked = false
@@ -242,13 +249,32 @@ export class ModalTransform {
    */
   key(event: { key: string; code: string; shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): boolean {
     if (!this.session) return false
-    if (event.metaKey || event.ctrlKey) return false
+    // ⌃ is a modifier of the arrows here; every other chord carrying it belongs to the page.
+    if (event.metaKey || (event.ctrlKey && !event.key.startsWith('Arrow'))) return false
     if (event.key === 'Escape') {
       this.cancel()
       return true
     }
     if (event.key === 'Enter' || event.key === 'NumpadEnter') {
       this.confirm()
+      return true
+    }
+    /*
+     * The arrows drive the transform without a pointer: a step along the axis it is constrained to,
+     * or along the first free one. One unit, a tenth with ⇧, ten with ⌃ — the same ratios the rest
+     * of the editor uses for a coarse and a fine adjustment.
+     */
+    const step = event.ctrlKey ? 10 : event.shiftKey ? 0.1 : 1
+    const nudge = event.key === 'ArrowRight' || event.key === 'ArrowUp' ? step
+      : event.key === 'ArrowLeft' || event.key === 'ArrowDown' ? -step
+        : null
+    if (nudge !== null) {
+      this.session = updateTransform(this.session, {
+        cursor: this.cursor,
+        modifiers: { shift: event.shiftKey, ctrl: event.ctrlKey, alt: event.altKey },
+        nudge,
+      })
+      this.draw()
       return true
     }
     // A second R turns a rotation into a trackball turn, which is Blender's R R.

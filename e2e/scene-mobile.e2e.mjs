@@ -336,9 +336,15 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
 
   // Edit mode has no keyboard here, so the bar is the whole of it: eight things at forty-four
   // pixels, and a way to the rest of the mesh menu.
+  //
+  // The sheet is closed first: it holds the focus while it is open, and Tab belongs to whatever
+  // holds the focus — the mode toggle is the viewport's, and the viewport is behind the sheet.
   await page.locator('#main').focus()
+  await page.keyboard.press('n')
+  await page.waitForSelector('.scene-sidebar', { state: 'detached', timeout: 10000 })
   await tap(160, 300)
   await page.waitForTimeout(300)
+  await page.locator('#main').focus()
   await page.keyboard.press('Tab')
   await page.waitForTimeout(600)
 

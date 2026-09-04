@@ -47,6 +47,7 @@ import {
   formatLength,
   hasNumericInput,
   numericKey,
+  numericNudge,
   numericValue,
   type NumericEntry,
 } from '@/scene/transform/numeric'
@@ -92,6 +93,8 @@ export type TransformInput = {
   modifiers: TransformModifiers
   /** A key press the session consumes: 'x', 'y', 'z', a digit, '-', '.', 'Backspace', 'Tab', '/'. */
   key?: string
+  /** A step added to the value by an arrow key, in the session's own unit. */
+  nudge?: number
 }
 
 export type TransformResult = { id: string; transform: Transform }
@@ -222,7 +225,11 @@ export function updateTransform(session: TransformSession, input: TransformInput
     effective,
     angle,
   }
-  const keyed = input.key ? applyKey(moved, input.key) : moved
+  const nudged = input.nudge === undefined ? moved : {
+    ...moved,
+    numeric: numericNudge(moved.numeric, input.nudge, numericFieldCount(moved), moved.mode === 'scale' ? 1 : 0),
+  }
+  const keyed = input.key ? applyKey(nudged, input.key) : nudged
   const changed =
     keyed.effective[0] !== keyed.start[0] ||
     keyed.effective[1] !== keyed.start[1] ||

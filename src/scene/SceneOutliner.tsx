@@ -651,14 +651,20 @@ export function SceneOutliner({
           focusRow(row.parentRowId)
         }
         return
-      case 'Enter':
       case ' ':
         event.preventDefault()
         activateRow(row, event)
         return
+      case 'Enter':
       case 'F2':
+        /*
+         * Space selects and Enter renames, which is the pairing a tree of names wants: the row is
+         * already under the keyboard, so what is left to do to it is give it another name. A row
+         * with no name of its own — a mesh, a modifier — is selected by either.
+         */
         event.preventDefault()
-        startRename(row)
+        if (row.kind === 'data') activateRow(row, event)
+        else startRename(row)
         return
       default:
     }
