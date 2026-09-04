@@ -347,6 +347,7 @@ export const KEYMAP: KeyBinding[] = [
   },
   { code: 'KeyV', ctrl: true, mode: 'edit', action: action('menu.vertex'), label: 'Vertex menu' },
   { code: 'KeyE', ctrl: true, mode: 'edit', action: action('menu.edge'), label: 'Edge menu' },
+  { code: 'KeyU', mode: 'edit', action: action('menu.uv'), label: 'UV mapping menu' },
   { code: 'KeyF', ctrl: true, mode: 'edit', action: action('menu.face'), label: 'Face menu' },
   { code: 'KeyD', shift: true, mode: 'edit', action: operator('mesh.duplicate'), label: 'Duplicate' },
 

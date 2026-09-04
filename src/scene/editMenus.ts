@@ -99,7 +99,17 @@ export const NORMALS_MENU: MenuIds = [
 ]
 
 /** Which list a `menu.*` action opens, and what its heading says. */
+/** The U menu: everything that makes or moves a UV map, in the order Blender lists them. */
+export const UV_MENU: MenuIds = [
+  'uv.unwrap', 'uv.smartProject', 'uv.lightmapPack', '-',
+  'uv.cubeProject', 'uv.cylinderProject', 'uv.sphereProject', 'uv.projectFromView', '-',
+  'uv.reset', '-',
+  'uv.packIslands', 'uv.averageIslandScale', 'uv.minimizeStretch', '-',
+  'mesh.markSeam', 'mesh.clearSeam', 'uv.seamsFromIslands',
+]
+
 export const POINTER_MENUS: Record<string, { title: string; ids: MenuIds }> = {
+  'menu.uv': { title: 'UV mapping', ids: UV_MENU },
   'menu.extrude': { title: 'Extrude', ids: EXTRUDE_MENU },
   'menu.merge': { title: 'Merge', ids: MERGE_MENU },
   'menu.delete': { title: 'Delete', ids: DELETE_MENU },

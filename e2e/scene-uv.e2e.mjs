@@ -130,4 +130,63 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
   await page.waitForTimeout(500)
   const attributes = await page.locator('.scene-properties').innerText()
   check('the Data tab names the map it has', /UVMap/.test(attributes), attributes.split('\n').filter((line) => /UV/.test(line)).join(' / ') || 'not listed')
+
+  /* ------------------------------------------------------ unwrapping by hand */
+
+  // Into edit mode with everything selected, then the U menu, as a person reaches it.
+  const box = await helpers.viewportBox()
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await page.waitForTimeout(300)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(700)
+  await page.keyboard.press('a')
+  await page.waitForTimeout(400)
+
+  // Every edge a seam, so the cube comes apart into its six faces.
+  await page.keyboard.press('Digit2')
+  await page.waitForTimeout(300)
+  await page.keyboard.press('a')
+  await page.waitForTimeout(300)
+  const marked = await page.evaluate(() => {
+    const menu = [...document.querySelectorAll('.scene-header__menus button')].find((node) => node.textContent?.includes('Edge'))
+    menu?.click()
+    return !!menu
+  })
+  check('the Edge menu is where Mark seam lives', marked)
+  await page.locator('[role="menuitem"]', { hasText: 'Mark seam' }).first().click()
+  await page.waitForTimeout(500)
+  const seams = await helpers.scene()
+  const seamCount = (Object.values(seams.meshes)[0].attributes.edge.seam ?? []).filter(Boolean).length
+  check('every edge of the cube is now a seam', seamCount === 12, `${seamCount} seams`)
+
+  await page.keyboard.press('Digit3')
+  await page.waitForTimeout(200)
+  await page.keyboard.press('a')
+  await page.waitForTimeout(300)
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.keyboard.press('KeyU')
+  await page.waitForSelector('[role="menuitem"]', { timeout: 10000 })
+  const entries = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts()
+  check('U opens the UV menu, with the unwrappers in it',
+    entries.some((entry) => /Unwrap/.test(entry)) && entries.some((entry) => /Smart UV project/.test(entry)),
+    entries.slice(0, 6).join(' / '))
+  await page.locator('[role="menuitem"]', { hasText: 'Unwrap' }).first().click()
+  await page.waitForTimeout(1200)
+
+  const unwrapped = await helpers.scene()
+  const map = Object.values(unwrapped.meshes)[0].attributes.loop?.uvMaps?.[0]?.data ?? []
+  const inside = map.length > 0 && Math.min(...map) >= -1e-6 && Math.max(...map) <= 1 + 1e-6
+  check('unwrapping lays every corner inside the image', inside,
+    `${map.length} numbers, ${Math.min(...map).toFixed(3)} to ${Math.max(...map).toFixed(3)}`)
+
+  // Six islands, so six distinct patches: no two faces share a place in the image.
+  const patches = new Set()
+  for (let face = 0; face < 6; face += 1) {
+    const corner = face * 4
+    patches.add(`${(map[corner * 2] ?? 0).toFixed(2)}:${(map[corner * 2 + 1] ?? 0).toFixed(2)}`)
+  }
+  check('and the six faces land in six different places', patches.size === 6, `${patches.size} patches`)
+  log(`MEASURE unwrap of a fully seamed cube: ${map.length / 2} corners, ${patches.size} islands`)
+  await shot('scene-uv-unwrapped-1440.png')
 })

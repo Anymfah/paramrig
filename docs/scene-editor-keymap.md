@@ -271,6 +271,7 @@ Every chord in this section is Blender’s own.
 | `⇧⌃⌥S` | Shear (edit mode) |
 | `⌃V` | Vertex menu (edit mode) |
 | `⌃E` | Edge menu (edit mode) |
+| `U` | UV mapping menu (edit mode) |
 | `⌃F` | Face menu (edit mode) |
 | `⇧D` | Duplicate (edit mode) |
 | `O` | Proportional editing (edit mode) |

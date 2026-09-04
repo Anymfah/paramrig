@@ -1361,6 +1361,32 @@ export class EditMesh {
     }
   }
 
+  /**
+   * Replaces every UV map, which is what an unwrapper hands back.
+   *
+   * A map of the wrong length is refused rather than padded: it is a map about a different mesh,
+   * and half a map is worse than none.
+   */
+  setUvMaps(maps: UvMap[], active = 0): void {
+    let total = 0
+    for (const face of this.mesh.faces) total += face.length
+    const kept = maps.filter((map) => map.data.length === total * 2)
+    const starts = loopStarts(this.mesh)
+    this.uvRows = kept.map((map) => ({
+      name: map.name,
+      rows: this.mesh.faces.map((face, slot) => {
+        const start = starts[slot]!
+        return map.data.slice(start * 2, (start + face.length) * 2)
+      }),
+    }))
+    this.activeUvMap = kept.length === 0 ? 0 : Math.min(kept.length - 1, Math.max(0, active))
+  }
+
+  /** The maps as the mesh would store them right now. */
+  uvMaps(): UvMap[] {
+    return this.flattenUvs()
+  }
+
   /** The maps as they arrived, cut into a row per face. */
   private explodeUvs(): void {
     const maps = uvMapsOf(this.mesh)

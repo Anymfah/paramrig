@@ -706,6 +706,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
           at: stage.current?.pointerPage() ?? pointerCentre(),
         })
         return
+      case 'menu.uv':
       case 'menu.extrude':
       case 'menu.merge':
       case 'menu.delete':
