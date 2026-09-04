@@ -322,3 +322,24 @@ Where this differs from Blender:
 
 - `⌃S`, `⌘S`, `⇧⌃S`, `⇧⌘S`, `⌃O`, `⌘O` — The browser would save or open a page of its own. The editor takes the chord for the document and stops it there.
 - `F12` — The browser keeps F12 for its own tools on Windows and Linux; the File menu renders as well.
+
+## UV editor
+
+| Chord | Action |
+| --- | --- |
+| `1` | UV vertex selection |
+| `2` | UV edge selection |
+| `3` | UV face selection |
+| `4` | UV island selection |
+| `A` | Select all UVs |
+| `⌥A` | Deselect all UVs |
+| `G` | Move UVs |
+| `R` | Rotate UVs |
+| `S` | Scale UVs |
+| `X` | Constrain a running transform to U |
+| `Y` | Constrain a running transform to V |
+| `P` | Pin the selected UVs |
+| `⌥P` | Unpin the selected UVs |
+| `V` | Stitch the selected islands |
+
+Every chord in this section is Blender’s own.

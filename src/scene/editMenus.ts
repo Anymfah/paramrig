@@ -100,6 +100,22 @@ export const NORMALS_MENU: MenuIds = [
 
 /** Which list a `menu.*` action opens, and what its heading says. */
 /** The U menu: everything that makes or moves a UV map, in the order Blender lists them. */
+/**
+ * The UV editor's own menu, which is a different list from the one U opens in the viewport.
+ *
+ * U is about *making* a map — unwrap, project, pack — and this is about moving one that exists.
+ * Blender divides them the same way and for the same reason: what is selected is different in the
+ * two places, so the operators that read a selection are different too.
+ */
+export const UV_EDIT_MENU: MenuIds = [
+  'uv.pin', 'uv.unpin', '-',
+  'uv.weld', 'uv.stitch', '-',
+  'uv.align', 'uv.straighten', 'uv.mirror', '-',
+  'uv.snapToPixels', 'uv.constrainToImage', '-',
+  'uv.packIslands', 'uv.averageIslandScale', 'uv.minimizeStretch', '-',
+  'uv.seamsFromIslands',
+]
+
 export const UV_MENU: MenuIds = [
   'uv.unwrap', 'uv.smartProject', 'uv.lightmapPack', '-',
   'uv.cubeProject', 'uv.cylinderProject', 'uv.sphereProject', 'uv.projectFromView', '-',

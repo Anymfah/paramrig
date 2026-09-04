@@ -69,6 +69,7 @@ function paint(over: Partial<UvPaint> = {}): UvPaint {
     stretch: null,
     geometry: null,
     selected: null,
+    pinned: null,
     pointRadius: 2.5,
     ...over,
   }

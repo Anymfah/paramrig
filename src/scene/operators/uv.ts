@@ -1,5 +1,5 @@
 import { EditMesh } from '@/scene/mesh/editMesh'
-import { loopStarts, uniqueUvName, uvMapsOf, DEFAULT_UV_NAME } from '@/scene/mesh/uv'
+import { loopStarts, pinnedOf, uniqueUvName, uvMapsOf, DEFAULT_UV_NAME } from '@/scene/mesh/uv'
 import { requireEdit, runOnMeshes, type EditTarget } from '@/scene/operators/edit'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, selectParam, switchParam, type OperatorContext, type OperatorParams, type OperatorResult } from '@/scene/operators/types'
@@ -197,6 +197,38 @@ function packInto(
   }
 }
 
+/** The corners a person has pinned, as the relaxation wants them: a set of corner numbers. */
+function pinnedLoops(mesh: MeshData): Set<number> {
+  const flags = pinnedOf(mesh)
+  const loops = new Set<number>()
+  for (let loop = 0; loop < flags.length; loop += 1) if (flags[loop]) loops.add(loop)
+  return loops
+}
+
+/**
+ * The vertices a person has pinned, and where they pinned them.
+ *
+ * Pins are per corner and the solver works per vertex, so a corner names its vertex; two corners of
+ * one vertex pinned to two places is a contradiction, and the first one wins rather than the
+ * average, which would put the vertex somewhere nobody asked for.
+ */
+function pinnedVertices(mesh: MeshData, data: number[], starts: number[]): Map<number, [number, number]> {
+  const flags = pinnedOf(mesh)
+  const pins = new Map<number, [number, number]>()
+  if (flags.length === 0) return pins
+  for (let face = 0; face < mesh.faces.length; face += 1) {
+    const corners = mesh.faces[face]!
+    const start = starts[face] ?? 0
+    for (let corner = 0; corner < corners.length; corner += 1) {
+      const loop = start + corner
+      if (!flags[loop]) continue
+      const slot = corners[corner]!
+      if (!pins.has(slot)) pins.set(slot, [data[loop * 2] ?? 0, data[loop * 2 + 1] ?? 0])
+    }
+  }
+  return pins
+}
+
 registerOperator({
   id: 'uv.unwrap',
   label: 'Unwrap',
@@ -236,9 +268,11 @@ function unwrap(context: OperatorContext, params: OperatorParams): OperatorResul
   return editUvs(context, 'Unwrap', (mesh, faces, data, starts) => {
     const islands = islandsFromSeams(mesh, { selection: faces })
     if (islands.length === 0) return 'Select some faces to unwrap.'
+    // A pinned corner says where its vertex belongs, so the solver is given it and solves around it.
+    const pinned = pinnedVertices(mesh, data, starts)
     let flattened = 0
     for (const island of islands) {
-      const uv = lscmUnwrap(mesh, island)
+      const uv = lscmUnwrap(mesh, island, pinned.size >= 2 ? { pinned } : {})
       if (!uv) continue
       flattened += 1
       let at = 0
@@ -254,7 +288,7 @@ function unwrap(context: OperatorContext, params: OperatorParams): OperatorResul
     }
     if (flattened === 0) return 'Those faces have no area to unwrap.'
     if (method === 'conformal') {
-      const relaxed = minimizeStretch(mesh, data, { iterations: 12 })
+      const relaxed = minimizeStretch(mesh, data, { iterations: 12, pinned: pinnedLoops(mesh) })
       copyFaces(relaxed, data, mesh, faces, starts)
     }
     if (shouldPack) packInto(mesh, islands, data, starts, { margin })
@@ -490,7 +524,10 @@ registerOperator({
   mode: 'edit',
   available: (context) => requireEdit(context, 'face'),
   run: (context, params) => editUvs(context, 'Minimize stretch', (mesh, faces, data, starts) => {
-    const relaxed = minimizeStretch(mesh, data, { iterations: Math.round(Number(params.iterations ?? 20)) })
+    const relaxed = minimizeStretch(mesh, data, {
+      iterations: Math.round(Number(params.iterations ?? 20)),
+      pinned: pinnedLoops(mesh),
+    })
     copyFaces(relaxed, data, mesh, faces, starts)
   }),
 })

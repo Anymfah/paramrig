@@ -578,6 +578,31 @@ const SECTIONS: Array<{ id: string; title: string; prefixes: string[] }> = [
 
 const FALLBACK_SECTION = 'editor'
 
+/**
+ * The second space's own keys.
+ *
+ * They are not in `KEYMAP` because they are not the page's. The UV editor answers them while it has
+ * the focus, which is what lets G move a model in the viewport and a map in the image without the
+ * two ever having to agree about which of them a key belongs to. They are written out here so that
+ * there is one keyboard sheet rather than two.
+ */
+export const UV_EDITOR_KEYS: KeymapEntry[] = [
+  { shortcut: '1', label: 'UV vertex selection', actionId: 'uv.selectVertex' },
+  { shortcut: '2', label: 'UV edge selection', actionId: 'uv.selectEdge' },
+  { shortcut: '3', label: 'UV face selection', actionId: 'uv.selectFace' },
+  { shortcut: '4', label: 'UV island selection', actionId: 'uv.selectIsland' },
+  { shortcut: 'A', label: 'Select all UVs', actionId: 'uv.selectAll' },
+  { shortcut: '⌥A', label: 'Deselect all UVs', actionId: 'uv.selectNone' },
+  { shortcut: 'G', label: 'Move UVs', actionId: 'uv.move' },
+  { shortcut: 'R', label: 'Rotate UVs', actionId: 'uv.rotate' },
+  { shortcut: 'S', label: 'Scale UVs', actionId: 'uv.scale' },
+  { shortcut: 'X', label: 'Constrain a running transform to U', actionId: 'uv.constrainU' },
+  { shortcut: 'Y', label: 'Constrain a running transform to V', actionId: 'uv.constrainV' },
+  { shortcut: 'P', label: 'Pin the selected UVs', actionId: 'uv.pin' },
+  { shortcut: '⌥P', label: 'Unpin the selected UVs', actionId: 'uv.unpin' },
+  { shortcut: 'V', label: 'Stitch the selected islands', actionId: 'uv.stitch' },
+]
+
 function sectionOf(actionId: string): string {
   const section = SECTIONS.find((candidate) => candidate.prefixes.some((prefix) => actionId.startsWith(prefix)))
   return section?.id ?? FALLBACK_SECTION
@@ -606,8 +631,11 @@ export function describeKeymap(preferences?: Partial<ScenePreferences>): KeymapS
     if (rows) rows.push(entry)
     else entries.set(section, [entry])
   }
-  return SECTIONS.flatMap((section) => {
-    const rows = entries.get(section.id)
-    return rows ? [{ id: section.id, title: section.title, entries: rows }] : []
-  })
+  return [
+    ...SECTIONS.flatMap((section) => {
+      const rows = entries.get(section.id)
+      return rows ? [{ id: section.id, title: section.title, entries: rows }] : []
+    }),
+    { id: 'uv', title: 'UV editor', entries: UV_EDITOR_KEYS },
+  ]
 }

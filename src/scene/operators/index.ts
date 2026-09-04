@@ -39,6 +39,7 @@ import '@/scene/operators/symmetry'
 import '@/scene/operators/transform'
 import '@/scene/operators/transformMesh'
 import '@/scene/operators/uv'
+import '@/scene/operators/uvEdit'
 import '@/scene/operators/view'
 
 export { getOperator, listOperators, operatorAvailability, operatorCount, runOperator } from '@/scene/operators/registry'

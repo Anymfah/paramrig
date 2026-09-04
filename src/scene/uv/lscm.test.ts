@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boxMesh, gridMesh, planeMesh, uvSphereMesh } from '@/scene/mesh/primitives'
 import { loopStarts } from '@/scene/mesh/uv'
-import { islandsFromSeams, islandLoops, seamsFromIslands } from '@/scene/uv/islands'
+import { islandsFromSeams, islandLoops, islandVertices, seamsFromIslands } from '@/scene/uv/islands'
 import { lscmUnwrap } from '@/scene/uv/lscm'
 import type { MeshData } from '@/scene/types'
 
@@ -151,5 +151,38 @@ describe('the seams a map implies', () => {
     expect(uv).toHaveLength(corners * 2)
     const seams = seamsFromIslands(mesh, uv)
     expect(seams.filter(Boolean).length).toBe(mesh.edges.length)
+  })
+})
+
+describe('pinning', () => {
+  it('leaves a pinned vertex where it was told to be', () => {
+    const mesh = gridMesh({ xSubdivisions: 3, ySubdivisions: 3 })
+    const island = islandsFromSeams(mesh)[0]!
+    const { slots } = islandVertices(mesh, island)
+    const pinned = new Map<number, [number, number]>([
+      [slots[0]!, [0.2, 0.3]],
+      [slots[slots.length - 1]!, [0.8, 0.7]],
+    ])
+    const uv = lscmUnwrap(mesh, island, { pinned })!
+    const loops = islandLoops(mesh, island)
+    const { cornerVertex } = islandVertices(mesh, island)
+    const at = (slot: number): [number, number] => {
+      const index = cornerVertex.findIndex((vertex) => slots[vertex] === slot)
+      return [uv[index * 2]!, uv[index * 2 + 1]!]
+    }
+    void loops
+    expect(at(slots[0]!)[0]).toBeCloseTo(0.2, 2)
+    expect(at(slots[0]!)[1]).toBeCloseTo(0.3, 2)
+    expect(at(slots[slots.length - 1]!)[0]).toBeCloseTo(0.8, 2)
+    expect(at(slots[slots.length - 1]!)[1]).toBeCloseTo(0.7, 2)
+  })
+
+  it('ignores a single pin, which cannot hold a flattening still', () => {
+    const mesh = gridMesh({ xSubdivisions: 2, ySubdivisions: 2 })
+    const island = islandsFromSeams(mesh)[0]!
+    const { slots } = islandVertices(mesh, island)
+    const one = lscmUnwrap(mesh, island, { pinned: new Map([[slots[0]!, [9, 9]]]) })!
+    // The automatic pins put the map at the surface's own scale, near the origin, not out at nine.
+    expect(Math.max(...one)).toBeLessThan(5)
   })
 })

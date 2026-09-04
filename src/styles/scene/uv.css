@@ -15,6 +15,8 @@
   --scene-uv-edge-selected: var(--scene-edge-selected);
   --scene-uv-point: var(--scene-cursor-ground);
   --scene-uv-point-selected: var(--scene-vertex-selected);
+  /* A pin is Blender's red, and the same red the 3D cursor's ring is: "held", in one colour. */
+  --scene-uv-pin: var(--scene-cursor-ring);
   --scene-uv-halo: var(--scene-outline-halo);
   --scene-uv-face: var(--scene-face-selected);
   /*
@@ -128,13 +130,6 @@
 }
 .scene-uv__status > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.scene-uv__title {
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
 .scene-uv__map {
   min-inline-size: 0;
   overflow: hidden;

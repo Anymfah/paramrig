@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KEYMAP, describeKeymap, shortcutLabel, type KeyBinding } from '@/scene/keymap'
+import { KEYMAP, UV_EDITOR_KEYS, describeKeymap, shortcutLabel, type KeyBinding } from '@/scene/keymap'
 import { keymapMarkdown } from '@/scene/keymapDoc'
 
 /**
@@ -72,7 +72,9 @@ describe('the generated keymap page', () => {
       const matches = rows.filter((row) => row.chord === chord && row.action === expectedAction(binding))
       expect(matches, `${chord} · ${binding.label}`).toHaveLength(1)
     }
-    expect(rows).toHaveLength(KEYMAP.length)
+    // The table, plus the second space's own keys — which the page carries because a person wants
+    // one sheet, and which are not in the table because the UV editor answers them itself.
+    expect(rows).toHaveLength(KEYMAP.length + UV_EDITOR_KEYS.length)
   })
 
   it('lists none of the chords the browser keeps for itself, and says why', () => {

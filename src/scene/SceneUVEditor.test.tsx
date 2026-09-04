@@ -55,6 +55,7 @@ function setup(document: SceneDocument, uv: Partial<UvEditorState> = {}, selecti
   const onUv = vi.fn()
   const onClose = vi.fn()
   const onSelection = vi.fn()
+  const onRunOperator = vi.fn()
   const edits: Array<{ label: string; mesh: MeshData }> = []
   const onEditDocument = vi.fn((edit: (current: SceneDocument) => SceneDocument, label: string) => {
     edits.push({ label, mesh: edit(document).meshes[MESH_ID]! })
@@ -69,12 +70,14 @@ function setup(document: SceneDocument, uv: Partial<UvEditorState> = {}, selecti
       onClose={onClose}
       onSelection={onSelection}
       onEditDocument={onEditDocument}
+      onRunOperator={onRunOperator}
+      context={null}
       onGestureStart={(label) => gestures.push(`start ${label}`)}
       onGestureEnd={(label) => gestures.push(`end ${label}`)}
       onGestureCancel={() => gestures.push('cancel')}
     />,
   )
-  return { onUv, onClose, onSelection, edits, gestures }
+  return { onUv, onClose, onSelection, onRunOperator, edits, gestures }
 }
 
 /** The viewport selection the editor reads: every face of the mesh, which is what A leaves. */

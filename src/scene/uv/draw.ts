@@ -48,6 +48,8 @@ export type UvColours = {
   edgeSelected: string
   point: string
   pointSelected: string
+  /** A corner a person has held in place, which an unwrap solves around. */
+  pointPinned: string
   /** The casing an edge and a point wear, so a line reads on a light image and on a dark one. */
   halo: string
   face: string
@@ -68,6 +70,7 @@ export const UV_COLOURS: UvColours = {
   edgeSelected: '#f0a02e',
   point: '#f2f4f3',
   pointSelected: '#f0a02e',
+  pointPinned: '#e05a5a',
   halo: '#0b0e0e',
   face: '#f0a02e4d',
   stretchLow: '#3a6ea5',
@@ -94,6 +97,8 @@ export type UvPaint = {
   geometry: UvGeometry | null
   /** One byte per point, 1 where it is selected; null when nothing is. */
   selected: Uint8Array | null
+  /** The same, for the points a person has pinned. */
+  pinned: Uint8Array | null
   /** Radius of a point, in pixels. Coarse pointers ask for a larger one. */
   pointRadius: number
 }
@@ -315,10 +320,15 @@ function drawPoints(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry): void {
   // Two passes rather than two rectangles per point: setting the fill once for each is what keeps
   // ten thousand points a pair of loops rather than twenty thousand state changes.
   const selected = paint.selected
+  const pinned = paint.pinned
+  const isPinned = (point: number): boolean => pinned !== null && pinned[point] === 1
   const passes = [
     { colour: paint.colours.halo, grow: 2, wanted: () => true },
-    { colour: paint.colours.point, grow: 0, wanted: (point: number) => !selected || selected[point] !== 1 },
-    { colour: paint.colours.pointSelected, grow: 1, wanted: (point: number) => selected !== null && selected[point] === 1 },
+    { colour: paint.colours.point, grow: 0, wanted: (point: number) => !isPinned(point) && (!selected || selected[point] !== 1) },
+    { colour: paint.colours.pointSelected, grow: 1, wanted: (point: number) => !isPinned(point) && selected !== null && selected[point] === 1 },
+    // Pinned last and largest, because a pin is the one thing on the map that overrides everything
+    // else about it: whatever else a corner is, if it is pinned an unwrap will not move it.
+    { colour: paint.colours.pointPinned, grow: 2, wanted: isPinned },
   ]
   for (const pass of passes) {
     const side = size + pass.grow

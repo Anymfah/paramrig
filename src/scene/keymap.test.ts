@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  KEYMAP,
+  KEYMAP, UV_EDITOR_KEYS,
   bindingFor,
   describeKeymap,
   resolveKey,
@@ -210,10 +210,11 @@ describe('the keymap sheet', () => {
       'Pie menus',
       'Editor',
       'File',
+      'UV editor',
     ])
     expect(sections.every((section) => section.entries.length > 0)).toBe(true)
     const rows = sections.flatMap((section) => section.entries)
-    expect(rows).toHaveLength(KEYMAP.length)
+    expect(rows).toHaveLength(KEYMAP.length + UV_EDITOR_KEYS.length)
     expect(rows.every((row) => row.shortcut.length > 0 && row.label.length > 0)).toBe(true)
   })
 

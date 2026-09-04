@@ -69,16 +69,25 @@ export function uvAt(data: number[], loop: number): Vec2 {
   return [data[loop * 2] ?? 0, data[loop * 2 + 1] ?? 0]
 }
 
-/** The same mesh with these maps, and the active one held inside them. */
+/**
+ * The same mesh with these maps, and the active one held inside them.
+ *
+ * The pins ride along, but only while they still fit: they are one flag per corner, and a mesh
+ * whose corners have changed underneath them has no way of knowing which corner each flag meant.
+ * That is the one place a pin is dropped, and it is where the promise in `MeshAttributes.loop` is
+ * kept — this is the funnel every operator's answer goes through.
+ */
 export function withUvMaps(mesh: MeshData, maps: UvMap[], active = mesh.attributes.loop?.activeUv ?? 0): MeshData {
   const kept = maps.slice(0, MAX_UV_MAPS)
+  const pinned = mesh.attributes.loop?.pinned
+  const pins = pinned && pinned.length === loopCount(mesh) && pinned.some(Boolean) ? { pinned } : {}
   return {
     ...mesh,
     attributes: {
       ...mesh.attributes,
       loop: kept.length === 0
-        ? {}
-        : { uvMaps: kept, activeUv: Math.min(kept.length - 1, Math.max(0, Math.floor(active))) },
+        ? pins
+        : { uvMaps: kept, activeUv: Math.min(kept.length - 1, Math.max(0, Math.floor(active))), ...pins },
     },
   }
 }
@@ -200,4 +209,37 @@ export function setActiveUvMap(mesh: MeshData, index: number): MeshData {
   const maps = uvMapsOf(mesh)
   if (index < 0 || index >= maps.length) return mesh
   return withUvMaps(mesh, maps, index)
+}
+
+/* ---------------------------------------------------------------- the pins */
+
+/** The corners an unwrap must leave where they are, one flag per corner. */
+export function pinnedOf(mesh: MeshData): boolean[] {
+  const pinned = mesh.attributes.loop?.pinned
+  return pinned && pinned.length === loopCount(mesh) ? pinned : []
+}
+
+/**
+ * The same mesh with these corners pinned, or unpinned.
+ *
+ * A mesh with nothing pinned carries no list at all rather than a list of falses: an attribute that
+ * says nothing should not be in the file, and every reader of it treats absent and all-false alike.
+ */
+export function withPinned(mesh: MeshData, loops: Iterable<number>, pinned: boolean): MeshData {
+  const loops2 = loopCount(mesh)
+  const flags = pinnedOf(mesh).slice()
+  while (flags.length < loops2) flags.push(false)
+  for (const loop of loops) {
+    if (loop >= 0 && loop < loops2) flags[loop] = pinned
+  }
+  const any = flags.some(Boolean)
+  return {
+    ...mesh,
+    attributes: {
+      ...mesh.attributes,
+      loop: any
+        ? { ...mesh.attributes.loop, pinned: flags }
+        : Object.fromEntries(Object.entries(mesh.attributes.loop ?? {}).filter(([key]) => key !== 'pinned')),
+    },
+  }
 }

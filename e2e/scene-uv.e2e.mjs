@@ -390,6 +390,52 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
     (Object.values(removed.meshes)[0].attributes.loop?.uvMaps ?? []).length === 1,
     `${(Object.values(removed.meshes)[0].attributes.loop?.uvMaps ?? []).length} maps`)
 
+  /* ------------------------------------------------------- the UV editor's menu */
+
+  await page.locator('.scene-uv__frame').focus()
+  await page.keyboard.press('KeyA')
+  await page.waitForTimeout(300)
+  await page.locator('.scene-uv__header button', { hasText: 'UV' }).first().click()
+  await page.waitForSelector('[role="menu"]')
+  const tools = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts()
+  check('the editor carries its own menu of tools, separate from the U menu that makes a map',
+    ['Pin', 'Weld', 'Stitch', 'Align', 'Straighten', 'Mirror'].every((name) => tools.some((entry) => entry.startsWith(name))),
+    tools.slice(0, 8).join(' / '))
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
+
+  // P pins what is selected, and an unwrap then has to solve around it.
+  await page.locator('.scene-uv__frame').focus()
+  await page.keyboard.press('KeyP')
+  await page.waitForTimeout(500)
+  const pinned = Object.values((await helpers.scene()).meshes)[0].attributes.loop.pinned ?? []
+  check('P pins every selected corner, and the mesh carries them',
+    pinned.filter(Boolean).length === 24, `${pinned.filter(Boolean).length} of ${pinned.length} corners pinned`)
+
+  const pinnedShot = await page.evaluate(() => {
+    const canvas = document.querySelector('.scene-uv__canvas')
+    const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data
+    let red = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] > 160 && pixels[index + 1] < 120 && pixels[index + 2] < 120) red += 1
+    }
+    return red
+  })
+  check('and they are drawn as pins rather than as ordinary points', pinnedShot > 100, `${pinnedShot} red pixels`)
+  await shot('scene-uv-pinned-1440.png')
+
+  // And a tool from the menu, measured on the map it changes.
+  await page.locator('.scene-uv__header button', { hasText: 'UV' }).first().click()
+  await page.locator('[role="menuitem"]', { hasText: 'Weld' }).first().click()
+  await page.waitForTimeout(600)
+  const welded = Object.values((await helpers.scene()).meshes)[0].attributes.loop.uvMaps[0].data
+  const places = new Set(welded.map((value, index) => (index % 2 === 0 ? `${value.toFixed(4)}:${welded[index + 1].toFixed(4)}` : null)).filter(Boolean))
+  check('Weld brings every selected corner of the map onto one point', places.size === 1, `${places.size} places`)
+
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(500)
+
   /* --------------------------------------------------- and on a small screen */
 
   await page.setViewportSize({ width: 390, height: 844 })

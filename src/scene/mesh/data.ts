@@ -150,6 +150,7 @@ export function cloneMesh(mesh: MeshData): MeshData {
           ? { uvMaps: mesh.attributes.loop.uvMaps.map((map) => ({ name: map.name, data: map.data.slice() })) }
           : {}),
         ...(mesh.attributes.loop?.activeUv === undefined ? {} : { activeUv: mesh.attributes.loop.activeUv }),
+        ...(mesh.attributes.loop?.pinned ? { pinned: mesh.attributes.loop.pinned.slice() } : {}),
       },
     },
     ...(mesh.autoSmooth ? { autoSmooth: { ...mesh.autoSmooth } } : {}),
@@ -318,7 +319,7 @@ function readAttributes(value: unknown, faceCount: number, edgeCount: number, fa
  */
 function readLoop(value: unknown, loops: number): MeshAttributes['loop'] {
   if (!value || typeof value !== 'object') return {}
-  const source = value as { uvMaps?: unknown; activeUv?: unknown; uv?: unknown }
+  const source = value as { uvMaps?: unknown; activeUv?: unknown; uv?: unknown; pinned?: unknown }
   const raw: unknown[] = Array.isArray(source.uvMaps)
     ? source.uvMaps
     : Array.isArray(source.uv) ? [{ name: DEFAULT_UV_NAME, data: source.uv }] : []
@@ -330,9 +331,15 @@ function readLoop(value: unknown, loops: number): MeshAttributes['loop'] {
     const name = typeof map.name === 'string' && map.name.trim() ? map.name.trim().slice(0, 60) : DEFAULT_UV_NAME
     maps.push({ name, data: map.data.map((item) => (Number.isFinite(Number(item)) ? Number(item) : 0)) })
   }
-  if (maps.length === 0) return {}
+  // Pins are read on their own terms: a mesh may be pinned before it has ever been unwrapped, and
+  // a list of the wrong length is about a different mesh, so it goes the way a wrong map goes.
+  const pinned = Array.isArray(source.pinned) && source.pinned.length === loops
+    ? source.pinned.map((item) => item === true)
+    : null
+  const pins = pinned?.some(Boolean) ? { pinned } : {}
+  if (maps.length === 0) return pins
   const active = Math.min(maps.length - 1, Math.max(0, Math.floor(Number(source.activeUv) || 0)))
-  return { uvMaps: maps, activeUv: active }
+  return { uvMaps: maps, activeUv: active, ...pins }
 }
 
 /** One past the largest id, without spreading a list a big mesh would overflow the stack with. */

@@ -29,6 +29,14 @@ export type LscmOptions = {
   iterations?: number
   /** Stop once the residual is this small, relative to the first one. */
   tolerance?: number
+  /**
+   * Vertices the answer must put in a given place, by mesh slot.
+   *
+   * This is what a person's pins are. Fewer than two of them leaves the flattening free to turn and
+   * to grow — a conformal map is only defined up to a similarity — so a single pin is not enough to
+   * solve with and the automatic pair is used instead.
+   */
+  pinned?: Map<number, [number, number]>
 }
 
 /**
@@ -43,8 +51,8 @@ export function lscmUnwrap(mesh: MeshData, island: UvIsland, options: LscmOption
   const triangles = triangulateIsland(mesh, island, cornerVertex)
   if (triangles.length === 0) return null
 
-  const pinned = choosePins(mesh, slots, triangles)
-  if (!pinned) return null
+  const pins = wantedPins(slots, options.pinned) ?? automaticPins(mesh, slots, triangles)
+  if (!pins) return null
 
   const count = slots.length
   /*
@@ -56,12 +64,12 @@ export function lscmUnwrap(mesh: MeshData, island: UvIsland, options: LscmOption
   const unknowns = count * 2
   const solution = new Float64Array(unknowns)
   seedFromProjection(mesh, slots, triangles, solution)
-  solution[pinned.a * 2] = pinned.au
-  solution[pinned.a * 2 + 1] = pinned.av
-  solution[pinned.b * 2] = pinned.bu
-  solution[pinned.b * 2 + 1] = pinned.bv
+  for (const pin of pins) {
+    solution[pin.vertex * 2] = pin.u
+    solution[pin.vertex * 2 + 1] = pin.v
+  }
 
-  const rows = triangles.length * 2 + 4
+  const rows = triangles.length * 2 + pins.length * 2
   /*
    * One triangle's two rows.
    *
@@ -90,10 +98,11 @@ export function lscmUnwrap(mesh: MeshData, island: UvIsland, options: LscmOption
       out[row + 1] = imaginary * weight
       row += 2
     }
-    out[row] = x[pinned.a * 2]! * PIN_WEIGHT
-    out[row + 1] = x[pinned.a * 2 + 1]! * PIN_WEIGHT
-    out[row + 2] = x[pinned.b * 2]! * PIN_WEIGHT
-    out[row + 3] = x[pinned.b * 2 + 1]! * PIN_WEIGHT
+    for (const pin of pins) {
+      out[row] = x[pin.vertex * 2]! * PIN_WEIGHT
+      out[row + 1] = x[pin.vertex * 2 + 1]! * PIN_WEIGHT
+      row += 2
+    }
   }
 
   const applyTranspose = (y: Float64Array, out: Float64Array): void => {
@@ -112,17 +121,18 @@ export function lscmUnwrap(mesh: MeshData, island: UvIsland, options: LscmOption
       }
       row += 2
     }
-    out[pinned.a * 2] = (out[pinned.a * 2] ?? 0) + y[row]! * PIN_WEIGHT
-    out[pinned.a * 2 + 1] = (out[pinned.a * 2 + 1] ?? 0) + y[row + 1]! * PIN_WEIGHT
-    out[pinned.b * 2] = (out[pinned.b * 2] ?? 0) + y[row + 2]! * PIN_WEIGHT
-    out[pinned.b * 2 + 1] = (out[pinned.b * 2 + 1] ?? 0) + y[row + 3]! * PIN_WEIGHT
+    for (const pin of pins) {
+      out[pin.vertex * 2] = (out[pin.vertex * 2] ?? 0) + y[row]! * PIN_WEIGHT
+      out[pin.vertex * 2 + 1] = (out[pin.vertex * 2 + 1] ?? 0) + y[row + 1]! * PIN_WEIGHT
+      row += 2
+    }
   }
 
   const target = new Float64Array(rows)
-  target[rows - 4] = pinned.au * PIN_WEIGHT
-  target[rows - 3] = pinned.av * PIN_WEIGHT
-  target[rows - 2] = pinned.bu * PIN_WEIGHT
-  target[rows - 1] = pinned.bv * PIN_WEIGHT
+  for (let index = 0; index < pins.length; index += 1) {
+    target[triangles.length * 2 + index * 2] = pins[index]!.u * PIN_WEIGHT
+    target[triangles.length * 2 + index * 2 + 1] = pins[index]!.v * PIN_WEIGHT
+  }
 
   solveLeastSquares(solution, target, rows, unknowns, apply, applyTranspose, options)
 
@@ -213,6 +223,35 @@ function localFrame(a: Vec3, b: Vec3, c: Vec3): { x1: number; x2: number; y2: nu
  * The pair is found by taking the vertex furthest from the island's centre and then the one
  * furthest from that — the standard two-pass diameter, which is close enough and costs two passes.
  */
+/** A pin, in the island's own numbering: which of its vertices, and where it is held. */
+type Pin = { vertex: number; u: number; v: number }
+
+/**
+ * The person's own pins, when there are enough of them to solve with.
+ *
+ * A conformal map is defined up to a similarity, so one pin leaves the answer free to turn and to
+ * grow and the solver would wander. Two pinned in the same place are one pin by another name, and
+ * are refused for the same reason.
+ */
+function wantedPins(slots: number[], pinned: Map<number, [number, number]> | undefined): Pin[] | null {
+  if (!pinned || pinned.size === 0) return null
+  const pins: Pin[] = []
+  const places = new Set<string>()
+  for (let index = 0; index < slots.length; index += 1) {
+    const place = pinned.get(slots[index]!)
+    if (!place) continue
+    pins.push({ vertex: index, u: place[0], v: place[1] })
+    places.add(`${place[0].toFixed(6)}:${place[1].toFixed(6)}`)
+  }
+  return pins.length >= 2 && places.size >= 2 ? pins : null
+}
+
+function automaticPins(mesh: MeshData, slots: number[], triangles: IslandTriangle[]): Pin[] | null {
+  const chosen = choosePins(mesh, slots, triangles)
+  if (!chosen) return null
+  return [{ vertex: chosen.a, u: chosen.au, v: chosen.av }, { vertex: chosen.b, u: chosen.bu, v: chosen.bv }]
+}
+
 function choosePins(
   mesh: MeshData,
   slots: number[],

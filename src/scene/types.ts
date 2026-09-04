@@ -65,6 +65,15 @@ export type MeshAttributes = {
     uvMaps?: UvMap[]
     /** Which map the viewport samples and the editor edits. */
     activeUv?: number
+    /**
+     * Corners an unwrap must leave where they are, one flag per corner.
+     *
+     * Pins belong to the mesh rather than to a map, as Blender's do: a corner pinned to a place in
+     * the image is pinned there whichever map is being solved. They are dropped when an operator
+     * changes the faces, because a corner that has been cut in two has no one place to be pinned to
+     * — a pin is a hint, and a wrong hint is worse than none.
+     */
+    pinned?: boolean[]
   }
 }
 

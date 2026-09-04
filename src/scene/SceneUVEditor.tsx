@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
-import { activeUv, activeUvIndex, uvMapsOf, withActiveUv } from '@/scene/mesh/uv'
+import { activeUv, activeUvIndex, pinnedOf, uvMapsOf, withActiveUv } from '@/scene/mesh/uv'
 import { meshOf, objectById, withMesh } from '@/scene/document'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { fromElements, propagateUp, toElements } from '@/scene/mesh/selection'
+import { menuEntries } from '@/scene/commands'
+import { UV_EDIT_MENU } from '@/scene/editMenus'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
+import type { OperatorContext } from '@/scene/operators/types'
 import { drawUv, UV_COLOURS, type UvBackground, type UvColours } from '@/scene/uv/draw'
 import { uvGeometry, type UvGeometry } from '@/scene/uv/geometry'
 import {
@@ -89,6 +92,7 @@ const COLOUR_ROLES: Array<[keyof UvColours, string]> = [
   ['edgeSelected', '--scene-uv-edge-selected'],
   ['point', '--scene-uv-point'],
   ['pointSelected', '--scene-uv-point-selected'],
+  ['pointPinned', '--scene-uv-pin'],
   ['halo', '--scene-uv-halo'],
   ['face', '--scene-uv-face'],
   ['stretchLow', '--scene-uv-stretch-low'],
@@ -125,6 +129,8 @@ export function SceneUVEditor({
   onClose,
   onSelection,
   onEditDocument,
+  onRunOperator,
+  context,
   onGestureStart,
   onGestureEnd,
   onGestureCancel,
@@ -136,6 +142,10 @@ export function SceneUVEditor({
   onClose: () => void
   onSelection: (next: SceneSelection) => void
   onEditDocument: (edit: (current: SceneDocument) => SceneDocument, label: string, record: boolean) => void
+  /** Runs an operator by id, so the UV menu is the registry rather than a second list of buttons. */
+  onRunOperator: (id: string) => void
+  /** What the menu asks each operator whether it can run; null before a document is open. */
+  context: OperatorContext | null
   onGestureStart: (label: string) => void
   onGestureEnd: (label: string) => void
   onGestureCancel: () => void
@@ -202,6 +212,17 @@ export function SceneUVEditor({
     uv.sync && mesh ? syncedLoops(mesh, selection, objectId) : new Set(selection.uv?.[objectId] ?? [])
   ), [uv.sync, mesh, selection, objectId])
   const marks = useMemo(() => (geometry ? selectedPoints(geometry, selected) : null), [geometry, selected])
+  const pins = useMemo(() => {
+    if (!geometry || !mesh) return null
+    const flags = pinnedOf(mesh)
+    if (flags.length === 0) return null
+    const held = new Uint8Array(geometry.points.length / 2)
+    for (let loop = 0; loop < flags.length; loop += 1) {
+      const point = geometry.loopPoint[loop] ?? -1
+      if (flags[loop] && point >= 0) held[point] = 1
+    }
+    return held
+  }, [geometry, mesh])
 
   const stretch = useMemo(() => {
     if (!mesh || !data || uv.stretch === 'none') return null
@@ -259,9 +280,10 @@ export function SceneUVEditor({
       stretch,
       geometry,
       selected: marks,
+      pinned: pins,
       pointRadius: coarse ? COARSE_POINT_RADIUS : POINT_RADIUS,
     })
-  }, [view, size, colours, uv.background, uv.grid, image, stretch, geometry, marks, coarse])
+  }, [view, size, colours, uv.background, uv.grid, image, stretch, geometry, marks, pins, coarse])
 
   /*
    * The wheel is bound by hand because React's is passive: a passive listener cannot call
@@ -470,6 +492,13 @@ export function SceneUVEditor({
     if (chosen) {
       onUv({ selectMode: chosen.value })
       consume()
+      return
+    }
+    // The three the hand reaches for while it works; the rest of the menu is the menu.
+    const operator = key === 'p' ? (event.altKey ? 'uv.unpin' : 'uv.pin') : key === 'v' ? 'uv.stitch' : null
+    if (operator) {
+      onRunOperator(operator)
+      consume()
     }
   }
 
@@ -558,7 +587,7 @@ export function SceneUVEditor({
   return (
     <section className="scene-uv" aria-label="UV editor">
       <div className="scene-uv__header">
-        <span className="scene-uv__title">UV</span>
+        <SceneMenu label="UV" entries={menuEntries(UV_EDIT_MENU, context, onRunOperator) as SceneMenuEntry[]} />
         <div className="scene-uv__group" role="group" aria-label="Selection mode">
           {SELECT_MODES.map((entry) => (
             <Tooltip key={entry.value} content={`${entry.label} · ${entry.key}`}>
