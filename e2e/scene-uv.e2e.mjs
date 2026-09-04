@@ -244,6 +244,117 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
   log(`MEASURE the UV canvas: ${painted.colours} distinct colours`)
   await shot('scene-uv-editor-1440.png')
 
+  /* ------------------------------------------- selecting and moving an island */
+
+  /*
+   * The view is the fit the editor made when it opened, so where a UV lands on the canvas can be
+   * worked out here from the same two numbers: the whole image is `zoom` pixels across, and UV
+   * (0, 0) sits at `pan`. That is what lets this click on a particular island rather than on
+   * whatever happens to be in the middle.
+   */
+  const place = async (u, v) => page.evaluate(({ u, v }) => {
+    const canvas = document.querySelector('.scene-uv__canvas')
+    const box = canvas.getBoundingClientRect()
+    const zoom = Math.min(box.width, box.height) * (1 - 0.08 * 2)
+    const pan = [box.width / 2 - 0.5 * zoom, box.height / 2 + 0.5 * zoom]
+    return { x: box.left + pan[0] + u * zoom, y: box.top + pan[1] - v * zoom }
+  }, { u, v })
+
+  const mapNow = async () => (Object.values(await helpers.scene()).length, (await helpers.scene()).meshes)
+  const beforeMove = Object.values(await mapNow())[0].attributes.loop.uvMaps[0].data
+  const centre = [0, 1, 2, 3].reduce((total, corner) => [
+    total[0] + beforeMove[corner * 2] / 4,
+    total[1] + beforeMove[corner * 2 + 1] / 4,
+  ], [0, 0])
+
+  await page.locator('.scene-uv [aria-label="Island"]').click()
+  const at = await place(centre[0], centre[1])
+  await page.mouse.click(at.x, at.y)
+  await page.waitForTimeout(400)
+  const picked = (await page.locator('.scene-uv__status').innerText()).replace(/\n/g, ' ')
+  // One face is one island here, and a face of a cube has four corners.
+  check('a click in island mode takes the whole island', /\b4 of \d+ points/.test(picked), picked)
+
+  /*
+   * The whole viewport rather than one face of the cube: which face an island belongs to is the
+   * unwrapper's business, and a sample of the face that happens to be nearest would be measuring
+   * that rather than the thing under test — which is that moving a UV repaints the model.
+   */
+  const sample = () => page.evaluate(() => {
+    const canvas = document.querySelector('.scene-canvas')
+    window.__paramrigScene.frame()
+    const scratch = document.createElement('canvas')
+    scratch.width = canvas.width
+    scratch.height = canvas.height
+    scratch.getContext('2d').drawImage(canvas, 0, 0)
+    const pixels = scratch.getContext('2d').getImageData(0, 0, scratch.width, scratch.height).data
+    return [...pixels].filter((_, index) => index % 4 === 0)
+  })
+  const viewportBefore = await sample()
+
+  // G, a drag of a fifth of the image, and a click to put it down.
+  await page.mouse.move(at.x, at.y)
+  await page.keyboard.press('KeyG')
+  await page.waitForTimeout(200)
+  const running = await page.locator('.scene-uv__status').innerText()
+  check('G says what it is doing, in the image’s own numbers rather than in metres',
+    /Dx/.test(running) && !/\sm\b/.test(running), running.replace(/\n/g, ' '))
+  await page.mouse.move(at.x + 64, at.y, { steps: 6 })
+  await page.waitForTimeout(200)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(600)
+
+  const afterMove = Object.values(await mapNow())[0].attributes.loop.uvMaps[0].data
+  const shifted = [0, 1, 2, 3].map((corner) => afterMove[corner * 2] - beforeMove[corner * 2])
+  check('the island moved by the distance it was dragged, and every corner of it by the same',
+    shifted.every((delta) => Math.abs(delta - shifted[0]) < 1e-6) && Math.abs(shifted[0] - 64 / 328) < 0.02,
+    `${shifted.map((delta) => delta.toFixed(3)).join(' / ')} against ${(64 / 328).toFixed(3)}`)
+  const still = [0, 1, 2, 3].map((corner) => afterMove[corner * 2 + 1] - beforeMove[corner * 2 + 1])
+  check('and nothing else about it moved', still.every((delta) => Math.abs(delta) < 1e-9), still.join(' / '))
+
+  await shot('scene-uv-moved-1440.png')
+
+  // One undo puts it back, which is what makes the whole gesture one step.
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(600)
+  const undone = Object.values(await mapNow())[0].attributes.loop.uvMaps[0].data
+  check('and one undo takes the whole move back',
+    Math.abs(undone[0] - beforeMove[0]) < 1e-9, `${undone[0].toFixed(3)} against ${beforeMove[0].toFixed(3)}`)
+
+  /*
+   * And now the same gesture over the whole map rather than over one island, because which face of
+   * the cube an island belongs to is the unwrapper's business: moving one island moves a face that
+   * may well be pointing away from the camera, and a picture that did not change would then be
+   * telling the truth. Moving everything moves every face, including the three that can be seen.
+   */
+  // Focused rather than clicked: a click would put the selection somewhere, and A is about to say
+  // where it goes. (The left thirteen pixels of the frame belong to the splitter's grip in any case.)
+  await page.locator('.scene-uv__frame').focus()
+  await page.keyboard.press('KeyA')
+  await page.waitForTimeout(300)
+  const at2 = await place(0.5, 0.5)
+  await page.mouse.move(at2.x, at2.y)
+  await page.keyboard.press('KeyG')
+  await page.waitForTimeout(200)
+  await page.mouse.move(at2.x + 40, at2.y + 24, { steps: 6 })
+  await page.waitForTimeout(200)
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+
+  const viewportAfter = await sample()
+  let differing = 0
+  for (let index = 0; index < viewportBefore.length; index += 1) {
+    if (Math.abs(viewportBefore[index] - viewportAfter[index]) > 12) differing += 1
+  }
+  check('and the texture follows the map on the model, in material preview',
+    differing / viewportBefore.length > 0.01,
+    `${((differing / viewportBefore.length) * 100).toFixed(1)}% of the viewport changed colour`)
+  log(`MEASURE moving the map repainted ${differing} of ${viewportBefore.length} viewport pixels`)
+  await shot('scene-uv-texture-1440.png')
+
   // The splitter, moved by the keyboard, which is the way it has to work for anyone who cannot drag.
   await page.locator('[role="separator"][aria-label="Viewport and UV editor"]').focus()
   for (let press = 0; press < 5; press += 1) await page.keyboard.press('ArrowRight')

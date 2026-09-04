@@ -45,7 +45,9 @@ export type UvColours = {
   grid: string
   gridMajor: string
   edge: string
+  edgeSelected: string
   point: string
+  pointSelected: string
   /** The casing an edge and a point wear, so a line reads on a light image and on a dark one. */
   halo: string
   face: string
@@ -63,7 +65,9 @@ export const UV_COLOURS: UvColours = {
   grid: '#ffffff21',
   gridMajor: '#ffffff3d',
   edge: '#dfe6e3',
+  edgeSelected: '#f0a02e',
   point: '#f2f4f3',
+  pointSelected: '#f0a02e',
   halo: '#0b0e0e',
   face: '#f0a02e4d',
   stretchLow: '#3a6ea5',
@@ -88,6 +92,8 @@ export type UvPaint = {
   stretch: number[] | null
   /** Whether the mesh is drawn at all: an object with no UV map has a background and nothing else. */
   geometry: UvGeometry | null
+  /** One byte per point, 1 where it is selected; null when nothing is. */
+  selected: Uint8Array | null
   /** Radius of a point, in pixels. Coarse pointers ask for a larger one. */
   pointRadius: number
 }
@@ -102,6 +108,7 @@ export function drawUv(ctx: UvCanvas, paint: UvPaint): void {
   drawBorder(ctx, paint)
   if (!paint.geometry) return
   if (paint.stretch) drawStretch(ctx, paint, paint.geometry, paint.stretch)
+  else if (paint.selected) drawSelectedFaces(ctx, paint, paint.geometry, paint.selected)
   drawEdges(ctx, paint, paint.geometry)
   drawPoints(ctx, paint, paint.geometry)
 }
@@ -182,12 +189,36 @@ function drawStretch(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry, stretc
   for (let face = 0; face < geometry.faceStart.length; face += 1) {
     const length = geometry.faceLength[face] ?? 0
     if (length < 3) continue
-    ctx.fillStyle = stretchColour(paint.colours, stretch[face] ?? 0)
+    // The stretch is measured over the whole mesh, and the geometry may be only part of it.
+    ctx.fillStyle = stretchColour(paint.colours, stretch[geometry.faceSlot[face] ?? face] ?? 0)
     ctx.beginPath()
     tracePath(ctx, paint, geometry, face)
     ctx.fill()
   }
   ctx.restore()
+}
+
+/**
+ * The faces every corner of which is selected, filled.
+ *
+ * That rule — a face is selected when all of it is — is Blender's, and it is what lets one
+ * selection serve four modes: choosing a face selects its corners, and the fill follows.
+ */
+function drawSelectedFaces(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry, selected: Uint8Array): void {
+  ctx.fillStyle = paint.colours.face
+  for (let face = 0; face < geometry.faceStart.length; face += 1) {
+    const start = geometry.faceStart[face] ?? 0
+    const length = geometry.faceLength[face] ?? 0
+    if (length < 3) continue
+    let whole = true
+    for (let corner = 0; corner < length && whole; corner += 1) {
+      whole = selected[geometry.loopPoint[start + corner] ?? 0] === 1
+    }
+    if (!whole) continue
+    ctx.beginPath()
+    tracePath(ctx, paint, geometry, face)
+    ctx.fill()
+  }
 }
 
 /**
@@ -242,22 +273,36 @@ function tracePath(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry, face: nu
  */
 function drawEdges(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry): void {
   if (geometry.edges.length === 0) return
+  const selected = paint.selected
+  ctx.lineJoin = 'round'
+  // The whole set is cased in one path, then the two states are stroked in one path each: three
+  // paths whatever the mesh, rather than one path per edge.
+  path(ctx, paint, geometry, () => true)
+  ctx.strokeStyle = paint.colours.halo
+  ctx.lineWidth = 3
+  ctx.stroke()
+  path(ctx, paint, geometry, (a, b) => !selected || selected[a] !== 1 || selected[b] !== 1)
+  ctx.strokeStyle = paint.colours.edge
+  ctx.lineWidth = 1
+  ctx.stroke()
+  if (!selected) return
+  path(ctx, paint, geometry, (a, b) => selected[a] === 1 && selected[b] === 1)
+  ctx.strokeStyle = paint.colours.edgeSelected
+  ctx.lineWidth = 1.5
+  ctx.stroke()
+}
+
+function path(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry, wanted: (a: number, b: number) => boolean): void {
   ctx.beginPath()
   for (let index = 0; index < geometry.edges.length; index += 2) {
     const a = geometry.edges[index] ?? 0
     const b = geometry.edges[index + 1] ?? 0
+    if (!wanted(a, b)) continue
     const from = uvToScreen(paint.view, [geometry.points[a * 2] ?? 0, geometry.points[a * 2 + 1] ?? 0])
     const to = uvToScreen(paint.view, [geometry.points[b * 2] ?? 0, geometry.points[b * 2 + 1] ?? 0])
     ctx.moveTo(from[0], from[1])
     ctx.lineTo(to[0], to[1])
   }
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = paint.colours.halo
-  ctx.lineWidth = 3
-  ctx.stroke()
-  ctx.strokeStyle = paint.colours.edge
-  ctx.lineWidth = 1
-  ctx.stroke()
 }
 
 /*
@@ -269,12 +314,19 @@ function drawPoints(ctx: UvCanvas, paint: UvPaint, geometry: UvGeometry): void {
   const size = Math.max(2, paint.pointRadius * 2)
   // Two passes rather than two rectangles per point: setting the fill once for each is what keeps
   // ten thousand points a pair of loops rather than twenty thousand state changes.
-  for (const pass of [{ colour: paint.colours.halo, grow: 2 }, { colour: paint.colours.point, grow: 0 }]) {
+  const selected = paint.selected
+  const passes = [
+    { colour: paint.colours.halo, grow: 2, wanted: () => true },
+    { colour: paint.colours.point, grow: 0, wanted: (point: number) => !selected || selected[point] !== 1 },
+    { colour: paint.colours.pointSelected, grow: 1, wanted: (point: number) => selected !== null && selected[point] === 1 },
+  ]
+  for (const pass of passes) {
     const side = size + pass.grow
     const half = side / 2
     ctx.fillStyle = pass.colour
-    for (let point = 0; point < geometry.points.length; point += 2) {
-      const [x, y] = uvToScreen(paint.view, [geometry.points[point] ?? 0, geometry.points[point + 1] ?? 0])
+    for (let point = 0; point < geometry.points.length / 2; point += 1) {
+      if (!pass.wanted(point)) continue
+      const [x, y] = uvToScreen(paint.view, [geometry.points[point * 2] ?? 0, geometry.points[point * 2 + 1] ?? 0])
       if (x < -side || y < -side || x > paint.size.width + side || y > paint.size.height + side) continue
       ctx.fillRect(Math.round(x) - half, Math.round(y) - half, side, side)
     }

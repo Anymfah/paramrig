@@ -12,7 +12,9 @@
   --scene-uv-grid: var(--scene-grid);
   --scene-uv-border: var(--scene-grid-major);
   --scene-uv-edge: var(--scene-proportional);
+  --scene-uv-edge-selected: var(--scene-edge-selected);
   --scene-uv-point: var(--scene-cursor-ground);
+  --scene-uv-point-selected: var(--scene-vertex-selected);
   --scene-uv-halo: var(--scene-outline-halo);
   --scene-uv-face: var(--scene-face-selected);
   /*
@@ -105,10 +107,18 @@
   padding-inline: var(--space-2);
   background: var(--surface-raised);
 }
+/*
+ * Nothing in the header gives way but the gap. The name of the map is in the status bar rather than
+ * up here — Blender's own header carries the image and not the map — which leaves the header as
+ * controls alone, and controls are the things that must not be clipped to their chevrons.
+ */
 .scene-uv__header {
   min-block-size: 36px;
+  overflow: hidden;
   border-block-end: 1px solid var(--rule);
 }
+.scene-uv__header > * { flex: none; }
+.scene-uv__header > .scene-uv__spacer { flex: 1 1 auto; }
 .scene-uv__status {
   min-block-size: 26px;
   border-block-start: 1px solid var(--rule);
@@ -135,6 +145,30 @@
 }
 .scene-uv__spacer { flex: 1; min-inline-size: 0; }
 .scene-uv__group { display: flex; align-items: center; gap: 2px; }
+/* The four selection modes wear their initial rather than a glyph: V, E, F and I read at a glance
+ * and no drawing of an island is clearer than the word at sixteen pixels. */
+.scene-uv__mode { font-size: var(--text-xs); font-weight: 600; }
+
+/* The running transform's own line, which takes the status bar over while a gesture is on. */
+.scene-uv__running { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+/*
+ * The readout beside the pointer. It is DOM rather than canvas so that it keeps the interface's
+ * type and its own contrast, and it never takes the pointer: it is a label, not a control.
+ */
+.scene-uv__hud {
+  position: absolute;
+  z-index: var(--z-overlay);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--scene-panel-border);
+  border-radius: var(--radius-xs);
+  background: var(--scene-panel);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 .scene-uv__frame {
   position: relative;
@@ -142,6 +176,10 @@
   min-block-size: 0;
   overflow: hidden;
   touch-action: none;
+}
+.scene-uv__frame:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
 }
 .scene-uv__canvas {
   display: block;

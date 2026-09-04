@@ -337,6 +337,13 @@ export type UvEditorState = {
   /** What is drawn behind the map: the material's own image, a checker, or nothing. */
   background: 'texture' | 'checker' | 'none'
   grid: boolean
+  /** What a click in the image picks up. */
+  selectMode: 'vertex' | 'edge' | 'face' | 'island'
+  /**
+   * Blender's "UV sync selection". Off — the default — the editor shows the faces the viewport has
+   * selected and keeps its own selection of corners; on, it shows the whole map.
+   */
+  sync: boolean
   /** Blender's stretch overlays, which colour each face by how badly the map treats it. */
   stretch: 'none' | 'angle' | 'area'
 }
@@ -520,6 +527,14 @@ export type SceneSelection = {
   active?: ElementRef | null
   /** Picks in order, newest last. Taking the active one out promotes the one before it. */
   elementHistory?: ElementRef[]
+  /**
+   * What is selected in the UV editor, by object: corner indices into the mesh's own numbering.
+   *
+   * Corners rather than points, because a point is worked out from the map and moves with it while
+   * a corner is a place in the mesh — so a selection survives an unwrap, a pack and a change of
+   * which map is active.
+   */
+  uv?: Record<string, number[]>
 }
 
 export const EMPTY_SELECTION: SceneSelection = { objectIds: [], activeObjectId: null }

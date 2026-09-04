@@ -75,6 +75,8 @@ export const DEFAULT_UV_EDITOR: UvEditorState = {
   split: 0.55,
   background: 'checker',
   grid: true,
+  selectMode: 'vertex',
+  sync: false,
   stretch: 'none',
 }
 
@@ -614,6 +616,8 @@ function viewState(value: unknown): ViewState {
       split: num(uv.split, DEFAULT_UV_EDITOR.split, 0.2, 0.8),
       background: pick(uv.background, ['texture', 'checker', 'none'] as const, DEFAULT_UV_EDITOR.background),
       grid: flag(uv.grid, DEFAULT_UV_EDITOR.grid),
+      selectMode: pick(uv.selectMode, ['vertex', 'edge', 'face', 'island'] as const, DEFAULT_UV_EDITOR.selectMode),
+      sync: flag(uv.sync, DEFAULT_UV_EDITOR.sync),
       stretch: pick(uv.stretch, ['none', 'angle', 'area'] as const, DEFAULT_UV_EDITOR.stretch),
     },
   }

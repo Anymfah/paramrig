@@ -1116,6 +1116,11 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                   uv={uvEditor}
                   onUv={patchUv}
                   onClose={() => patchUv({ open: false })}
+                  onSelection={editor.setSelection}
+                  onEditDocument={editor.editDocument}
+                  onGestureStart={editor.beginGesture}
+                  onGestureEnd={editor.endGesture}
+                  onGestureCancel={editor.cancelGesture}
                 />
               </Suspense>
             ) : null}

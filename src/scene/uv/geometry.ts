@@ -23,11 +23,17 @@ const MERGE_TOLERANCE = 1e-6
 export type UvGeometry = {
   /** How many corners the mesh has; the length of the map divided by two. */
   loops: number
-  /** Which point each corner sits on. */
+  /** Which point each corner sits on, by the mesh's own corner numbering; −1 for one left out. */
   loopPoint: Int32Array
-  /** Which face each corner belongs to. */
+  /** Which of the faces below each corner belongs to; −1 for one left out. */
   loopFace: Int32Array
-  /** Where each face's corners start, and how many it has. */
+  /**
+   * The faces that were built, which is every face of the mesh or the ones the caller chose. The
+   * corner arrays stay in the mesh's own numbering, so a selection made here survives a change of
+   * what is shown.
+   */
+  faceSlot: Int32Array
+  /** Where each of those faces' corners start in the mesh's numbering, and how many it has. */
   faceStart: Int32Array
   faceLength: Int32Array
   /** Two floats per point: where it is in the image. */
@@ -44,13 +50,17 @@ export type UvGeometry = {
   bounds: UvBounds | null
 }
 
-export function uvGeometry(mesh: MeshData, uv: number[]): UvGeometry {
+export function uvGeometry(mesh: MeshData, uv: number[], options: { faces?: ReadonlySet<number> } = {}): UvGeometry {
   const starts = loopStarts(mesh)
   const loops = starts[mesh.faces.length] ?? 0
-  const loopPoint = new Int32Array(loops)
-  const loopFace = new Int32Array(loops)
-  const faceStart = new Int32Array(mesh.faces.length)
-  const faceLength = new Int32Array(mesh.faces.length)
+  const loopPoint = new Int32Array(loops).fill(-1)
+  const loopFace = new Int32Array(loops).fill(-1)
+  const chosen = options.faces
+    ? [...options.faces].filter((face) => face >= 0 && face < mesh.faces.length).sort((a, b) => a - b)
+    : mesh.faces.map((_, face) => face)
+  const faceSlot = Int32Array.from(chosen)
+  const faceStart = new Int32Array(chosen.length)
+  const faceLength = new Int32Array(chosen.length)
 
   /*
    * The merge, one vertex at a time. A vertex has a handful of corners, so the search for a point
@@ -63,17 +73,18 @@ export function uvGeometry(mesh: MeshData, uv: number[]): UvGeometry {
   const pointVertexList: number[] = []
   const pointLoopLists: number[][] = []
 
-  for (let face = 0; face < mesh.faces.length; face += 1) {
+  for (let index = 0; index < chosen.length; index += 1) {
+    const face = chosen[index]!
     const corners = mesh.faces[face]!
     const start = starts[face] ?? 0
-    faceStart[face] = start
-    faceLength[face] = corners.length
+    faceStart[index] = start
+    faceLength[index] = corners.length
     for (let corner = 0; corner < corners.length; corner += 1) {
       const loop = start + corner
       const vertex = corners[corner] ?? 0
       const u = uv[loop * 2] ?? 0
       const v = uv[loop * 2 + 1] ?? 0
-      loopFace[loop] = face
+      loopFace[loop] = index
       const candidates = byVertex.get(vertex)
       let found = -1
       if (candidates) {
@@ -122,6 +133,7 @@ export function uvGeometry(mesh: MeshData, uv: number[]): UvGeometry {
     loops,
     loopPoint,
     loopFace,
+    faceSlot,
     faceStart,
     faceLength,
     points,
@@ -129,7 +141,7 @@ export function uvGeometry(mesh: MeshData, uv: number[]): UvGeometry {
     pointStart,
     pointCount,
     pointLoops,
-    edges: uvEdges(mesh, loopPoint, faceStart, faceLength, count),
+    edges: uvEdges(loopPoint, faceStart, faceLength, count),
     bounds: boundsOf(points),
   }
 }
@@ -143,7 +155,6 @@ export function uvGeometry(mesh: MeshData, uv: number[]): UvGeometry {
  * dropped.
  */
 function uvEdges(
-  mesh: MeshData,
   loopPoint: Int32Array,
   faceStart: Int32Array,
   faceLength: Int32Array,
@@ -151,7 +162,7 @@ function uvEdges(
 ): Int32Array {
   const seen = new Set<number>()
   const pairs: number[] = []
-  for (let face = 0; face < mesh.faces.length; face += 1) {
+  for (let face = 0; face < faceStart.length; face += 1) {
     const length = faceLength[face] ?? 0
     const start = faceStart[face] ?? 0
     for (let corner = 0; corner < length; corner += 1) {

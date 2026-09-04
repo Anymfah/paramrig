@@ -68,6 +68,7 @@ function paint(over: Partial<UvPaint> = {}): UvPaint {
     grid: true,
     stretch: null,
     geometry: null,
+    selected: null,
     pointRadius: 2.5,
     ...over,
   }
@@ -115,10 +116,41 @@ describe('drawing the UV editor', () => {
     const ctx = recorder()
     drawUv(ctx, paint({ geometry, grid: false }))
     const segments = ctx.calls.filter((call) => call.name === 'lineTo')
-    // Four sides of the square, plus the four sides of the image border's own rect.
-    expect(segments).toHaveLength(4)
+    // Four sides of the square, laid twice: once as the casing and once as the line.
+    expect(segments).toHaveLength(8)
     const points = ctx.calls.filter((call) => call.name === 'fillRect' && call.args[2] === 5)
     expect(points).toHaveLength(4)
+  })
+
+  it('draws what is selected in the selected colours, and the rest in the plain ones', () => {
+    const mesh = planeMesh()
+    const geometry = uvGeometry(mesh, activeUv(mesh)!)
+    const selected = new Uint8Array(geometry.points.length / 2)
+    selected[0] = 1
+    selected[1] = 1
+    const ctx = recorder()
+    drawUv(ctx, paint({ geometry, grid: false, selected }))
+    // One side of the square has both its ends selected, so one side is stroked in the warm colour.
+    expect(ctx.strokes).toContain(UV_COLOURS.edgeSelected)
+    expect(ctx.styles).toContain(UV_COLOURS.pointSelected)
+    // Two of the four points, so two squares in the selected pass.
+    expect(ctx.calls.filter((call) => call.name === 'fillRect' && call.args[2] === 6)).toHaveLength(2)
+    expect(ctx.calls.filter((call) => call.name === 'fillRect' && call.args[2] === 5)).toHaveLength(2)
+  })
+
+  it('fills a face only when the whole of it is selected', () => {
+    const mesh = planeMesh()
+    const geometry = uvGeometry(mesh, activeUv(mesh)!)
+    const part = new Uint8Array(geometry.points.length / 2)
+    part[0] = 1
+    const partial = recorder()
+    drawUv(partial, paint({ geometry, grid: false, selected: part }))
+    expect(partial.calls.filter((call) => call.name === 'fill')).toHaveLength(0)
+    const whole = new Uint8Array(geometry.points.length / 2).fill(1)
+    const full = recorder()
+    drawUv(full, paint({ geometry, grid: false, selected: whole }))
+    expect(full.calls.filter((call) => call.name === 'fill')).toHaveLength(1)
+    expect(full.styles).toContain(UV_COLOURS.face)
   })
 
   it('gives every line and every point a casing, so both read on any image', () => {
