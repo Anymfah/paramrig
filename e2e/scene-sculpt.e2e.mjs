@@ -94,6 +94,50 @@ const buildGrid = (stored) => {
   }
 }
 
+/** A cube of side 2, as the object to remesh: a level set needs a closed surface. */
+const buildCube = (stored) => {
+  const half = 1
+  const points = []
+  for (const x of [-half, half]) for (const y of [-half, half]) for (const z of [-half, half]) points.push([x, y, z])
+  const index = (x, y, z) => ((x > 0 ? 1 : 0) * 2 + (y > 0 ? 1 : 0)) * 2 + (z > 0 ? 1 : 0)
+  const faces = [
+    [index(-1, -1, -1), index(-1, 1, -1), index(1, 1, -1), index(1, -1, -1)],
+    [index(-1, -1, 1), index(1, -1, 1), index(1, 1, 1), index(-1, 1, 1)],
+    [index(-1, -1, -1), index(1, -1, -1), index(1, -1, 1), index(-1, -1, 1)],
+    [index(-1, 1, -1), index(-1, 1, 1), index(1, 1, 1), index(1, 1, -1)],
+    [index(-1, -1, -1), index(-1, -1, 1), index(-1, 1, 1), index(-1, 1, -1)],
+    [index(1, -1, -1), index(1, 1, -1), index(1, 1, 1), index(1, -1, 1)],
+  ]
+  return {
+    objects: [{
+      id: 'object-cube',
+      name: 'Block',
+      kind: 'mesh',
+      collectionId: stored.collections[0].id,
+      transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+      visible: true,
+      selectable: true,
+      renderable: true,
+      data: { kind: 'mesh', meshId: 'mesh-cube' },
+      modifiers: [],
+      materialSlots: [],
+    }, ...stored.objects.filter((object) => object.kind !== 'mesh')],
+    meshes: {
+      'mesh-cube': {
+        vertices: points.flat(),
+        vertexIds: points.map((_, at) => at),
+        nextVertexId: points.length,
+        edges: [],
+        faces,
+        faceIds: faces.map((_, at) => at),
+        nextFaceId: faces.length,
+        attributes: { face: { smooth: faces.map(() => false), material: faces.map(() => 0) }, edge: {}, vertex: {} },
+      },
+    },
+    view: { ...stored.view, mode: 'object', target: [0, 0, 0], yaw: 25, pitch: 30, distance: 6 },
+  }
+}
+
 /** The tallest vertex of a mesh, and how many have left the ground. */
 const heights = (mesh) => {
   let top = -Infinity
@@ -161,6 +205,84 @@ export default run('scene-sculpt', async ({ page, check, log, helpers, shot }) =
   const undone = heights(Object.values((await helpers.scene()).meshes)[0])
   check('and one undo takes the whole stroke back', undone.moved === 0, `${undone.moved} vertices still moved`)
   void steps
+
+  /* -------------------------------------------------------------- the remesh */
+
+  /*
+   * Remeshing is what a sculptor does when a stroke has run out of vertices to hold detail.
+   *
+   * It is done here on a cube rather than on the slab, and the reason is worth stating: a level set
+   * has an inside, and a flat sheet has none — remeshing an open surface gives back the boundary of
+   * whatever region the fill decided was inside it, which is a solid nobody asked for. Blender's
+   * voxel remesh has the same requirement.
+   */
+  await page.evaluate(() => { window.__sculptSide = 1; window.__sculptId = 'cube' })
+  await helpers.seedScene(buildCube)
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  const cubeBox = await helpers.viewportBox()
+  await page.mouse.click(cubeBox.x + cubeBox.width / 2, cubeBox.y + cubeBox.height / 2)
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Object mode' }).click()
+  await page.locator('[role="menuitemradio"]', { hasText: 'Sculpt mode' }).click()
+  await page.waitForTimeout(600)
+  const beforeRemesh = Object.values((await helpers.scene()).meshes)[0]
+  const remeshHeader = await page.getByRole('button', { name: 'Remesh' }).count()
+  check('the sculpt header offers a remesh', remeshHeader > 0, `${remeshHeader} buttons`)
+  await page.getByRole('button', { name: 'Remesh' }).first().click()
+  await page.waitForTimeout(3000)
+  const afterRemesh = Object.values((await helpers.scene()).meshes)[0]
+  const quads = afterRemesh.faces.filter((face) => face.length === 4).length
+  check('a voxel remesh rebuilds the mesh as quads of its own',
+    afterRemesh.faces.length !== beforeRemesh.faces.length && quads / afterRemesh.faces.length > 0.9,
+    `${beforeRemesh.faces.length} faces → ${afterRemesh.faces.length}, ${Math.round((quads / afterRemesh.faces.length) * 100)}% quads`)
+
+  const openEdges = await page.evaluate(() => {
+    const key = 'paramrig.scene-documents.v1'
+    const all = JSON.parse(localStorage.getItem(key) ?? '{}')
+    const mesh = Object.values(all[location.pathname.split('/r/')[1]].meshes)[0]
+    const counts = new Map()
+    for (const face of mesh.faces) {
+      for (let corner = 0; corner < face.length; corner += 1) {
+        const a = face[corner]
+        const b = face[(corner + 1) % face.length]
+        const edge = a < b ? `${a}:${b}` : `${b}:${a}`
+        counts.set(edge, (counts.get(edge) ?? 0) + 1)
+      }
+    }
+    return [...counts.values()].filter((count) => count !== 2).length
+  })
+  check('and the surface it gives back is closed', openEdges === 0, `${openEdges} open edges`)
+  log(`MEASURE remesh at 0.1 m: ${beforeRemesh.faces.length} faces → ${afterRemesh.faces.length}, ${Math.round((quads / afterRemesh.faces.length) * 100)}% quads`)
+  await shot('scene-sculpt-remesh-1440.png')
+
+  // And a stroke on the remeshed surface, which is what a remesh is for.
+  const remeshedBefore = Object.values((await helpers.scene()).meshes)[0].vertices.slice()
+  await page.mouse.move(cubeBox.x + cubeBox.width * 0.5, cubeBox.y + cubeBox.height * 0.42)
+  await page.mouse.down()
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(cubeBox.x + cubeBox.width * (0.5 + 0.008 * step), cubeBox.y + cubeBox.height * 0.42)
+    await page.waitForTimeout(30)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(900)
+  const remeshedAfter = Object.values((await helpers.scene()).meshes)[0].vertices
+  let movedOnRemesh = 0
+  for (let index = 0; index < remeshedBefore.length; index += 3) {
+    if (Math.abs(remeshedBefore[index] - remeshedAfter[index]) > 1e-6
+      || Math.abs(remeshedBefore[index + 1] - remeshedAfter[index + 1]) > 1e-6
+      || Math.abs(remeshedBefore[index + 2] - remeshedAfter[index + 2]) > 1e-6) movedOnRemesh += 1
+  }
+  check('and the remeshed surface takes a stroke like any other', movedOnRemesh > 20, `${movedOnRemesh} vertices moved`)
+
+  // Back to the slab for the rest, since a remeshed cube is nobody's idea of a test surface.
+  await page.evaluate(() => { window.__sculptSide = 64; window.__sculptId = 'slab' })
+  await helpers.seedScene(buildGrid)
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Object mode' }).click()
+  await page.locator('[role="menuitemradio"]', { hasText: 'Sculpt mode' }).click()
+  await page.waitForTimeout(600)
 
   /* --------------------------------------------------------------- the mask */
 

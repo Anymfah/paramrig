@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { uvMapsOf } from '@/scene/mesh/uv'
 import { UvMapsSection } from '@/scene/panels/UvMapsSection'
 import { meshOf } from '@/scene/document'
@@ -167,6 +168,12 @@ function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGe
   }
   const attributes = listAttributes(mesh)
   const reason = editing ? undefined : 'Open the mesh for editing to clear an attribute.'
+  /*
+   * The remesh settings are the panel's own rather than the document's: they are how a person is
+   * about to rebuild this mesh, not something about the mesh, and Blender keeps them the same way.
+   */
+  const [voxel, setVoxel] = useState(0.1)
+  const [preserveVolume, setPreserveVolume] = useState(true)
 
   return (
     <>
@@ -212,6 +219,36 @@ function MeshFields({ mesh, meshId, editing, onEditDocument, onRunOperator, onGe
             ))}
           </dl>
         )}
+      </SceneSection>
+      <SceneSection id="data-mesh-remesh" title="Remesh" isOpen={isOpen} onSection={onSection}>
+        <NumberField
+          label="Voxel size"
+          value={voxel}
+          min={0.005}
+          max={2}
+          step={0.005}
+          unit="m"
+          variant="field"
+          onGestureStart={onGestureStart}
+          onGestureEnd={onGestureEnd}
+          onChange={setVoxel}
+        />
+        <SwitchField label="Preserve volume" checked={preserveVolume} onChange={setPreserveVolume} />
+        <div className="scene-buttons">
+          <Tooltip content="Rebuild this mesh as an even grid of quads">
+            <button
+              type="button"
+              className="scene-button"
+              onClick={() => onRunOperator('mesh.remesh', { voxelSize: voxel, preserveVolume })}
+            >
+              Voxel remesh
+            </button>
+          </Tooltip>
+        </div>
+        <SceneEmpty>
+          A remesh keeps the shape and nothing else: the UV maps, the mask and any selection are
+          expressed in the old topology and go with it.
+        </SceneEmpty>
       </SceneSection>
       <SceneSection id="data-mesh-geometry" title="Geometry data" isOpen={isOpen} onSection={onSection}>
         <div className="scene-buttons">
