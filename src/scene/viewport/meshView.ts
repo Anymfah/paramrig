@@ -123,6 +123,12 @@ export function updateMeshPositions(view: MeshView, mesh: MeshData): void {
   normal.needsUpdate = true
   // A vertex that moves changes the projection a mesh without a map of its own is drawn with.
   uv.needsUpdate = true
+  /*
+   * And the view now holds this map. Without this line the answer to "is this the map I drew" is
+   * no for ever after the first update, and every later change to the document — a light moved, a
+   * name typed — would rewrite every attribute of every mesh and rebuild its bounding tree.
+   */
+  view.uvSource = activeUv(mesh)
 }
 
 /** After a gesture: the bounds and the tree catch up with where the vertices actually are. */
