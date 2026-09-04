@@ -73,7 +73,7 @@ export const DEFAULT_VIEW: ViewState = {
   studio: 'default',
   solid: {
     lighting: 'studio',
-    matcap: 'basic-1',
+    matcap: 'basic',
     colour: 'material',
     single: '#b4b4b4',
     background: 'theme',

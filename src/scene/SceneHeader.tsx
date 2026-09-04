@@ -10,6 +10,7 @@ import { createPortal } from 'react-dom'
 import { EDGE_MENU, EDIT_SELECT_MENU, EDIT_VIEW_MENU, FACE_MENU, MESH_MENU, VERTEX_MENU } from '@/scene/editMenus'
 import { menuEntries } from '@/scene/commands'
 import { sceneIcon } from '@/scene/iconRegistry'
+import { MATCAPS, MATCAP_LABELS } from '@/scene/viewport/matcap'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import type { OperatorContext } from '@/scene/operators/types'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
@@ -110,6 +111,36 @@ const MODES: Array<{ value: EditorMode; label: string }> = [
 ]
 
 const SCULPT_REASON = 'Sculpt mode is not in this build yet.'
+
+/** Solid shading's three ways of lighting a surface, and the five colours it can take. */
+const SOLID_LIGHTING: Array<{ value: 'studio' | 'matcap' | 'flat'; label: string }> = [
+  { value: 'studio', label: 'Studio' },
+  { value: 'matcap', label: 'Matcap' },
+  { value: 'flat', label: 'Flat' },
+]
+
+const SOLID_COLOURS: Array<{ value: 'material' | 'object' | 'single' | 'random' | 'texture'; label: string }> = [
+  { value: 'material', label: 'Material' },
+  { value: 'object', label: 'Object' },
+  { value: 'single', label: 'Single' },
+  { value: 'random', label: 'Random' },
+  { value: 'texture', label: 'Texture' },
+]
+
+/** What the menu shows before a document has said otherwise; the same defaults the document has. */
+const DEFAULT_SOLID: NonNullable<ViewState['solid']> = {
+  lighting: 'studio',
+  matcap: 'basic',
+  colour: 'material',
+  single: '#b4b4b4',
+  background: 'theme',
+  backfaceCulling: false,
+  cavity: false,
+  cavityStrength: 0.5,
+  shadow: false,
+  outline: true,
+  specular: true,
+}
 
 const SELECT_MODES: Array<{ value: SelectMode; label: string; icon: string }> = [
   { value: 'vertex', label: 'Vertex select', icon: 'vertex-mode' },
@@ -442,6 +473,65 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
     ...editOverlayEntries,
   ]
 
+  /**
+   * Solid shading's own settings, in one menu under the mode buttons — where Blender puts them.
+   *
+   * They are grouped rather than listed: how it is lit, what colour it takes, and the switches. A
+   * flat list of fifteen entries would be a wall, and these are settings a person returns to often
+   * enough to learn the shape of.
+   */
+  const solid = view.solid ?? DEFAULT_SOLID
+  const setSolid = (patch: Partial<NonNullable<ViewState['solid']>>) => onView({ solid: { ...solid, ...patch } })
+  const shadingEntries: SceneMenuEntry[] = [
+    { heading: 'Lighting' },
+    ...SOLID_LIGHTING.map((entry) => ({
+      id: `solid.lighting.${entry.value}`,
+      label: entry.label,
+      checked: solid.lighting === entry.value,
+      run: () => setSolid({ lighting: entry.value }),
+    })),
+    ...(solid.lighting === 'matcap'
+      ? [
+        { heading: 'Matcap' } as SceneMenuEntry,
+        ...MATCAPS.map((name) => ({
+          id: `solid.matcap.${name}`,
+          label: MATCAP_LABELS[name],
+          checked: solid.matcap === name,
+          run: () => setSolid({ matcap: name }),
+        })),
+      ]
+      : []),
+    { heading: 'Colour' },
+    ...SOLID_COLOURS.map((entry) => ({
+      id: `solid.colour.${entry.value}`,
+      label: entry.label,
+      checked: solid.colour === entry.value,
+      run: () => setSolid({ colour: entry.value }),
+    })),
+    { heading: 'Options' },
+    {
+      id: 'solid.cavity',
+      label: 'Cavity',
+      choice: 'check' as const,
+      checked: solid.cavity,
+      run: () => setSolid({ cavity: !solid.cavity }),
+    },
+    {
+      id: 'solid.backfaceCulling',
+      label: 'Backface culling',
+      choice: 'check' as const,
+      checked: solid.backfaceCulling,
+      run: () => setSolid({ backfaceCulling: !solid.backfaceCulling }),
+    },
+    {
+      id: 'solid.specular',
+      label: 'Specular lighting',
+      choice: 'check' as const,
+      checked: solid.specular,
+      run: () => setSolid({ specular: !solid.specular }),
+    },
+  ]
+
   const gizmoEntries: SceneMenuEntry[] = GIZMOS.map((entry) => ({
     id: `gizmo.${entry.key}`,
     label: entry.label,
@@ -514,6 +604,7 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
             onPress={() => onView({ shading: entry.value })}
           />
         ))}
+        <SceneMenu variant="chevron" label="Shading options" entries={shadingEntries} />
       </div>
       <div className="scene-header__group" role="group" aria-label="Overlays and gizmos">
         <SceneMenu variant="icon" icon="overlays" label="Overlays" entries={overlayEntries} />

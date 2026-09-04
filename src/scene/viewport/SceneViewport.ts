@@ -13,6 +13,8 @@ import {
   SphereGeometry,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
+  MeshMatcapMaterial,
   MeshStandardMaterial,
   Vector2,
   Vector3,
@@ -36,7 +38,17 @@ import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
 import { createPickBuffer, createPickMaterial, decodePick, type PickBuffer, type PickResult } from '@/scene/viewport/picking'
-import { createFaceOrientationMaterial, createSolidMaterial, createStudioLights, disposeMaterial, type StudioLights } from '@/scene/viewport/shading'
+import {
+  createFaceOrientationMaterial,
+  createSolidLook,
+  createSolidMaterial,
+  createStudioLights,
+  DEFAULT_SOLID_LOOK,
+  disposeMaterial,
+  solidLookKey,
+  type SolidLook,
+  type StudioLights,
+} from '@/scene/viewport/shading'
 import { createMaterialLibrary, type MaterialLibrary } from '@/scene/viewport/materials'
 import { createSceneLights, type SceneLights } from '@/scene/viewport/sceneLights'
 import { createAnnotationLayer, type AnnotationLayer } from '@/scene/viewport/annotations'
@@ -106,7 +118,9 @@ type ObjectView = {
   maskMesh?: Mesh
   maskMaterial?: Material
   /** The solid material, whose colour follows the shading options; typed for that reason. */
-  material?: MeshStandardMaterial
+  material?: MeshStandardMaterial | MeshMatcapMaterial | MeshBasicMaterial
+  /** Which solid look the material was built for, so a change of look rebuilds it. */
+  solidKey?: string
   /** The meshes an empty draws on behalf of the collection it stands in for. */
   instances?: MeshView[]
   /** Their counterparts in the id buffer, so an instance can be clicked where it is drawn. */
@@ -713,12 +727,41 @@ export class SceneViewport {
   private shadedMaterial(object: SceneObject, view: ObjectView): Material | Material[] | undefined {
     const shading = this.view?.shading ?? 'solid'
     if (shading === 'material' || shading === 'rendered') return this.materialsFor(object)
-    if (view.material && this.document && this.view) {
+    const look = this.solidLook()
+    const key = solidLookKey(look)
+    if (!view.material || view.solidKey !== key) {
+      // A different lighting, a cavity switched on, X-ray: each of those is a different kind of
+      // material rather than a number on one, so the old one is given back and a new one built.
+      disposeMaterial(view.material)
+      view.material = createSolidLook(look)
+      view.solidKey = key
+      if (view.mesh) view.mesh.material = view.material
+    }
+    if (this.document && this.view) {
       // Solid's colour is a reading aid rather than a rendering: the material's, the object's, one
       // for all of them, or one per object so that a crowded scene can be told apart at all.
       view.material.color.set(solidColour(this.document, object, this.view))
     }
     return view.material
+  }
+
+  /** Solid shading's own settings, with the view's X-ray folded in: it is a look, not an overlay. */
+  private solidLook(): SolidLook {
+    const view = this.view
+    const solid = view?.solid
+    return {
+      ...DEFAULT_SOLID_LOOK,
+      ...(solid ? {
+        lighting: solid.lighting,
+        matcap: solid.matcap,
+        backfaceCulling: solid.backfaceCulling,
+        cavity: solid.cavity,
+        cavityStrength: solid.cavityStrength,
+        specular: solid.specular,
+      } : {}),
+      xray: view?.xray === true,
+      xrayAlpha: view?.xrayAlpha ?? DEFAULT_SOLID_LOOK.xrayAlpha,
+    }
   }
 
   private syncEdit(): void {
@@ -1130,38 +1173,39 @@ export class SceneViewport {
     const view = this.view
     if (!view) return
     const through = this.lookingThrough()
-    if (through) {
-      this.applyCameraView(through.object, through.frame)
-      return
-    }
+    if (through) this.applyCameraView(through.object, through.frame)
     // Back on the turntable: both cameras place themselves from a position and a target again.
-    this.perspective.matrixAutoUpdate = true
-    this.orthographic.matrixAutoUpdate = true
+    if (!through) {
+      this.perspective.matrixAutoUpdate = true
+      this.orthographic.matrixAutoUpdate = true
+    }
     const position = cameraPosition(view)
     const basis = cameraBasis(view.yaw, view.pitch)
     const fov = fovFromFocalLength(view.focalLength)
-    this.perspective.fov = fov
-    this.perspective.near = view.clipStart
-    this.perspective.far = view.clipEnd
-    this.perspective.position.set(position[0], position[1], position[2])
-    this.perspective.up.set(basis.up[0], basis.up[1], basis.up[2])
-    this.perspective.lookAt(view.target[0], view.target[1], view.target[2])
-    this.perspective.updateProjectionMatrix()
+    if (!through) this.perspective.fov = fov
+    if (!through) {
+      this.perspective.near = view.clipStart
+      this.perspective.far = view.clipEnd
+      this.perspective.position.set(position[0], position[1], position[2])
+      this.perspective.up.set(basis.up[0], basis.up[1], basis.up[2])
+      this.perspective.lookAt(view.target[0], view.target[1], view.target[2])
+      this.perspective.updateProjectionMatrix()
 
-    // The orthographic camera stands in the same place and shows the same width, so switching
-    // between the two never moves the picture; only the convergence changes.
-    const height = orthoHeight(view.distance, fov)
-    const aspect = this.size.width / Math.max(1, this.size.height)
-    this.orthographic.left = -height * aspect
-    this.orthographic.right = height * aspect
-    this.orthographic.top = height
-    this.orthographic.bottom = -height
-    this.orthographic.near = -Math.max(view.clipEnd, view.distance * 4)
-    this.orthographic.far = Math.max(view.clipEnd, view.distance * 4)
-    this.orthographic.position.copy(this.perspective.position)
-    this.orthographic.up.copy(this.perspective.up)
-    this.orthographic.quaternion.copy(this.perspective.quaternion)
-    this.orthographic.updateProjectionMatrix()
+      // The orthographic camera stands in the same place and shows the same width, so switching
+      // between the two never moves the picture; only the convergence changes.
+      const height = orthoHeight(view.distance, fov)
+      const aspect = this.size.width / Math.max(1, this.size.height)
+      this.orthographic.left = -height * aspect
+      this.orthographic.right = height * aspect
+      this.orthographic.top = height
+      this.orthographic.bottom = -height
+      this.orthographic.near = -Math.max(view.clipEnd, view.distance * 4)
+      this.orthographic.far = Math.max(view.clipEnd, view.distance * 4)
+      this.orthographic.position.copy(this.perspective.position)
+      this.orthographic.up.copy(this.perspective.up)
+      this.orthographic.quaternion.copy(this.perspective.quaternion)
+      this.orthographic.updateProjectionMatrix()
+    }
 
     const axis = isAxisView(view.yaw, view.pitch)
     this.grid?.update({
@@ -1272,6 +1316,17 @@ export class SceneViewport {
     }
 
     this.applyEnvironment(shading)
+    this.applyBackground(shading)
+    // The wireframe overlay's weight is a view setting rather than a theme one: it is turned down
+    // to see a form through its own edges and up to read a dense mesh.
+    const wireOpacity = view.overlays.wireframe || shading === 'wireframe'
+      ? Math.min(1, Math.max(0.05, view.wireframeOpacity ?? 0.5))
+      : 1
+    for (const objectView of this.views.values()) {
+      if (!objectView.wire) continue
+      objectView.wire.material.opacity = wireOpacity
+      objectView.wire.material.transparent = wireOpacity < 1
+    }
     for (const [id, objectView] of this.views) {
       if (!objectView.mesh) continue
       const object = this.document?.objects.find((entry) => entry.id === id)
@@ -1298,6 +1353,24 @@ export class SceneViewport {
       return material ? this.materials!.materialFor(material) : createSolidMaterial()
     })
     return built.length === 1 ? built[0]! : built
+  }
+
+  /**
+   * What is behind everything: the theme's own ground, or the world's colour.
+   *
+   * Blender offers three — the theme, the world, and a colour of the viewport's own — and the first
+   * two are the ones that mean something here. Solid and wireframe are working views, so the theme
+   * is their default; a person who wants to judge a colour against the world can say so.
+   */
+  private applyBackground(shading: ShadingMode): void {
+    const renderer = this.renderer
+    if (!renderer) return
+    if (shading === 'material' || shading === 'rendered') return
+    const background = this.view?.solid?.background ?? 'theme'
+    const colour = background === 'world' && this.document
+      ? this.document.world.color
+      : splitAlpha(this.theme.viewport).colour
+    renderer.setClearColor(new Color(colour), 1)
   }
 
   /**
