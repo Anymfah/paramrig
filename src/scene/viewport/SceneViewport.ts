@@ -82,6 +82,11 @@ export type SceneViewportOptions = {
    * the card has less to do; above one it supersamples. The ceiling above still applies.
    */
   pixelScale?: number
+  /**
+   * Whether the rendered shading may cast shadows. Off on a phone by default: shadow maps are the
+   * most expensive thing in the frame, and a hand-held card has the least to spend on it.
+   */
+  shadows?: boolean
   onError?: (message: string) => void
   onFrame?: (info: FrameInfo) => void
 }
@@ -480,9 +485,10 @@ export class SceneViewport {
    * Changes an option on a viewport that is already running, and redraws at the new setting. Only
    * the ones that mean something after construction: the renderer itself is not rebuilt.
    */
-  setOptions(options: Pick<SceneViewportOptions, 'pixelScale' | 'maxPixelRatio'>): void {
+  setOptions(options: Pick<SceneViewportOptions, 'pixelScale' | 'maxPixelRatio' | 'shadows'>): void {
     if (this.disposed) return
     this.options = { ...this.options, ...options }
+    this.applyShading()
     this.resize()
     this.invalidate()
   }
@@ -1326,11 +1332,12 @@ export class SceneViewport {
     if (!renderer || !view) return
     const shading = view.shading
 
+    const shadows = this.options.shadows !== false
     if (shading === 'rendered') {
       renderer.toneMapping = ACESFilmicToneMapping
       // Scene · Colour management: a stop of light before the film curve, as Blender has it.
       renderer.toneMappingExposure = Math.pow(2, this.document?.colorManagement?.exposure ?? 0)
-      renderer.shadowMap.enabled = true
+      renderer.shadowMap.enabled = shadows
       renderer.shadowMap.type = PCFSoftShadowMap
     } else {
       // Solid and material preview are working views: what is on screen should be the numbers, not
@@ -1346,7 +1353,7 @@ export class SceneViewport {
         this.scene.add(this.sceneLights.group)
         this.disposables.push(() => this.sceneLights?.dispose())
       }
-      this.sceneLights.sync(this.document, { shadows: true, maxShadows: MAX_SHADOWS })
+      this.sceneLights.sync(this.document, { shadows, maxShadows: MAX_SHADOWS })
       this.sceneLights.group.visible = true
     } else if (this.sceneLights) {
       this.sceneLights.group.visible = false

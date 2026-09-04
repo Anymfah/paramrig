@@ -87,9 +87,13 @@ export function SceneViewportHost({
    */
   useEffect(() => {
     const instance = viewport.current
-    if (!instance || options?.pixelScale === undefined) return
-    instance.setOptions({ pixelScale: options.pixelScale })
-  }, [options?.pixelScale])
+    if (!instance) return
+    instance.setOptions({
+      ...(options?.pixelScale === undefined ? {} : { pixelScale: options.pixelScale }),
+      ...(options?.maxPixelRatio === undefined ? {} : { maxPixelRatio: options.maxPixelRatio }),
+      ...(options?.shadows === undefined ? {} : { shadows: options.shadows }),
+    })
+  }, [options?.pixelScale, options?.maxPixelRatio, options?.shadows])
 
   useEffect(() => {
     viewport.current?.setView(view)

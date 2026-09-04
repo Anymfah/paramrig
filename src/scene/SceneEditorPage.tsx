@@ -117,6 +117,11 @@ const SELECT_TOOL_FOR = new Map<string, SceneTool>([
  */
 const ANNOUNCE_DELAY_MS = 300
 
+/** Whether the pointer is a finger rather than a mouse, which is what a phone answers. */
+function coarsePointerNow(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches
+}
+
 /**
  * Whether something in the chrome has the focus, and Tab is therefore the browser's to answer.
  *
@@ -188,6 +193,16 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
   const preferences = settings.preferences
+  const [coarsePointer, setCoarsePointer] = useState(coarsePointerNow)
+
+  // A tablet with a mouse plugged in stops being coarse; the viewport is told rather than rebuilt.
+  useEffect(() => {
+    if (typeof matchMedia !== 'function') return
+    const media = matchMedia('(pointer: coarse)')
+    const onChange = () => setCoarsePointer(media.matches)
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
 
   const changeSettings = useCallback((next: SceneSettings) => {
     setSettings(next)
@@ -211,10 +226,17 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
    * selection sixty times a second, and a live region that is rewritten that often reads nothing at
    * all: the pause is what turns a stream of changes into one sentence.
    */
-  const say = useCallback((text: string) => {
+  const say = useCallback((sentence: string | (() => string)) => {
     if (announceTimer.current !== null) clearTimeout(announceTimer.current)
     announceTimer.current = setTimeout(() => {
       announceTimer.current = null
+      /*
+       * The sentence is built here rather than at the call: counting what is selected in a mesh of
+       * a hundred thousand vertices is real work, and doing it on every change of the document
+       * would put it in the way of the edit itself. Only the sentence that is actually spoken is
+       * ever built.
+       */
+      const text = typeof sentence === 'string' ? sentence : sentence()
       // A repeat has to differ or the region will not read it again: the year is never read out.
       setAnnouncement((current) => (current === text ? `${text} ` : text))
     }, ANNOUNCE_DELAY_MS)
@@ -228,15 +250,22 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const selectMode = document?.view.selectMode ?? []
   const tool = document?.view.tool ?? 'select-box'
 
-  // The selection, said as one sentence per settled change rather than per frame of a drag.
+  /*
+   * The selection, said once per settled change.
+   *
+   * It watches the selection rather than the document: moving a vertex changes the document sixty
+   * times a second and changes nothing about what is selected, and an effect that ran on each of
+   * those would put itself in the way of the edit.
+   */
+  const latest = useRef({ document, selectMode })
+  latest.current = { document, selectMode }
   useEffect(() => {
-    if (!document) return
-    say(viewMode === 'edit'
-      ? elementAnnouncement(selectedElementCounts(editStats(document, selection)), selectMode)
-      : selectionAnnouncement(document, selection))
-    // The counts are derived from the two below; naming them again would announce twice per change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [document, selection, viewMode, say])
+    const { document: current, selectMode: kinds } = latest.current
+    if (!current) return
+    say(() => (viewMode === 'edit'
+      ? elementAnnouncement(selectedElementCounts(editStats(current, selection)), kinds)
+      : selectionAnnouncement(current, selection)))
+  }, [selection, viewMode, say])
 
   useEffect(() => { say(modeAnnouncement(viewMode)) }, [viewMode, say])
   // Joined into one string so the effect depends on what the modes are rather than on the array.
@@ -991,7 +1020,16 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onGestureCancel={editor.cancelGesture}
               onReady={(handle) => { stage.current = handle }}
               createViewport={createViewport}
-              options={{ ...viewportOptions, pixelScale: preferences.resolutionScale }}
+              options={{
+                ...viewportOptions,
+                pixelScale: preferences.resolutionScale,
+                /*
+                 * A phone draws at most one and a half device pixels for one of ours, and casts no
+                 * shadows: both are the difference between a viewport that turns under a finger and
+                 * one that stutters. Neither is a preference, because neither is a taste.
+                 */
+                ...(coarsePointer ? { maxPixelRatio: 1.5, shadows: false } : {}),
+              }}
             >
               <SceneHints />
             </SceneStage>

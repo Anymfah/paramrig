@@ -203,6 +203,27 @@ export function SceneStage({
   bridge.current = operatorBridge
   const toolSettings = useRef(toolOptions)
   toolSettings.current = toolOptions
+  /*
+   * A finger lifted anywhere is a finger lifted.
+   *
+   * The surface's own pointerup only fires for a touch that ends on it, and a tap that finishes
+   * over the tool bar or the dock would otherwise stay in the map for ever — after two of those,
+   * every later gesture counts three fingers and does nothing at all.
+   */
+  useEffect(() => {
+    const forget = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch') return
+      touches.current.delete(event.pointerId)
+      if (touches.current.size < 2) pinch.current = null
+    }
+    window.addEventListener('pointerup', forget)
+    window.addEventListener('pointercancel', forget)
+    return () => {
+      window.removeEventListener('pointerup', forget)
+      window.removeEventListener('pointercancel', forget)
+    }
+  }, [])
+
   /** The preferences as they are now, for the parts built once and kept for the page's whole life. */
   const settings = useRef(preferences)
   settings.current = preferences

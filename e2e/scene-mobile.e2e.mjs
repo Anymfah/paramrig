@@ -418,6 +418,154 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
   await page.keyboard.press('Tab')
   await page.waitForTimeout(400)
 
+  /* -------------------------------------------------- two fingers, and a hold */
+
+  /*
+   * A gesture is measured on a page that nothing has been done to. The checks above leave a menu
+   * open, the sheet up over the middle of the screen and the editor in edit mode, and the point of
+   * these three is the gesture itself rather than the state it is made in.
+   */
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('.scene-stage')
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+  await page.waitForTimeout(400)
+  const viewport = await helpers.viewportBox()
+  // Above the middle: the tool strip and the edit bar sit along the foot of the viewport.
+  const middle = { x: viewport.x + viewport.width / 2, y: viewport.y + viewport.height * 0.35 }
+
+  log(`  at the middle of the viewport: ${await page.evaluate(([x, y]) => {
+    const node = document.elementFromPoint(x, y)
+    return node ? `${node.tagName}.${String(node.className).slice(0, 40)}` : 'nothing'
+  }, [middle.x, middle.y])}`)
+
+  const viewNow = async () => (await helpers.scene()).view
+  const panBefore = await viewNow()
+  // Two fingers moving together pan; the target moves and the angles do not.
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: middle.x - 40, y: middle.y, id: 1 }, { x: middle.x + 40, y: middle.y, id: 2 }],
+  })
+  for (let step = 1; step <= 10; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: middle.x - 40 + step * 6, y: middle.y + step * 4, id: 1 },
+        { x: middle.x + 40 + step * 6, y: middle.y + step * 4, id: 2 },
+      ],
+    })
+    await page.waitForTimeout(16)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(600)
+  const panAfter = await viewNow()
+  const moved = Math.hypot(panAfter.target[0] - panBefore.target[0], panAfter.target[1] - panBefore.target[1], panAfter.target[2] - panBefore.target[2])
+  check('two fingers pan without turning the view',
+    moved > 0.05 && Math.abs(panAfter.yaw - panBefore.yaw) < 1 && Math.abs(panAfter.pitch - panBefore.pitch) < 1,
+    `moved ${moved.toFixed(2)} m, yaw ${panBefore.yaw.toFixed(1)} → ${panAfter.yaw.toFixed(1)}`)
+
+  // And two fingers spreading zoom in, which is the distance coming down.
+  const zoomBefore = (await viewNow()).distance
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: middle.x - 30, y: middle.y, id: 1 }, { x: middle.x + 30, y: middle.y, id: 2 }],
+  })
+  for (let step = 1; step <= 10; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [
+        { x: middle.x - 30 - step * 8, y: middle.y, id: 1 },
+        { x: middle.x + 30 + step * 8, y: middle.y, id: 2 },
+      ],
+    })
+    await page.waitForTimeout(16)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(600)
+  const zoomAfter = (await viewNow()).distance
+  check('and spreading them zooms in', zoomAfter < zoomBefore - 0.2, `${zoomBefore.toFixed(2)} → ${zoomAfter.toFixed(2)} m`)
+  log(`MEASURE pinch: ${zoomBefore.toFixed(2)} → ${zoomAfter.toFixed(2)} m`)
+
+  // A finger held still opens the context menu, which is the right button a phone does not have.
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: middle.x, y: middle.y }] })
+  await page.waitForTimeout(900)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(400)
+  const held = await page.locator('[role="menuitem"]').count()
+  check('a finger held on the viewport opens the context menu', held > 0, `${held} entries`)
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+
+  /* ------------------------------------------------- what a phone draws with */
+
+  const drawing = await page.evaluate(() => ({
+    ratio: window.devicePixelRatio,
+    canvas: {
+      width: document.querySelector('.scene-canvas').width,
+      css: Math.round(document.querySelector('.scene-canvas').getBoundingClientRect().width),
+    },
+  }))
+  const scale = Math.round((drawing.canvas.width / drawing.canvas.css) * 100) / 100
+  check('the viewport draws at most one and a half pixels for one of ours',
+    scale <= 1.5 + 1e-6, `${scale}× against a display of ${drawing.ratio}×`)
+  log(`MEASURE mobile pixel ratio: ${scale}× on a ${drawing.ratio}× display`)
+
+  /* ------------------------------------------- what it costs at 375 × 812 */
+
+  /*
+   * A phone-shaped viewport, turned under a finger, measured the way the desktop budget is: the
+   * time spent inside the frame callback, which is where the viewport draws. The scene is the
+   * startup one rather than the heavy grid — a hundred thousand triangles is not what a phone is
+   * asked for, and a budget nobody would meet is not a budget.
+   */
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.waitForTimeout(600)
+  // Something worth drawing: a subdivided cube is what a phone is actually asked to turn.
+  await page.locator('#main').focus()
+  await page.keyboard.press('a')
+  await page.keyboard.press('Control+3')
+  await page.waitForTimeout(800)
+  const load = await page.evaluate(() => window.__paramrigScene.stats())
+  log(`  measured on ${load.triangles} triangles`)
+  const phone = await helpers.viewportBox()
+  const from = { x: phone.x + phone.width * 0.3, y: phone.y + phone.height * 0.35 }
+  await page.evaluate(() => {
+    const original = window.requestAnimationFrame.bind(window)
+    window.__phone = { work: [] }
+    window.__phoneRestore = () => { window.requestAnimationFrame = original }
+    window.requestAnimationFrame = (callback) => original((time) => {
+      const started = performance.now()
+      callback(time)
+      // A frame already queued when the probe is taken down still runs, and has nowhere to report.
+      window.__phone?.work.push(performance.now() - started)
+    })
+  })
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y }] })
+  for (let step = 1; step <= 40; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: from.x + step * 3, y: from.y + Math.sin(step / 6) * 20 }],
+    })
+    await page.waitForTimeout(12)
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await page.waitForTimeout(400)
+  const frames = await page.evaluate(() => {
+    window.__phoneRestore()
+    const work = window.__phone.work
+    delete window.__phone
+    delete window.__phoneRestore
+    return work
+  })
+  const sorted = [...frames].sort((a, b) => a - b)
+  const mean = frames.reduce((total, value) => total + value, 0) / Math.max(1, frames.length)
+  const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0
+  log(`MEASURE at 375 × 812, one finger orbiting: ${frames.length} frames, ${mean.toFixed(2)} ms mean, ${p95.toFixed(2)} ms p95`)
+  check('a finger turning the view on a phone holds a 16 ms mean frame', mean <= 16, `${mean.toFixed(2)} ms`)
+  check('and a 33 ms p95', p95 <= 33, `${p95.toFixed(2)} ms`)
+  await shot('scene-mobile-375.png')
+  await page.setViewportSize({ width: 320, height: 720 })
+  await page.waitForTimeout(400)
+
   /* ------------------------------------------------------------ the record */
 
   // The two rows were scrolled by the checks above; a QA frame should start where a person would.
