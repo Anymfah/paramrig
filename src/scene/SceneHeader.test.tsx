@@ -171,17 +171,15 @@ describe('the scene editor header', () => {
     expect(trigger).toHaveFocus()
   })
 
-  it('offers the modes, marks the one in use, and refuses sculpt with its reason', () => {
+  it('offers the three modes and marks the one in use', () => {
     const { onMode } = renderHeader()
     const menu = openMenu('Object mode')
 
     expect(within(menu).getByRole('menuitemradio', { name: /Object mode/ })).toHaveAttribute('aria-checked', 'true')
-    const sculpt = within(menu).getByRole('menuitemradio', { name: 'Sculpt mode' })
-    expect(sculpt).toHaveAttribute('aria-disabled', 'true')
-    fireEvent.click(sculpt)
-    expect(onMode).not.toHaveBeenCalled()
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Sculpt mode' }))
+    expect(onMode).toHaveBeenCalledWith('sculpt')
 
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Edit mode/ }))
+    fireEvent.click(within(openMenu('Object mode')).getByRole('menuitemradio', { name: /Edit mode/ }))
     expect(onMode).toHaveBeenCalledWith('edit')
   })
 

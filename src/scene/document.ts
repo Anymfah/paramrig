@@ -6,6 +6,7 @@ import { cloneMesh, meshCounts, validateMeshData } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { MAX_PITCH } from '@/scene/viewport/view'
 import { MODIFIER_KINDS } from '@/scene/types'
+import { DEFAULT_SCULPT_STATE } from '@/scene/sculpt/session'
 import { sanitizeSceneRig, sceneRigTargets } from '@/scene/rig'
 import type {
   Collection,
@@ -19,6 +20,7 @@ import type {
   SceneObject,
   SceneUnits,
   SceneVersion,
+  SculptState,
   TextureSlot,
   Transform,
   UvEditorState,
@@ -149,6 +151,7 @@ export const DEFAULT_VIEW: ViewState = {
   proportionalSize: 1,
   panels: { toolbar: true, sidebar: false, sidebarTab: 'item' },
   uv: DEFAULT_UV_EDITOR,
+  sculpt: DEFAULT_SCULPT_STATE,
 }
 
 function newId(prefix: string): string {
@@ -527,6 +530,8 @@ function viewState(value: unknown): ViewState {
   const gizmos = (source.gizmos ?? {}) as Partial<ViewState['gizmos']>
   const panels = (source.panels ?? {}) as Partial<NonNullable<ViewState['panels']>>
   const uv = (source.uv ?? {}) as Partial<UvEditorState>
+  const sculpt = (source.sculpt ?? {}) as Partial<SculptState>
+  const sculptSymmetry = (sculpt.symmetry ?? {}) as Partial<SculptState['symmetry']>
   const modes = Array.isArray(source.selectMode)
     ? source.selectMode.filter((mode): mode is 'vertex' | 'edge' | 'face' => mode === 'vertex' || mode === 'edge' || mode === 'face')
     : []
@@ -620,8 +625,30 @@ function viewState(value: unknown): ViewState {
       sync: flag(uv.sync, DEFAULT_UV_EDITOR.sync),
       stretch: pick(uv.stretch, ['none', 'angle', 'area'] as const, DEFAULT_UV_EDITOR.stretch),
     },
+    sculpt: {
+      brush: pick(sculpt.brush, SCULPT_BRUSHES, DEFAULT_SCULPT_STATE.brush),
+      size: num(sculpt.size, DEFAULT_SCULPT_STATE.size, 2, 500),
+      strength: num(sculpt.strength, DEFAULT_SCULPT_STATE.strength, 0, 2),
+      falloff: pick(sculpt.falloff, FALLOFFS, DEFAULT_SCULPT_STATE.falloff),
+      symmetry: {
+        x: flag(sculptSymmetry.x, false),
+        y: flag(sculptSymmetry.y, false),
+        z: flag(sculptSymmetry.z, false),
+      },
+      autoSmooth: num(sculpt.autoSmooth, DEFAULT_SCULPT_STATE.autoSmooth, 0, 1),
+      frontFacesOnly: flag(sculpt.frontFacesOnly, DEFAULT_SCULPT_STATE.frontFacesOnly),
+    },
   }
 }
+
+/** The brushes a document may name, as a list the sanitiser can read at run time. */
+const SCULPT_BRUSHES = [
+  'draw', 'draw-sharp', 'clay', 'clay-strips', 'inflate', 'blob', 'crease',
+  'smooth', 'flatten', 'fill', 'scrape', 'pinch',
+  'grab', 'elastic', 'snake-hook', 'thumb', 'nudge', 'rotate', 'mask',
+] as const
+
+const FALLOFFS = ['smooth', 'sphere', 'root', 'inverse-square', 'sharp', 'linear', 'constant', 'random'] as const
 
 /**
  * Reads a document from storage or from a file, keeping only what the editor can draw.

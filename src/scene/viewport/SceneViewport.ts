@@ -33,7 +33,7 @@ import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection
 import { createGrid, type ViewportGrid } from '@/scene/viewport/grid'
 import { setLineResolution } from '@/scene/viewport/lines'
 import { localMatrix, worldMatrix } from '@/scene/objects'
-import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, type MeshView } from '@/scene/viewport/meshView'
+import { buildMeshView, createMesh, edgePositions, meshViewIsCurrent, refreshMeshBounds, updateMeshPositions, writeSculptPositions, type MeshView } from '@/scene/viewport/meshView'
 import { cameraGlyph, cursorGlyph, emptyGlyph, lightGlyph, type Glyph } from '@/scene/viewport/overlays'
 import { createMaskMaterial, createOutlinePass, OUTLINE_ACTIVE, OUTLINE_HOVER, OUTLINE_SELECTED, type OutlinePass } from '@/scene/viewport/outline'
 import { createEditView, decodeElement, MAX_EDITED_OBJECTS, type EditSlots, type EditView } from '@/scene/viewport/editView'
@@ -553,6 +553,33 @@ export class SceneViewport {
   /** The lines a modal transform draws: its constraint axes and its measuring line. */
   get transformOverlay(): TransformOverlay | null {
     return this.transform
+  }
+
+  /**
+   * A sculpt stroke's positions, written straight into the drawn geometry.
+   *
+   * The document is not touched: a stroke on a heavy mesh writes here sixty times a second and
+   * writes the document once, when the hand lets go. Everything else in the editor learns about a
+   * sculpt when that one write lands.
+   */
+  sculptWrite(objectId: string, positions: Float32Array, normals: Float32Array): void {
+    const view = this.views.get(objectId)
+    if (!view?.meshView) return
+    writeSculptPositions(view.meshView, positions, normals)
+    this.invalidate()
+  }
+
+  /**
+   * The bounding tree caught up with the sculpted surface.
+   *
+   * Not per frame: rebuilding the tree of a hundred thousand triangles is milliseconds, and the ray
+   * that finds the brush's contact point is happy with a tree a few frames out of date — the
+   * surface has moved by a fraction of the brush's radius. It is rebuilt when the stroke ends.
+   */
+  sculptRefit(objectId: string): void {
+    const view = this.views.get(objectId)
+    if (!view?.meshView) return
+    refreshMeshBounds(view.meshView)
   }
 
   /**

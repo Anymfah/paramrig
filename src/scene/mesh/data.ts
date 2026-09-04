@@ -144,6 +144,7 @@ export function cloneMesh(mesh: MeshData): MeshData {
       },
       vertex: {
         ...(mesh.attributes.vertex.color ? { color: mesh.attributes.vertex.color.slice() } : {}),
+        ...(mesh.attributes.vertex.mask ? { mask: mesh.attributes.vertex.mask.slice() } : {}),
       },
       loop: {
         ...(mesh.attributes.loop?.uvMaps
@@ -263,7 +264,7 @@ export function validateMeshData(value: unknown): MeshData | null {
     }
   }
 
-  const attributes = readAttributes(source.attributes, faces.length, edges.length, faceKeep, edgeKeep, faces.reduce((total, face) => total + face.length, 0))
+  const attributes = readAttributes(source.attributes, faces.length, edges.length, faceKeep, edgeKeep, faces.reduce((total, face) => total + face.length, 0), vertexIds.length)
   const autoSmooth = source.autoSmooth && typeof source.autoSmooth === 'object'
     ? { enabled: !!source.autoSmooth.enabled, angle: clampNumber(source.autoSmooth.angle, 0, 180, 30) }
     : undefined
@@ -281,7 +282,7 @@ export function validateMeshData(value: unknown): MeshData | null {
   })
 }
 
-function readAttributes(value: unknown, faceCount: number, edgeCount: number, faceKeep: number[], edgeKeep: number[], loops: number): MeshAttributes {
+function readAttributes(value: unknown, faceCount: number, edgeCount: number, faceKeep: number[], edgeKeep: number[], loops: number, vertexCount: number): MeshAttributes {
   const attributes = emptyAttributes(faceCount, edgeCount)
   if (!value || typeof value !== 'object') return attributes
   const source = value as Partial<MeshAttributes>
@@ -302,6 +303,14 @@ function readAttributes(value: unknown, faceCount: number, edgeCount: number, fa
   const vertex = source.vertex
   if (vertex && typeof vertex === 'object') {
     if (Array.isArray(vertex.color)) attributes.vertex.color = vertex.color.map((item) => clampNumber(item, 0, 1, 1))
+    /*
+     * The mask is one number per vertex and is read only when it is exactly that long. A mask of
+     * the wrong length is about a different mesh, and a mask that is silently short would leave
+     * half a model unsculptable with nothing on screen to say why.
+     */
+    if (Array.isArray(vertex.mask) && vertex.mask.length === vertexCount && vertex.mask.some((item) => Number(item) > 0)) {
+      attributes.vertex.mask = vertex.mask.map((item) => clampNumber(item, 0, 1, 0))
+    }
   }
   attributes.loop = readLoop(source.loop, loops)
   return attributes

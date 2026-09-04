@@ -23,10 +23,23 @@ export type TransformOverlay = {
   setMeasureLine: (from: Vec3 | null, to: Vec3 | null) => void
   /** Proportional editing's circle: how far the movement reaches, drawn where it is measured from. */
   setProportional: (centre: Vec3 | null, radius: number) => void
+  /** The sculpt brush: a ring lying on the surface, turned to face the way the surface faces. */
+  setBrush: (centre: Vec3 | null, normal: Vec3, radius: number) => void
   setTheme: (theme: SceneTheme) => void
   setResolution: (width: number, height: number) => void
   clear: () => void
   dispose: () => void
+}
+
+/** Any unit vector at right angles to this one, for building a frame about a normal. */
+function perpendicular(normal: Vec3): Vec3 {
+  // Crossing with whichever axis the normal leans on least, so the result never collapses.
+  const axis: Vec3 = Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]
+  const x = normal[1] * axis[2] - normal[2] * axis[1]
+  const y = normal[2] * axis[0] - normal[0] * axis[2]
+  const z = normal[0] * axis[1] - normal[1] * axis[0]
+  const length = Math.hypot(x, y, z) || 1
+  return [x / length, y / length, z / length]
 }
 
 export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
@@ -40,7 +53,9 @@ export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
   const measure = createLines({ colour: splitAlpha(theme.gizmoView).colour, width: 1.2, alwaysVisible: true, dashed: true, dashSize: 0.25, gapSize: 0.18 })
   const circle = createLines({ colour: splitAlpha(theme.proportional).colour, width: 1.4, alwaysVisible: true })
   circle.object.visible = false
-  for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) {
+  const brush = createLines({ colour: splitAlpha(theme.cursorGround).colour, width: 1.4, alwaysVisible: true })
+  brush.object.visible = false
+  for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle, brush]) {
     line.object.visible = false
     line.object.renderOrder = 900
     group.add(line.object)
@@ -94,7 +109,37 @@ export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
       circle.setPositions(points)
       circle.object.visible = true
     },
+    setBrush: (centre, normal, radius) => {
+      if (!centre || !(radius > 0)) {
+        brush.object.visible = false
+        return
+      }
+      /*
+       * This ring lies on the surface rather than facing the view, which is the opposite choice
+       * from the proportional circle above and the right one here: a brush reaches into the model
+       * along the normal, and a ring drawn flat to the screen would say nothing about the slope it
+       * is about to sculpt. Blender's brush cursor does the same, and it is how a person sees that
+       * they are about to hit a wall edge-on.
+       */
+      const [ax, ay, az] = perpendicular(normal)
+      const bx = normal[1] * az - normal[2] * ay
+      const by = normal[2] * ax - normal[0] * az
+      const bz = normal[0] * ay - normal[1] * ax
+      const points: number[] = []
+      const steps = 48
+      const at = (angle: number): [number, number, number] => [
+        centre[0] + (ax * Math.cos(angle) + bx * Math.sin(angle)) * radius,
+        centre[1] + (ay * Math.cos(angle) + by * Math.sin(angle)) * radius,
+        centre[2] + (az * Math.cos(angle) + bz * Math.sin(angle)) * radius,
+      ]
+      for (let step = 0; step < steps; step += 1) {
+        points.push(...at((step / steps) * Math.PI * 2), ...at(((step + 1) / steps) * Math.PI * 2))
+      }
+      brush.setPositions(points)
+      brush.object.visible = true
+    },
     setTheme: (next) => {
+      brush.setColour(splitAlpha(next.cursorGround).colour)
       circle.setColour(splitAlpha(next.proportional).colour)
       axisLines.x.setColour(splitAlpha(next.axisX).colour)
       axisLines.y.setColour(splitAlpha(next.axisY).colour)
@@ -102,10 +147,10 @@ export function createTransformOverlay(theme: SceneTheme): TransformOverlay {
       measure.setColour(splitAlpha(next.gizmoView).colour)
     },
     setResolution: (width, height) => {
-      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.material.resolution.set(width, height)
+      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle, brush]) line.material.resolution.set(width, height)
     },
     clear: () => {
-      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.object.visible = false
+      for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle, brush]) line.object.visible = false
     },
     dispose: () => {
       for (const line of [axisLines.x, axisLines.y, axisLines.z, measure, circle]) line.dispose()

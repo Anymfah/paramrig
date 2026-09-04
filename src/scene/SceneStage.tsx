@@ -10,6 +10,7 @@ import { editLabels, type EditLabel } from '@/scene/editLabels'
 import { LabelChannel, type ViewportLabel } from '@/scene/viewport/labels'
 import { ToolPathChannel } from '@/scene/viewport/toolPath'
 import { ModalTransform, selectionPivot } from '@/scene/modalTransform'
+import { SculptTool } from '@/scene/sculptTool'
 import { elementTargets } from '@/scene/transform/elements'
 import { TOOL_OPERATORS } from '@/scene/toolOperators'
 import { localFromWorldPoint, worldMatrix } from '@/scene/objects'
@@ -19,7 +20,7 @@ import { SceneHud } from '@/scene/SceneHud'
 import { SceneViewportHost } from '@/scene/SceneViewportHost'
 import type { ScenePreferences } from '@/scene/prefs'
 import type { TransformMode } from '@/scene/transform/session'
-import type { SceneDocument, SceneObject, SceneSelection, SelectMode, Vec3, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneObject, SceneSelection, SculptState, SelectMode, Vec3, ViewState } from '@/scene/types'
 import { HudChannel } from '@/scene/viewport/hud'
 import { boundsOfPoints, insidePolygon, MarqueeChannel, type MarqueeKind } from '@/scene/viewport/marquee'
 import { SceneCameraFrame } from '@/scene/SceneCameraFrame'
@@ -74,6 +75,7 @@ export function SceneStage({
   onRegionSelect,
   operatorBridge,
   toolOptions,
+  sculpt: sculptSettings,
   onPickElement,
   onRegionElements,
   onPolyBuild,
@@ -115,6 +117,8 @@ export function SceneStage({
   operatorBridge: OperatorBridge
   /** What each tool is set to in the sidebar; a gesture starts from its own operator's entry. */
   toolOptions: Record<string, OperatorParams>
+  /** The brush and its settings, read on every dab of a sculpt stroke. */
+  sculpt: SculptState
   /** A click on an element in edit mode, with what the modifiers asked for. */
   onPickElement: (hit: ElementPick | null, mode: ElementPickMode) => void
   /** What a box, lasso or circle covered in edit mode, per object being edited. */
@@ -173,6 +177,16 @@ export function SceneStage({
   latestSelection.current = selection
   const latestDocument = useRef(document)
   latestDocument.current = document
+  /*
+   * A sculpt session holds a copy of the mesh, so it has to be thrown away the moment the mesh it
+   * copied stops being the one on screen: leaving the mode, choosing another object, or an undo
+   * that puts the vertices back. Everything else about sculpting is inside the session; this is the
+   * one thread that ties it to the document.
+   */
+  const closeSculpt = useRef<() => void>(() => {})
+  useEffect(() => {
+    closeSculpt.current()
+  }, [document.view.mode, document.meshes, selection.activeObjectId])
   const onViewRef = useRef(onView)
   onViewRef.current = onView
   const onSelectRef = useRef(onSelect)
@@ -277,7 +291,29 @@ export function SceneStage({
     })
   }
   const modal = useRef<ModalTransform | null>(null)
+  /** The sculpt tool, and the settings it reads on every dab. */
+  const sculpt = useRef<SculptTool | null>(null)
+  const sculptState = useRef(sculptSettings)
+  sculptState.current = sculptSettings
   if (!modal.current) {
+    sculpt.current = new SculptTool({
+      viewport: () => viewport.current,
+      document: () => latestDocument.current,
+      hud,
+      applyDocument: (edit) => gestures.current.onEditDocument(edit),
+      beginGesture: (label) => gestures.current.onGestureStart(label),
+      endGesture: (label) => gestures.current.onGestureEnd(label),
+      invalidate: () => viewport.current?.invalidate(),
+    })
+    closeSculpt.current = () => {
+      const tool = sculpt.current
+      if (!tool) return
+      const view = latestDocument.current
+      const active = view.view.mode === 'sculpt' ? latestSelection.current.activeObjectId : null
+      const object = active ? view.objects.find((candidate) => candidate.id === active) : null
+      const mesh = object?.data.kind === 'mesh' ? view.meshes[object.data.meshId] : null
+      if (!active || tool.openOn !== active || (mesh && !tool.matches(mesh))) tool.close()
+    }
     modal.current = new ModalTransform({
       viewport: () => viewport.current,
       document: () => latestDocument.current,
@@ -646,6 +682,26 @@ export function SceneStage({
             onPlaceRef.current(hit?.point ?? instance.pointOnViewPlane(x, y), hit?.normal ?? null)
             return
           }
+          /*
+           * Sculpting takes the press before anything else does, because in sculpt mode there is
+           * nothing else the left button could mean: there is no selection to change and no gizmo
+           * to grab. A press that misses the mesh falls through and turns the view.
+           */
+          if (event.button === 0 && !gesture && latestDocument.current.view.mode === 'sculpt') {
+            const started = sculpt.current?.begin(x, y, sculptState.current, event.pressure, {
+              invert: event.ctrlKey || event.metaKey,
+              smoothing: event.shiftKey,
+            })
+            if (started) {
+              event.preventDefault()
+              try {
+                event.currentTarget.setPointerCapture(event.pointerId)
+              } catch {
+                /* Uncaptured: the stroke ends at the edge of the viewport rather than beyond it. */
+              }
+              return
+            }
+          }
           const touch = event.pointerType === 'touch'
           if (touch) {
             touches.current.set(event.pointerId, { x, y })
@@ -772,6 +828,10 @@ export function SceneStage({
           const x = event.clientX - box.left
           const y = event.clientY - box.top
           pointer.current = [x, y]
+          if (sculpt.current?.active) {
+            sculpt.current.move(x, y, event.pressure)
+            return
+          }
           /*
            * Under Pointer Lock the system cursor is hidden and clientX stops moving, so the drawn
            * one follows the movement deltas instead. It is the only pointer there is while a
@@ -787,6 +847,11 @@ export function SceneStage({
             ]
             drawn.style.left = `${lockedAt.current[0]}px`
             drawn.style.top = `${lockedAt.current[1]}px`
+          }
+          if (latestDocument.current.view.mode === 'sculpt' && !press.current) {
+            // The brush cursor: a ring on the surface, which is also the answer to whether a press
+            // here would sculpt at all.
+            sculpt.current?.hover(x, y, sculptState.current)
           }
           const waiting = press.current
           if (waiting?.tool && !waiting.moved && Math.hypot(x - waiting.x, y - waiting.y) > threshold()) {
@@ -917,6 +982,11 @@ export function SceneStage({
         onPointerUp={(event) => {
           const nav = navigator.current
           const instance = viewport.current
+          if (sculpt.current?.active) {
+            sculpt.current.end()
+            if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+            return
+          }
           if (event.pointerType === 'touch') {
             touches.current.delete(event.pointerId)
             if (touches.current.size < 2) pinch.current = null

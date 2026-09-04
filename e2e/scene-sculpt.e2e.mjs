@@ -1,0 +1,221 @@
+import { run } from './lib.mjs'
+
+/**
+ * Chantier Q: sculpt mode.
+ *
+ * A brush is the one tool in the editor whose whole point is what it feels like, and feel is not
+ * something a test can read. What a test can read is everything underneath it: that a stroke moved
+ * the surface where the pointer went and nowhere else, that it is one entry in the history however
+ * many dabs it took, that the picture on screen changed with the model, and that a mesh of two
+ * hundred thousand vertices still answers the pointer inside a frame.
+ */
+
+/**
+ * A grid of quads, flat on the ground, as the object to sculpt.
+ *
+ * The size arrives through the page rather than through a closure: `seedScene` sends the function's
+ * own source into the browser, so anything it read from around it would not be there when it ran.
+ */
+const buildGrid = (stored) => {
+  const side = window.__sculptSide
+  const id = window.__sculptId
+  const span = side + 1
+  const vertices = []
+  const vertexIds = []
+  for (let row = 0; row < span; row += 1) {
+    for (let column = 0; column < span; column += 1) {
+      // Whole numbers, scaled down by the object: a grid of a hundred thousand vertices written
+      // as decimals is three megabytes of "0.06349206349206349" and does not fit in the store.
+      vertices.push(column - side / 2, row - side / 2, 0)
+      vertexIds.push(row * span + column)
+    }
+  }
+  const edges = []
+  for (let row = 0; row < span; row += 1) {
+    for (let column = 0; column < span; column += 1) {
+      const slot = row * span + column
+      if (column + 1 < span) edges.push([slot, slot + 1])
+      if (row + 1 < span) edges.push([slot, slot + span])
+    }
+  }
+  const faces = []
+  const faceIds = []
+  const smooth = []
+  const material = []
+  for (let row = 0; row < side; row += 1) {
+    for (let column = 0; column < side; column += 1) {
+      const slot = row * span + column
+      faces.push([slot, slot + 1, slot + span + 1, slot + span])
+      faceIds.push(faceIds.length)
+      smooth.push(true)
+      material.push(0)
+    }
+  }
+  return {
+    objects: [{
+      id: `object-${id}`,
+      name: 'Slab',
+      kind: 'mesh',
+      collectionId: stored.collections[0].id,
+      transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [8 / side, 8 / side, 8 / side] },
+      visible: true,
+      selectable: true,
+      renderable: true,
+      data: { kind: 'mesh', meshId: `mesh-${id}` },
+      modifiers: [],
+      materialSlots: [],
+    }, ...stored.objects.filter((object) => object.kind !== 'mesh')],
+    meshes: {
+      [`mesh-${id}`]: {
+        vertices,
+        vertexIds,
+        nextVertexId: span * span,
+        edges,
+        faces,
+        faceIds,
+        nextFaceId: faces.length,
+        attributes: { face: { smooth, material }, edge: {}, vertex: {} },
+      },
+    },
+    // Back to object mode as well: the second seeding happens while the first slab is being
+    // sculpted, and a document that arrives in sculpt mode with a mesh nobody has picked is a
+    // state the mode was never meant to be in.
+    view: {
+      ...stored.view,
+      mode: 'object',
+      target: [0, 0, 0],
+      yaw: 25,
+      pitch: 42,
+      distance: 14,
+      // A big, firm brush, so that what a stroke does is visible in a picture rather than only in
+      // the numbers: the defaults are Blender's, and Blender's defaults are for a model, not a slab.
+      sculpt: { ...stored.view.sculpt, size: 110, strength: 1.5 },
+    },
+  }
+}
+
+/** The tallest vertex of a mesh, and how many have left the ground. */
+const heights = (mesh) => {
+  let top = -Infinity
+  let bottom = Infinity
+  let moved = 0
+  for (let index = 2; index < mesh.vertices.length; index += 3) {
+    const z = mesh.vertices[index]
+    top = Math.max(top, z)
+    bottom = Math.min(bottom, z)
+    if (Math.abs(z) > 1e-6) moved += 1
+  }
+  return { top, bottom, moved, vertices: mesh.vertices.length / 3 }
+}
+
+export default run('scene-sculpt', async ({ page, check, log, helpers, shot }) => {
+  await helpers.newScene()
+  await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
+  await page.evaluate(() => { window.__sculptSide = 64; window.__sculptId = 'slab' })
+  await helpers.seedScene(buildGrid)
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
+
+  /* ------------------------------------------------------- into sculpt mode */
+
+  const box = await helpers.viewportBox()
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Object mode' }).click()
+  await page.locator('[role="menuitemradio"]', { hasText: 'Sculpt mode' }).click()
+  await page.waitForTimeout(600)
+  const mode = (await helpers.scene()).view.mode
+  check('the mode selector opens sculpt mode on the active mesh', mode === 'sculpt', mode)
+
+  const bar = await page.locator('[role="toolbar"][aria-label="Sculpt mode brushes"]').count()
+  check('and the tool bar becomes the brushes', bar === 1, `${bar} bars`)
+
+  /* --------------------------------------------------------------- a stroke */
+
+  const before = heights(Object.values((await helpers.scene()).meshes)[0])
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.5)
+  await page.waitForTimeout(300)
+  await page.mouse.down()
+  for (let step = 1; step <= 12; step += 1) {
+    await page.mouse.move(box.x + box.width * (0.4 + 0.02 * step), box.y + box.height * 0.5)
+    await page.waitForTimeout(30)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(800)
+
+  const after = heights(Object.values((await helpers.scene()).meshes)[0])
+  check('a stroke lifts the surface under it', after.top > 0.05, `${after.top.toFixed(3)} high, ${after.moved} vertices moved`)
+  check('and leaves the rest of the mesh where it was',
+    after.moved > 20 && after.moved < after.vertices / 2,
+    `${after.moved} of ${after.vertices} vertices moved`)
+  check('and nothing was dug out on the way', after.bottom > -0.01, after.bottom.toFixed(4))
+  log(`MEASURE one stroke over a 64-square grid: ${after.moved} of ${after.vertices} vertices, ${after.top.toFixed(3)} high`)
+  await shot('scene-sculpt-stroke-1440.png')
+  void before
+
+  /* ------------------------------------------------ one stroke, one history step */
+
+  const steps = await page.evaluate(() => document.querySelectorAll('.scene-history__step').length)
+  await page.locator('#main').focus()
+  await page.keyboard.press('Control+z')
+  await page.waitForTimeout(700)
+  const undone = heights(Object.values((await helpers.scene()).meshes)[0])
+  check('and one undo takes the whole stroke back', undone.moved === 0, `${undone.moved} vertices still moved`)
+  void steps
+
+  /* ------------------------------------------------------------ the numbers */
+
+  await page.evaluate(() => { window.__sculptSide = 224; window.__sculptId = 'heavy' })
+  await helpers.seedScene(buildGrid)
+  await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 30000 })
+  const heavyBox = await helpers.viewportBox()
+  await page.mouse.click(heavyBox.x + heavyBox.width / 2, heavyBox.y + heavyBox.height / 2)
+  await page.waitForTimeout(400)
+  await page.getByRole('button', { name: 'Object mode' }).click()
+  await page.locator('[role="menuitemradio"]', { hasText: 'Sculpt mode' }).click()
+  await page.waitForTimeout(800)
+  const heavyCount = Object.values((await helpers.scene()).meshes)[0].vertices.length / 3
+  /*
+   * Fifty thousand rather than the two hundred thousand the plan asks for, and the reason is not
+   * the sculptor: a document lives in the browser's local storage, which is five megabytes, and a
+   * mesh of two hundred thousand vertices written as JSON is more than that. The session itself is
+   * measured at two hundred thousand in `src/scene/sculpt/session.test.ts`, where no store is in
+   * the way.
+   */
+  check('a mesh of fifty thousand vertices opens for sculpting', heavyCount > 50000, `${heavyCount} vertices`)
+
+  const timings = await page.evaluate(async () => {
+    const surface = document.querySelector('.scene-surface')
+    const box = surface.getBoundingClientRect()
+    const send = (type, x, y, buttons) => surface.dispatchEvent(new PointerEvent(type, {
+      pointerId: 1, pointerType: 'mouse', bubbles: true, cancelable: true, isPrimary: true,
+      clientX: box.left + x, clientY: box.top + y, buttons, pressure: 0.5,
+    }))
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()))
+    send('pointerdown', box.width * 0.35, box.height * 0.5, 1)
+    await frame()
+    const samples = []
+    for (let step = 1; step <= 40; step += 1) {
+      const start = performance.now()
+      send('pointermove', box.width * (0.35 + 0.006 * step), box.height * 0.5, 1)
+      await frame()
+      samples.push(performance.now() - start)
+    }
+    send('pointerup', box.width * 0.59, box.height * 0.5, 0)
+    samples.sort((a, b) => a - b)
+    return {
+      mean: samples.reduce((total, value) => total + value, 0) / samples.length,
+      p95: samples[Math.max(0, Math.round(samples.length * 0.95) - 1)],
+    }
+  })
+  /*
+   * What this measures is the frame, not the dab: each sample is a pointer move and the frame that
+   * answers it, so sixteen and a half milliseconds is a screen running at sixty and not a sculptor
+   * taking sixteen milliseconds to think. That is the number worth having here — whether a stroke
+   * keeps the picture moving — and the dab itself is measured without a browser in the unit tests.
+   */
+  log(`MEASURE a Draw stroke over ${heavyCount.toLocaleString()} vertices: ${timings.mean.toFixed(2)} ms a frame, ${timings.p95.toFixed(2)} ms at the 95th`)
+  check('a stroke on fifty thousand vertices keeps the frames coming',
+    timings.mean < 20 && timings.p95 < 33, `${timings.mean.toFixed(2)} ms a frame, ${timings.p95.toFixed(2)} ms at the 95th`)
+  await page.waitForTimeout(600)
+  await shot('scene-sculpt-heavy-1440.png')
+})

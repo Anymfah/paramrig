@@ -68,6 +68,21 @@
 }
 .scene-header__glyph { width: 16px; height: 16px; }
 
+/* A word rather than a glyph, for the one or two things in the header no icon says clearly. */
+.scene-header__text-button {
+  flex: none;
+  min-height: calc(var(--hit-target) - 6px);
+  padding-inline: var(--space-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.scene-header__text-button:hover { background: var(--surface-hover); color: var(--text-primary); }
+.scene-header__text-button[aria-disabled='true'] { opacity: 0.45; cursor: default; }
+
 /* A toggle and the menu of what it toggles between, joined so they read as one control. */
 .scene-header__pair {
   display: flex;

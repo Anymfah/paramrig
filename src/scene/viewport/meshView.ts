@@ -131,6 +131,67 @@ export function updateMeshPositions(view: MeshView, mesh: MeshData): void {
   view.uvSource = activeUv(mesh)
 }
 
+/**
+ * Positions and normals straight from a sculpt session, written into the drawn geometry.
+ *
+ * This is the fast path a stroke lives on. `updateMeshPositions` rebuilds every attribute from a
+ * `MeshData`, and a sculpt stroke has no `MeshData` to rebuild from — it has two typed arrays and
+ * sixteen milliseconds. So the triangles are walked once, the two arrays are copied through the
+ * same mapping the view was built with, and nothing else is touched: no UVs, no element ids, no
+ * bounding tree. The tree catches up when the hand lets go.
+ */
+export function writeSculptPositions(view: MeshView, positions: Float32Array, normals: Float32Array): void {
+  const source = view.source
+  // A view whose source has been let go is one nothing can be written into: it is about to be
+  // rebuilt, and the triangulation it was drawn from is no longer known.
+  if (!source) return
+  const triangulation = cachedTriangulation(source)
+  if (triangulation.triangleCount !== view.triangleCount) return
+  const position = view.geometry.getAttribute('position') as BufferAttribute
+  const normal = view.geometry.getAttribute('normal') as BufferAttribute
+  const out = position.array as Float32Array
+  const outNormal = normal.array as Float32Array
+  const smooth = source.attributes.face.smooth
+  const { indices, triangleFace, triangleCount } = triangulation
+  for (let at = 0; at < triangleCount; at += 1) {
+    const triangle = view.order[at]!
+    const flat = smooth[triangleFace[triangle]!] !== true
+    const slots = [indices[triangle * 3]!, indices[triangle * 3 + 1]!, indices[triangle * 3 + 2]!]
+    for (let corner = 0; corner < 3; corner += 1) {
+      const slot = slots[corner]!
+      const target = (at * 3 + corner) * 3
+      out[target] = positions[slot * 3] ?? 0
+      out[target + 1] = positions[slot * 3 + 1] ?? 0
+      out[target + 2] = positions[slot * 3 + 2] ?? 0
+      if (flat) continue
+      outNormal[target] = normals[slot * 3] ?? 0
+      outNormal[target + 1] = normals[slot * 3 + 1] ?? 0
+      outNormal[target + 2] = normals[slot * 3 + 2] ?? 1
+    }
+    if (!flat) continue
+    // A flat face's normal is the triangle's own, and the triangle has just moved: it is worked out
+    // here rather than read, because the session keeps normals per vertex and this face wants one.
+    const base = at * 9
+    const ux = out[base + 3]! - out[base]!
+    const uy = out[base + 4]! - out[base + 1]!
+    const uz = out[base + 5]! - out[base + 2]!
+    const vx = out[base + 6]! - out[base]!
+    const vy = out[base + 7]! - out[base + 1]!
+    const vz = out[base + 8]! - out[base + 2]!
+    const nx = uy * vz - uz * vy
+    const ny = uz * vx - ux * vz
+    const nz = ux * vy - uy * vx
+    const length = Math.hypot(nx, ny, nz) || 1
+    for (let corner = 0; corner < 3; corner += 1) {
+      outNormal[base + corner * 3] = nx / length
+      outNormal[base + corner * 3 + 1] = ny / length
+      outNormal[base + corner * 3 + 2] = nz / length
+    }
+  }
+  position.needsUpdate = true
+  normal.needsUpdate = true
+}
+
 /** After a gesture: the bounds and the tree catch up with where the vertices actually are. */
 export function refreshMeshBounds(view: MeshView): void {
   view.geometry.computeBoundingSphere()

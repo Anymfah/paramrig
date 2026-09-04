@@ -104,13 +104,35 @@ registerOperator({
   id: 'mode.sculpt',
   label: 'Sculpt mode',
   section: 'Mode',
+  shortcut: '⌃Tab',
   description: 'Sculpt the active mesh with brushes.',
   params: [],
   defaults: {},
-  // Declared so the mode pie is the whole pie and its gap is explained rather than mysterious.
-  available: () => 'Sculpt mode arrives with the sculpting tools.',
-  run: () => ({ error: 'Sculpt mode arrives with the sculpting tools.' }),
+  available: (context) => {
+    if (context.document.view.mode === 'sculpt') return 'Already in sculpt mode.'
+    return sculptable(context) ? true : 'Select a mesh to sculpt first.'
+  },
+  run: (context) => {
+    const id = sculptable(context)
+    if (!id) return { error: 'Select a mesh to sculpt first.' }
+    /*
+     * One object, unlike edit mode. Blender sculpts the active object and nothing else, and the
+     * reason is the brush: a stroke is a place in space, and two objects under one brush would be
+     * sculpted through each other's transforms.
+     */
+    return {
+      document: withView(context.document, { mode: 'sculpt' }),
+      selection: { ...context.selection, objectIds: [id], activeObjectId: id, editObjectIds: [id] },
+      label: 'Sculpt mode',
+    }
+  },
 })
+
+/** The one mesh sculpt mode would open: the active one, or the only selected one. */
+function sculptable(context: OperatorContext): string | null {
+  const ids = editableObjects(context)
+  return ids[0] ?? null
+}
 
 /* -------------------------------------------------------------- select mode */
 

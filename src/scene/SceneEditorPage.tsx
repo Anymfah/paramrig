@@ -24,6 +24,7 @@ import { StatusMessage } from '@/ui/StatusMessage'
 import { ContextMenuRoot } from '@/ui/ContextMenu'
 import { editorCommands, menuEntries, sceneCommands, type SceneCommand } from '@/scene/commands'
 import { DEFAULT_UV_EDITOR, getSceneDocument, sceneCounts, saveSceneDocument } from '@/scene/document'
+import { DEFAULT_SCULPT_STATE } from '@/scene/sculpt/session'
 import { describeKeymap, resolveKey } from '@/scene/keymap'
 import { getOperator } from '@/scene/operators/registry'
 import {
@@ -68,7 +69,7 @@ import { SceneStatusBar } from '@/scene/SceneStatusBar'
 import { SceneToolbar } from '@/scene/SceneToolbar'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import { useSceneFile } from '@/scene/useSceneFile'
-import type { SceneDocument, SceneSelection, SceneTool, SelectMode, UvEditorState, ViewState } from '@/scene/types'
+import type { SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, UvEditorState, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
 import '@/scene/modifiers'
@@ -789,6 +790,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
   const context = editor.operatorContext()
   const panels = panelsOf(document.view)
   const uvEditor = document.view.uv ?? DEFAULT_UV_EDITOR
+  const sculpt = document.view.sculpt ?? DEFAULT_SCULPT_STATE
   const patchUv = (patch: Partial<UvEditorState>) => patchView({ uv: { ...uvEditor, ...patch } })
   const commands: SceneCommand[] = [
     ...sceneCommands({ context, runOperator: (id) => run(id) }),
@@ -954,6 +956,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onView={patchView}
               onMode={(next) => run(next === 'edit' ? 'mode.edit' : next === 'sculpt' ? 'mode.sculpt' : 'mode.object')}
               onCommand={(id) => commands.find((command) => command.id === id)?.run()}
+              onSculpt={(patch) => patchView({ sculpt: { ...sculpt, ...patch } })}
             />
           </div>
           <div
@@ -1030,6 +1033,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                   }
                 }}
                 onGestureCancel={editor.cancelGesture}
+                sculpt={sculpt}
                 onReady={(handle) => { stage.current = handle }}
                 createViewport={createViewport}
                 options={{
@@ -1056,9 +1060,12 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               />
               <SceneToolbar
                 open={panels.toolbar}
-                tool={document.view.tool}
+                tool={document.view.mode === 'sculpt' ? sculpt.brush : document.view.tool}
                 mode={document.view.mode}
-                onTool={(tool) => patchView({ tool })}
+                onTool={(tool) => {
+                  if (document.view.mode === 'sculpt') patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
+                  else patchView({ tool: tool as SceneTool })
+                }}
                 onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
               />
               <SceneSidebar
@@ -1305,7 +1312,7 @@ const SHADING_ITEMS: ScenePieItem[] = [
 const MODE_ITEMS: ScenePieItem[] = [
   { id: 'object', label: 'Object mode' },
   { id: 'edit', label: 'Edit mode', disabled: true, reason: 'Edit mode arrives with the mesh editing prompt.' },
-  { id: 'sculpt', label: 'Sculpt mode', disabled: true, reason: 'Sculpt mode arrives with the horizon prompt.' },
+  { id: 'sculpt', label: 'Sculpt mode' },
 ]
 
 /**

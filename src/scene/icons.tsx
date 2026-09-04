@@ -784,6 +784,104 @@ export function IconOnCage({ className }: SceneIconProps) {
   )
 }
 
+/* ------------------------------------------------------------ sculpt brushes */
+
+/*
+ * Nine glyphs for nineteen brushes, one per family: what the brush *does to a surface*, drawn as a
+ * surface. Blender draws each brush its own picture, and at sixteen pixels most of those pictures
+ * are the same picture — so the families are drawn instead, and the tool bar tells the members
+ * apart the way it tells box from lasso apart: by grouping them under one button with their names.
+ */
+
+/** A line of surface with a dome pushed up out of it: everything that adds. */
+export function IconSculptDraw({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 11.5h3.5a3 3 0 0 1 6 0h3.5" />
+    </Glyph>
+  )
+}
+
+/** The same, squared off: clay builds up in slabs rather than in mounds. */
+export function IconSculptClay({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 11.5h3v-4h7v4h3" />
+    </Glyph>
+  )
+}
+
+/** A surface pushed out along its own normals, arrows and all. */
+export function IconSculptInflate({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 11.5h13" />
+      <path d="M4.5 9V5.5M4.5 4l1.2 1.6M4.5 4 3.3 5.6" />
+      <path d="M11.5 9V5.5M11.5 4l1.2 1.6M11.5 4l-1.2 1.6" />
+    </Glyph>
+  )
+}
+
+/** Two slopes meeting in a fold: crease, and its cousin that pulls inwards. */
+export function IconSculptCrease({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 4.5 8 11.5 14.5 4.5" />
+    </Glyph>
+  )
+}
+
+/** A ripple settling into a line. */
+export function IconSculptSmooth({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 6.5c2-3 3.5 3 5.5 0s3.5 3 5.5 0" />
+      <path d="M1.5 11.5h13" />
+    </Glyph>
+  )
+}
+
+/** A blade laid across a bump: flatten, fill and scrape are all this plane. */
+export function IconSculptFlatten({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 12.5h3a3.5 3.5 0 0 1 7 0h3" />
+      <path d="M1.5 7.5h13" />
+    </Glyph>
+  )
+}
+
+/** A surface pulled sideways: grab and the four brushes that drag with it. */
+export function IconSculptGrab({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M1.5 11.5h4c2.5 0 3-6 6-6h3" />
+      <path d="M12.5 3.9 14.5 5.5 12.5 7.1" />
+    </Glyph>
+  )
+}
+
+/** A surface turned about the point the brush is on. */
+export function IconSculptRotate({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <path d="M12.5 8a4.5 4.5 0 1 1-1.6-3.4" />
+      <path d="M12.9 2.4v2.6h-2.6" />
+    </Glyph>
+  )
+}
+
+/** Half a surface covered: what a mask is, and what it does. */
+export function IconSculptMask({ className }: SceneIconProps) {
+  return (
+    <Glyph className={className}>
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 2.5v11" />
+      <path d="M3.4 5.6h4.6M2.7 8h5.3M3.4 10.4h4.6" />
+    </Glyph>
+  )
+}
+
 /* -------------------------------------------------------------- properties tabs */
 
 export function IconTabScene({ className }: SceneIconProps) {

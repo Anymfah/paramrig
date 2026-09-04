@@ -54,6 +54,13 @@ export type MeshAttributes = {
   }
   vertex: {
     color?: number[]
+    /**
+     * The sculpt mask: 0 where a brush has its full say and 1 where it has none.
+     *
+     * A vertex attribute rather than a group, as Blender's is, so that it survives a save and can
+     * be shown in the overlay; a mesh nobody has masked carries none at all.
+     */
+    mask?: number[]
   }
   /**
    * The corner domain, which Blender calls a loop: one value per corner of every face, in face
@@ -357,6 +364,32 @@ export type UvEditorState = {
   stretch: 'none' | 'angle' | 'area'
 }
 
+/** The brushes sculpt mode offers, in the order the tool bar shows them. */
+export type SculptBrush =
+  | 'draw' | 'draw-sharp' | 'clay' | 'clay-strips' | 'inflate' | 'blob' | 'crease'
+  | 'smooth' | 'flatten' | 'fill' | 'scrape' | 'pinch'
+  | 'grab' | 'elastic' | 'snake-hook' | 'thumb' | 'nudge' | 'rotate'
+  | 'mask'
+
+/**
+ * Sculpt mode's settings, kept with the view.
+ *
+ * The size is in *pixels*, as Blender's is: a brush is sized against what is on screen, so that
+ * zooming in sculpts finer detail rather than the same detail in a bigger picture. The session that
+ * does the sculpting works in the object's own units, and the tool converts between them where the
+ * brush actually touches the surface.
+ */
+export type SculptState = {
+  brush: SculptBrush
+  size: number
+  strength: number
+  falloff: 'smooth' | 'sphere' | 'root' | 'inverse-square' | 'sharp' | 'linear' | 'constant' | 'random'
+  symmetry: { x: boolean; y: boolean; z: boolean }
+  /** How much of a smoothing pass follows every dab, 0 to 1. */
+  autoSmooth: number
+  frontFacesOnly: boolean
+}
+
 export type ViewState = {
   /** Where the camera orbits around, in world units. */
   target: Vec3
@@ -422,6 +455,8 @@ export type ViewState = {
   panels?: { toolbar: boolean; sidebar: boolean; sidebarTab: 'item' | 'tool' | 'view' | 'assets' }
   /** The UV editor: whether the second space is open, how much room it has, and what it draws. */
   uv?: UvEditorState
+  /** Sculpt mode's brush and its settings. */
+  sculpt?: SculptState
   /**
    * Looking through the active camera, with its frame drawn and the rest dimmed. It is a state of
    * the view rather than a place it has moved to: the camera is what is being looked through, so

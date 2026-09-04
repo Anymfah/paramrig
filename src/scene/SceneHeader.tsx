@@ -14,12 +14,16 @@ import { MATCAPS, MATCAP_LABELS } from '@/scene/viewport/matcap'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
 import type { OperatorContext } from '@/scene/operators/types'
 import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
+import { getOperator } from '@/scene/operators/registry'
+import { NumberField } from '@/ui/NumberField'
+import { SwitchField } from '@/ui/SwitchField'
 import type {
   EditorMode,
   GizmoFlags,
   OverlayFlags,
   PivotPoint,
   SelectMode,
+  SculptState,
   ShadingMode,
   SnapMode,
   SnapTarget,
@@ -110,7 +114,6 @@ const MODES: Array<{ value: EditorMode; label: string }> = [
   { value: 'sculpt', label: 'Sculpt mode' },
 ]
 
-const SCULPT_REASON = 'Sculpt mode is not in this build yet.'
 
 /** Solid shading's three ways of lighting a surface, and the five colours it can take. */
 const SOLID_LIGHTING: Array<{ value: 'studio' | 'matcap' | 'flat'; label: string }> = [
@@ -276,6 +279,88 @@ function chordFor(actionId: string): string | undefined {
   return binding ? shortcutLabel(binding) : undefined
 }
 
+/**
+ * Sculpt mode's own end of the header: how big the brush is, how hard it presses, and which way it
+ * is mirrored.
+ *
+ * The brush itself is in the tool bar, where the tools are; these are the three numbers a person
+ * changes while they work, and Blender puts them in the header for the same reason.
+ */
+function SculptSettingsGroup({ sculpt, onSculpt, onRunOperator, context }: {
+  sculpt: SculptState
+  onSculpt: (patch: Partial<SculptState>) => void
+  onRunOperator: (id: string) => void
+  context: OperatorContext | null
+}) {
+  const remesh = getOperator('mesh.remesh')
+  const availability = remesh && context ? remesh.available(context) : 'Remesh is not in this build.'
+  return (
+    <>
+      <HeaderSettings label="Brush settings">
+        <NumberField
+          label="Size"
+          value={sculpt.size}
+          min={2}
+          max={500}
+          step={1}
+          unit="px"
+          variant="field"
+          onChange={(size) => onSculpt({ size })}
+        />
+        <NumberField
+          label="Strength"
+          value={sculpt.strength}
+          min={0}
+          max={2}
+          step={0.01}
+          variant="bar"
+          onChange={(strength) => onSculpt({ strength })}
+        />
+        <NumberField
+          label="Auto smooth"
+          value={sculpt.autoSmooth}
+          min={0}
+          max={1}
+          step={0.01}
+          variant="bar"
+          onChange={(autoSmooth) => onSculpt({ autoSmooth })}
+        />
+        <SwitchField
+          label="Front faces only"
+          checked={sculpt.frontFacesOnly}
+          onChange={(frontFacesOnly) => onSculpt({ frontFacesOnly })}
+        />
+      </HeaderSettings>
+      <div className="scene-header__group" role="group" aria-label="Symmetry">
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <Tooltip key={axis} content={`Sculpt symmetrically about ${axis.toUpperCase()}`}>
+            <IconButton
+              label={`Symmetry ${axis.toUpperCase()}`}
+              className="scene-header__button scene-header__axis"
+              aria-pressed={sculpt.symmetry[axis]}
+              onClick={() => onSculpt({ symmetry: { ...sculpt.symmetry, [axis]: !sculpt.symmetry[axis] } })}
+            >
+              <span aria-hidden="true">{axis.toUpperCase()}</span>
+            </IconButton>
+          </Tooltip>
+        ))}
+      </div>
+      {remesh ? (
+        <Tooltip content={availability === true ? 'Rebuild the mesh as an even grid of quads' : String(availability)}>
+          <button
+            type="button"
+            className="scene-header__text-button"
+            aria-disabled={availability !== true}
+            onClick={() => { if (availability === true) onRunOperator('mesh.remesh') }}
+          >
+            Remesh
+          </button>
+        </Tooltip>
+      ) : null}
+    </>
+  )
+}
+
 function tipFor(label: string, actionId: string): string {
   const chord = chordFor(actionId)
   return chord ? `${label} · ${chord}` : label
@@ -389,7 +474,7 @@ function HeaderSettings({ label, children }: { label: string; children: ReactNod
   )
 }
 
-export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode, onCommand }: {
+export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode, onCommand, onSculpt }: {
   view: ViewState
   mode: EditorMode
   context: OperatorContext | null
@@ -398,6 +483,8 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
   onMode: (mode: EditorMode) => void
   /** The editor's own actions: the palette, the keymap sheet. */
   onCommand: (id: string) => void
+  /** Sculpt mode's brush settings, which the header carries a few of. */
+  onSculpt?: (patch: Partial<SculptState>) => void
 }) {
   const barRef = useRef<HTMLDivElement>(null)
   useRovingFocus(barRef)
@@ -411,7 +498,9 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
     id: `mode.${entry.value}`,
     label: entry.label,
     checked: entry.value === mode,
-    ...(entry.value === 'sculpt' ? { disabled: true, reason: SCULPT_REASON } : { shortcut: chordFor('mode.toggleEdit') }),
+    ...(entry.value === 'sculpt'
+      ? (chordFor('mode.sculpt') ? { shortcut: chordFor('mode.sculpt')! } : {})
+      : { shortcut: chordFor('mode.toggleEdit') }),
     run: () => onMode(entry.value),
   }))
 
@@ -643,6 +732,9 @@ export function SceneHeader({ view, mode, context, onRunOperator, onView, onMode
         shortcut={chordFor('mode.toggleEdit')}
         entries={modeEntries}
       />
+      {mode === 'sculpt' && view.sculpt && onSculpt ? (
+        <SculptSettingsGroup sculpt={view.sculpt} onSculpt={onSculpt} onRunOperator={runOperator} context={context} />
+      ) : null}
       {mode === 'edit' ? (
         <div className="scene-header__group" role="group" aria-label="Mirror editing">
           {(['x', 'y', 'z'] as const).map((axis) => (

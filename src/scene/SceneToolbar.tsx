@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as 
 import { createPortal } from 'react-dom'
 import { sceneIcon } from '@/scene/iconRegistry'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
-import type { EditorMode, SceneTool } from '@/scene/types'
+import type { EditorMode } from '@/scene/types'
 import { IconButton } from '@/ui/Button'
 import { HIT_TARGET_COARSE_PX, HIT_TARGET_PX } from '@/ui/hit-target'
 import { IconClose } from '@/ui/icons'
@@ -18,10 +18,17 @@ import { useRovingFocus } from '@/ui/useRovingFocus'
  * press-and-hold, the way Blender's tool groups do, so the strip stays one icon wide.
  */
 
+/**
+ * A button on the bar, and whatever else shares it.
+ *
+ * `tools` is a list of ids rather than of `SceneTool`s because sculpt mode's bar is made of brushes
+ * rather than of tools, and the bar's behaviour — the icons, the grouping, the press-and-hold that
+ * shows the rest — is the same for both. What the ids mean is the caller's business.
+ */
 type ToolGroup = {
   id: string
   label: string
-  tools: SceneTool[]
+  tools: string[]
   /** The chord the tooltip prints, or null for a tool the keymap gives no key. */
   shortcut: string | null
 }
@@ -42,7 +49,7 @@ function chord(actionId: string): string | null {
 }
 
 /** A tool's name, derived from its id so the bar and the sidebar cannot drift apart. */
-function toolLabel(tool: SceneTool): string {
+function toolLabel(tool: string): string {
   const words = tool.replace(/-/g, ' ')
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
@@ -79,15 +86,36 @@ const EDIT_GROUPS: ToolGroup[] = [
   { id: 'rip', label: 'Rip region', tools: ['rip'], shortcut: chord('mesh.rip') },
 ]
 
+/**
+ * Sculpt mode's brushes, grouped by what they do to a surface, in Blender's order.
+ *
+ * Nineteen buttons down the side of a viewport is a wall, and Blender's own sculpt bar is exactly
+ * that wall. Grouping them the way the select tools are grouped keeps the bar one icon wide and
+ * puts the members one press away, with their names on them.
+ */
+const SCULPT_GROUPS: ToolGroup[] = [
+  { id: 'draw', label: 'Draw', tools: ['draw', 'draw-sharp'], shortcut: null },
+  { id: 'clay', label: 'Clay', tools: ['clay', 'clay-strips'], shortcut: null },
+  { id: 'inflate', label: 'Inflate', tools: ['inflate', 'blob'], shortcut: null },
+  { id: 'crease', label: 'Crease', tools: ['crease', 'pinch'], shortcut: null },
+  { id: 'smooth', label: 'Smooth', tools: ['smooth'], shortcut: null },
+  { id: 'flatten', label: 'Flatten', tools: ['flatten', 'fill', 'scrape'], shortcut: null },
+  { id: 'grab', label: 'Grab', tools: ['grab', 'elastic', 'snake-hook', 'thumb', 'nudge'], shortcut: null },
+  { id: 'rotate', label: 'Rotate', tools: ['rotate'], shortcut: null },
+  { id: 'mask', label: 'Mask', tools: ['mask'], shortcut: chord('sculpt.mask') },
+]
+
 function groupsFor(mode: EditorMode): ToolGroup[] {
+  if (mode === 'sculpt') return SCULPT_GROUPS
   return mode === 'edit' ? [...COMMON_GROUPS, ...EDIT_GROUPS] : COMMON_GROUPS
 }
 
 export function SceneToolbar({ open, tool, mode, onTool, onClose }: {
   open: boolean
-  tool: SceneTool
+  /** The tool in object and edit mode, and the brush in sculpt mode. */
+  tool: string
   mode: EditorMode
-  onTool: (tool: SceneTool) => void
+  onTool: (tool: string) => void
   onClose: () => void
 }) {
   if (!open) return null
@@ -100,9 +128,9 @@ export function SceneToolbar({ open, tool, mode, onTool, onClose }: {
  * hand it one.
  */
 function ToolbarStrip({ tool, mode, onTool, onClose }: {
-  tool: SceneTool
+  tool: string
   mode: EditorMode
-  onTool: (tool: SceneTool) => void
+  onTool: (tool: string) => void
   onClose: () => void
 }) {
   const bar = useRef<HTMLDivElement>(null)
@@ -119,13 +147,13 @@ function ToolbarStrip({ tool, mode, onTool, onClose }: {
     <div
       className="scene-toolbar"
       role="toolbar"
-      aria-label={mode === 'edit' ? 'Edit mode tools' : 'Object mode tools'}
+      aria-label={mode === 'sculpt' ? 'Sculpt mode brushes' : mode === 'edit' ? 'Edit mode tools' : 'Object mode tools'}
       data-mode={mode}
       ref={bar}
       style={sizes}
     >
       {groupsFor(mode).map((group) => (
-        <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} />
+        <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} prefix={mode === 'sculpt' ? 'sculpt-' : ''} />
       ))}
       <Tooltip content={binding ? `Close toolbar · ${shortcutLabel(binding)}` : 'Close toolbar'} side="right">
         <IconButton label="Close toolbar" className="scene-toolbar__close" onClick={onClose}>
@@ -136,10 +164,12 @@ function ToolbarStrip({ tool, mode, onTool, onClose }: {
   )
 }
 
-function ToolGroupButton({ group, tool, onTool }: {
+function ToolGroupButton({ group, tool, onTool, prefix }: {
   group: ToolGroup
-  tool: SceneTool
-  onTool: (tool: SceneTool) => void
+  tool: string
+  onTool: (tool: string) => void
+  /** What the icon registry calls these ids: sculpt's brushes are prefixed, the tools are not. */
+  prefix: string
 }) {
   const root = useRef<HTMLDivElement>(null)
   const menu = useRef<HTMLDivElement>(null)
@@ -149,7 +179,7 @@ function ToolGroupButton({ group, tool, onTool }: {
   const [open, setOpen] = useState(false)
   const [at, setAt] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   // The member of the group the button shows: whichever is active, else the one last chosen.
-  const [chosen, setChosen] = useState<SceneTool>(group.tools[0]!)
+  const [chosen, setChosen] = useState<string>(group.tools[0]!)
   const active = group.tools.includes(tool)
   const current = active ? tool : chosen
   const several = group.tools.length > 1
@@ -177,7 +207,7 @@ function ToolGroupButton({ group, tool, onTool }: {
     if (restoreFocus) buttonOf()?.focus()
   }
 
-  const choose = (next: SceneTool) => {
+  const choose = (next: string) => {
     setChosen(next)
     onTool(next)
     closeMenu(true)
@@ -225,7 +255,7 @@ function ToolGroupButton({ group, tool, onTool }: {
     items[next]?.focus()
   }
 
-  const Icon = sceneIcon(current)
+  const Icon = sceneIcon(`${prefix}${current}`)
   const tip = [toolLabel(current), group.shortcut, several ? 'hold for more' : null].filter(Boolean).join(' · ')
 
   return (
@@ -277,7 +307,7 @@ function ToolGroupButton({ group, tool, onTool }: {
               onKeyDown={onMenuKeyDown}
             >
               {group.tools.map((entry) => {
-                const EntryIcon = sceneIcon(entry)
+                const EntryIcon = sceneIcon(`${prefix}${entry}`)
                 return (
                   <button
                     key={entry}

@@ -36,6 +36,27 @@ export const SCENE_ICONS: Record<string, SceneIconComponent> = {
 
   'uv-editor': Icons.IconUvEditor,
 
+  /* The sculpt brushes, by family: nineteen names on nine drawings. */
+  'sculpt-draw': Icons.IconSculptDraw,
+  'sculpt-draw-sharp': Icons.IconSculptDraw,
+  'sculpt-clay': Icons.IconSculptClay,
+  'sculpt-clay-strips': Icons.IconSculptClay,
+  'sculpt-inflate': Icons.IconSculptInflate,
+  'sculpt-blob': Icons.IconSculptInflate,
+  'sculpt-crease': Icons.IconSculptCrease,
+  'sculpt-pinch': Icons.IconSculptCrease,
+  'sculpt-smooth': Icons.IconSculptSmooth,
+  'sculpt-flatten': Icons.IconSculptFlatten,
+  'sculpt-fill': Icons.IconSculptFlatten,
+  'sculpt-scrape': Icons.IconSculptFlatten,
+  'sculpt-grab': Icons.IconSculptGrab,
+  'sculpt-elastic': Icons.IconSculptGrab,
+  'sculpt-snake-hook': Icons.IconSculptGrab,
+  'sculpt-thumb': Icons.IconSculptGrab,
+  'sculpt-nudge': Icons.IconSculptGrab,
+  'sculpt-rotate': Icons.IconSculptRotate,
+  'sculpt-mask': Icons.IconSculptMask,
+
   'select-box': Icons.IconSelectBox,
   'select-circle': Icons.IconSelectCircle,
   'select-lasso': Icons.IconSelectLasso,
