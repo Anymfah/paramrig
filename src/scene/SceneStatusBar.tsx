@@ -11,11 +11,13 @@ import type { SceneDocument, SceneSelection } from '@/scene/types'
  * nothing on screen that says a middle drag orbits — so the status bar teaches the gestures as the
  * context changes, which is what Blender does and what makes the first minute survivable.
  */
-export function SceneStatusBar({ document, selection, counts, message, keymapHint, animation }: {
+export function SceneStatusBar({ document, selection, counts, message, editData, keymapHint, animation }: {
   document: SceneDocument
   selection: SceneSelection
   counts: SceneCounts
   message: string | null
+  /** What the active object being edited is, so the line says what the next gesture does. */
+  editData?: 'mesh' | 'curve' | 'text'
   /** The one-line "press F1 for the keys" affordance, which stays after the hint chip has gone. */
   keymapHint?: ReactNode
   /**
@@ -34,14 +36,25 @@ export function SceneStatusBar({ document, selection, counts, message, keymapHin
   }
 }) {
   const editing = document.view.mode === 'edit'
-  const hints = editing
-    ? [['Select', 'click'], ['Extend', '⇧ click'], ['Loop', '⌥ click'], ['Path', '⌃ click'], ['Orbit', 'middle drag']]
-    : [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Add', '⇧A']]
+  /*
+   * The line says what the *next* gesture does, so it has to know what is open. A loop and a path
+   * mean nothing on a curve, and nothing at all on a text object, where the keyboard writes letters
+   * rather than running operators.
+   */
+  const hints = !editing
+    ? [['Select', 'click'], ['Extend', '⇧ click'], ['Orbit', 'middle drag'], ['Add', '⇧A']]
+    : editData === 'text'
+      ? [['Type', 'letters'], ['Select', '⇧ ←→'], ['Paste', '⌘V'], ['Done', 'Tab']]
+      : editData === 'curve'
+        ? [['Select', 'click'], ['Extend', '⇧ click'], ['Move', 'G'], ['Handles', 'V'], ['Orbit', 'middle drag']]
+        : [['Select', 'click'], ['Extend', '⇧ click'], ['Loop', '⌥ click'], ['Path', '⌃ click'], ['Orbit', 'middle drag']]
   // Edit mode counts what is being edited, not the scene: that is the number a person is watching.
   // Counted when the document or the selection changes, not on every render of the bar.
   const stats = useMemo(
-    () => (document.view.mode === 'edit' ? editStats(document, selection) : null),
-    [document, selection],
+    // A text object has no elements to count: the numbers would all be zero, which says less than
+    // nothing. Its own line of hints is what the bar carries instead.
+    () => (document.view.mode === 'edit' && editData !== 'text' ? editStats(document, selection) : null),
+    [document, selection, editData],
   )
 
   return (

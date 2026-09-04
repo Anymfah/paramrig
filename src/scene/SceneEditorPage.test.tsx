@@ -35,6 +35,7 @@ function createViewportDouble(recorded: Recorded): (container: HTMLElement) => S
       setSelection: () => { recorded.selections += 1 },
       setView: () => { recorded.views += 1 },
       setHover: nothing,
+      setTextCaret: nothing,
       setTheme: nothing,
       setGizmos: nothing,
       setGizmoHover: nothing,

@@ -1,4 +1,4 @@
-time to the first frame: 1222 ms
+time to the first frame: 1409 ms
 header controls at 1440: 10
 header controls within the window at 1440: 10
 header width at 1440: 527px
@@ -8,27 +8,27 @@ startup scene triangles: 12
 object properties content height: 1190px
 object properties visible height: 900px
 object properties sections: 4
-hover pick mean over 100 picks: 0.44 ms
-hover pick p95 over 100 picks: 1.00 ms
+hover pick mean over 100 picks: 1.26 ms
+hover pick p95 over 100 picks: 2.20 ms
 hover picks that landed on the cube: 100/100
 header controls at 320: 10
 header controls within the window at 320: 1
 header width at 320: 657px
 header view settings folded at 320: yes
 history steps after a hundred moves: 101
-heap before a hundred history steps: 110.5 MB
-heap after a hundred history steps: 184.4 MB
-heap growth over a hundred history steps: 73.9 MB
+heap before a hundred history steps: 113.2 MB
+heap after a hundred history steps: 176.7 MB
+heap growth over a hundred history steps: 63.5 MB
 heavy scene triangles: 100364
 heavy scene draw calls: 11
 orbit frames drawn over 200 moves: 401
 orbit frame time mean: 0.11 ms
 orbit frame time p95: 0.30 ms
-orbit frame interval mean: 8.66 ms
-orbit frame interval p95: 11.90 ms
-orbit move-to-move mean over 200 moves: 8.66 ms
-orbit move-to-move p95 over 200 moves: 12.07 ms
+orbit frame interval mean: 8.34 ms
+orbit frame interval p95: 9.20 ms
+orbit move-to-move mean over 200 moves: 8.33 ms
+orbit move-to-move p95 over 200 moves: 9.17 ms
 orbit frame time in wireframe: 0.14 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in solid: 0.15 ms mean, 0.40 ms p95 over 121 frames
-orbit frame time in material: 0.13 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in rendered: 0.19 ms mean, 0.50 ms p95 over 121 frames
+orbit frame time in solid: 0.17 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time in material: 0.17 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time in rendered: 0.18 ms mean, 0.40 ms p95 over 121 frames

@@ -6,6 +6,10 @@ import { resolveSceneValues, type SceneBinding } from '@/scene/rig'
 import { SceneExposeContext, type SceneExposeContextValue } from '@/scene/exposeContext'
 import { addControl, bindExisting, exposeProperty, removeControl, unbindProperty, updateControl, type ExposeRequest } from '@/scene/rigEdits'
 import { insertKeyframes, KEY_CHANNELS, type KeyframeEntry } from '@/scene/animate'
+import {
+  EMPTY_CURSOR, deleteBackwards, deleteForwards, insertText, moveCaret,
+  type CaretMove, type TextCursor,
+} from '@/scene/curve/textEdit'
 import type { ParamValue } from '@/rigs/types'
 import { SceneRenderDialog } from '@/scene/SceneRenderDialog'
 import { downloadBlob, readModelFile, withImported, writeMaterialLibrary, writeModel, type ModelFormat } from '@/scene/io/models'
@@ -88,6 +92,14 @@ import { FALLOFF_KINDS, type FalloffKind } from '@/scene/transform/proportional'
  * model, so they take the viewport's foreground rather than the selection colour.
  */
 const ANNOTATION_COLOUR = '#f2f4f3'
+
+/**
+ * How long a pause closes a burst of typing into one step of history.
+ *
+ * Long enough that a word typed at speed is one step, short enough that a pause to think is a
+ * boundary — which is the same bargain every text field makes, and the number most of them use.
+ */
+const TYPING_STEP_MS = 900
 
 /** Which modal session each modal operator opens. */
 const MODAL_MODES: Record<string, TransformMode> = {
@@ -197,7 +209,23 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     at: { x: number; y: number }
     entries: Array<{ id: string; label: string; checked: boolean; run: () => void }>
   } | null>(null)
+  /*
+   * What is open for editing, which the header, the tool bar and the status bar all ask: edit mode
+   * is one mode over three kinds of data, and the menus, the tools and the hints differ for each.
+   */
+  const editData: 'mesh' | 'curve' | 'text' = editor.activeObject?.data.kind === 'curve'
+    ? 'curve'
+    : editor.activeObject?.data.kind === 'text' ? 'text' : 'mesh'
   const [renaming, setRenaming] = useState<string | null>(null)
+  /**
+   * The caret in a text object being edited, and where its selection started.
+   *
+   * It belongs to the page rather than to the document: a caret is not part of what a scene *is*,
+   * and saving it would put an undo step between a person and the letter they just typed.
+   */
+  const [textCursor, setTextCursor] = useState<TextCursor>(EMPTY_CURSOR)
+  /** The timer that closes a burst of typing, so a word is one step of history rather than five. */
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const stage = useRef<SceneStageHandle | null>(null)
   const exists = useMemo(() => getSceneDocument(documentId) !== null, [documentId])
   const preferences = settings.preferences
@@ -574,6 +602,97 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
     }, 'Reorder')
   }, [editor])
 
+  /* ------------------------------------------------------------ typing text */
+
+  /**
+   * One keystroke into the text object being edited, or false when the key is not ours.
+   *
+   * Everything here is arithmetic in `curve/textEdit`; what belongs to the page is which key means
+   * which move, and that a burst of typing is one step of history. Blender leaves an undo step per
+   * character; a word at a time is what a person actually wants back, and it is what every text
+   * field they have ever used gives them.
+   */
+  const typeText = useCallback((event: KeyboardEvent): boolean => {
+    const object = editor.activeObject
+    if (!object || object.data.kind !== 'text') return false
+    const data = object.data
+    const meta = event.metaKey || event.ctrlKey
+    const write = (next: { body: string; cursor: TextCursor }) => {
+      if (typingTimer.current) clearTimeout(typingTimer.current)
+      else editor.beginGesture('Type text')
+      typingTimer.current = setTimeout(() => {
+        typingTimer.current = null
+        editor.endGesture('Type text')
+      }, TYPING_STEP_MS)
+      editor.updateObject(object.id, { data: { ...data, body: next.body } }, 'Type text')
+      setTextCursor(next.cursor)
+    }
+
+    if (meta && event.key.toLowerCase() === 'a') {
+      setTextCursor({ caret: [...data.body].length, anchor: 0 })
+      return true
+    }
+    if (meta && event.key.toLowerCase() === 'v') {
+      /*
+       * The clipboard is asked for asynchronously, and the browser may refuse: a page without the
+       * permission gets nothing, which is a paste that does nothing rather than an error nobody
+       * asked for. The keystroke is still ours either way, or ⌘V would fall through to the keymap.
+       */
+      void navigator.clipboard?.readText?.()
+        .then((pasted) => { if (pasted) write(insertText(data.body, textCursor, pasted)) })
+        .catch(() => {})
+      return true
+    }
+    if (meta) return false
+
+    const moves: Record<string, CaretMove> = {
+      ArrowLeft: 'left',
+      ArrowRight: 'right',
+      ArrowUp: 'up',
+      ArrowDown: 'down',
+      Home: 'lineStart',
+      End: 'lineEnd',
+    }
+    const move = moves[event.key]
+    if (move) {
+      setTextCursor((current) => moveCaret(data.body, current, move, event.shiftKey))
+      return true
+    }
+    if (event.key === 'Backspace') {
+      write(deleteBackwards(data.body, textCursor))
+      return true
+    }
+    if (event.key === 'Delete') {
+      write(deleteForwards(data.body, textCursor))
+      return true
+    }
+    if (event.key === 'Enter') {
+      write(insertText(data.body, textCursor, '\n'))
+      return true
+    }
+    // A printable character is one code point; every named key — Escape, Tab, F9 — is longer.
+    if ([...event.key].length === 1 && !event.altKey) {
+      write(insertText(data.body, textCursor, event.key))
+      return true
+    }
+    return false
+  }, [editor, textCursor])
+
+  /*
+   * Leaving the text object closes the burst, so the step is written before anything else happens —
+   * and the caret starts at the end of the body next time, which is where a person left off.
+   */
+  useEffect(() => {
+    const editingText = document?.view.mode === 'edit' && editor.activeObject?.data.kind === 'text'
+    if (editingText) return
+    if (typingTimer.current) {
+      clearTimeout(typingTimer.current)
+      typingTimer.current = null
+      editor.endGesture('Type text')
+    }
+    setTextCursor(EMPTY_CURSOR)
+  }, [document?.view.mode, editor.activeObject?.id, editor.activeObject?.data.kind, editor])
+
   /* --------------------------------------------------------------- keyboard */
 
   const onKeyDown = useCallback((event: KeyboardEvent) => {
@@ -592,12 +711,21 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
      * would make the whole editor a trap: whoever had reached the outliner could never leave it.
      */
     if (event.key === 'Tab' && holdsFocus()) return
+    /*
+     * A text object open for editing has the keyboard: Blender lets you type the words in the
+     * viewport, and a letter that ran an operator instead would be a trap. Only the keys that leave
+     * — Tab and Escape — and the ones the whole editor owns are let through.
+     */
+    if (!typing && document.view.mode === 'edit' && editor.activeObject?.data.kind === 'text' && typeText(event)) {
+      event.preventDefault()
+      return
+    }
     const binding = resolveKey(event, {
       mode: document.view.mode,
       selectMode: document.view.selectMode,
       // Which letters mean what in edit mode depends on what is open: a curve answers to Blender's
       // curve keys, and a mesh to its own.
-      editData: editor.activeObject?.data.kind === 'curve' ? 'curve' : 'mesh',
+      editData: editData === 'curve' ? 'curve' : 'mesh',
       preferences,
       typing,
     })
@@ -826,7 +954,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
       default:
         return
     }
-  }, [document, editor, file, openFromDisk, patchView, pie, preferences, redo, run, session, undo])
+  }, [document, editData, editor, file, openFromDisk, patchView, pie, preferences, redo, run, session, typeText, undo])
 
   useEffect(() => {
     window.addEventListener('keydown', onKeyDown)
@@ -1015,7 +1143,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             <SceneHeader
               view={document.view}
               mode={document.view.mode}
-              editData={editor.activeObject?.data.kind === 'curve' ? 'curve' : 'mesh'}
+              editData={editData}
               context={context}
               onRunOperator={run}
               onView={patchView}
@@ -1034,6 +1162,9 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 document={drawn}
                 keepKey={documentId}
                 selection={selection}
+                textCaret={document.view.mode === 'edit' && editor.activeObject?.data.kind === 'text'
+                  ? { objectId: editor.activeObject.id, ...textCursor }
+                  : null}
                 preferences={preferences}
                 onView={setView}
                 onModelDrop={(picked) => void importModel(picked)}
@@ -1127,6 +1258,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 open={panels.toolbar}
                 tool={document.view.mode === 'sculpt' ? sculpt.brush : document.view.tool}
                 mode={document.view.mode}
+                editData={editData}
                 onTool={(tool) => {
                   if (document.view.mode === 'sculpt') patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
                   else patchView({ tool: tool as SceneTool })
@@ -1204,6 +1336,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             selection={selection}
             counts={counts}
             message={editor.message}
+            editData={editData}
             keymapHint={<SceneKeymapHint onOpen={() => setKeymapOpen(true)} />}
             {...(session && animated ? {
               animation: {

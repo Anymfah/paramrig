@@ -84,6 +84,7 @@ export function SceneStage({
   onAnnotate,
   onMeasure,
   keepKey,
+  textCaret,
   onMaterialDrop,
   onModelDrop,
   onTransform,
@@ -109,6 +110,8 @@ export function SceneStage({
    * mode and back moves one WebGL context rather than building a second.
    */
   keepKey?: string
+  /** Where the caret is in the text object being edited, when one is. */
+  textCaret?: { objectId: string; caret: number; anchor: number } | null
   /** A material dragged out of the asset list and let go over the viewport. */
   onMaterialDrop: (materialId: string, objectId: string, faceId: number | null) => void
   /** A file dropped on the viewport, which is how a model usually arrives. */
@@ -608,6 +611,7 @@ export function SceneStage({
       selection={selection}
       view={document.view}
       hoverId={hover.current}
+      textCaret={textCaret ?? null}
       keepKey={keepKey}
       onReady={ready}
       createViewport={createViewport}

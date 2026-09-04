@@ -105,21 +105,29 @@ const SCULPT_GROUPS: ToolGroup[] = [
   { id: 'mask', label: 'Mask', tools: ['mask'], shortcut: chord('sculpt.mask') },
 ]
 
-function groupsFor(mode: EditorMode): ToolGroup[] {
+function groupsFor(mode: EditorMode, editData: 'mesh' | 'curve' | 'text' = 'mesh'): ToolGroup[] {
   if (mode === 'sculpt') return SCULPT_GROUPS
-  return mode === 'edit' ? [...COMMON_GROUPS, ...EDIT_GROUPS] : COMMON_GROUPS
+  if (mode !== 'edit') return COMMON_GROUPS
+  /*
+   * The edit tools are a mesh's: a knife, a loop cut and an inset all cut faces, and a curve has
+   * none. A curve keeps the tools that move things about, and a text object keeps them too — it is
+   * edited with the keyboard, and offering it a bevel tool would be offering it nothing.
+   */
+  return editData === 'mesh' ? [...COMMON_GROUPS, ...EDIT_GROUPS] : COMMON_GROUPS
 }
 
-export function SceneToolbar({ open, tool, mode, onTool, onClose }: {
+export function SceneToolbar({ open, tool, mode, editData, onTool, onClose }: {
   open: boolean
   /** The tool in object and edit mode, and the brush in sculpt mode. */
   tool: string
   mode: EditorMode
+  /** What is open for editing, so the bar offers the tools that apply to it. */
+  editData?: 'mesh' | 'curve' | 'text'
   onTool: (tool: string) => void
   onClose: () => void
 }) {
   if (!open) return null
-  return <ToolbarStrip tool={tool} mode={mode} onTool={onTool} onClose={onClose} />
+  return <ToolbarStrip tool={tool} mode={mode} editData={editData} onTool={onTool} onClose={onClose} />
 }
 
 /**
@@ -127,9 +135,10 @@ export function SceneToolbar({ open, tool, mode, onTool, onClose }: {
  * opens: the hook reads the element once, on mount, and a bar that only returned null would never
  * hand it one.
  */
-function ToolbarStrip({ tool, mode, onTool, onClose }: {
+function ToolbarStrip({ tool, mode, editData, onTool, onClose }: {
   tool: string
   mode: EditorMode
+  editData?: 'mesh' | 'curve' | 'text'
   onTool: (tool: string) => void
   onClose: () => void
 }) {
@@ -152,7 +161,7 @@ function ToolbarStrip({ tool, mode, onTool, onClose }: {
       ref={bar}
       style={sizes}
     >
-      {groupsFor(mode).map((group) => (
+      {groupsFor(mode, editData).map((group) => (
         <ToolGroupButton key={group.id} group={group} tool={tool} onTool={onTool} prefix={mode === 'sculpt' ? 'sculpt-' : ''} />
       ))}
       <Tooltip content={binding ? `Close toolbar · ${shortcutLabel(binding)}` : 'Close toolbar'} side="right">

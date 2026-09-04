@@ -27,8 +27,12 @@ function editableObjects(context: OperatorContext, mode: EditorMode = 'edit'): s
   const ids = context.selection.objectIds.filter((id) => {
     const object = context.document.objects.find((candidate) => candidate.id === id)
     if (!object?.visible) return false
-    // A curve is edited by its knots and handles; sculpting one has no meaning, so it stays a mesh act.
-    return object.data.kind === 'mesh' || (mode === 'edit' && object.data.kind === 'curve')
+    /*
+     * A curve is edited by its knots and handles, and a text object by typing into it. Sculpting
+     * either has no meaning — there is nothing to push — so sculpt mode stays a mesh act.
+     */
+    if (mode === 'edit' && (object.data.kind === 'curve' || object.data.kind === 'text')) return true
+    return object.data.kind === 'mesh'
   })
   const active = context.selection.activeObjectId
   if (active && ids.includes(active)) return [active, ...ids.filter((id) => id !== active)]
@@ -37,7 +41,7 @@ function editableObjects(context: OperatorContext, mode: EditorMode = 'edit'): s
 
 function enterEdit(context: OperatorContext, mode: EditorMode): OperatorResult {
   const ids = editableObjects(context, mode)
-  if (ids.length === 0) return { error: mode === 'edit' ? 'Select a mesh or a curve to edit first.' : 'Select a mesh to sculpt first.' }
+  if (ids.length === 0) return { error: mode === 'edit' ? 'Select a mesh, a curve or a text object to edit first.' : 'Select a mesh to sculpt first.' }
   const selection: SceneSelection = {
     ...context.selection,
     activeObjectId: ids[0]!,
@@ -72,7 +76,7 @@ registerOperator({
   defaults: {},
   available: (context) => {
     if (context.document.view.mode !== 'object') return true
-    return editableObjects(context).length > 0 ? true : 'Select a mesh or a curve to edit first.'
+    return editableObjects(context).length > 0 ? true : 'Select a mesh, a curve or a text object to edit first.'
   },
   run: (context) => (context.document.view.mode === 'object' ? enterEdit(context, 'edit') : leaveEdit(context)),
 })
@@ -97,7 +101,7 @@ registerOperator({
   defaults: {},
   available: (context) => {
     if (context.document.view.mode === 'edit') return 'Already in edit mode.'
-    return editableObjects(context).length > 0 ? true : 'Select a mesh or a curve to edit first.'
+    return editableObjects(context).length > 0 ? true : 'Select a mesh, a curve or a text object to edit first.'
   },
   run: (context) => enterEdit(context, 'edit'),
 })

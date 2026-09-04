@@ -33,6 +33,7 @@ function createViewportDouble(container: HTMLElement): SceneViewport {
     setSelection: nothing,
     setView: nothing,
     setHover: nothing,
+    setTextCaret: nothing,
     setTheme: nothing,
     setGizmos: nothing,
     setGizmoHover: nothing,

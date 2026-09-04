@@ -187,6 +187,79 @@ export default run('scene-curves-text', async ({ page, check, log, helpers, shot
   await page.waitForTimeout(700)
   await shot('scene-text-extruded-1440.png')
 
+  /* ------------------------------------------------------- typing in the view */
+
+  await page.keyboard.press('Tab')
+  await page.waitForTimeout(600)
+  check('Tab opens the text object for typing', (await scene()).view.mode === 'edit', (await scene()).view.mode)
+  const textMenus = await page.locator('.scene-header__menus button').allInnerTexts()
+  check('and the bar drops the menus that cut a mesh, because there is nothing here to cut',
+    !textMenus.includes('Mesh') && !textMenus.includes('Vertex'), textMenus.join(', '))
+  const typingHints = await page.locator('.scene-status__hints').innerText()
+  check('and the status bar says the keyboard writes rather than selects',
+    /Type/.test(typingHints) && /Paste/.test(typingHints), typingHints.replace(/\n/g, ' '))
+
+  // The caret at the start of the word, where the capture can show it blinking on the letters.
+  await page.keyboard.press('Home')
+  await page.waitForTimeout(300)
+  await shot('scene-text-caret-1440.png')
+
+  await page.keyboard.press('End')
+  await page.keyboard.type(' 3D')
+  /*
+   * A burst of typing is one step of history, and the store is written when the burst closes: the
+   * body is waited for rather than slept for, or the check would read the page a beat too early.
+   */
+  const bodyOf = async () => (await scene()).objects.find((object) => object.id === textId).data.body
+  const settled = async (wanted) => {
+    for (let attempt = 0; attempt < 20 && await bodyOf() !== wanted; attempt += 1) await page.waitForTimeout(150)
+    return bodyOf()
+  }
+  const typed = await settled('ParamRig 3D')
+  check('the letters typed reach the object rather than running operators', typed === 'ParamRig 3D', typed)
+  const wider = await boundsOf(page, textId)
+  check('and the geometry grows with them', wider.x > word.x + 0.7, `${word.x.toFixed(2)} m → ${wider.x.toFixed(2)} m`)
+  await shot('scene-text-typing-1440.png')
+
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  await page.keyboard.press('Backspace')
+  const trimmed = await settled('ParamRig')
+  check('backspace takes the letters back off', trimmed === 'ParamRig', trimmed)
+
+  // ⇧← selects backwards, and what is typed next replaces it.
+  await page.keyboard.press('Shift+ArrowLeft')
+  await page.keyboard.press('Shift+ArrowLeft')
+  await page.keyboard.press('Shift+ArrowLeft')
+  await page.waitForTimeout(300)
+  await page.keyboard.type('X')
+  const replaced = await settled('ParamX')
+  check('⇧← selects, and the next letter replaces what was selected', replaced === 'ParamX', replaced)
+
+  // A burst of typing is one step of history rather than one a letter.
+  await page.waitForTimeout(1400)
+  await page.keyboard.press('Control+KeyZ')
+  await page.waitForTimeout(800)
+  const stepped = await bodyOf()
+  check('and one undo takes back the burst rather than one letter of it',
+    stepped === 'ParamRig' || stepped === 'Param', stepped)
+
+  for (let attempt = 0; attempt < 5 && (await scene()).view.mode !== 'object'; attempt += 1) {
+    await page.locator('#main').focus()
+    await page.keyboard.press('Tab')
+    await page.waitForTimeout(400)
+  }
+  const restored = (await scene()).objects.find((object) => object.id === textId)
+  await page.locator('.scene-properties__tab[aria-label="Data"]').click()
+  await page.waitForTimeout(400)
+  const bodyField = page.locator('[data-section="data-text"]').getByLabel('Body', { exact: true }).first()
+  await bodyField.fill('ParamRig')
+  await bodyField.press('Enter')
+  await page.waitForTimeout(700)
+  check('the panel writes the same field the keyboard does',
+    (await scene()).objects.find((object) => object.id === textId).data.body === 'ParamRig',
+    `${restored.data.body} → ${(await scene()).objects.find((object) => object.id === textId).data.body}`)
+
   /* ------------------------------------------------------------ the convert */
 
   const counted = Object.keys((await scene()).meshes).length

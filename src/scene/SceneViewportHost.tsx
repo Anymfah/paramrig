@@ -22,6 +22,7 @@ export function SceneViewportHost({
   selection,
   view,
   hoverId = null,
+  textCaret,
   keepKey,
   onReady,
   createViewport,
@@ -32,6 +33,8 @@ export function SceneViewportHost({
   selection: SceneSelection
   view: ViewState
   hoverId?: string | null
+  /** Where the caret is in the text object being edited, when one is. */
+  textCaret?: { objectId: string; caret: number; anchor: number } | null
   /**
    * Keeps the viewport alive under this name when the host unmounts, so that editing a scene and
    * tuning it — two React trees — share one WebGL context rather than building a second.
@@ -115,6 +118,10 @@ export function SceneViewportHost({
   useEffect(() => {
     viewport.current?.setSelection(selection)
   }, [selection])
+
+  useEffect(() => {
+    viewport.current?.setTextCaret(textCaret ?? null)
+  }, [textCaret])
 
   useEffect(() => {
     viewport.current?.setHover(hoverId)

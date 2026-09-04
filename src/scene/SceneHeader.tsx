@@ -114,6 +114,15 @@ const CURVE_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
   { label: 'Curve', ids: CURVE_MENU },
 ]
 
+/**
+ * Editing a text object is typing into it: there is nothing to select and nothing to cut, so the
+ * bar carries the view and nothing else. What a person needs is the keyboard, and the status bar
+ * below says so.
+ */
+const TEXT_MODE_MENUS: Array<{ label: string; ids: Array<string | '-'> }> = [
+  { label: 'View', ids: EDIT_VIEW_MENU },
+]
+
 /* ------------------------------------------------------- the view's state */
 
 const MODES: Array<{ value: EditorMode; label: string }> = [
@@ -486,7 +495,7 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
   view: ViewState
   mode: EditorMode
   /** What the active object being edited is, so edit mode offers the right menus. */
-  editData?: 'mesh' | 'curve'
+  editData?: 'mesh' | 'curve' | 'text'
   context: OperatorContext | null
   onRunOperator: (id: string, params?: Record<string, unknown>) => void
   onView: (patch: Partial<ViewState>) => void
@@ -503,7 +512,7 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
   const runOperator = (id: string) => onRunOperator(id)
   const menus = mode !== 'edit'
     ? OBJECT_MODE_MENUS
-    : editData === 'curve' ? CURVE_MODE_MENUS : EDIT_MODE_MENUS
+    : editData === 'curve' ? CURVE_MODE_MENUS : editData === 'text' ? TEXT_MODE_MENUS : EDIT_MODE_MENUS
   const modeLabel = MODES.find((entry) => entry.value === mode)?.label ?? 'Object mode'
 
   const modeEntries: SceneMenuEntry[] = MODES.map((entry) => ({

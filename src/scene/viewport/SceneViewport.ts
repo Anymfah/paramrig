@@ -27,6 +27,9 @@ import { createSceneEnvironment, type SceneEnvironment } from '@/scene/viewport/
 import { cameraFrame, type CameraFrame } from '@/scene/viewport/cameraFrame'
 import { solidColour } from '@/scene/viewport/solidColour'
 import { curveCage } from '@/scene/curve/cage'
+import { outlineFont } from '@/scene/curve/font'
+import { layoutText } from '@/scene/curve/text'
+import { caretSegment, selectionBoxes } from '@/scene/curve/textEdit'
 import { curveLinePositions } from '@/scene/curve/geometry'
 import { meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
@@ -234,6 +237,9 @@ const MAX_SHADOWS = 4
 /** How many pixels across a glyph's grab area is, at any distance. */
 const GLYPH_PICK_PX = 11
 
+/** How long a text caret stays lit and dark. The rate a browser's own caret blinks at. */
+const CARET_BLINK_MS = 530
+
 export class SceneViewport {
   readonly canvas: HTMLCanvasElement
   private container: HTMLElement
@@ -263,6 +269,16 @@ export class SceneViewport {
   private views = new Map<string, ObjectView>()
   /** One per mesh open for editing, keyed by object id; the index is what its element ids carry. */
   private editViews = new Map<string, { view: EditView; index: number; cage?: MeshView; curveLine?: ViewportLines }>()
+
+  /** Where the caret is in the text object being edited, and where its selection began. */
+  private textCaret: { objectId: string; caret: number; anchor: number } | null = null
+
+  private textOverlay: { root: Group; caret: ViewportLines; boxes: ViewportLines } | null = null
+
+  /** The blink, which is a timer rather than a frame loop: nothing else on screen is moving. */
+  private caretBlink: ReturnType<typeof setInterval> | null = null
+
+  private caretLit = true
   private editObjects: string[] = []
   /** Built the first time the face-orientation overlay is switched on, and kept for the session. */
   private orientationMaterial: Material | null = null
@@ -390,6 +406,7 @@ export class SceneViewport {
       entry.curveLine?.dispose()
     }
     this.editViews.clear()
+    this.disposeTextOverlay()
     this.cursor?.dispose()
     this.transform?.dispose()
     this.gizmos?.dispose()
@@ -654,6 +671,7 @@ export class SceneViewport {
     this.applyShading()
     this.syncEdit()
     this.syncCursor()
+    this.syncTextCaret()
     this.notes?.setAnnotations(document.annotations ?? [])
     this.notes?.setMeasurements(document.measurements ?? [], null)
     this.invalidate()
@@ -937,6 +955,106 @@ export class SceneViewport {
       entry.view.setSelection(editSlots(data, this.selection, id))
       entry.view.setMatrix(objectView.root.matrix)
     })
+  }
+
+  /**
+   * The caret and the selection in a text object being edited.
+   *
+   * Text editing has no elements to select — there is nothing in a letter to take hold of — so it
+   * gets its own small overlay rather than a cage: one line for the caret and a box a line for what
+   * is selected, drawn in front of the letters and in the object's own space.
+   */
+  setTextCaret(next: { objectId: string; caret: number; anchor: number } | null): void {
+    this.textCaret = next
+    this.syncTextCaret()
+    this.invalidate()
+  }
+
+  private syncTextCaret(): void {
+    const document = this.document
+    const wanted = this.textCaret
+    const object = wanted && document ? document.objects.find((entry) => entry.id === wanted.objectId) : null
+    if (!wanted || !object || object.data.kind !== 'text' || this.view?.mode !== 'edit') {
+      this.disposeTextOverlay()
+      return
+    }
+    const font = outlineFont(object.data.font)
+    if (!font) {
+      this.disposeTextOverlay()
+      return
+    }
+    const data = object.data
+    const layout = layoutText(data, font)
+    const cursor = { caret: wanted.caret, anchor: wanted.anchor }
+    const bar = caretSegment(data, layout, cursor.caret)
+    const caretPositions = new Float32Array([bar.x, bar.bottom, 0, bar.x, bar.top, 0])
+    const boxes = selectionBoxes(data, layout, cursor)
+    const boxPositions = new Float32Array(boxes.length * 24)
+    boxes.forEach((box, index) => {
+      const corners = [
+        [box.x0, box.bottom], [box.x1, box.bottom],
+        [box.x1, box.bottom], [box.x1, box.top],
+        [box.x1, box.top], [box.x0, box.top],
+        [box.x0, box.top], [box.x0, box.bottom],
+      ]
+      corners.forEach((corner, corner_index) => {
+        boxPositions[index * 24 + corner_index * 3] = corner[0]!
+        boxPositions[index * 24 + corner_index * 3 + 1] = corner[1]!
+        boxPositions[index * 24 + corner_index * 3 + 2] = 0
+      })
+    })
+
+    if (!this.textOverlay) {
+      const root = new Group()
+      root.matrixAutoUpdate = false
+      const caret = createLines({ positions: caretPositions, colour: OUTLINE_SELECTED, width: 2, alwaysVisible: true })
+      const outlines = createLines({ positions: boxPositions, colour: OUTLINE_SELECTED, width: 1, alwaysVisible: true, opacity: 0.7 })
+      root.add(caret.object, outlines.object)
+      this.overlayRoot.add(root)
+      this.textOverlay = { root, caret, boxes: outlines }
+    } else {
+      this.textOverlay.caret.setPositions(caretPositions)
+      this.textOverlay.boxes.setPositions(boxPositions)
+    }
+    this.textOverlay.boxes.object.visible = boxes.length > 0
+    const buffer = { width: Math.round(this.size.width * this.pixelRatio), height: Math.round(this.size.height * this.pixelRatio) }
+    setLineResolution(this.textOverlay.caret.material, buffer.width, buffer.height)
+    setLineResolution(this.textOverlay.boxes.material, buffer.width, buffer.height)
+    const objectView = this.views.get(object.id)
+    if (objectView) {
+      this.textOverlay.root.matrix.copy(objectView.root.matrix)
+      this.textOverlay.root.matrixWorldNeedsUpdate = true
+    }
+    this.startCaretBlink()
+  }
+
+  /**
+   * The caret blinks, because a caret that does not is hard to find on a busy screen — and it does
+   * not when the person has asked for less motion, in which case it simply stays lit.
+   */
+  private startCaretBlink(): void {
+    if (this.caretBlink) return
+    const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+    this.caretLit = true
+    if (this.textOverlay) this.textOverlay.caret.object.visible = true
+    if (still) return
+    this.caretBlink = setInterval(() => {
+      this.caretLit = !this.caretLit
+      if (this.textOverlay) this.textOverlay.caret.object.visible = this.caretLit
+      this.invalidate()
+    }, CARET_BLINK_MS)
+  }
+
+  private disposeTextOverlay(): void {
+    if (this.caretBlink) {
+      clearInterval(this.caretBlink)
+      this.caretBlink = null
+    }
+    if (!this.textOverlay) return
+    this.overlayRoot.remove(this.textOverlay.root)
+    this.textOverlay.caret.dispose()
+    this.textOverlay.boxes.dispose()
+    this.textOverlay = null
   }
 
   /** Draws one element as being under the pointer. True when that changed anything. */
