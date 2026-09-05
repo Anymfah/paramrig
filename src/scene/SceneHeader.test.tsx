@@ -257,29 +257,71 @@ describe('the scene editor header', () => {
     expect(onRunOperator).not.toHaveBeenCalled()
   })
 
-  it('folds the view settings into one popover when the header is too narrow for them', async () => {
-    // The header folds by its own width, so the test is a resize observation, not a media query.
-    vi.stubGlobal('ResizeObserver', class {
-      constructor(private readonly notify: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.notify([{ target, contentRect: { width: 420, height: 40 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver)
+  /**
+   * The header folds on its own overflow, not on a width: it holds eleven controls in object mode
+   * and nineteen in edit mode, so there is no one width at which it stops fitting. jsdom lays
+   * nothing out, so the two numbers the hook reads are the ones to fake.
+   */
+  const measuring = (client: number, scroll: number) => {
+    for (const [name, value] of [['clientWidth', client], ['scrollWidth', scroll]] as const) {
+      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
+    }
+    return () => {
+      for (const name of ['clientWidth', 'scrollWidth']) {
+        Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => 0 })
       }
-      unobserve() {}
-      disconnect() {}
-    })
-    const { onView } = renderHeader()
+    }
+  }
 
-    expect(screen.queryByRole('button', { name: 'X-ray' })).not.toBeInTheDocument()
-    const settings = screen.getByRole('button', { name: 'View settings' })
-    fireEvent.click(settings)
+  it('folds the view settings into one popover when they do not fit', async () => {
+    const restore = measuring(420, 640)
+    try {
+      const { onView } = renderHeader()
 
-    const panel = await screen.findByRole('dialog', { name: 'View settings' })
-    expect(panel).toHaveAttribute('data-placed')
-    fireEvent.click(within(panel).getByRole('button', { name: 'X-ray' }))
-    expect(onView).toHaveBeenCalledWith({ xray: true })
+      expect(screen.queryByRole('button', { name: 'X-ray' })).not.toBeInTheDocument()
+      const settings = screen.getByRole('button', { name: 'View settings' })
+      fireEvent.click(settings)
 
-    fireEvent.keyDown(panel, { key: 'Escape' })
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'View settings' })).not.toBeInTheDocument())
-    expect(settings).toHaveFocus()
+      const panel = await screen.findByRole('dialog', { name: 'View settings' })
+      expect(panel).toHaveAttribute('data-placed')
+      fireEvent.click(within(panel).getByRole('button', { name: 'X-ray' }))
+      expect(onView).toHaveBeenCalledWith({ xray: true })
+
+      fireEvent.keyDown(panel, { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'View settings' })).not.toBeInTheDocument())
+      expect(settings).toHaveFocus()
+    } finally {
+      restore()
+    }
+  })
+
+  it('keeps every control reachable, folding the editor’s own buttons when even that is not enough', () => {
+    // Measured at 1440 with both panels open, edit mode wanted 1,473 pixels of an 880-pixel row;
+    // what used to happen to the difference was nothing, silently.
+    const restore = measuring(880, 1473)
+    try {
+      renderHeader()
+      // Both stages have folded, and nothing has gone: the two triggers are in the bar…
+      expect(screen.getByRole('button', { name: 'View settings' })).toBeInTheDocument()
+      const editor = screen.getByRole('button', { name: 'Editor' })
+      fireEvent.click(editor)
+      // …and what the second one holds is still one click away rather than off the end of the row.
+      expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'UV editor' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('folds nothing when the row is wide enough', () => {
+    const restore = measuring(1200, 900)
+    try {
+      renderHeader()
+      expect(screen.queryByRole('button', { name: 'View settings' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'X-ray' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
   })
 })

@@ -265,31 +265,51 @@ const GIZMOS: Array<{ key: keyof GizmoFlags; label: string }> = [
 ]
 
 /**
- * Under this width the right-hand half folds into one popover. The header is the one strip that
- * may not wrap or scroll — a control that moves under the pointer between two frames of a gesture
- * is worse than one that has to be opened — so the width is a real breakpoint, not a hint.
+ * How many of the header's trailing groups have folded away, because the row cannot hold them.
+ *
+ * It used to fold at a fixed width, and a fixed width cannot answer this question: the header
+ * holds eleven controls in object mode and nineteen in edit mode, so the width at which it stops
+ * fitting is not a property of the header at all. Measured at 1440 with both panels open, edit
+ * mode wanted 1,473 pixels of an 880-pixel row, and `overflow: hidden` took the difference — five
+ * menus and the command palette among it, with nothing on screen to say they were gone.
+ *
+ * So it folds on the overflow itself, one group at a time, from the trailing end: the view
+ * settings first, then the editor's own buttons. What folds is what a person reaches for by name
+ * rather than by muscle; the menus and the mode never fold, because a Blender hand goes to them
+ * without looking.
  */
-const NARROW_HEADER_PX = 720
+const FOLD_STAGES = 2
 
-/**
- * The header folds by its own width, not the window's. It sits between the outliner and the
- * properties editor, both of which the person can widen: a header that only listened to the window
- * would still be overflowing its column on a wide screen with both panels open.
- */
-function useNarrowHeader(element: RefObject<HTMLElement | null>): boolean {
-  const [narrow, setNarrow] = useState(false)
+/** Room a stage must gain back before it unfolds, so a header on the line does not flicker. */
+const FOLD_HYSTERESIS_PX = 24
+
+function useHeaderFold(element: RefObject<HTMLElement | null>): number {
+  const [stage, setStage] = useState(0)
+  /* What each stage was last seen to need, so unfolding knows what it would cost. */
+  const needed = useRef<number[]>([])
+  const measure = useRef(() => {})
+  measure.current = () => {
+    const node = element.current
+    if (!node) return
+    const available = node.clientWidth
+    needed.current[stage] = node.scrollWidth
+    if (node.scrollWidth > available + 1) {
+      if (stage < FOLD_STAGES) setStage(stage + 1)
+      return
+    }
+    const previous = stage > 0 ? needed.current[stage - 1] : undefined
+    if (previous !== undefined && previous + FOLD_HYSTERESIS_PX <= available) setStage(stage - 1)
+  }
+  // Every render, not every resize: entering edit mode adds eight controls without moving the row.
+  useLayoutEffect(() => { measure.current() })
   useEffect(() => {
     const node = element.current
     if (!node || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(([entry]) => {
-      const width = entry?.contentRect.width ?? node.clientWidth
-      // Hysteresis, so a header sitting exactly on the threshold does not flicker as it folds.
-      setNarrow((current) => (current ? width < NARROW_HEADER_PX + 40 : width < NARROW_HEADER_PX))
-    })
+    const observer = new ResizeObserver(() => measure.current())
     observer.observe(node)
     return () => observer.disconnect()
   }, [element])
-  return narrow
+  return stage
 }
 
 /**
@@ -608,7 +628,7 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
 }) {
   const barRef = useRef<HTMLDivElement>(null)
   useRovingFocus(barRef)
-  const narrow = useNarrowHeader(barRef)
+  const fold = useHeaderFold(barRef)
 
   const runOperator = (id: string) => onRunOperator(id)
   const menus = mode !== 'edit'
@@ -847,7 +867,7 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
   )
 
   return (
-    <div ref={barRef} className="scene-header" role="toolbar" aria-label="Scene tools" aria-orientation="horizontal">
+    <div ref={barRef} className="scene-header" data-fold={fold} role="toolbar" aria-label="Scene tools" aria-orientation="horizontal">
       <SceneMenu
         label={modeLabel}
         className="scene-header__mode"
@@ -906,8 +926,44 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
         ))}
       </div>
       <div className="scene-header__spacer" />
-      {narrow ? <HeaderSettings label="View settings">{viewSettings}</HeaderSettings> : viewSettings}
-      <div className="scene-header__group" role="group" aria-label="Editor">
+      {fold >= 1 ? <HeaderSettings label="View settings">{viewSettings}</HeaderSettings> : viewSettings}
+      {fold >= 2 ? (
+        <HeaderSettings label="Editor">
+          <div className="scene-header__group" role="group" aria-label="Editor">
+            <Tooltip content={tipFor('Command palette', 'palette')}>
+              <IconButton label="Command palette" className="scene-header__button" onClick={() => onCommand('palette')}>
+                <IconSearch />
+              </IconButton>
+            </Tooltip>
+            <Tooltip content={tipFor('UV editor', 'panel.uv')}>
+              <IconButton
+                label="UV editor"
+                className="scene-header__button"
+                aria-pressed={view.uv?.open === true}
+                onClick={() => onCommand('panel.uv')}
+              >
+                <SceneGlyph name="uv-editor" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip content={tipFor('Shader editor', 'panel.shader')}>
+              <IconButton
+                label="Shader editor"
+                className="scene-header__button"
+                aria-pressed={view.shader?.open === true}
+                onClick={() => onCommand('panel.shader')}
+              >
+                <SceneGlyph name="shader-editor" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip content={tipFor('Keymap sheet', 'keymapSheet')}>
+              <IconButton label="Keymap sheet" className="scene-header__button" onClick={() => onCommand('keymapSheet')}>
+                <IconDoc />
+              </IconButton>
+            </Tooltip>
+          </div>
+        </HeaderSettings>
+      ) : (
+        <div className="scene-header__group" role="group" aria-label="Editor">
         <Tooltip content={tipFor('Command palette', 'palette')}>
           <IconButton label="Command palette" className="scene-header__button" onClick={() => onCommand('palette')}>
             <IconSearch />
@@ -938,7 +994,8 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
             <IconDoc />
           </IconButton>
         </Tooltip>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

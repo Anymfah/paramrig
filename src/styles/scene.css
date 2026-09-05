@@ -693,6 +693,31 @@
 .scene-titlebar > .scene-header { flex: 1; }
 
 /*
+ * On a desktop the viewport's header takes a row of its own, under the document's.
+ *
+ * They shared one, and the document's half — the name, the autosave badge, the File menu — is
+ * three hundred and fifty pixels that the header then does not have. Measured at 1440 with the
+ * outliner and the properties both open, that left the header five hundred and thirty-four pixels
+ * to draw a thousand of controls, and `overflow: hidden` quietly ate the rest: in edit mode ten of
+ * nineteen, including Select, Mesh, Vertex, Edge and Face — the five menus a person models from —
+ * and the command palette with them. The e2e check that counts header controls only ever ran in
+ * object mode, which is how it passed.
+ *
+ * It is also the shape Blender has: a topbar carrying the file, and under it each editor's own
+ * header running the full width of the editor. Below 64em the row scrolls sideways instead, which
+ * mobile.css already arranges and this must not disturb — hence the width query.
+ */
+@media (min-width: 64.0625em) {
+  .scene-titlebar { flex-wrap: wrap; row-gap: 0; padding-inline: 0; border-block-end: 0; }
+  .scene-titlebar > .scene-file {
+    flex: 1 0 100%;
+    padding-inline: var(--space-2);
+    border-block-end: 1px solid var(--border-hairline);
+  }
+  .scene-titlebar > .scene-header { flex: 1 0 100%; padding-inline: var(--space-2); }
+}
+
+/*
  * One row, and one column until the UV editor opens a second one. The splitter's fraction arrives
  * as a custom property from the document, so moving it is a change of state rather than a class.
  */
