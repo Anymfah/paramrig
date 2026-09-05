@@ -92,6 +92,15 @@ AI chat, or telemetry. The current UI includes intentional departures from
 [`assets/ui-mockups/`](assets/ui-mockups/); those mockups are not a pixel-perfect
 acceptance target.
 
+## Connected web projects
+
+The local Web workspace opens a running project through a development SDK. It
+supports exposed controls, DOM selection, visual markup, snapshots, approved
+feedback batches and agent responses saved in the connected project. Start the
+optional Compose `web` profile and open `/web`. See
+[`docs/web-workspace.md`](docs/web-workspace.md) for setup, the React example,
+the SDK build, source revisions and the file handoff contract.
+
 ## Initial audience
 
 The working hypothesis is creative developers, vibecoders, and technical artists who use coding agents to build complex visual systems and lose time translating perceptual feedback into precise code changes. This hypothesis has not yet been validated as the final target segment.

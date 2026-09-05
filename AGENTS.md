@@ -23,6 +23,19 @@
 - Do not commit secrets, local environment files, caches, or internal discovery
   session data.
 
+## Minimal editor UI
+
+- Use icon-only buttons with the existing custom tooltip for recognizable editor
+  commands. Do not add a permanent text label beside an icon just to explain it.
+- Give icon buttons an accessible name and tooltips on hover and keyboard focus.
+  Keep useful field labels, values, and user content visible.
+- Remove redundant instructions, decorative status copy, and repeated headings.
+  Put secondary actions in the existing menus; let the canvas take the space.
+- Active tools must be easy to leave: clicking a toggle again disables it, and
+  Escape returns to normal interaction. Clear transient overlays and gestures.
+- Verify the complete interaction in the real browser: enter the tool, use it,
+  exit it, then interact with the page again without reloading.
+
 ## Local Docker runtime
 
 - Launch persistent services only from the repository root with

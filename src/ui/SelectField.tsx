@@ -13,6 +13,7 @@ type SelectFieldProps = {
   onChange: (value: string) => void
   disabled?: boolean
   defaultValue?: string
+  presentation?: 'auto' | 'menu'
 }
 
 const SEGMENT_MAX = 4
@@ -27,12 +28,13 @@ export function SelectField({
   onChange,
   disabled,
   defaultValue,
+  presentation = 'auto',
 }: SelectFieldProps) {
   const generated = useId()
   const fieldId = id ?? generated
   const modified = defaultValue !== undefined && value !== defaultValue
   const reset = modified ? <FieldReset label={label} defaultLabel={options.find((option) => option.value === defaultValue)?.label ?? defaultValue!} onReset={() => onChange(defaultValue!)} /> : null
-  const segmented = options.length >= 2 && options.length <= SEGMENT_MAX
+  const segmented = presentation === 'auto' && options.length >= 2 && options.length <= SEGMENT_MAX
     && options.reduce((total, option) => total + option.label.length, 0) <= SEGMENT_MAX_CHARS
   if (segmented) {
     return (

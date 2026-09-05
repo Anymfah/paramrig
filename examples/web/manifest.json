@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "fieldnotes",
+  "name": "Fieldnotes",
+  "revision": "study-1",
+  "origin": "http://127.0.0.1:5174",
+  "pages": [
+    { "id": "home", "name": "Home", "path": "/examples/web/index.html" },
+    { "id": "journal", "name": "Journal", "path": "/examples/web/journal.html" }
+  ],
+  "groups": [
+    { "id": "identity", "label": "Identity" },
+    { "id": "layout", "label": "Page rhythm" },
+    { "id": "element", "label": "Selected element" }
+  ],
+  "parameters": [
+    { "kind": "color", "id": "accent", "label": "Primary color", "group": "identity", "defaultValue": "#bc593d" },
+    { "kind": "color", "id": "paper", "label": "Page color", "group": "identity", "defaultValue": "#f4f1e9" },
+    { "kind": "select", "id": "heading-font", "label": "Heading type", "group": "identity", "defaultValue": "Georgia", "options": [{ "value": "Georgia", "label": "Editorial serif" }, { "value": "Public Sans", "label": "Public Sans" }], "view": "font" },
+    { "kind": "number", "id": "content-width", "label": "Content width", "group": "layout", "min": 720, "max": 1320, "step": 8, "unit": "px", "defaultValue": 1120 },
+    { "kind": "number", "id": "hero-size", "label": "Title size", "group": "element", "min": 36, "max": 104, "step": 1, "unit": "px", "defaultValue": 76 },
+    { "kind": "number", "id": "card-radius", "label": "Corner radius", "group": "element", "min": 0, "max": 32, "step": 1, "unit": "px", "defaultValue": 4 },
+    { "kind": "text", "id": "hero-copy", "label": "Title text", "group": "element", "defaultValue": "Make room for the outside.", "maxLength": 120 }
+  ],
+  "bindings": [
+    { "paramId": "accent", "scope": "global", "kind": "css-variable", "property": "--fn-accent", "source": "examples/web/source.css" },
+    { "paramId": "paper", "scope": "global", "kind": "css-variable", "property": "--fn-paper", "source": "examples/web/source.css" },
+    { "paramId": "heading-font", "scope": "global", "kind": "adapter", "property": "headingFont", "source": "src/web/example/Demo.tsx" },
+    { "paramId": "content-width", "scope": "global", "kind": "css-variable", "property": "--fn-width", "unit": "px", "source": "examples/web/source.css" },
+    { "paramId": "hero-size", "scope": "element", "target": { "id": "hero-title" }, "kind": "style", "property": "font-size", "unit": "px", "source": "examples/web/source.css" },
+    { "paramId": "card-radius", "scope": "element", "target": { "id": "story-card" }, "kind": "style", "property": "border-radius", "unit": "px", "source": "examples/web/source.css" },
+    { "paramId": "hero-copy", "scope": "element", "target": { "id": "hero-title" }, "kind": "adapter", "property": "heroCopy", "source": "src/web/example/Demo.tsx" }
+  ]
+}

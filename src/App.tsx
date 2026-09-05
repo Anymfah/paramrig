@@ -19,6 +19,7 @@ const DocsPage = lazy(async () => ({ default: (await import('@/docs/DocsPage')).
 const ControlsPage = lazy(async () => ({ default: (await import('@/docs/ControlsPage')).ControlsPage }))
 const SceneRigsPage = lazy(async () => ({ default: (await import('@/docs/SceneRigsPage')).SceneRigsPage }))
 const VectorRigsPage = lazy(async () => ({ default: (await import('@/docs/VectorRigsPage')).VectorRigsPage }))
+const WebConnectPage = lazy(async () => ({ default: (await import('@/web/WebConnectPage')).WebConnectPage }))
 
 export function App() {
   return (
@@ -30,12 +31,13 @@ export function App() {
         * One boundary, outside `Routes` and always mounted. A boundary mounted by the route change
         * itself would show its fallback on every navigation; this one lets React hold the page that
         * is on screen until the next one has arrived, so the message below is only ever seen on a
-        * hard load of a documentation URL.
+        * hard load of a lazy route.
         */}
-      <Suspense fallback={<p className="status-msg">Opening the documentation</p>}>
+      <Suspense fallback={<p className="status-msg" role="status">Opening ParamRig</p>}>
         <Routes>
           <Route path="/" element={<LibraryPage />} />
           <Route path="/r/:rigId" element={<WorkspacePage />} />
+          <Route path="/web" element={<WebConnectPage />} />
           <Route path="/docs" element={<DocsPage />} />
           <Route path="/docs/controls" element={<ControlsPage />} />
           <Route path="/docs/vector-rigs" element={<VectorRigsPage />} />

@@ -32,5 +32,25 @@ services:
     pids_limit: 256
     stop_grace_period: 15s
 
+  web:
+    profiles: [web]
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    command: node --experimental-strip-types services/web/server.mjs
+    init: true
+    restart: "no"
+    environment:
+      PARAMRIG_PROJECT_DIR: /project
+      PARAMRIG_SEED_MANIFEST: ${PARAMRIG_SEED_MANIFEST-/workspace/examples/web/manifest.json}
+    volumes:
+      - ./:/workspace:ro
+      - ${PARAMRIG_PROJECT_DIR:-./.local/web}:/project
+    expose:
+      - "5175"
+    cpus: 0.5
+    mem_limit: 256m
+    pids_limit: 64
+
 volumes:
   app-node-modules:

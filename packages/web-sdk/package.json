@@ -1,0 +1,9 @@
+{
+  "name": "@paramrig/web",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Development integration for the ParamRig connected web workspace",
+  "exports": { ".": { "types": "./dist/web/sdk.d.ts", "import": "./dist/paramrig-web.js" } },
+  "files": ["dist"]
+}

@@ -16,8 +16,10 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5174,
     strictPort: true,
+    proxy: { '/api/web': { target: process.env.PARAMRIG_WEB_SERVICE ?? 'http://web:5175', changeOrigin: false } },
   },
   test: {
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',

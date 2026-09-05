@@ -22,3 +22,7 @@ workproduct/lean-mvp/
 
 # Playwright CLI session artifacts
 .playwright-cli/
+
+# Local web feedback, captures and browser QA
+.local/
+e2e/output/web-*/

@@ -24,11 +24,12 @@ import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, write
  */
 const VectorEditorPage = lazy(async () => ({ default: (await import('@/vector/VectorEditorPage')).VectorEditorPage }))
 const SceneEditorPage = lazy(() => import('@/scene/SceneEditorPage').then((mod) => ({ default: mod.SceneEditorPage })))
+const WebWorkspace = lazy(() => import('@/web/WebWorkspace').then(mod => ({ default: mod.WebWorkspace })))
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
   const manifest = getRig(rigId)
-  const { session, snapshot } = useSession(manifest?.id)
+  const { session, snapshot } = useSession(manifest?.renderer === 'web' ? undefined : manifest?.id)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   // A scene remembers Edit or Tune in its own store, a vector document in the inspector's.
   const isScene = manifest?.renderer === 'scene'
@@ -85,6 +86,8 @@ export function WorkspacePage() {
   if (!manifest) {
     return <UnknownRig />
   }
+
+  if (manifest.renderer === 'web') return <Suspense fallback={<p className="status-msg">Opening the web workspace</p>}><WebWorkspace rigId={manifest.id} /></Suspense>
 
   // A drawing opens in the editor; a document that exposes controls opens the way it was left.
   if (manifest.renderer === 'vector' && (mode === 'edit' || manifest.parameters.length === 0)) {

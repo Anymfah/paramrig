@@ -18,6 +18,8 @@ type WorkspaceShellProps = {
   onMobilePanel?: (panel: 'nav' | 'main' | 'inspector') => void
   mainLabel?: string
   navLabel?: string
+  hideInspector?: boolean
+  hideNavigation?: boolean
   renderNavigation?: (options: { compact: boolean; inert: boolean; onNavigate: () => void }) => ReactNode
 }
 
@@ -32,17 +34,19 @@ export function WorkspaceShell({
   onMobilePanel,
   mainLabel = 'Preview',
   navLabel = 'Library',
+  hideInspector = false,
+  hideNavigation = false,
   renderNavigation,
 }: WorkspaceShellProps) {
   const { prefs } = useWorkspace()
   const view = useViewport()
   const compact = isNavCompact(prefs, view.width)
-  const navW = navColumnWidth(prefs, view.width)
+  const navW = hideNavigation ? 0 : navColumnWidth(prefs, view.width)
   const inspectorMax = Math.min(
     INSPECTOR_WIDTH_MAX,
     Math.max(INSPECTOR_WIDTH_MIN, view.width - navW - CANVAS_MIN_WIDTH),
   )
-  const inspectorW = prefs.inspectorCollapsed ? 0 : Math.min(prefs.inspectorWidth, inspectorMax)
+  const inspectorW = prefs.inspectorCollapsed || hideInspector ? 0 : Math.min(prefs.inspectorWidth, inspectorMax)
   const timelineH = showTimeline
     ? prefs.timelineCollapsed
       ? 36
@@ -53,8 +57,8 @@ export function WorkspaceShell({
     <div
       className="shell"
       data-header="off"
-      data-nav={prefs.navCollapsed ? 'collapsed' : compact ? 'compact' : 'open'}
-      data-inspector={prefs.inspectorCollapsed ? 'collapsed' : 'open'}
+      data-nav={hideNavigation ? 'hidden' : prefs.navCollapsed ? 'collapsed' : compact ? 'compact' : 'open'}
+      data-inspector={prefs.inspectorCollapsed || hideInspector ? 'collapsed' : 'open'}
       data-timeline={showTimeline ? 'on' : 'off'}
       data-mobile-panel={mobilePanel}
       style={{
@@ -63,7 +67,7 @@ export function WorkspaceShell({
         '--timeline-height': `${timelineH}px`,
       } as CSSProperties}
     >
-      {renderNavigation ? renderNavigation({
+      {hideNavigation ? null : renderNavigation ? renderNavigation({
         compact,
         inert: view.width < 1024 && mobilePanel !== 'nav',
         onNavigate: () => onMobilePanel?.('main'),
@@ -74,18 +78,18 @@ export function WorkspaceShell({
       <div className="inspector-slot" inert={view.width < 1024 && mobilePanel !== 'inspector'}>{inspector}</div>
       <div className="timeline-slot" inert={view.width < 1024 && mobilePanel !== 'main'}>{showTimeline ? timeline : null}</div>
       <div className="mobile-dock">
-        <button type="button" aria-pressed={mobilePanel === 'nav'} onClick={() => onMobilePanel?.('nav')}>
+        {!hideNavigation ? <button type="button" aria-pressed={mobilePanel === 'nav'} onClick={() => onMobilePanel?.('nav')}>
           {navLabel}
-        </button>
+        </button> : null}
         <button type="button" aria-pressed={mobilePanel === 'main'} onClick={() => onMobilePanel?.('main')}>
           {mainLabel}
         </button>
-        <button type="button" aria-pressed={mobilePanel === 'inspector'} onClick={() => onMobilePanel?.('inspector')}>
+        {!hideInspector ? <button type="button" aria-pressed={mobilePanel === 'inspector'} onClick={() => onMobilePanel?.('inspector')}>
           Inspector
-        </button>
+        </button> : null}
       </div>
-      <ShellNavResize />
-      {prefs.inspectorCollapsed ? (
+      {hideNavigation ? null : <ShellNavResize />}
+      {hideInspector ? null : prefs.inspectorCollapsed ? (
         <EdgeReveal label="Show inspector" side="end" onClick={() => updatePrefs({ inspectorCollapsed: false })} />
       ) : (
         <ResizeCol

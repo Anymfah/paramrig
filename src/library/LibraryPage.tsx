@@ -144,6 +144,7 @@ export function LibraryPage() {
         <div className="library-titlebar">
           <h1>Your rigs</h1>
           <div className="library-titlebar__actions">
+            <Link className="btn btn--ghost" to="/web">Web</Link>
             <Tooltip content="New scene">
               <button
                 type="button"

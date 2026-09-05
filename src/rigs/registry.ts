@@ -6,6 +6,7 @@ import { typeSpecimenManifest } from '@/rigs/examples/type-specimen'
 import type { RigManifest } from '@/rigs/types'
 import { getSceneDocument, listSceneDocuments, sceneManifest } from '@/scene/document'
 import { getVectorDocument, listVectorDocuments, vectorManifest } from '@/vector/document'
+import { listWebProjects, webManifest } from '@/web/projects'
 
 export type LibraryFixture = 'ok' | 'empty' | 'error' | 'loading' | 'long'
 
@@ -40,6 +41,7 @@ export function listExampleRigs(): RigManifest[] {
 
 export function listRigs(): RigManifest[] {
   return [
+    ...listWebProjects().map(webManifest),
     ...listSceneDocuments().map(sceneManifest),
     ...listVectorDocuments().map(vectorManifest),
     ...EXAMPLES,
@@ -48,6 +50,8 @@ export function listRigs(): RigManifest[] {
 
 export function getRig(id: string): RigManifest | undefined {
   if (id === 'long-name-study') return longNameStudy()
+  const web = listWebProjects().map(webManifest).find(p => p.id === id)
+  if (web) return web
   const scene = getSceneDocument(id)
   if (scene) return sceneManifest(scene)
   const vector = getVectorDocument(id)
