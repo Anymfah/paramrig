@@ -8,7 +8,7 @@ import { run } from './lib.mjs'
  * So the script measures that the preview follows the pointer, that it costs what it should, and
  * that the click after it cuts where the lines were.
  */
-export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
+export default run('scene-cut', async ({ page, check, log, helpers, shot, witness }) => {
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
   const box = await helpers.viewportBox()
@@ -165,8 +165,8 @@ export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
     return { mean: samples.reduce((total, value) => total + value, 0) / samples.length, p95: samples[Math.floor(samples.length * 0.95)] }
   })
   log(`MEASURE hover over ${heavy.faces} faces: ${hover.mean.toFixed(2)} ms mean, ${hover.p95.toFixed(2)} ms p95`)
-  check('the hover pick stays under four milliseconds on ten thousand faces', hover.mean < 4,
-    `${hover.mean.toFixed(2)} ms`)
+  check('the hover pick stays under four milliseconds on ten thousand faces', hover.mean < witness.ms(4),
+    `${hover.mean.toFixed(2)} ms against ${witness.against(4)}`)
 
   // And the whole preview path, which is the number the prompt asks for: the pick, the ring walk,
   // the projection and the drawing, measured as the pointer really drives them.
@@ -194,8 +194,8 @@ export default run('scene-cut', async ({ page, check, log, helpers, shot }) => {
     return { mean: samples.reduce((total, value) => total + value, 0) / samples.length, p95: samples[Math.floor(samples.length * 0.95)] }
   })
   log(`MEASURE loop cut preview over ${heavy.faces} faces: ${preview.mean.toFixed(2)} ms mean, ${preview.p95.toFixed(2)} ms p95`)
-  check('and the preview follows the pointer in under four milliseconds', preview.mean < 4,
-    `${preview.mean.toFixed(2)} ms mean, ${preview.p95.toFixed(2)} ms p95`)
+  check('and the preview follows the pointer in under four milliseconds', preview.mean < witness.ms(4),
+    `${preview.mean.toFixed(2)} ms mean, ${preview.p95.toFixed(2)} ms p95, against ${witness.against(4)}`)
   await page.keyboard.press('Escape')
   await page.waitForTimeout(250)
   check('Escape leaves the grid uncut', (await counts()).faces === heavy.faces, JSON.stringify(await counts()))

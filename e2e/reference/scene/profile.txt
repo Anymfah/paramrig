@@ -1,12 +1,12 @@
 An orbit over a hundred thousand triangles
-  80.9%  (idle) · native
-  4.6%  exports.jsxDEV · react_jsx-dev-runtime.js?v=7f53f9fe:239
-  2.7%  (program) · native
+  81.0%  (idle) · native
+  4.7%  exports.jsxDEV · react_jsx-dev-runtime.js?v=7f53f9fe:239
+  2.5%  (program) · native
   2.1%  saveSceneDocument · document.ts:908
-  1.2%  writeStore · storage.ts:27
+  1.1%  writeStore · storage.ts:27
 Moving every vertex of a heavy mesh
-  24.7%  (idle) · native
-  9.0%  ReactElement · react_jsx-dev-runtime.js?v=7f53f9fe:127
-  7.5%  (program) · native
-  7.3%  objectBounds · objects.ts:61
-  3.4%  exports.jsxDEV · react_jsx-dev-runtime.js?v=7f53f9fe:239
+  33.1%  (idle) · native
+  8.2%  ReactElement · react_jsx-dev-runtime.js?v=7f53f9fe:127
+  7.5%  objectBounds · objects.ts:61
+  6.8%  (program) · native
+  3.5%  exports.jsxDEV · react_jsx-dev-runtime.js?v=7f53f9fe:239

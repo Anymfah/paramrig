@@ -8,7 +8,7 @@ import { run } from './lib.mjs'
  * `Input.dispatchTouchEvent`. `page.touchscreen` is not available here — Playwright gates it on a
  * context created with `hasTouch`, and the harness attaches to a browser that already exists.
  */
-export default run('scene-mobile', async ({ page, check, log, helpers, shot }) => {
+export default run('scene-mobile', async ({ page, check, log, helpers, shot, witness }) => {
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
 
@@ -560,8 +560,11 @@ export default run('scene-mobile', async ({ page, check, log, helpers, shot }) =
   const mean = frames.reduce((total, value) => total + value, 0) / Math.max(1, frames.length)
   const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0
   log(`MEASURE at 375 × 812, one finger orbiting: ${frames.length} frames, ${mean.toFixed(2)} ms mean, ${p95.toFixed(2)} ms p95`)
-  check('a finger turning the view on a phone holds a 16 ms mean frame', mean <= 16, `${mean.toFixed(2)} ms`)
-  check('and a 33 ms p95', p95 <= 33, `${p95.toFixed(2)} ms`)
+  // Work inside the frame, not the interval between frames, so it reads against the CPU witness —
+  // with the caveat that the touch moves above are paced by the harness's own waitForTimeout.
+  check('a finger turning the view on a phone holds a 16 ms mean frame',
+    mean <= witness.ms(16), `${mean.toFixed(2)} ms against ${witness.against(16)}`)
+  check('and a 33 ms p95', p95 <= witness.ms(33), `${p95.toFixed(2)} ms against ${witness.against(33)}`)
   await shot('scene-mobile-375.png')
   await page.setViewportSize({ width: 320, height: 720 })
   await page.waitForTimeout(400)

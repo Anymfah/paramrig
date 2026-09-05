@@ -1,14 +1,34 @@
 import { run } from './lib.mjs'
 
+/*
+ * What the journey to the first frame costs in modules, and the ceiling in milliseconds.
+ *
+ * The module count is the guard that means something. Profiled, the second before the first frame
+ * is 260 ms of fetching and compiling modules and 350 ms of mounting React, building the WebGL
+ * context and drawing — and the figure the stopwatch reports on top of that is mostly the harness:
+ * a networkidle wait of half a second and a click's actionability checks. So the count is what
+ * regresses when an import is added, and the count is what a deferred import moves.
+ *
+ * The millisecond ceiling stays, well above the measured figure and scaled by the witness, because
+ * something catastrophic — a synchronous fetch, a shader compiled per material — would show there
+ * and nowhere else. It is a smoke alarm, not a budget.
+ */
+const MODULE_BUDGET = 360
+const FIRST_FRAME_CEILING = 2500
+
 /** Chantier 3: the viewport draws, reads back, survives a lost context, and idles. */
-export default run('scene-viewport', async ({ page, check, log, helpers, shot }) => {
+export default run('scene-viewport', async ({ page, check, log, helpers, shot, witness }) => {
   const started = Date.now()
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
   await page.waitForFunction(() => window.__paramrigScene.frames() > 0, null, { timeout: 15000 })
   const firstFrame = await page.evaluate(() => window.__paramrigScene.firstFrame())
-  log(`MEASURE first frame after ${Date.now() - started} ms of script time, ${Math.round(firstFrame)} ms after load`)
-  check('the first frame arrives under 1.5 s', firstFrame < 1500, `${Math.round(firstFrame)} ms`)
+  const modules = helpers.moduleCount()
+  log(`MEASURE first frame after ${Date.now() - started} ms of script time, ${Math.round(firstFrame)} ms after load, over ${modules} modules`)
+  check('the library and the scene editor together need no more modules than they did',
+    modules !== null && modules <= MODULE_BUDGET, `${modules} modules against ${MODULE_BUDGET}`)
+  check('and nothing pathological stands between the load and the first frame',
+    firstFrame < witness.ms(FIRST_FRAME_CEILING), `${Math.round(firstFrame)} ms against ${witness.against(FIRST_FRAME_CEILING)}`)
 
   const stats = await page.evaluate(() => window.__paramrigScene.stats())
   check('the scene holds one mesh of eight vertices, twelve edges and six faces',

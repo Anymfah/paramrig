@@ -152,7 +152,7 @@ const heights = (mesh) => {
   return { top, bottom, moved, vertices: mesh.vertices.length / 3 }
 }
 
-export default run('scene-sculpt', async ({ page, check, log, helpers, shot }) => {
+export default run('scene-sculpt', async ({ page, check, log, helpers, shot, witness }) => {
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 15000 })
   await page.evaluate(() => { window.__sculptSide = 64; window.__sculptId = 'slab' })
@@ -428,13 +428,23 @@ export default run('scene-sculpt', async ({ page, check, log, helpers, shot }) =
    */
   log(`MEASURE undo of a stroke on ${heavyCount.toLocaleString()} vertices: ${undoTook.toFixed(1)} ms, against the 50 ms the plan asks for`)
   /*
-   * The threshold is a quarter of a second and the measurement is about a tenth: a whole campaign
-   * of browsers on one machine stretches every number here by half again, and a check that fails on
-   * a loaded machine teaches people to ignore it. The figure to read is the MEASURE line above.
+   * The machine's share is the witness's now. What is left is a debt, named rather than buried in a
+   * threshold that looks like a budget: undoing a stroke costs what it costs because the history is
+   * a list of whole documents, and the paragraph above says what fixing it would take. Five times
+   * the plan's fifty milliseconds is what the code does today; bring the factor back to 1 when a
+   * delta-shaped history lands.
    */
-  check('and an undo of it comes back in a fraction of a second', undoTook < 250, `${undoTook.toFixed(1)} ms`)
+  const UNDO_DEBT = 5
+  check('an undo of a stroke has not slipped further', undoTook < witness.ms(50) * UNDO_DEBT,
+    `${undoTook.toFixed(1)} ms against ${witness.against(50)} x ${UNDO_DEBT} of recorded debt`)
+  /*
+   * The prompt asks for sixteen and the code does about seventeen, so the check carried a twenty.
+   * Same treatment: the four milliseconds are a debt with a number on them, not a budget.
+   */
+  const STROKE_DEBT = 1.25
   check('a stroke on fifty thousand vertices keeps the frames coming',
-    timings.mean < 20 && timings.p95 < 33, `${timings.mean.toFixed(2)} ms a frame, ${timings.p95.toFixed(2)} ms at the 95th`)
+    timings.mean < witness.ms(16) * STROKE_DEBT && timings.p95 < witness.ms(33),
+    `${timings.mean.toFixed(2)} ms a frame against ${witness.against(16)} x ${STROKE_DEBT}, ${timings.p95.toFixed(2)} ms at the 95th against ${witness.against(33)}`)
   await page.waitForTimeout(600)
   await shot('scene-sculpt-heavy-1440.png')
 })

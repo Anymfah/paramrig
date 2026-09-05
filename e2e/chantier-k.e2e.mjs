@@ -64,7 +64,16 @@ export default run('chantier-k', async ({ page, check, log, helpers }) => {
   })
   await page.mouse.move(grip.x, grip.y)
   await page.mouse.down()
-  await page.mouse.move(grip.x - 160, grip.y - 240, { steps: 8 })
+  /*
+   * Far enough to be certain of the clamp, rather than exactly far enough.
+   *
+   * The room the bar has sideways is half the canvas less its own half-width less the margin, which
+   * on this layout is about 170 pixels — and this drag used to ask for 160, so it stopped ten short
+   * of the edge and the check below failed on a bar that was behaving perfectly. Anything past the
+   * room lands in the same place, and the grip takes pointer capture, so a pointer that leaves the
+   * canvas still drives it.
+   */
+  await page.mouse.move(grip.x - 600, grip.y - 240, { steps: 8 })
   await page.mouse.up()
   await page.waitForTimeout(300)
   const parked = await page.evaluate(() => {

@@ -53,7 +53,7 @@ function summarise(samples) {
   }
 }
 
-export default run('scene-edit-budget', async ({ page, check, log, helpers }) => {
+export default run('scene-edit-budget', async ({ page, check, log, helpers, witness }) => {
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene, null, { timeout: 20000 })
   const box = await helpers.viewportBox()
@@ -107,8 +107,8 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
   })()
   log(`MEASURE Tab on ${counts.vertices.toLocaleString()} vertices: ${openedAt.toFixed(0)} ms`)
   check('the mesh is open for editing', counts.mode === 'edit', counts.mode)
-  check('Tab on twenty thousand vertices is under three hundred milliseconds', openedAt < 300,
-    `${openedAt.toFixed(0)} ms for ${counts.vertices.toLocaleString()} vertices`)
+  check('Tab on twenty thousand vertices is under three hundred milliseconds', openedAt < witness.ms(300),
+    `${openedAt.toFixed(0)} ms for ${counts.vertices.toLocaleString()} vertices, against ${witness.against(300)}`)
 
   /* --------------------------------------------------------- the box selection */
 
@@ -148,12 +148,15 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
   /*
    * The prompt's budget is fifty milliseconds and this sits on the line — between forty-five and
    * sixty across runs, most of it the five megabytes the id buffer has to hand back from the
-   * graphics card. The measurement above says what it really cost; the check guards the order of
-   * magnitude rather than pretending a number this close is met every time.
+   * graphics card. The check used to carry a bare 75 for a budget of 50, and that 75 was doing two
+   * jobs at once: absorbing the machine, and absorbing the fact that this budget has never actually
+   * been met. The witness does the first now. The second is a debt with a number on it — 51 and 52
+   * ms on a quiet machine, against 50 — small, real, and not to be hidden again.
    */
+  const BOX_DEBT = 1.2
   log(`  budget 50 ms — ${partial < 50 ? 'met' : `over by ${(partial - 50).toFixed(0)} ms`}`)
-  check('a box selection of ten thousand elements stays in the order of its budget', partial < 75,
-    `${partial.toFixed(0)} ms against a budget of 50`)
+  check('a box selection of ten thousand elements has not slipped further', partial < witness.ms(50) * BOX_DEBT,
+    `${partial.toFixed(0)} ms against ${witness.against(50)} x ${BOX_DEBT} of recorded debt`)
 
   await page.locator('#main').focus()
   await page.keyboard.down('Alt')
@@ -213,7 +216,8 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
   log(`MEASURE G over 200 pointer moves on ${counts.vertices.toLocaleString()} vertices:`
     + ` ${moving.mean.toFixed(2)} ms mean, ${moving.p95.toFixed(2)} ms p95`)
   check('a move stays inside sixteen milliseconds a move, and thirty-three at the worst',
-    moving.mean < 16 && moving.p95 < 33, `${moving.mean.toFixed(2)} ms mean, ${moving.p95.toFixed(2)} ms p95`)
+    moving.mean < witness.ms(16) && moving.p95 < witness.ms(33),
+    `${moving.mean.toFixed(2)} ms mean, ${moving.p95.toFixed(2)} ms p95, against ${witness.against(16)} and ${witness.against(33)}`)
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
 
@@ -267,14 +271,20 @@ export default run('scene-edit-budget', async ({ page, check, log, helpers }) =>
    * megabytes of buffers that opening two hundred thousand edges has to write and hand to the
    * graphics card.
    *
-   * The number moves with the machine rather than with the code: on an idle Mac it measures around
-   * 270, and on the same Mac with three other development stacks running it measures 450 — a run
-   * with the UV buffer taken out entirely measured no faster than one with it in. So the check
-   * guards the order of magnitude, and the line above says what it actually cost, every time.
+   * Part of the number is the machine, and the witness now carries that part. The rest is a debt
+   * the bilan of prompt 5 records and this check must not hide: opening a mesh this size measured
+   * 358 ms at prompt 4 and 372 to 405 at prompt 5, against a budget of 300, and taking the colour
+   * attribute out again made no difference — the cost is spread, and it wants a profile rather than
+   * an intuition. So the allowance is named, dated and printed, instead of living inside a 600 that
+   * looks like a budget and is not one. It is today's measurement — 456 and 463 ms on a quiet
+   * machine, which is itself a slip on the 372 to 405 the bilan recorded — plus room for the noise.
+   * When the debt is paid it is the debt that comes down, never the room.
    */
+  const TAB_DEBT = 1.75
   log(`  budget 300 ms — ${heavyOpen < 300 ? 'met' : `over by ${(heavyOpen - 300).toFixed(0)} ms`}`)
-  check('Tab on a hundred thousand vertices stays in the order of its budget',
-    vertices > 90000 && heavyOpen < 600, `${heavyOpen.toFixed(0)} ms for ${vertices.toLocaleString()} vertices`)
+  check('Tab on a hundred thousand vertices has not slipped further',
+    vertices > 90000 && heavyOpen < witness.ms(300) * TAB_DEBT,
+    `${heavyOpen.toFixed(0)} ms for ${vertices.toLocaleString()} vertices, against ${witness.against(300)} x ${TAB_DEBT} of recorded debt`)
 
   const errors = await page.evaluate(() => window.__paramrigErrors ?? [])
   check('no console errors of our own', errors.length === 0, errors.join(' | '))

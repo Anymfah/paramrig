@@ -14,7 +14,7 @@ const materialOf = async (helpers) => {
   return document.materials[0]
 }
 
-export default run('scene-shader', async ({ page, check, log, helpers, shot }) => {
+export default run('scene-shader', async ({ page, check, log, helpers, shot, witness }) => {
   await helpers.newScene()
   await page.waitForFunction(() => !!window.__paramrigScene && window.__paramrigScene.frames() > 0, null, { timeout: 20000 })
   const box = await helpers.viewportBox()
@@ -193,6 +193,11 @@ export default run('scene-shader', async ({ page, check, log, helpers, shot }) =
    * What a frame costs when nothing is happening, so the pan's number can be read against it rather
    * than against a hope. A browser sharing a machine with four development stacks does not hand out
    * sixteen-millisecond frames for free.
+   *
+   * This one stays measured here rather than taken from `witness` in e2e/witness.mjs. The claim is
+   * that panning costs no more than this very page costs standing still, so the denominator has to
+   * be this page with its five hundred nodes on it — a witness read on about:blank would be
+   * answering a different question.
    */
   const idle = await page.evaluate(async () => {
     const frames = []
@@ -303,5 +308,6 @@ export default run('scene-shader', async ({ page, check, log, helpers, shot }) =
   })
   log(`MEASURE a forty-node graph compiled: ${compile.cold.toFixed(1)} ms cold, ${compile.warm.toFixed(2)} ms from the cache, ${compile.nodes} nodes reached`)
   check('a forty-node graph compiles in a fraction of a frame, and every node of it is reached',
-    compile.cold < 50 && compile.nodes >= 40, `${compile.cold.toFixed(1)} ms for ${compile.nodes} nodes`)
+    compile.cold < witness.ms(50) && compile.nodes >= 40,
+    `${compile.cold.toFixed(1)} ms for ${compile.nodes} nodes, against ${witness.against(50)}`)
 })

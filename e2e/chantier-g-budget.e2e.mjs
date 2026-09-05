@@ -1,7 +1,7 @@
 import { run } from './lib.mjs'
 
 /** How long a 1024×1024 silhouette takes, and whether the page keeps painting while it does. */
-export default run('chantier-g-budget', async ({ page, check, helpers }) => {
+export default run('chantier-g-budget', async ({ page, check, helpers, witness }) => {
   await helpers.newDocument()
   const png = await page.evaluate(() => {
     const size = 1024
@@ -55,7 +55,10 @@ export default run('chantier-g-budget', async ({ page, check, helpers }) => {
   const elapsed = Date.now() - started
   const frames = await page.evaluate(() => { cancelAnimationFrame(window.__raf); return window.__frames })
   const paths = (await helpers.doc()).elements.filter((element) => element.kind === 'path').length
-  check(`a 1024×1024 silhouette traces in ${elapsed}ms`, elapsed < 1000, `${paths} paths, budget 1000ms`)
+  // Measured from Node, so it carries a CDP round trip and a poll on top of the tracing itself;
+  // the witness covers the tracing, which is the part that is this project's to keep fast.
+  check(`a 1024×1024 silhouette traces in ${elapsed}ms`, elapsed < witness.ms(1000),
+    `${paths} paths, against ${witness.against(1000)}`)
   /*
    * What this asks is whether the page froze, not how fast the host is. Twenty-five frames a
    * second was a benchmark in disguise: on a loaded machine the same unblocked page manages

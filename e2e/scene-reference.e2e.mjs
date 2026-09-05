@@ -104,7 +104,7 @@ const percentile = (values, fraction) => {
 
 const megabytes = (bytes) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 
-export default run('scene-reference', async ({ page, check, log, helpers }) => {
+export default run('scene-reference', async ({ page, check, log, helpers, witness }) => {
   mkdirSync(DIR, { recursive: true })
   const shot = (file) => page.screenshot({ path: join(DIR, file) })
 
@@ -186,9 +186,14 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   await useTheme('dark')
 
   const firstFrame = await page.evaluate(() => window.__paramrigScene.firstFrame())
+  const modules = helpers.moduleCount()
   record('time to the first frame', firstFrame === null ? 'not reported' : `${firstFrame.toFixed(0)} ms`)
-  check('the first frame is drawn inside the 1.5 s budget', firstFrame !== null && firstFrame < 1500,
-    firstFrame === null ? 'the viewport never marked a first frame' : `${firstFrame.toFixed(0)} ms`)
+  record('modules fetched before the first frame', modules === null ? 'not counted' : String(modules))
+  check('the viewport marks a first frame at all', firstFrame !== null,
+    firstFrame === null ? 'the viewport never marked one' : `${firstFrame.toFixed(0)} ms`)
+  // Why a count and not the stopwatch: scene-viewport.e2e.mjs, above its own two.
+  check('the journey to it needs no more modules than it did', modules !== null && modules <= 360,
+    `${modules} modules against 360`)
 
   const wide = await headerControls()
   record('header controls at 1440', wide.controls)
@@ -245,7 +250,7 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   record('hover pick mean over 100 picks', `${pickMean.toFixed(2)} ms`)
   record('hover pick p95 over 100 picks', `${percentile(picks.durations, 0.95).toFixed(2)} ms`)
   record('hover picks that landed on the cube', `${picks.hits}/${PICK_SAMPLES}`)
-  check('a hover pick stays under the 4 ms budget', pickMean < 4, `${pickMean.toFixed(2)} ms mean`)
+  check('a hover pick stays under the 4 ms budget', pickMean < witness.ms(4), `${pickMean.toFixed(2)} ms mean against ${witness.against(4)}`)
   check('and every pick landed on something', picks.hits === PICK_SAMPLES, `${picks.hits}/${PICK_SAMPLES}`)
 
   /* ------------------------------------------------------------ the themes */
@@ -413,22 +418,41 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   record('orbit frames drawn over 200 moves', orbit.work.length)
   record('orbit frame time mean', `${workMean.toFixed(2)} ms`)
   record('orbit frame time p95', `${workP95.toFixed(2)} ms`)
-  check('an orbit over a hundred thousand triangles holds a 16 ms mean frame', workMean <= 16, `${workMean.toFixed(2)} ms`)
-  check('and a 33 ms p95 frame', workP95 <= 33, `${workP95.toFixed(2)} ms`)
+  check('an orbit over a hundred thousand triangles holds a 16 ms mean frame',
+    workMean <= witness.ms(16), `${workMean.toFixed(2)} ms against ${witness.against(16)}`)
+  check('and a 33 ms p95 frame', workP95 <= witness.ms(33), `${workP95.toFixed(2)} ms against ${witness.against(33)}`)
 
   const cadenceMean = mean(orbit.intervals)
   record('orbit frame interval mean', `${cadenceMean.toFixed(2)} ms`)
   record('orbit frame interval p95', `${percentile(orbit.intervals, 0.95).toFixed(2)} ms`)
-  check('and the frames keep coming at the display’s own rate', cadenceMean <= 33, `${cadenceMean.toFixed(2)} ms`)
+  check('and the frames keep coming at the display’s own rate',
+    cadenceMean <= witness.frames(33), `${cadenceMean.toFixed(2)} ms against ${(witness.frames(33)).toFixed(0)} ms`)
 
   const moveMean = mean(moveTimes)
   const moveP95 = percentile(moveTimes, 0.95)
   record('orbit move-to-move mean over 200 moves', `${moveMean.toFixed(2)} ms`)
   record('orbit move-to-move p95 over 200 moves', `${moveP95.toFixed(2)} ms`)
-  // The noisiest of the three, and the only one measured from outside: a busy host shows up here
-  // first. A failure worth acting on is one the frame time above agrees with.
-  check('the whole gesture, round trip included, holds the 16 ms mean', moveMean <= 16, `${moveMean.toFixed(2)} ms`)
-  check('and its 33 ms p95', moveP95 <= 33, `${moveP95.toFixed(2)} ms`)
+  /*
+   * The noisiest of the three, and the only one measured from outside: every sample carries a CDP
+   * round trip from the container to the browser on the host. Neither witness sees that — one is
+   * clamped to the display and the other runs inside the renderer — so the round trip is measured
+   * here and added to the budget rather than pretended away. A failure worth acting on is still one
+   * the frame time above agrees with.
+   */
+  const roundTrip = await (async () => {
+    const samples = []
+    for (let index = 0; index < 20; index += 1) {
+      const started = Date.now()
+      await page.evaluate(() => 1)
+      samples.push(Date.now() - started)
+    }
+    return mean(samples)
+  })()
+  record('CDP round trip over 20 calls', `${roundTrip.toFixed(2)} ms`)
+  check('the whole gesture, round trip included, holds the 16 ms mean',
+    moveMean <= roundTrip + witness.ms(16), `${moveMean.toFixed(2)} ms against ${roundTrip.toFixed(1)} ms of round trip plus ${witness.against(16)}`)
+  check('and its 33 ms p95',
+    moveP95 <= roundTrip + witness.ms(33), `${moveP95.toFixed(2)} ms against ${roundTrip.toFixed(1)} ms of round trip plus ${witness.against(33)}`)
 
   /* ------------------------------------------- the same orbit in every shading */
 
@@ -488,11 +512,11 @@ export default run('scene-reference', async ({ page, check, log, helpers }) => {
   }
   const worst = Object.entries(shadingWork).sort((a, b) => b[1].mean - a[1].mean)[0]
   check('every shading holds the 16 ms mean frame over a hundred thousand triangles',
-    Object.values(shadingWork).every((entry) => entry.mean <= 16),
-    `worst is ${worst[0]} at ${worst[1].mean.toFixed(2)} ms`)
+    Object.values(shadingWork).every((entry) => entry.mean <= witness.ms(16)),
+    `worst is ${worst[0]} at ${worst[1].mean.toFixed(2)} ms against ${witness.against(16)}`)
   check('and the 33 ms p95',
-    Object.values(shadingWork).every((entry) => entry.p95 <= 33),
-    Object.entries(shadingWork).map(([name, entry]) => `${name} ${entry.p95.toFixed(1)}`).join(', '))
+    Object.values(shadingWork).every((entry) => entry.p95 <= witness.ms(33)),
+    `${Object.entries(shadingWork).map(([name, entry]) => `${name} ${entry.p95.toFixed(1)}`).join(', ')} against ${witness.against(33)}`)
 
   /* ---------------------------------------------------------------- a profile */
 

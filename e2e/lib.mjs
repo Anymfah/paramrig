@@ -3,6 +3,7 @@ import { get as httpGet } from 'node:http'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readWitness } from './witness.mjs'
 
 /**
  * Shared harness for the browser QA.
@@ -45,6 +46,9 @@ export async function run(name, body) {
   let page = context.pages()[0] ?? await context.newPage()
   page.removeAllListeners('console')
   page.removeAllListeners('pageerror')
+  // The page outlives a script, so a listener left behind would count a later script's modules on
+  // top of this one's. Stripped for the same reason the two above are.
+  page.removeAllListeners('request')
   const errors = []
   page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()) })
   page.on('pageerror', (error) => errors.push(String(error)))
@@ -90,7 +94,16 @@ export async function run(name, body) {
     // The window is shared, and a resize is not instant: a script that starts measuring before the
     // page has taken the new width measures the last script's window.
     await page.waitForFunction(() => window.innerWidth === 1440, null, { timeout: 5000 }).catch(() => undefined)
-    await body({ page, check, log, errors, shot, helpers: pageHelpers(page) })
+    /*
+     * The machine, measured before the application is on screen. A page left behind by the script
+     * before this one would make the witness move with the very thing it is there to hold still, so
+     * the blank page is insisted on rather than assumed: the goto in `finally` swallows its own
+     * failure, and the first script of a run starts on whatever the browser was showing.
+     */
+    await page.goto('about:blank').catch(() => undefined)
+    const witness = await readWitness(page)
+    log(witness.line())
+    await body({ page, check, log, errors, shot, witness, helpers: pageHelpers(page) })
     check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '))
   } catch (error) {
     results.failed += 1
@@ -159,6 +172,22 @@ export async function headerControl(page, selector) {
 }
 
 export function pageHelpers(page) {
+  /*
+   * How many of the application's own modules the browser fetches before the first frame is drawn.
+   *
+   * This is the honest regression guard for the time to that frame. The stopwatch cannot be one:
+   * measured through `newScene`, it starts at a reload and runs through Playwright's own five
+   * hundred millisecond networkidle wait and a click's actionability checks, so more than half of
+   * what it reports is the harness idling on purpose, and the rest is the dev server transforming
+   * on demand across a Docker loopback. None of that is the application, and none of it moves when
+   * the application gets lighter. A module count does: it is a property of the import graph, it is
+   * the same number on a busy machine as on a quiet one, and it is exactly what a deferred import
+   * changes. The milliseconds are still printed, because a person should see them.
+   */
+  let modules = 0
+  page.on('request', (request) => { if (request.url().includes('/src/')) modules += 1 })
+  let firstFrameModules = null
+
   /** Document coordinates to client coordinates, through the canvas transform. */
   const toClient = (point) => page.evaluate(({ x, y }) => {
     const m = document.querySelector('.vector-world').getScreenCTM()
@@ -315,11 +344,24 @@ export function pageHelpers(page) {
       localStorage.removeItem('paramrig.scene-prefs.v1')
       localStorage.removeItem('paramrig.scene-inspector.v1')
     })
+    modules = 0
     await page.reload({ waitUntil: 'networkidle' })
     await page.click('[aria-label="New scene"]')
     await page.waitForSelector('.scene-stage')
+    // Stop counting where the measurement stops: the viewport marks its first frame, and the panels
+    // that load after it are not what the budget is about.
+    await page.waitForFunction(() => window.__paramrigScene?.firstFrame() !== null, null, { timeout: 20000 })
+      .catch(() => undefined)
+    firstFrameModules = modules
     await page.locator('#main').focus()
   }
+
+  /**
+   * The modules the last `newScene` fetched before its first frame, or null if none has run. Both
+   * halves of the journey are in it — the library page and the scene editor's own chunk — because
+   * both are inside the window the first-frame stopwatch measures.
+   */
+  const moduleCount = () => firstFrameModules
 
   /** The stored scene, which is what the editor persists. */
   const scene = () => page.evaluate(() => {
@@ -363,5 +405,5 @@ export function pageHelpers(page) {
    */
   const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection }
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection, moduleCount }
 }
