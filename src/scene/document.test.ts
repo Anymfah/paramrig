@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
+  clearSceneDocumentCache,
   COMPACT_THRESHOLD_BYTES,
+  compactDocument,
   createSceneDocument,
   deleteSceneDocument,
   getSceneDocument,
   isBundledScene,
   listSceneDocuments,
+  MAX_STORED_BYTES,
   meshOf,
   meshUsers,
   ROOT_COLLECTION_ID,
@@ -23,6 +26,9 @@ import type { SceneDocument } from '@/scene/types'
 
 beforeEach(() => {
   localStorage.clear()
+  // The store is cached in the module, and clearing storage does not reach it: without this a test
+  // that saved something heavy leaves it in the next test's store, where it fills the quota.
+  clearSceneDocumentCache()
 })
 
 describe('a new scene', () => {
@@ -297,5 +303,122 @@ describe('a document too big for browser storage', () => {
     expect(JSON.stringify(heavy).length).toBeGreaterThan(COMPACT_THRESHOLD_BYTES)
 
     expect(saveSceneDocument(heavy)).toEqual({ ok: false, reason: 'quota' })
+  })
+
+  /**
+   * A scene too big to store is the one the editor works hardest on, and it used to pay the whole
+   * price of storing it on every turn of the camera: sanitise a hundred thousand vertices, round
+   * them, serialise twenty-seven megabytes twice, then refuse. These four say it is found out once.
+   */
+  describe('once it has been refused', () => {
+    /*
+     * Built once and shared, because building it is the slow part of these tests, and the value it
+     * carries — five decimals — is the value rounding would leave, so the document is over the
+     * ceiling before compaction and still over it after. The assertion below is the premise: if a
+     * change ever brings it under, these tests would quietly start measuring jsdom's own quota
+     * instead of the gate they are about.
+     */
+    let heavy: SceneDocument | null = null
+    const tooBig = (): SceneDocument => {
+      if (heavy) return heavy
+      const document = createSceneDocument()
+      const meshId = (document.objects[0]!.data as { meshId: string }).meshId
+      const vertices: number[] = []
+      const ids: number[] = []
+      for (let index = 0; index < 600_000; index += 1) {
+        vertices.push(index + 0.12345, 0.98765, 0.11111)
+        ids.push(index)
+      }
+      heavy = {
+        ...document,
+        meshes: { [meshId]: { ...boxMesh(2), vertices, vertexIds: ids, nextVertexId: ids.length, edges: [], faces: [], faceIds: [], nextFaceId: 0 } },
+      }
+      return heavy
+    }
+    /** What a Tab or an orbit leaves behind: the same content, a different view. */
+    const looked = (document: SceneDocument): SceneDocument =>
+      ({ ...document, view: { ...document.view, yaw: document.view.yaw + 15 }, updatedAt: new Date().toISOString() })
+
+    it('is over the ceiling even after rounding, which is what makes these tests about the gate', () => {
+      expect(JSON.stringify(compactDocument(tooBig())).length).toBeGreaterThan(MAX_STORED_BYTES)
+    })
+
+    it('does not weigh the same content twice', () => {
+      const document = tooBig()
+      const first = performance.now()
+      expect(saveSceneDocument(document)).toEqual({ ok: false, reason: 'quota' })
+      const weighed = performance.now() - first
+      const second = performance.now()
+      expect(saveSceneDocument(looked(document))).toEqual({ ok: false, reason: 'quota' })
+      const remembered = performance.now() - second
+      // Time is the only witness there is: the answer is the same either way, and the whole point
+      // of the change is that arriving at it costs nothing the second time.
+      expect(remembered).toBeLessThan(weighed / 5)
+    })
+
+    it('still lets the view through, so the scene reopens where it was left', () => {
+      const small = createSceneDocument()
+      const meshId = (small.objects[0]!.data as { meshId: string }).meshId
+      expect(getSceneDocument(small.id)?.meshes[meshId]?.vertexIds).toHaveLength(8)
+      const grown = { ...tooBig(), id: small.id }
+      expect(saveSceneDocument(grown)).toEqual({ ok: false, reason: 'quota' })
+      const turned = looked(grown)
+      expect(saveSceneDocument(turned)).toEqual({ ok: false, reason: 'quota' })
+      const held = getSceneDocument(small.id)
+      expect(held?.view.yaw).toBe(turned.view.yaw)
+      /*
+       * And what could not be stored was not stored. The cache deliberately holds what this tab is
+       * holding, refused or not, so the question has to be put to storage itself: forget the cache
+       * and read it back.
+       */
+      clearSceneDocumentCache()
+      expect(getSceneDocument(small.id)?.meshes[meshId]?.vertexIds).toHaveLength(8)
+    })
+
+    it('forgets the refusal when the content changes, so a scene that fits is written', () => {
+      const document = tooBig()
+      expect(saveSceneDocument(document)).toEqual({ ok: false, reason: 'quota' })
+      const meshId = (document.objects[0]!.data as { meshId: string }).meshId
+      expect(saveSceneDocument(withMesh(document, meshId, boxMesh(2))).ok).toBe(true)
+      expect(getSceneDocument(document.id)?.meshes[meshId]?.vertexIds).toHaveLength(8)
+    })
+
+    it('is forgotten with the rest when another tab writes', () => {
+      const document = tooBig()
+      expect(saveSceneDocument(document)).toEqual({ ok: false, reason: 'quota' })
+      clearSceneDocumentCache()
+      const second = performance.now()
+      expect(saveSceneDocument(looked(document))).toEqual({ ok: false, reason: 'quota' })
+      // Weighed again, because the cache it belonged to is gone.
+      expect(performance.now() - second).toBeGreaterThan(1)
+    })
+  })
+})
+
+/**
+ * Sanitising a document is nearly all mesh reading, and an edit that leaves the geometry alone
+ * hands back the very same `meshes` object. These say it is read once.
+ */
+describe('saving a document whose geometry has not changed', () => {
+  it('stores exactly what saving it the first time stored', () => {
+    const document = createSceneDocument()
+    expect(saveSceneDocument(document).ok).toBe(true)
+    const first = getSceneDocument(document.id)
+    const turned = { ...document, view: { ...document.view, yaw: document.view.yaw + 15 } }
+    expect(saveSceneDocument(turned).ok).toBe(true)
+    const second = getSceneDocument(document.id)
+    expect(second?.meshes).toEqual(first?.meshes)
+    expect(second?.view.yaw).toBe(turned.view.yaw)
+  })
+
+  it('reads the meshes again as soon as one of them is different', () => {
+    const document = createSceneDocument()
+    expect(saveSceneDocument(document).ok).toBe(true)
+    const meshId = (document.objects[0]!.data as { meshId: string }).meshId
+    const broken = { ...boxMesh(2), faces: [[0, 0, 0]] }
+    expect(saveSceneDocument(withMesh(document, meshId, broken)).ok).toBe(true)
+    // A face with three of the same corner is not a face, and the sanitiser drops it — which it
+    // can only do if the new record sent it back to reading rather than to what it read before.
+    expect(getSceneDocument(document.id)?.meshes[meshId]?.faces).toEqual([])
   })
 })

@@ -1050,15 +1050,78 @@ function sanitizeVersions(value: unknown[]): SceneVersion[] {
  */
 let store: Record<string, SceneDocument> | null = null
 
+/**
+ * The document the last save was too big to keep, and what its content was.
+ *
+ * A scene of a hundred thousand vertices does not fit in browser storage — it comes to some
+ * twenty-seven megabytes of JSON against a twenty-megabyte ceiling — and finding that out costs a
+ * full sanitisation and two serialisations of all of it. Every time. A profile of the editor on
+ * such a scene spends a hundred and forty milliseconds of every Tab, and every settled orbit,
+ * preparing a save that is then refused, because turning the camera makes a new document object
+ * and the effect that saves fires on any of them.
+ *
+ * A document that does not fit still does not fit until its content changes, so the refusal is
+ * remembered and the work is not done again. The comparison is by reference over everything a
+ * document stores except the view and the timestamp, which is what an orbit or a Tab leaves
+ * untouched. That the answer keeps holding rests on the size being stable rather than on the
+ * sanitiser being pure — it is not pure, it stamps `updatedAt` and mints ids for annotations that
+ * lack one — but neither of those changes how many bytes the meshes take.
+ *
+ * It holds one document, and it holds the incoming one rather than the sanitised copy, because the
+ * incoming references are what the next call arrives with. That does pin the un-sanitised arrays
+ * for the life of the tab, on top of the copy the store cache already holds; on a scene light
+ * enough to store, nothing is ever remembered here at all.
+ */
+let refused: { id: string; content: SceneDocument } | null = null
+
+/**
+ * The `meshes` record the last save sanitised, and the meshes reading it produced.
+ *
+ * Sanitising a document is nearly all mesh reading, and an edit that leaves the geometry alone —
+ * Tab, an orbit, a rename, a keyframe — hands back the very same `meshes` object, because nothing
+ * here writes into a document it was given. When it is that object again, what reading it produced
+ * last time is what reading it would produce now, so those meshes are handed to the sanitiser
+ * instead and it finds them already validated.
+ *
+ * One slot, and armed only when the sanitiser really ran and dropped no mesh: a swept mesh would
+ * otherwise be missing from the reuse, and an undo that brings its object back would find nothing.
+ */
+let meshesRead: { from: SceneDocument['meshes']; to: SceneDocument['meshes'] } | null = null
+
+/** Everything a document stores except its view and its timestamp, compared the cheap way. */
+function sameStoredContent(a: SceneDocument, b: SceneDocument): boolean {
+  return a.objects === b.objects
+    && a.meshes === b.meshes
+    && a.collections === b.collections
+    && a.materials === b.materials
+    && a.world === b.world
+    && a.cursor === b.cursor
+    && a.units === b.units
+    && a.name === b.name
+    && a.output === b.output
+    && a.colorManagement === b.colorManagement
+    && a.annotations === b.annotations
+    && a.measurements === b.measurements
+    && a.rig === b.rig
+    && a.versions === b.versions
+}
+
+/** Forgets what this module remembers about storage, so the three can never disagree. */
+function forgetStore(): void {
+  store = null
+  refused = null
+  meshesRead = null
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('storage', (event) => {
-    if (event.key === null || event.key === STORAGE_KEY) store = null
+    if (event.key === null || event.key === STORAGE_KEY) forgetStore()
   })
 }
 
 /** Forgets the cache, for a test that writes to storage behind the store's back. */
 export function clearSceneDocumentCache(): void {
-  store = null
+  forgetStore()
 }
 
 function readAll(): Record<string, SceneDocument> {
@@ -1103,8 +1166,25 @@ export function isBundledScene(id: string): boolean {
  * than silently truncated, so the editor can offer a file on disk instead.
  */
 export function saveSceneDocument(document: SceneDocument): StorageResult {
+  /*
+   * The one refusal that can be answered without doing the work. The view still reaches the cache,
+   * so a scene too big to store reopens where it was left rather than where it was last small
+   * enough — which is what a full save would have left behind, at the cost of one spread.
+   */
+  if (refused && refused.id === document.id && sameStoredContent(refused.content, document)) {
+    const documents = readAll()
+    const cached = documents[document.id]
+    if (cached) documents[document.id] = { ...cached, view: viewState(document.view), updatedAt: document.updatedAt }
+    return { ok: false, reason: 'quota' }
+  }
   const documents = readAll()
-  const clean = sanitizeSceneDocument(document) ?? document
+  const known = meshesRead?.from === document.meshes ? meshesRead.to : null
+  const clean = sanitizeSceneDocument(known ? { ...document, meshes: known } : document) ?? document
+  // Armed only on a real sanitise: the fallback above hands back the document untouched, and its
+  // meshes have not been read at all.
+  meshesRead = clean !== document && Object.keys(clean.meshes).length === Object.keys(document.meshes).length
+    ? { from: document.meshes, to: clean.meshes }
+    : null
   /*
    * Opening a bundled example is not editing it. The editor saves whatever it loads, so without
    * this a scene the app ships would be copied into storage by being looked at — and would then
@@ -1113,7 +1193,11 @@ export function saveSceneDocument(document: SceneDocument): StorageResult {
   if (!documents[clean.id] && unchangedBundle(clean)) return { ok: true }
   const size = JSON.stringify(clean).length
   documents[clean.id] = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
-  if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) return { ok: false, reason: 'quota' }
+  if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) {
+    refused = { id: document.id, content: document }
+    return { ok: false, reason: 'quota' }
+  }
+  refused = null
   const result = writeStore(STORAGE_KEY, documents)
   // The cache is what was just written, whether or not the write landed: a refused write leaves
   // storage as it was, and `documents` is that plus the change this tab is holding in memory.
@@ -1131,6 +1215,7 @@ export function deleteSceneDocument(id: string): StorageResult {
   const documents = { ...readAll() }
   delete documents[id]
   store = documents
+  if (refused?.id === id) refused = null
   return writeStore(STORAGE_KEY, documents)
 }
 
