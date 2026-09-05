@@ -1162,6 +1162,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
               onSaveVersion={editor.saveVersion}
               onRestoreVersion={editor.restoreVersion}
               onDeleteVersion={editor.deleteVersion}
+              onCommand={(id) => commands.find((command) => command.id === id)?.run()}
             />
             <SceneHeader
               view={document.view}
@@ -1184,7 +1185,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             data-uv={uvEditor.open || shaderEditor.open ? 'open' : undefined}
             style={{ '--scene-uv-split': String(uvEditor.open ? uvEditor.split : shaderEditor.split) } as CSSProperties}
           >
-            <div className="scene-area">
+            <div className="scene-area" data-sidebar={panels.sidebar ? 'open' : undefined}>
               <SceneStage
                 document={drawn}
                 keepKey={documentId}
@@ -1674,12 +1675,27 @@ function pieItems(kind: PieKind, context: OperatorContext | null): ScenePieItem[
   })
 }
 
-/** The ⇧A menu: the Add sections, in Blender's order, with a rule between them. */
+/**
+ * The ⇧A menu: the Add sections, in Blender's order, named.
+ *
+ * They were separated by a rule and nothing else, so twenty primitives arrived as one undivided
+ * column and a person looking for a light read past eight meshes to find it. Blender names these
+ * groups — it opens them as submenus — and the name is the half that does the work.
+ *
+ * A family of one keeps the rule and loses the name: "Text" written over a row that says Text is
+ * an echo, not a heading.
+ */
 function addEntries(context: OperatorContext | null, run: (id: string) => void): SceneMenuEntry[] {
   const entries: SceneMenuEntry[] = []
   for (const section of ADD_MENU) {
-    if (entries.length) entries.push({ separator: true })
-    entries.push(...menuEntries(section.items, context, run) as SceneMenuEntry[])
+    const items = menuEntries(section.items, context, run) as SceneMenuEntry[]
+    if (items.length === 0) continue
+    if (items.length === 1) {
+      if (entries.length > 0) entries.push({ separator: true })
+    } else {
+      entries.push({ heading: section.label })
+    }
+    entries.push(...items)
   }
   return entries
 }

@@ -48,6 +48,7 @@ function menu(over: Partial<Parameters<typeof SceneFileMenu>[0]> = {}) {
     onSaveVersion: vi.fn(),
     onRestoreVersion: vi.fn(),
     onDeleteVersion: vi.fn(),
+    onCommand: vi.fn(),
     ...over,
   }
   render(<SceneFileMenu {...props} />)
@@ -206,5 +207,27 @@ describe('the versions dialog', () => {
     await openVersions()
 
     expect(screen.getByText('No versions yet.')).toBeInTheDocument()
+  })
+
+  /*
+   * Blender's viewport header has no Edit menu: undo, redo and the preferences live in the topbar's,
+   * beside File. This is that menu, and until it moved here nothing tested it.
+   */
+  it('carries the Edit menu, beside File, where Blender keeps it', async () => {
+    const { onCommand } = menu()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: /Preferences/ }))
+    expect(onCommand).toHaveBeenCalledWith('preferences')
+  })
+
+  it('offers undo, redo and the rest of what the topbar owns', async () => {
+    menu()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent ?? '')
+    for (const label of ['Undo', 'Redo', 'Repeat last', 'Adjust last operation', 'Quick favourites']) {
+      expect(items.some((text) => text.startsWith(label))).toBe(true)
+    }
   })
 })

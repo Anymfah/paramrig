@@ -78,6 +78,9 @@ describe('operators', () => {
     act(() => { result.current.runOperator('view.camera') })
     expect(result.current.message).toBeNull()
 
+    // A new scene opens on its cube, the way Blender's startup file does, so the refusal this test
+    // is about needs an empty selection to be reached at all.
+    act(() => { result.current.runOperator('select.none') })
     act(() => { result.current.runOperator('transform.move') })
     expect(result.current.message).toBe('Select something to move first.')
   })

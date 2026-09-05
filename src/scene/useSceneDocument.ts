@@ -25,6 +25,27 @@ type HistoryEntry = { document: SceneDocument; label: string; at: number }
 const EMPTY_SELECTION: SceneSelection = { objectIds: [], activeObjectId: null }
 
 /**
+ * What a brand new scene opens with: its first mesh, selected and active, the way Blender's startup
+ * file opens with its cube. It is what makes Tab, G, R and S answer the first keystroke instead of
+ * the second.
+ *
+ * Only a scene nobody has touched, which is what a startup file is: once a document has been
+ * edited, `updatedAt` has moved, and a selection this editor invents is not the one the person
+ * left. Blender can restore that because it stores the selection in the file; this editor
+ * deliberately does not — a reopened document should not remember which row was highlighted — so
+ * where Blender remembers, this opens with nothing, which is the honest answer rather than a guess.
+ *
+ * Only in object mode, and only a mesh: entering edit mode builds its own selection, and G on a
+ * camera is not what anybody came here to do.
+ */
+function openingSelection(document: SceneDocument | null): SceneSelection {
+  if (!document || document.view.mode !== 'object') return EMPTY_SELECTION
+  if (document.createdAt !== document.updatedAt) return EMPTY_SELECTION
+  const first = document.objects.find((object) => object.data.kind === 'mesh' && object.visible && object.selectable)
+  return first ? { objectIds: [first.id], activeObjectId: first.id } : EMPTY_SELECTION
+}
+
+/**
  * What was selected in each document, kept for as long as the tab is open.
  *
  * Crossing between editing a scene and tuning its controls unmounts one React tree and mounts
@@ -104,7 +125,7 @@ export function useSceneDocument(documentId: string, options: { undoSteps?: numb
   limit.current = Math.max(8, Math.min(HISTORY_CEILING, options.undoSteps ?? HISTORY_LIMIT))
   const initial = useMemo(() => getSceneDocument(documentId), [documentId])
   const [document, setDocumentState] = useState<SceneDocument | null>(initial)
-  const [selection, setSelectionState] = useState<SceneSelection>(() => lastSelection.get(documentId) ?? EMPTY_SELECTION)
+  const [selection, setSelectionState] = useState<SceneSelection>(() => lastSelection.get(documentId) ?? openingSelection(initial))
   const [history, setHistory] = useState<{ past: HistoryEntry[]; future: HistoryEntry[] }>({ past: [], future: [] })
   const [lastOperation, setLastOperation] = useState<LastOperation | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -130,8 +151,9 @@ export function useSceneDocument(documentId: string, options: { undoSteps?: numb
     const next = getSceneDocument(documentId)
     latest.current = next
     setDocumentState(next)
-    // Opening the same document again keeps what was selected in it; another document starts clean.
-    setSelectionState(lastSelection.get(documentId) ?? EMPTY_SELECTION)
+    // Opening the same document again keeps what was selected in it; another opens the way a new
+    // scene does — on its cube, if nobody has touched it yet.
+    setSelectionState(lastSelection.get(documentId) ?? openingSelection(next))
     historyRef.current = { past: [], future: [] }
     setHistory(historyRef.current)
     setLastOperation(null)

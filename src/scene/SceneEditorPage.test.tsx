@@ -117,10 +117,10 @@ describe('the scene editor page', () => {
     }
   })
 
-  it('counts the scene in the status bar', () => {
+  it('counts the scene in the status bar, and opens on the cube the way Blender does', () => {
     open(recorded, documentId)
 
-    expect(screen.getByText('Objects 0/3')).toBeInTheDocument()
+    expect(screen.getByText('Objects 1/3')).toBeInTheDocument()
     expect(screen.getByText('Vertices 8')).toBeInTheDocument()
     expect(screen.getByText('Faces 6')).toBeInTheDocument()
   })

@@ -4,6 +4,7 @@ import { EditorModal } from '@/editor/EditorModal'
 import { EditorSaveBadge } from '@/editor/EditorSaveBadge'
 import { formatClock, type ProjectFile } from '@/editor/useProjectFile'
 import { bindingFor, shortcutLabel } from '@/scene/keymap'
+import { SceneMenu, type SceneMenuEntry } from '@/scene/SceneMenu'
 import type { SceneDocument, SceneVersion } from '@/scene/types'
 import { CoformSymbol } from '@/ui/BrandMark'
 import { Button, IconButton } from '@/ui/Button'
@@ -34,10 +35,13 @@ export function SceneFileMenu({
   onSaveVersion,
   onRestoreVersion,
   onDeleteVersion,
+  onCommand,
 }: {
   name: string
   file: ProjectFile<SceneDocument>
   versions: SceneVersion[]
+  /** The editor's own actions, which are not operators: undo, redo, the preferences. */
+  onCommand: (id: string) => void
   onRename: (name: string) => void
   onOpen: () => void
   onImport: (file: File) => void
@@ -64,6 +68,18 @@ export function SceneFileMenu({
     }
     onRename(next)
   }
+
+  /* The editor's own actions rather than operators, so they are written out rather than looked up. */
+  const editEntries: SceneMenuEntry[] = [
+    { id: 'undo', label: 'Undo', ...(shortcutFor('undo') ? { shortcut: shortcutFor('undo') } : {}), run: () => onCommand('undo') },
+    { id: 'redo', label: 'Redo', ...(shortcutFor('redo') ? { shortcut: shortcutFor('redo') } : {}), run: () => onCommand('redo') },
+    { id: 'repeatLast', label: 'Repeat last', ...(shortcutFor('repeatLast') ? { shortcut: shortcutFor('repeatLast') } : {}), run: () => onCommand('repeatLast') },
+    { id: 'redoPanel', label: 'Adjust last operation', ...(shortcutFor('redoPanel') ? { shortcut: shortcutFor('redoPanel') } : {}), run: () => onCommand('redoPanel') },
+    { separator: true },
+    { id: 'favorites', label: 'Quick favourites', ...(shortcutFor('favorites') ? { shortcut: shortcutFor('favorites') } : {}), run: () => onCommand('favorites') },
+    { separator: true },
+    { id: 'preferences', label: 'Preferences…', ...(shortcutFor('preferences') ? { shortcut: shortcutFor('preferences') } : {}), run: () => onCommand('preferences') },
+  ]
 
   return (
     <div className="scene-file">
@@ -128,6 +144,13 @@ export function SceneFileMenu({
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
       </DropdownMenu.Root>
+      {/*
+        * Edit, beside File, which is where Blender keeps undo, redo and the preferences: in the
+        * topbar rather than in the 3D viewport's own header. Blender's viewport header has no Edit
+        * menu at all, and every entry below is in the topbar's — so this is where a hand trained on
+        * Blender reaches, and it gives the viewport header back the width it was short of.
+        */}
+      <SceneMenu label="Edit" entries={editEntries} />
       <input
         ref={modelInput}
         type="file"

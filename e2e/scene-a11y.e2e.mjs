@@ -16,6 +16,17 @@ export default run('scene-a11y', async ({ page, check, log, helpers, shot }) => 
   /* ------------------------------------------------------------ what it says */
 
   const said = () => page.locator('[data-announce="scene"]').innerText()
+  /*
+   * Deselected first, because a new scene now opens on its cube the way Blender's startup file
+   * does, and what this checks is the announcement of a selection *changing*. Clicking a row that
+   * is already selected changes nothing, and an editor that announced it anyway would be one that
+   * talks over itself.
+   */
+  await page.locator('#main').focus()
+  await page.keyboard.down('Alt')
+  await page.keyboard.press('KeyA')
+  await page.keyboard.up('Alt')
+  await page.waitForTimeout(300)
   await page.locator('.scene-outliner__row', { hasText: 'Cube' }).first().click()
   await page.waitForTimeout(700)
   const selected = await said()

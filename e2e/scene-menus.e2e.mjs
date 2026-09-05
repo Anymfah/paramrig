@@ -119,7 +119,7 @@ export default run('scene-menus', async ({ page, check, log, helpers, shot }) =>
 
   /* ------------------------------------------------------------ the preferences */
 
-  await page.locator('.scene-header__menus button', { hasText: 'Edit' }).first().click()
+  await page.locator('.scene-file .scene-menu__trigger', { hasText: 'Edit' }).first().click()
   await page.locator('[role="menuitem"]', { hasText: 'Preferences' }).first().click()
   await page.waitForSelector('.scene-prefs', { timeout: 10000 })
   await shot('scene-menus-preferences-1440.png')

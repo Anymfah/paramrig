@@ -481,6 +481,21 @@
   gap: var(--space-1);
   z-index: 5;
 }
+/*
+ * The navigation gizmo steps aside for the N panel rather than hiding under it.
+ *
+ * The panel floats over the viewport on purpose — docking it would take width from the view, and
+ * N can be pressed in the middle of a modal transform (the transform does not consume the key), so
+ * a docked panel would move the model out from under the pointer mid-gesture. Floating is right;
+ * landing on top of the one control that says which way is up is not. Blender steps it aside the
+ * same way when its sidebar overlaps the region.
+ */
+@media (min-width: 64.0625em) {
+  .scene-area[data-sidebar='open'] .scene-nav {
+    inset-inline-end: calc(17rem + var(--space-2) + var(--space-3));
+  }
+}
+
 .scene-nav__ball {
   width: 76px;
   height: 76px;
