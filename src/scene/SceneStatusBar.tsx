@@ -11,11 +11,21 @@ import type { SceneDocument, SceneSelection } from '@/scene/types'
  * nothing on screen that says a middle drag orbits — so the status bar teaches the gestures as the
  * context changes, which is what Blender does and what makes the first minute survivable.
  */
-export function SceneStatusBar({ document, selection, counts, message, editData, keymapHint, animation }: {
+export function SceneStatusBar({ document, selection, counts, message, alert, editData, keymapHint, animation }: {
   document: SceneDocument
   selection: SceneSelection
   counts: SceneCounts
   message: string | null
+  /**
+   * A condition that holds until something is done about it, as opposed to the operator feedback
+   * beside it, which is about the last thing that happened.
+   *
+   * It has its own place because the two must not take turns: a scene too big for browser storage
+   * stops being saved, and the next extrude's "Extruded 4 faces" would carry that news away. While
+   * one is up the gesture hints stand down — they teach, and this is not the moment for teaching —
+   * so the whole sentence fits, including the half that says what to do about it.
+   */
+  alert?: string | null
   /** What the active object being edited is, so the line says what the next gesture does. */
   editData?: 'mesh' | 'curve' | 'text'
   /** The one-line "press F1 for the keys" affordance, which stays after the hint chip has gone. */
@@ -61,16 +71,19 @@ export function SceneStatusBar({ document, selection, counts, message, editData,
 
   return (
     <div className="scene-status" role="status">
-      <div className="scene-status__hints">
-        {keymapHint}
-        {keymapHint ? <span className="scene-status__rule" aria-hidden="true" /> : null}
-        {hints.map(([label, gesture]) => (
-          <span key={label} className="scene-status__hint">
-            <kbd>{gesture}</kbd>
-            {label}
-          </span>
-        ))}
-      </div>
+      {alert ? null : (
+        <div className="scene-status__hints">
+          {keymapHint}
+          {keymapHint ? <span className="scene-status__rule" aria-hidden="true" /> : null}
+          {hints.map(([label, gesture]) => (
+            <span key={label} className="scene-status__hint">
+              <kbd>{gesture}</kbd>
+              {label}
+            </span>
+          ))}
+        </div>
+      )}
+      {alert ? <p className="scene-status__alert" role="alert">{alert}</p> : null}
       <p className="scene-status__message">{message ?? ''}</p>
       {animation ? (
         <div className="scene-status__transport" role="group" aria-label="Playback">

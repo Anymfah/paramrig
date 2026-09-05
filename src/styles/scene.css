@@ -345,6 +345,21 @@
   background: var(--rule);
 }
 
+/*
+ * Something is wrong and stays wrong: the scene is not being kept. It reads before the operator
+ * feedback and takes the room first, because the sentence carries what to do about it and half of
+ * that sentence is no use. The border does the work the colour cannot when a system palette is
+ * forced, and it is what tells this apart from the hints beside it.
+ */
+.scene-status__alert {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-xs);
+  color: var(--danger);
+}
+
 .scene-status__message {
   flex: 1;
   min-width: 0;
@@ -354,6 +369,8 @@
   white-space: nowrap;
   color: var(--text-primary);
 }
+/* Beside an alert it gives way: the alert is the sentence that has to be readable. */
+.scene-status__alert + .scene-status__message { flex: 0 1 auto; }
 .scene-status__message:empty { flex: 1; }
 .scene-status__stats {
   display: flex;

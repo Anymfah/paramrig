@@ -1390,6 +1390,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
             selection={selection}
             counts={counts}
             message={editor.message}
+            alert={file.message}
             editData={editData}
             keymapHint={<SceneKeymapHint onOpen={() => setKeymapOpen(true)} />}
             {...(session && animated ? {
