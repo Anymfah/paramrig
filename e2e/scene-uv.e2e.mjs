@@ -197,15 +197,22 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
    * opened from the header, measured on its own canvas — a 2D canvas can be read back, which a
    * WebGL one cannot — and then made to share the screen differently by its splitter.
    */
-  await page.locator('.scene-header__button[aria-label="UV editor"]').click()
+  await (await helpers.headerControl('UV editor')).click()
   await page.waitForSelector('.scene-uv')
   await page.waitForTimeout(600)
 
+  /*
+   * Read where it lives rather than where it used to: the header folds its trailing groups into a
+   * popover when the row is short, and in that state the button is one click deep. Reaching it
+   * again is what a person does, so it is what the check does; Escape puts the fold back.
+   */
+  const pressed = await (await helpers.headerControl('UV editor')).getAttribute('aria-pressed')
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(200)
   const opened = await page.evaluate(() => {
     const editor = document.querySelector('.scene-uv')
     const area = document.querySelector('.scene-area')
     return {
-      pressed: document.querySelector('.scene-header__button[aria-label="UV editor"]')?.getAttribute('aria-pressed'),
       map: editor?.querySelector('.scene-uv__map')?.textContent ?? '',
       label: editor?.querySelector('canvas')?.getAttribute('aria-label') ?? '',
       status: editor?.querySelector('.scene-uv__status')?.textContent ?? '',
@@ -214,7 +221,7 @@ export default run('scene-uv', async ({ page, check, log, helpers, shot }) => {
     }
   })
   check('the header button opens the second space and reads as pressed',
-    opened.pressed === 'true' && opened.editorWidth > 200, `pressed ${opened.pressed}, ${opened.editorWidth} px wide`)
+    pressed === 'true' && opened.editorWidth > 200, `pressed ${pressed}, ${opened.editorWidth} px wide`)
   check('the viewport keeps its share of the screen rather than being replaced',
     opened.areaWidth > 200 && Math.abs(opened.areaWidth / (opened.areaWidth + opened.editorWidth) - 0.55) < 0.05,
     `${opened.areaWidth} px viewport, ${opened.editorWidth} px UV editor`)

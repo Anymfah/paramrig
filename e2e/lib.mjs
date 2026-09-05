@@ -363,6 +363,30 @@ export function pageHelpers(page) {
    */
   const moduleCount = () => firstFrameModules
 
+  /**
+   * A header control, wherever the header is currently keeping it.
+   *
+   * The viewport header folds its trailing groups into popovers when the row cannot hold them, and
+   * which groups are folded depends on the mode and on how wide the panels beside it are. A script
+   * that reaches straight into the bar is asking a question about the width of the window rather
+   * than about the editor. This asks the question the person asks: reach the control, opening what
+   * has to be opened.
+   */
+  const headerControl = async (label) => {
+    const inBar = page.locator(`.scene-header__button[aria-label="${label}"]`)
+    if (await inBar.count() > 0) return inBar
+    for (const trigger of ['Editor', 'View settings']) {
+      const fold = page.locator('.scene-header').getByRole('button', { name: trigger })
+      if (await fold.count() === 0) continue
+      await fold.first().click()
+      await page.waitForTimeout(200)
+      const folded = page.locator(`[aria-label="${label}"]`)
+      if (await folded.count() > 0) return folded.first()
+      await page.keyboard.press('Escape')
+    }
+    return inBar
+  }
+
   /** The stored scene, which is what the editor persists. */
   const scene = () => page.evaluate(() => {
     const all = JSON.parse(localStorage.getItem('paramrig.scene-documents.v1') ?? '{}')
@@ -405,5 +429,5 @@ export function pageHelpers(page) {
    */
   const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection, moduleCount }
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection, moduleCount, headerControl }
 }
