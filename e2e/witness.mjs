@@ -130,9 +130,3 @@ export function witnessFrom(frame, cpu) {
     against: (budget) => `${budget} ms x ${cpuRatio.toFixed(2)}`,
   }
 }
-
-/**
- * A witness for a script that cannot run one — a measurement replayed, or a unit test. Both ratios
- * are 1, so every budget is exactly its written value.
- */
-export const NOMINAL_WITNESS = witnessFrom(NOMINAL_FRAME, NOMINAL_CPU)

@@ -29,7 +29,20 @@ function renderHeader(options: { mode?: EditorMode; view?: Partial<ViewState>; s
   const onView = vi.fn()
   const onMode = vi.fn()
   const onCommand = vi.fn()
-  render(
+  const rendered = render(headerElement({ view, context, onRunOperator, onView, onMode, onCommand }))
+  return { ...rendered, headerElement, onRunOperator, onView, onMode, onCommand, scene, view }
+}
+
+/** The header as an element, so a test can hand the same mounted one a different mode. */
+function headerElement({ view, context, onRunOperator, onView, onMode, onCommand }: {
+  view: ViewState
+  context: OperatorContext
+  onRunOperator: (id: string) => void
+  onView: (patch: Partial<ViewState>) => void
+  onMode: (mode: EditorMode) => void
+  onCommand: (id: string) => void
+}) {
+  return (
     <SceneHeader
       view={view}
       mode={view.mode}
@@ -38,9 +51,8 @@ function renderHeader(options: { mode?: EditorMode; view?: Partial<ViewState>; s
       onView={onView}
       onMode={onMode}
       onCommand={onCommand}
-    />,
+    />
   )
-  return { onRunOperator, onView, onMode, onCommand, scene, view }
 }
 
 function openMenu(name: string): HTMLElement {
@@ -260,10 +272,10 @@ describe('the scene editor header', () => {
    * and nineteen in edit mode, so there is no one width at which it stops fitting. jsdom lays
    * nothing out, so the two numbers the hook reads are the ones to fake.
    */
-  const measuring = (client: number, scroll: number) => {
-    for (const [name, value] of [['clientWidth', client], ['scrollWidth', scroll]] as const) {
-      Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => value })
-    }
+  const measuring = (client: number, scroll: number | (() => number)) => {
+    const scrollOf = typeof scroll === 'function' ? scroll : () => scroll
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => client })
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: scrollOf })
     return () => {
       for (const name of ['clientWidth', 'scrollWidth']) {
         Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => 0 })
@@ -306,6 +318,47 @@ describe('the scene editor header', () => {
       // …and what the second one holds is still one click away rather than off the end of the row.
       expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'UV editor' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  /**
+   * The regression that shipped: the fold remembered what edit mode had needed, and object mode
+   * could never satisfy it again, so Tab and Tab back left four buttons a click deep for the rest
+   * of the session. No campaign script does a mode round trip and then looks in the bar.
+   */
+  it('unfolds again once the mode that needed the room is left', () => {
+    /*
+     * The width has to shrink as the header folds, the way it does in a browser: with a constant
+     * one the fold settles against the stage cap rather than against the room, and the memory this
+     * is about is never consulted. Three hundred pixels is roughly what each stage puts away.
+     */
+    let wanted = 1473
+    const folded = () => Number(document.querySelector('.scene-header')?.getAttribute('data-fold') ?? 0)
+    const restore = measuring(880, () => wanted - folded() * 300)
+    try {
+      const { rerender, headerElement: element, view, onRunOperator, onView, onMode, onCommand, scene } = renderHeader({ mode: 'edit' })
+      expect(screen.getByRole('button', { name: 'Editor' })).toBeInTheDocument()
+
+      /*
+       * The same mounted header, handed object mode — not a fresh one, which would forget whatever
+       * it had learnt and pass whether or not the bug is there. Tab and Tab back is one component
+       * seeing two modes, and that is the only shape in which this fails.
+       */
+      wanted = 1000
+      const next: ViewState = { ...view, mode: 'object' }
+      rerender(element({
+        view: next,
+        context: { ...scene, view: next, document: { ...scene, view: next }, selection: EMPTY_SELECTION, mode: 'object', cursor: scene.cursor, active: null } as OperatorContext,
+        onRunOperator,
+        onView,
+        onMode,
+        onCommand,
+      }))
+
+      expect(screen.queryByRole('button', { name: 'Editor' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
     } finally {
       restore()
     }

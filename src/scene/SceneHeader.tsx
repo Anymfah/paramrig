@@ -280,32 +280,60 @@ const GIZMOS: Array<{ key: keyof GizmoFlags; label: string }> = [
  */
 const FOLD_STAGES = 2
 
-/** Room a stage must gain back before it unfolds, so a header on the line does not flicker. */
-const FOLD_HYSTERESIS_PX = 24
-
-function useHeaderFold(element: RefObject<HTMLElement | null>): number {
+function useHeaderFold(element: RefObject<HTMLElement | null>, controls: string): number {
   const [stage, setStage] = useState(0)
-  /* What each stage was last seen to need, so unfolding knows what it would cost. */
-  const needed = useRef<number[]>([])
+  /*
+   * The stage we have just learnt does not fit, so unfolding back into it does not start a loop.
+   *
+   * It is knowledge about one row of controls at one width, and it is wrong the moment either
+   * changes: a resize clears it, and so does a change of mode, which swaps eight controls in and
+   * out. Remembering it across those was the bug — the width edit mode needed kept object mode
+   * folded after Tab took it there and back, and four buttons stayed a click deep for the session.
+   */
+  const blocked = useRef<number | null>(null)
+  const content = useRef('')
   const measure = useRef(() => {})
   measure.current = () => {
     const node = element.current
     if (!node) return
-    const available = node.clientWidth
-    needed.current[stage] = node.scrollWidth
+    /*
+     * The tighter of the row and what holds it.
+     *
+     * On a desktop the header fills its row and the two agree. On a narrow screen the row scrolls
+     * sideways and the header is allowed to be as wide as its contents, so it never overflows
+     * itself and would never fold — it would just grow, and a person would scroll past twenty-three
+     * controls to reach the last. What is short there is the window, and the window is the parent.
+     */
+    const available = Math.min(node.clientWidth, node.parentElement?.clientWidth ?? Infinity)
     if (node.scrollWidth > available + 1) {
+      blocked.current = stage
       if (stage < FOLD_STAGES) setStage(stage + 1)
       return
     }
-    const previous = stage > 0 ? needed.current[stage - 1] : undefined
-    if (previous !== undefined && previous + FOLD_HYSTERESIS_PX <= available) setStage(stage - 1)
+    if (stage > 0 && blocked.current !== stage - 1) setStage(stage - 1)
   }
-  // Every render, not every resize: entering edit mode adds eight controls without moving the row.
-  useLayoutEffect(() => { measure.current() })
+  /*
+   * Every render, not every resize: entering edit mode adds eight controls without moving the row.
+   *
+   * The key is what the header has been ASKED to draw, never what it is drawing — folding changes
+   * the second, so a key read off the bar would clear the very memory that stops the fold from
+   * oscillating, and the two would take turns for ever.
+   */
+  useLayoutEffect(() => {
+    if (content.current !== controls) {
+      content.current = controls
+      blocked.current = null
+    }
+    measure.current()
+  })
   useEffect(() => {
     const node = element.current
     if (!node || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => measure.current())
+    const observer = new ResizeObserver(() => {
+      // A width the row has not been measured at makes every stage worth trying again.
+      blocked.current = null
+      measure.current()
+    })
     observer.observe(node)
     return () => observer.disconnect()
   }, [element])
@@ -628,7 +656,7 @@ export function SceneHeader({ view, mode, editData, context, onRunOperator, onVi
 }) {
   const barRef = useRef<HTMLDivElement>(null)
   useRovingFocus(barRef)
-  const fold = useHeaderFold(barRef)
+  const fold = useHeaderFold(barRef, `${mode}:${editData ?? ''}`)
 
   const runOperator = (id: string) => onRunOperator(id)
   const menus = mode !== 'edit'

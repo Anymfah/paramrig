@@ -39,6 +39,12 @@
 
 .scene-header__menus { gap: 0; }
 
+/* At the tightest stage the divisions give up half their room before anything gives up its place. */
+.scene-header[data-fold='2'] .scene-header__group + .scene-header__group {
+  margin-inline-start: var(--space-1);
+  padding-inline-start: var(--space-1);
+}
+
 /*
  * Once everything that can fold has folded and the row is still short, it scrolls rather than
  * clipping. Nothing in this bar is ever unreachable; that is the whole rule, and a header that
@@ -46,12 +52,6 @@
  * control that drifts under the pointer between two frames of a gesture is worse than one that has
  * to be opened — which is why this is the last resort and not the first.
  */
-/* At the tightest stage the divisions give up half their room before anything gives up its place. */
-.scene-header[data-fold='2'] .scene-header__group + .scene-header__group {
-  margin-inline-start: var(--space-1);
-  padding-inline-start: var(--space-1);
-}
-
 .scene-header[data-fold='2'] {
   overflow-x: auto;
   scrollbar-width: none;

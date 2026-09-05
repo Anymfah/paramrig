@@ -67,6 +67,16 @@
   --scene-sharp: #5ad2e0;
   --scene-crease: #d45ad2;
 
+  /*
+   * How wide the T bar's column is: its button, the padding either side, and its border.
+   *
+   * Named because two files need to agree on it — the column draws itself with it, and the Adjust
+   * Last Operation panel steps clear of it with it. They disagreed once: the panel was offset for a
+   * thirty-two pixel button while a coarse pointer draws a forty-four pixel one, and the panel came
+   * back down on the column it was moved to avoid.
+   */
+  --scene-toolbar-column: calc(var(--space-1) * 2 + var(--scene-tool-size, 32px) + 2px);
+
   /* The chrome that floats over the viewport: headers, the T bar, the N sidebar, the status bar. */
   --scene-panel: color-mix(in srgb, var(--surface-raised) 92%, transparent);
   --scene-panel-border: var(--border-default);
@@ -186,6 +196,10 @@
   --scene-grid-major: #ffffff73;
   --scene-cursor-ring: #ff5a5a;
   --scene-cursor-ground: #ffffff;
+}
+
+@media (pointer: coarse) {
+  :root { --scene-toolbar-column: calc(var(--space-1) * 2 + var(--scene-tool-size-coarse, 44px) + 2px); }
 }
 
 /* -------------------------------------------------------------- the stage */

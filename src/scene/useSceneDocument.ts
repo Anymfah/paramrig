@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/editor/history'
-import { getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
+import { collectionById, collectionHidden, getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
 import { cameraPlacement } from '@/scene/operators/view'
 import { runOperator as runRegisteredOperator } from '@/scene/operators/registry'
 import type { OperatorContext, OperatorParams } from '@/scene/operators/types'
@@ -36,12 +36,18 @@ const EMPTY_SELECTION: SceneSelection = { objectIds: [], activeObjectId: null }
  * where Blender remembers, this opens with nothing, which is the honest answer rather than a guess.
  *
  * Only in object mode, and only a mesh: entering edit mode builds its own selection, and G on a
- * camera is not what anybody came here to do.
+ * camera is not what anybody came here to do. And only something a person can actually see: an
+ * object in a hidden or excluded collection is on nobody's screen, and opening with it active
+ * would fill the properties panel with a thing that is not there and let Tab edit it blind.
  */
 function openingSelection(document: SceneDocument | null): SceneSelection {
   if (!document || document.view.mode !== 'object') return EMPTY_SELECTION
   if (document.createdAt !== document.updatedAt) return EMPTY_SELECTION
-  const first = document.objects.find((object) => object.data.kind === 'mesh' && object.visible && object.selectable)
+  const first = document.objects.find((object) => {
+    if (object.data.kind !== 'mesh' || !object.visible || !object.selectable) return false
+    if (collectionHidden(document, object.collectionId)) return false
+    return collectionById(document, object.collectionId)?.selectable !== false
+  })
   return first ? { objectIds: [first.id], activeObjectId: first.id } : EMPTY_SELECTION
 }
 

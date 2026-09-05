@@ -135,13 +135,13 @@
  * column, where a click meant for Bevel went through to a field. Blender puts this panel beside
  * its toolbar for the same reason.
  *
- * The offset is the column's own width, written from the same tokens the column is: the button,
- * the padding either side of it, and its border.
+ * The offset is the column's own width, which both files read from one token: a coarse pointer
+ * draws a wider button, and an offset that spelled the narrow one out came back down on the column.
  */
 .scene-redo {
   position: absolute;
   inset-block-end: var(--space-2);
-  inset-inline-start: calc(var(--space-2) * 2 + var(--scene-tool-size, 32px) + var(--space-1) * 2 + 2px);
+  inset-inline-start: calc(var(--space-2) * 2 + var(--scene-toolbar-column));
   z-index: var(--z-overlay);
   inline-size: 15rem;
   max-inline-size: calc(100% - var(--space-4));

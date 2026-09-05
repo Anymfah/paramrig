@@ -1,4 +1,4 @@
-time to the first frame: 1220 ms
+time to the first frame: 1186 ms
 modules fetched before the first frame: 347
 header controls at 1440: 10
 header controls within the window at 1440: 10
@@ -9,28 +9,28 @@ startup scene triangles: 12
 object properties content height: 1190px
 object properties visible height: 900px
 object properties sections: 4
-hover pick mean over 100 picks: 0.38 ms
+hover pick mean over 100 picks: 0.39 ms
 hover pick p95 over 100 picks: 0.90 ms
 hover picks that landed on the cube: 100/100
-header controls at 320: 10
+header controls at 320: 7
 header controls within the window at 320: 0
-header width at 320: 645px
+header width at 320: 507px
 header view settings folded at 320: yes
 history steps after a hundred moves: 101
-heap before a hundred history steps: 103.8 MB
-heap after a hundred history steps: 156.9 MB
-heap growth over a hundred history steps: 53.1 MB
+heap before a hundred history steps: 106.4 MB
+heap after a hundred history steps: 148.7 MB
+heap growth over a hundred history steps: 42.3 MB
 heavy scene triangles: 100364
 heavy scene draw calls: 12
 orbit frames drawn over 200 moves: 401
-orbit frame time mean: 0.10 ms
-orbit frame time p95: 0.30 ms
-orbit frame interval mean: 8.95 ms
-orbit frame interval p95: 14.00 ms
-orbit move-to-move mean over 200 moves: 8.95 ms
-orbit move-to-move p95 over 200 moves: 14.13 ms
-CDP round trip over 20 calls: 0.90 ms
-orbit frame time in wireframe: 0.11 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in solid: 0.13 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in material: 0.14 ms mean, 0.30 ms p95 over 121 frames
-orbit frame time in rendered: 0.13 ms mean, 0.40 ms p95 over 121 frames
+orbit frame time mean: 0.09 ms
+orbit frame time p95: 0.20 ms
+orbit frame interval mean: 8.34 ms
+orbit frame interval p95: 9.40 ms
+orbit move-to-move mean over 200 moves: 8.32 ms
+orbit move-to-move p95 over 200 moves: 9.49 ms
+CDP round trip over 20 calls: 1.05 ms
+orbit frame time in wireframe: 0.12 ms mean, 0.30 ms p95 over 121 frames
+orbit frame time in solid: 0.12 ms mean, 0.30 ms p95 over 121 frames
+orbit frame time in material: 0.12 ms mean, 0.30 ms p95 over 121 frames
+orbit frame time in rendered: 0.14 ms mean, 0.30 ms p95 over 121 frames

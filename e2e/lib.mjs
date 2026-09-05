@@ -149,27 +149,41 @@ function get(url, host) {
   })
 }
 
-/** The handful of page moves every script makes. */
 /**
- * A control on the right of the header, whether or not the width has folded that half away.
+ * A header control, wherever the header is currently keeping it.
  *
- * At 1440 the view settings collapse into one popover, and the overlays menu and the mirror axes
- * are inside it. Widening the window to avoid that is not an option: the QA browser has one window
- * and resizing it stops the compositor drawing for every script that follows.
+ * The viewport header folds its trailing groups into popovers when the row cannot hold them, and
+ * which groups are folded depends on the mode and on how wide the panels beside it are — the view
+ * settings first, then the editor's own buttons. A script that reaches straight into the bar is
+ * asking a question about the width of the window rather than about the editor. This asks the
+ * question the person asks: reach the control, opening whatever has to be opened to get to it.
+ *
+ * Widening the window instead is not an option: the QA browser has one window, and resizing it
+ * stops the compositor drawing for every script that follows.
+ *
+ * One implementation, because there were briefly two — one that knew about the first fold and one
+ * that knew about both — and the next fold stage would have been taught to only one of them.
  */
 export async function headerControl(page, selector) {
   const direct = page.locator(selector)
   if (await direct.count() > 0 && await direct.first().isVisible()) return direct.first()
-  const settings = page.locator('button[aria-label="View settings"]')
-  if (await settings.count() > 0) {
+  for (const trigger of ['Editor', 'View settings']) {
+    const fold = page.locator(`.scene-header button[aria-label="${trigger}"]`)
+    if (await fold.count() === 0) continue
     // Dispatched rather than clicked: the header is a roving-tabindex toolbar whose buttons sit
     // under a tooltip wrapper, and Playwright reads that as an interception even though a person's
     // click lands squarely on the button.
-    await settings.first().dispatchEvent('click')
+    await fold.first().dispatchEvent('click')
     await page.waitForTimeout(350)
+    const opened = page.locator(selector)
+    if (await opened.count() > 0) return opened.first()
+    await page.keyboard.press('Escape')
+    await page.waitForTimeout(150)
   }
   return page.locator(selector).first()
 }
+
+/** The handful of page moves every script makes. */
 
 export function pageHelpers(page) {
   /*
@@ -364,28 +378,13 @@ export function pageHelpers(page) {
   const moduleCount = () => firstFrameModules
 
   /**
-   * A header control, wherever the header is currently keeping it.
+   * The same as the module's `headerControl`, by the control's accessible name.
    *
-   * The viewport header folds its trailing groups into popovers when the row cannot hold them, and
-   * which groups are folded depends on the mode and on how wide the panels beside it are. A script
-   * that reaches straight into the bar is asking a question about the width of the window rather
-   * than about the editor. This asks the question the person asks: reach the control, opening what
-   * has to be opened.
+   * Scoped to a button on purpose: the UV editor's own section carries `aria-label="UV editor"`
+   * too, and a bare attribute selector hands back the panel the button opened instead of the
+   * button — which then has no pressed state to read and no fold to open.
    */
-  const headerControl = async (label) => {
-    const inBar = page.locator(`.scene-header__button[aria-label="${label}"]`)
-    if (await inBar.count() > 0) return inBar
-    for (const trigger of ['Editor', 'View settings']) {
-      const fold = page.locator('.scene-header').getByRole('button', { name: trigger })
-      if (await fold.count() === 0) continue
-      await fold.first().click()
-      await page.waitForTimeout(200)
-      const folded = page.locator(`[aria-label="${label}"]`)
-      if (await folded.count() > 0) return folded.first()
-      await page.keyboard.press('Escape')
-    }
-    return inBar
-  }
+  const control = (label) => headerControl(page, `button[aria-label="${label}"]`)
 
   /** The stored scene, which is what the editor persists. */
   const scene = () => page.evaluate(() => {
@@ -429,5 +428,5 @@ export function pageHelpers(page) {
    */
   const viewportBox = () => page.locator('.scene-viewport').boundingBox()
 
-  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection, moduleCount, headerControl }
+  return { toClient, toDocument, doc, seed, drag, clickAt, newDocument, newScene, scene, seedScene, project3d, pick, viewportBox, captureExport, captureDownload, openPaint, closePaint, openSection, moduleCount, headerControl: control }
 }

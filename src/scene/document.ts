@@ -49,6 +49,9 @@ export const COMPACT_THRESHOLD_BYTES = 5_000_000
 /** Above this a document does not go into browser storage at all; the user is offered a file. */
 export const MAX_STORED_BYTES = 20_000_000
 
+/** How much of an id survives sanitising. The store is keyed by the result, never by the input. */
+const MAX_ID_LENGTH = 80
+
 export const DEFAULT_MATERIAL: Material = {
   id: 'material-default',
   name: 'Material',
@@ -932,7 +935,7 @@ export function sanitizeSceneDocument(value: unknown): SceneDocument | null {
   const now = new Date().toISOString()
   return {
     version: 1,
-    id: source.id.slice(0, 80),
+    id: storedKey(source.id),
     name: text(source.name, 'Untitled', 120),
     objects,
     meshes,
@@ -1088,6 +1091,17 @@ let refused: { id: string; content: SceneDocument } | null = null
  */
 let meshesRead: { from: SceneDocument['meshes']; to: SceneDocument['meshes'] } | null = null
 
+/**
+ * The key a document is stored under.
+ *
+ * `sanitizeSceneDocument` truncates an id, so the id a caller hands in and the key its document
+ * sits under in storage are not always the same string. Anything that reaches into the store has
+ * to go through here, or it looks a long-id document up under a name nothing was written to.
+ */
+function storedKey(id: string): string {
+  return id.slice(0, MAX_ID_LENGTH)
+}
+
 /** Everything a document stores except its view and its timestamp, compared the cheap way. */
 function sameStoredContent(a: SceneDocument, b: SceneDocument): boolean {
   return a.objects === b.objects
@@ -1171,10 +1185,11 @@ export function saveSceneDocument(document: SceneDocument): StorageResult {
    * so a scene too big to store reopens where it was left rather than where it was last small
    * enough — which is what a full save would have left behind, at the cost of one spread.
    */
-  if (refused && refused.id === document.id && sameStoredContent(refused.content, document)) {
+  const key = storedKey(document.id)
+  if (refused && refused.id === key && sameStoredContent(refused.content, document)) {
     const documents = readAll()
-    const cached = documents[document.id]
-    if (cached) documents[document.id] = { ...cached, view: viewState(document.view), updatedAt: document.updatedAt }
+    const cached = documents[key]
+    if (cached) documents[key] = { ...cached, view: viewState(document.view), updatedAt: document.updatedAt }
     return { ok: false, reason: 'quota' }
   }
   const documents = readAll()
@@ -1194,10 +1209,12 @@ export function saveSceneDocument(document: SceneDocument): StorageResult {
   const size = JSON.stringify(clean).length
   documents[clean.id] = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
   if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) {
-    refused = { id: document.id, content: document }
+    refused = { id: key, content: document }
     return { ok: false, reason: 'quota' }
   }
-  refused = null
+  // Only this document's: a small scene saving is no news about a heavy one, and throwing its
+  // refusal away would make the next gesture on it pay the full sanitisation again.
+  if (refused?.id === key) refused = null
   const result = writeStore(STORAGE_KEY, documents)
   // The cache is what was just written, whether or not the write landed: a refused write leaves
   // storage as it was, and `documents` is that plus the change this tab is holding in memory.
@@ -1215,7 +1232,7 @@ export function deleteSceneDocument(id: string): StorageResult {
   const documents = { ...readAll() }
   delete documents[id]
   store = documents
-  if (refused?.id === id) refused = null
+  if (refused?.id === storedKey(id)) refused = null
   return writeStore(STORAGE_KEY, documents)
 }
 
