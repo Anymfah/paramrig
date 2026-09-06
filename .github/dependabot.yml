@@ -1,5 +1,8 @@
-# Dependency updates arrive once a month, grouped, so a single maintainer reviews one pull request
-# rather than a stream. Security updates are separate and come as soon as an advisory does.
+# Dependency updates arrive once a month, so a single maintainer reviews one pull request rather
+# than a stream. Minor and patch updates travel together; a major arrives on its own, because a
+# major is rarely just a version. The first grouped run proved it: nineteen updates in one pull
+# request, and the whole thing blocked by one pair that cannot agree, with eighteen fine updates
+# waiting behind it. Security updates are separate and come as soon as an advisory does.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -9,7 +12,9 @@ updates:
     groups:
       dependencies:
         patterns: ['*']
-    open-pull-requests-limit: 3
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -17,3 +22,5 @@ updates:
     groups:
       actions:
         patterns: ['*']
+        update-types: [minor, patch]
+    open-pull-requests-limit: 3
