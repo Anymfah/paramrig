@@ -182,6 +182,10 @@ Numbered bubbles reopen comments without changing the current preview size.
 **Draw on page** switches from the selected element to document coordinates.
 Notes attach to the clicked element. Drag a mark's endpoint to edit it; the hit
 radius stays 16 display pixels, or 22 for touch, independently from preview zoom.
+Only the open comment's marks can be grabbed: the others are drawn faintly and
+ignore the pointer, and a mark that belongs to another comment is refused by the
+workspace as well. Entering review, snapshots or a screen capture returns the
+preview to browsing; leaving them does not put the tool back on.
 Escape cancels the current gesture and returns to browsing. View options contains
 Reference/Current comparison, snapshots and reload.
 
@@ -201,6 +205,10 @@ The service creates the following within the connected project's `.paramrig`:
 | `responses/<id>.json` | Agent | Implementation results or clarification |
 | `captures/<id>.png` | ParamRig | Ticket images |
 | `README.md` | ParamRig | Agent handoff instructions |
+
+A ticket carries the `number` a person sees beside it, assigned once and never
+reused, so removing one comment does not renumber the ones already named in
+conversation. A draft written before `number` existed falls back to its position.
 
 The user chooses **Review changes**, reviews changed values and included
 tickets, then selects **Validate feedback**. Later edits are a new draft. Each

@@ -165,6 +165,34 @@ describe('page-side web integration', () => {
     expect(events.some(e => e.type === 'selection')).toBe(false)
   })
 
+  it('grabs an endpoint only on the comment that is open', () => {
+    const { send, events } = setup()
+    const el = document.querySelector('h1')!
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({ x: 0, y: 0, width: 100, height: 100, top: 0, left: 0, right: 100, bottom: 100, toJSON: () => ({}) })
+    send(configure('select')); el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+    const target = events.find(e => e.type === 'selection')!.target
+    const mark = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', tool: 'arrow' as const, color: '#df7757', width: 2, points: [{ x: 0, y: 0 }, { x: .5, y: .5 }], targetKey: target.key, pageId: target.pageId, viewport: { width: 800, height: 600 } }
+    const annotate = { ...configure('annotate'), tool: 'arrow', targets: [target], activeTarget: target.key, marks: [mark] } as HostCommand
+
+    // Another comment owns it: the gesture starts a new mark instead of moving that one.
+    send({ ...annotate, activeMarks: [] } as HostCommand)
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0, pointerId: 3 }))
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 80, clientY: 80, pointerId: 3 }))
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 80, clientY: 80, pointerId: 3 }))
+    const drawn = events.filter(e => e.type === 'mark')
+    expect(drawn).toHaveLength(1)
+    expect(drawn[0]!.mark.id).not.toBe(mark.id)
+
+    // The comment that owns it is open: the same gesture moves its endpoint.
+    send({ ...annotate, activeMarks: [mark.id] } as HostCommand)
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0, pointerId: 4 }))
+    el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 30, clientY: 30, pointerId: 4 }))
+    el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 30, clientY: 30, pointerId: 4 }))
+    const moved = events.filter(e => e.type === 'mark').at(-1)!
+    expect(moved.mark.id).toBe(mark.id)
+    expect(moved.mark.points[0]).toEqual({ x: .3, y: .3 })
+  })
+
   it('cancels an unfinished drawing when returning to browse and releases page interaction', () => {
     const { send, events } = setup()
     const button = document.querySelector('#plain')!

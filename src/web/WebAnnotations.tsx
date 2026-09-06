@@ -1,6 +1,7 @@
 import { Tooltip } from '../ui/Tooltip'
 import type { WebContext, WebTarget, WebTicket } from './contracts'
 import { markPoints } from './geometry'
+import { ticketNumber } from './session'
 
 function visibleBox(target: WebTarget, viewport: { width: number; height: number }) {
   if (target.status === 'missing' || target.status === 'ambiguous') return null
@@ -26,7 +27,8 @@ export function WebAnnotations({ tickets, targets, context, scale, viewport, act
   if (!context) return null
   const occupied: { x: number; y: number }[] = []
   return <div className="web-annotations" aria-label="Page comments">
-    {tickets.map((ticket, index) => {
+    {tickets.map(ticket => {
+      const index = ticketNumber(tickets, ticket) - 1
       if (ticket.context.pageId !== context.pageId || ticket.status === 'validated') return null
       const note = ticket.marks.find(mark => mark.tool === 'note')
       const mark = note ?? ticket.marks[0]

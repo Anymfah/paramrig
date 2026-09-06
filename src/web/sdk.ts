@@ -21,6 +21,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   let displayScale = 1
   let activeTarget: string | undefined
   let activeTargets: string[] = []
+  let activeMarks: string[] = []
   let targets: WebTarget[] = []
   let marks: WebMark[] = []
   let hover: WebTarget | null = null
@@ -177,8 +178,13 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
       if (!pts) continue
       const group = clippedGroup(m.targetKey ? [...targets, ...(dragTarget ? [dragTarget] : [])].find(t => t.key === m.targetKey) : undefined)
       const path = document.createElementNS(svgNS, 'path')
+      const own = mode !== 'annotate' || activeMarks.includes(m.id)
       path.setAttribute('d', pathForMark(m, pts)); path.setAttribute('stroke', m.color); path.setAttribute('stroke-width', String(m.width)); path.setAttribute('stroke-linecap', 'round'); path.setAttribute('stroke-linejoin', 'round'); path.setAttribute('fill', m.tool === 'highlight' ? `${m.color}33` : m.tool === 'note' ? m.color : 'none'); group.append(path)
-      if (mode === 'annotate') for (const p of [pts[0], pts.at(-1)].filter((p): p is Point => !!p)) {
+      // Another comment's marks stay visible while drawing, but faintly, because they cannot be
+      // grabbed: a handle that answers the pointer and then edits someone else's comment is worse
+      // than one that is plainly out of reach.
+      if (!own) path.setAttribute('opacity', '.35')
+      if (mode === 'annotate' && own) for (const p of [pts[0], pts.at(-1)].filter((p): p is Point => !!p)) {
         const dot = document.createElementNS(svgNS, 'circle'); dot.setAttribute('cx', String(p.x)); dot.setAttribute('cy', String(p.y)); dot.setAttribute('r', '3'); dot.setAttribute('fill', m.color); group.append(dot)
       }
     }
@@ -312,6 +318,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
       if (mode === 'browse') hover = null
       tool = p.tool; color = p.color; targets = p.targets; marks = p.marks; activeTarget = p.activeTarget
       activeTargets = p.activeTargets ?? (p.activeTarget ? [p.activeTarget] : [])
+      activeMarks = p.activeMarks ?? marks.map(m => m.id)
       document.documentElement.style.touchAction = mode === 'annotate' ? 'none' : originalTouchAction
       schedule()
     }
@@ -335,7 +342,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     if (mode === 'select') { select(el, event.shiftKey); return }
     const point = { x: event.clientX, y: event.clientY }
     dragIndex = undefined
-    for (const m of [...marks].reverse().filter(m => m.pageId === pageId())) {
+    for (const m of [...marks].reverse().filter(m => m.pageId === pageId() && activeMarks.includes(m.id))) {
       const pts = markPoints(m, targets, { x: scrollX, y: scrollY }); if (!pts) continue
       const clip = targets.find(t => t.key === m.targetKey)?.clip
       if (clip && (point.x < clip.x || point.y < clip.y || point.x > clip.x + clip.width || point.y > clip.y + clip.height)) continue

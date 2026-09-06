@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowUpRight, ChevronLeft, ChevronRight, Circle, Highlighter, Maximize, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Square, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Circle, Frame, Highlighter, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Square, Trash2, X } from 'lucide-react'
 import { WorkspaceShell } from '../shell/WorkspaceShell'
 import { listRigs } from '../rigs/registry'
 import { updatePrefs } from '../state/workspace'
@@ -21,6 +21,7 @@ import { envelope, isAnnouncement, isEnvelope, isEvent, WEB_PROTOCOL, type Captu
 import { listWebProjects, rememberWebProject, webProjectId, webRigId } from './projects'
 import { readWebState } from './client'
 import { helloQueue } from './handshake'
+import { ticketNumber } from './session'
 import { useWebDocument } from './useWebDocument'
 import { ScreenCapture } from './ScreenCapture'
 import { captureScreen } from './capture'
@@ -171,8 +172,12 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       if (addingTargets && ticket) session.editTicket(ticket.id, t => { t.targets = [...new Map([...t.targets, event.target].map(target => [target.key, target])).values()]; t.status = 'draft'; delete t.batchId }, 'Add feedback target')
       setSelected(prev => event.additive ? [...new Map([...prev, event.target].map(t => [t.key, t])).values()] : [event.target])
     } else if (event.type === 'mark') {
+      // A mark belongs to the comment it was drawn in. A gesture that reached another comment's
+      // mark is dropped rather than quietly moving the open comment to its owner.
+      const owner = docRef.current.tickets.find(t => t.marks.some(m => m.id === event.mark.id))
+      if (owner && owner.id !== activeTicketId) return
       session.begin('Draw annotation')
-      let id = docRef.current.tickets.find(t => t.marks.some(m => m.id === event.mark.id))?.id ?? activeTicketId
+      let id = owner?.id ?? activeTicketId
       if (!id || docRef.current.tickets.find(t => t.id === id)?.status === 'validated') {
         id = session.addTicket(event.context, event.target ? [event.target] : []); setActiveTicketId(id); captureDOM(id)
       }
@@ -222,7 +227,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     return () => { captures.forEach(r => clearTimeout(r.timer)); captures.clear(); setPendingCapture(false) }
   }, [iframeKey])
 
-  useEffect(() => { send({ type: 'configure', mode, tool, color, chrome, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), displayScale: scale }) }, [send, mode, tool, color, chrome, targetList, marks, selected, connection, frameLoad, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
+  useEffect(() => { send({ type: 'configure', mode, tool, color, chrome, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), activeMarks: ticket ? ticket.marks.map(m => m.id) : [], displayScale: scale }) }, [send, mode, tool, color, chrome, targetList, marks, selected, connection, frameLoad, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
   useEffect(() => { send({ type: 'values', values: previewMode === 'reference' ? doc.sourceValues : doc.values, source: previewMode === 'source' }) }, [send, doc.values, doc.sourceValues, previewMode, connection, frameLoad, readyRevision, previewEpoch])
   useEffect(() => {
     const observer = new ResizeObserver(entries => { const r = entries[0]?.contentRect; if (r) setAvailable({ width: r.width, height: r.height }) })
@@ -279,7 +284,8 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     else send({ type: 'restore-context', context: t.context })
   }
   const prepare = () => {
-    updatePrefs({ inspectorCollapsed: false }); setPanel('feedback'); setMobile('inspector')
+    // Nothing on the page is being selected or drawn on any more, and the tool must not stay lit.
+    updatePrefs({ inspectorCollapsed: false }); setPanel('feedback'); setMobile('inspector'); setMode('browse'); setAddingTargets(false); setReattachKey(null)
     setBatch(session.batch(doc.tickets.filter(t => t.status === 'draft').map(t => t.id)))
   }
   const changeCount = doc.tickets.filter(t => t.status === 'draft').length + Object.keys(doc.values).filter(id => !valuesEqual(doc.values[id]!, doc.sourceValues[id]!)).length
@@ -304,7 +310,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   return <WorkspaceShell rigs={listRigs()} activeId={webRigId(manifest.id)} mobilePanel={mobile} onMobilePanel={next => { setMobile(next); if (next === 'inspector') updatePrefs({ inspectorCollapsed: false }) }} mainLabel="Page" hideNavigation inspector={
     <aside className="inspector web-inspector" aria-label="Web inspector">
       <div className="inspector__head web-inspector-head">
-        <strong>{batch ? 'Review changes' : screen ? 'Screen capture' : panel === 'snapshots' ? 'Snapshots' : panel === 'feedback' ? ticket ? `Comment ${doc.tickets.indexOf(ticket) + 1}` : 'Comments' : selection?.label ?? 'Project controls'}</strong>
+        <strong>{batch ? 'Review changes' : screen ? 'Screen capture' : panel === 'snapshots' ? 'Snapshots' : panel === 'feedback' ? ticket ? `Comment ${ticketNumber(doc.tickets, ticket)}` : 'Comments' : selection?.label ?? 'Project controls'}</strong>
         <div className="web-actions">
           {!batch && !screen ? <>
             {selection && panel === 'controls' ? <Tooltip content="Comment · C"><IconButton label="Comment on selection" onClick={() => newTicket(currentSelection)}><MessageSquarePlus size={16} /></IconButton></Tooltip> : null}
@@ -336,7 +342,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
         </> : null}
         {!batch && !screen && panel === 'feedback' ? <>
           <div className="web-actions">{ticket ? <Button size="sm" variant="quiet" onClick={() => { setActiveTicketId(null); setAddingTargets(false); setMode('select') }}><ChevronLeft size={14} />Comments</Button> : <Button variant="ghost" onClick={startNote} disabled={!context}><Plus size={14} />Comment on page</Button>}</div>
-          {ticket || !doc.tickets.length ? null : <div className="web-ticket-list">{doc.tickets.map(t => <button type="button" aria-pressed={activeTicketId === t.id} key={t.id} onClick={() => openTicket(t)}><span><span className="web-list-number">{doc.tickets.indexOf(t) + 1}</span>{t.comment || t.targets[0]?.label || 'Visual feedback'}</span><small>{statusNames[t.status]}</small></button>)}</div>}
+          {ticket || !doc.tickets.length ? null : <div className="web-ticket-list">{doc.tickets.map(t => <button type="button" aria-pressed={activeTicketId === t.id} key={t.id} onClick={() => openTicket(t)}><span><span className="web-list-number">{ticketNumber(doc.tickets, t)}</span>{t.comment || t.targets[0]?.label || 'Visual feedback'}</span><small>{statusNames[t.status]}</small></button>)}</div>}
           {ticket ? <section className="web-section web-ticket-editor"><div className="web-section__head"><span className="web-scope">{statusNames[ticket.status]}</span><Tooltip content="Remove ticket"><IconButton label="Remove ticket" onClick={() => { session.change('Remove feedback', d => { d.tickets = d.tickets.filter(t => t.id !== ticket.id) }); setActiveTicketId(null) }}><Trash2 size={14} /></IconButton></Tooltip></div><label className="web-label"><span className="visually-hidden">Comment</span><textarea ref={commentInput} aria-label="Comment" value={ticket.comment} maxLength={20000} placeholder="What should change?" onFocus={() => session.begin('Edit comment')} onBlur={() => session.end()} onChange={e => session.editTicket(ticket.id, t => { t.comment = e.target.value; if (t.status !== 'draft') { t.status = 'draft'; delete t.batchId } })} /></label>
             <div className="web-actions">
               <Button variant="ghost" size="sm" aria-pressed={mode === 'annotate'} onClick={() => { setMode(mode === 'annotate' ? 'select' : 'annotate'); setTool('arrow'); setPageAnchor(false); setMobile('main'); setAddingTargets(false) }}><Pencil size={14} />Draw</Button>
@@ -348,7 +354,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
             {ticket.status === 'review' && ticket.responseRevision !== doc.sourceRevision ? <StatusMessage>This correction belongs to an earlier source revision. Reopen it for a fresh review.</StatusMessage> : null}
             {ticket.response ? <blockquote className="web-response">{ticket.response}</blockquote> : null}
             <details className="web-disclosure"><summary>Captures{ticket.captures.length ? <span> {ticket.captures.length}</span> : null}</summary>
-              <div className="web-actions"><Button variant="quiet" disabled={pendingCapture} onClick={() => captureDOM(ticket.id)}>Capture page</Button><Button variant="quiet" onClick={() => run(async () => setScreen({ image: await captureScreen(), ticketId: ticket.id }))}>Capture screen</Button></div>
+              <div className="web-actions"><Button variant="quiet" disabled={pendingCapture} onClick={() => captureDOM(ticket.id)}>Capture page</Button><Button variant="quiet" onClick={() => run(async () => { const image = await captureScreen(); setMode('browse'); setScreen({ image, ticketId: ticket.id }) })}>Capture screen</Button></div>
               {pendingCapture ? <p role="status">Capturing…</p> : null}
               {ticket.captures.map(c => <figure className="web-capture" key={c.id}>{c.status === 'ready' && (c.file || c.dataUrl) ? <a href={c.dataUrl ?? `/api/web/${c.file}`} target="_blank" rel="noreferrer" aria-label="Open capture in a new tab"><img alt={c.kind === 'screen' ? 'Screen capture' : 'HTML reconstruction'} src={c.dataUrl ?? `/api/web/${c.file}`} /></a> : null}<figcaption>{c.status === 'ready' ? <Tooltip content={c.note}><span tabIndex={0}>{c.kind === 'screen' ? 'Screen capture' : 'HTML reconstruction'}</span></Tooltip> : c.note}</figcaption></figure>)}
             </details>
@@ -366,7 +372,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       mode={mode} onMode={next => { setMode(next); setAddingTargets(false); setReattachKey(null) }} viewport={viewport} fluid={!fixedViewport}
       onViewport={size => { setFixedViewport(size); if (!size) setZoom('1') }} zoom={zoom} onZoom={setZoom}
       previewMode={previewMode} onPreviewMode={setPreviewMode} undoLabel={session.undoLabel} redoLabel={session.redoLabel} onUndo={() => session.undo()} onRedo={() => session.redo()}
-      onSnapshots={() => { updatePrefs({ inspectorCollapsed: false }); setPanel('snapshots'); setMobile('inspector') }}
+      onSnapshots={() => { updatePrefs({ inspectorCollapsed: false }); setPanel('snapshots'); setMobile('inspector'); setMode('browse'); setAddingTargets(false) }}
       onReload={() => { lastReady.current = 0; setIframeKey(n => n + 1); sync.reconnect(); setConnection('Connecting to preview') }}
       status={connection === 'Connected' ? sync.syncStatus : connection} connected={connection === 'Connected' && sync.syncStatus === 'Saved to project'}
       changeCount={changeCount} reviewDisabled={!previewReady || !context || pendingCapture || !hasFeedback || !!batch || !!screen} onReview={prepare} ready={previewReady} />
@@ -380,7 +386,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       {previewReady ? null : <div className="web-connection-veil"><p className="web-connection-notice" role="status">{connection}</p></div>}
       {mode === 'annotate' ? <div className="web-markup-toolbar" role="group" aria-label="Markup tools" inert={!previewReady}>
         {tools.map(t => <Tooltip key={t.id} content={t.label}><IconButton label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)}><t.icon size={16} /></IconButton></Tooltip>)}
-        <Tooltip content="Draw on page"><IconButton label="Draw on page" aria-pressed={pageAnchor} onClick={() => setPageAnchor(!pageAnchor)}><Maximize size={16} /></IconButton></Tooltip>
+        <Tooltip content="Draw in page coordinates"><IconButton label="Draw on page" aria-pressed={pageAnchor} onClick={() => setPageAnchor(!pageAnchor)}><Frame size={16} /></IconButton></Tooltip>
         <ColorField label="Color" value={color} onChange={setColor} />
         <Tooltip content="Finish drawing"><IconButton label="Finish drawing" onClick={() => setMode('select')}><X size={16} /></IconButton></Tooltip>
       </div> : null}

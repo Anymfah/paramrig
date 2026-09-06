@@ -8,6 +8,15 @@ function sameValue(manifest: WebProjectManifest, id: string, a: ParamValue | und
     ? a.toLowerCase() === b.toLowerCase() : valuesEqual(a as ParamValue, b as ParamValue)
 }
 
+/**
+ * The number beside a comment, in the list, on its bubble and in its heading. It is stored rather
+ * than counted, so removing one comment does not renumber the ones a person has already named in
+ * conversation. A draft written before the number existed falls back to its position.
+ */
+export function ticketNumber(tickets: WebTicket[], ticket: WebTicket): number {
+  return ticket.number ?? tickets.indexOf(ticket) + 1
+}
+
 export function newDraft(manifest: WebProjectManifest): WebDraft {
   const values = Object.fromEntries(manifest.parameters.map(p => [p.id, structuredClone(p.defaultValue)]))
   return { version: 1, projectId: manifest.id, sourceRevision: manifest.revision, sourceValues: values, values: structuredClone(values), tickets: [], snapshots: [], conflicts: [], handledResponses: [] }
@@ -96,7 +105,10 @@ export class WebSession {
   }
   addTicket(context: WebContext, targets: WebTarget[] = []): string {
     const id = crypto.randomUUID()
-    this.change('Add feedback', d => { d.tickets.push({ id, comment: '', status: 'draft', revision: d.sourceRevision, createdAt: new Date().toISOString(), context: structuredClone(context), targets: structuredClone(targets), marks: [], captures: [] }) })
+    this.change('Add feedback', d => {
+      const number = Math.max(d.tickets.length, ...d.tickets.map(t => t.number ?? 0)) + 1
+      d.tickets.push({ id, number, comment: '', status: 'draft', revision: d.sourceRevision, createdAt: new Date().toISOString(), context: structuredClone(context), targets: structuredClone(targets), marks: [], captures: [] })
+    })
     return id
   }
   editTicket(id: string, update: (ticket: WebTicket) => void, label = 'Edit feedback') { this.change(label, d => { const t = d.tickets.find(t => t.id === id); if (t) update(t) }) }

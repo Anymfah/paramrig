@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import example from '../../examples/web/manifest.json'
 import { parseManifest, type AgentResponse, type WebContext, type Values } from './contracts'
-import { newDraft, reconcile, WebSession } from './session'
+import { newDraft, reconcile, ticketNumber, WebSession } from './session'
 
 const manifest = parseManifest(example)
 const context: WebContext = { pageId: 'home', url: manifest.origin + manifest.pages[0]!.path, viewport: { width: 1440, height: 900, dpr: 1 }, scroll: { x: 0, y: 0 }, scrollers: [] }
@@ -21,6 +21,22 @@ describe('web decisions and source revisions', () => {
     s.undo(); expect(s.document.values['content-width']).toBe(1120); expect(s.undoLabel).toBeUndefined()
     s.redo(); expect(s.document.values['content-width']).toBe(1000)
     s.begin('Cancelled'); s.setValue('content-width', 800); s.cancel(); expect(s.document.values['content-width']).toBe(1000)
+  })
+  it('gives a comment a number it keeps whatever happens to the others', () => {
+    const s = new WebSession(manifest)
+    const [first, second, third] = [s.addTicket(context), s.addTicket(context), s.addTicket(context)]
+    const numbered = () => s.document.tickets.map(t => [t.id, ticketNumber(s.document.tickets, t)] as const)
+    expect(numbered()).toEqual([[first, 1], [second, 2], [third, 3]])
+    // Removing the first one does not renumber the two a person has already talked about.
+    s.change('Remove feedback', d => { d.tickets = d.tickets.filter(t => t.id !== first) })
+    expect(numbered()).toEqual([[second, 2], [third, 3]])
+    // Nor does validating one, and the next comment takes a number nobody has used.
+    s.editTicket(second, t => { t.status = 'validated' })
+    const fourth = s.addTicket(context)
+    expect(numbered()).toEqual([[second, 2], [third, 3], [fourth, 4]])
+    // A draft written before numbers existed still reads in order.
+    const legacy = structuredClone(s.document.tickets).map(t => { delete t.number; return t })
+    expect(legacy.map(t => ticketNumber(legacy, t))).toEqual([1, 2, 3])
   })
   it('shares one undo sequence between controls and annotations', () => {
     const s = new WebSession(manifest); s.setValue('accent', '#223344')

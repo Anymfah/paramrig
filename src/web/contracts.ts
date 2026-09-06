@@ -77,6 +77,8 @@ export type Capture = {
 export type TicketStatus = 'draft' | 'todo' | 'review' | 'validated' | 'clarification'
 export type WebTicket = {
   id: string
+  /** The number a person sees. Assigned once and never reused, so removals do not renumber. */
+  number?: number
   comment: string
   status: TicketStatus
   revision: string
@@ -125,7 +127,7 @@ export type AgentResponse = {
 }
 export type HostCommand =
   | { type: 'hello'; projectId: string }
-  | { type: 'configure'; mode: 'browse' | 'select' | 'annotate'; tool: MarkTool; color: string; targets: WebTarget[]; marks: WebMark[]; activeTarget?: string; activeTargets?: string[]; displayScale?: number; chrome?: WebChrome }
+  | { type: 'configure'; mode: 'browse' | 'select' | 'annotate'; tool: MarkTool; color: string; targets: WebTarget[]; marks: WebMark[]; activeTarget?: string; activeTargets?: string[]; activeMarks?: string[]; displayScale?: number; chrome?: WebChrome }
   | { type: 'values'; values: Values; source: boolean }
   | { type: 'select'; target: WebTarget }
   | { type: 'reveal-target'; target: WebTarget }
@@ -199,7 +201,7 @@ export function isMark(v: unknown): v is WebMark {
   return record(v) && safeId(v.id) && ['note', 'arrow', 'rectangle', 'ellipse', 'highlight', 'pen'].includes(String(v.tool)) && typeof v.color === 'string' && /^#[\da-f]{6}$/i.test(v.color) && typeof v.width === 'number' && v.width > 0 && v.width <= 32 && typeof v.pageId === 'string' && record(v.viewport) && Number.isFinite(v.viewport.width) && Number.isFinite(v.viewport.height) && Array.isArray(v.points) && v.points.length <= 10000 && v.points.every(p => record(p) && Number.isFinite(p.x) && Number.isFinite(p.y))
 }
 export function isTicket(v: unknown): v is WebTicket {
-  return record(v) && safeId(v.id) && typeof v.comment === 'string' && v.comment.length <= 20000 && ['draft', 'todo', 'review', 'validated', 'clarification'].includes(String(v.status)) && text(v.revision) && text(v.createdAt) && isContext(v.context) && Array.isArray(v.targets) && v.targets.every(isTarget) && Array.isArray(v.marks) && v.marks.every(isMark) && Array.isArray(v.captures) && v.captures.every(c => record(c) && safeId(c.id) && ['dom', 'screen'].includes(String(c.kind)) && ['ready', 'failed'].includes(String(c.status)) && typeof c.note === 'string')
+  return record(v) && safeId(v.id) && (v.number === undefined || Number.isInteger(v.number) && Number(v.number) > 0 && Number(v.number) <= 100000) && typeof v.comment === 'string' && v.comment.length <= 20000 && ['draft', 'todo', 'review', 'validated', 'clarification'].includes(String(v.status)) && text(v.revision) && text(v.createdAt) && isContext(v.context) && Array.isArray(v.targets) && v.targets.every(isTarget) && Array.isArray(v.marks) && v.marks.every(isMark) && Array.isArray(v.captures) && v.captures.every(c => record(c) && safeId(c.id) && ['dom', 'screen'].includes(String(c.kind)) && ['ready', 'failed'].includes(String(c.status)) && typeof c.note === 'string')
 }
 export function isDraft(v: unknown): v is WebDraft {
   return record(v) && v.version === 1 && safeId(v.projectId) && text(v.sourceRevision) && isValues(v.values) && isValues(v.sourceValues) && Array.isArray(v.tickets) && v.tickets.every(isTicket) && Array.isArray(v.snapshots) && v.snapshots.every(s => record(s) && safeId(s.id) && text(s.name) && text(s.revision) && isValues(s.values)) && Array.isArray(v.conflicts) && v.conflicts.every(c => record(c) && text(c.id) && typeof c.removed === 'boolean' && isValues({ chosen: c.chosen })) && Array.isArray(v.handledResponses) && v.handledResponses.every(safeId)
@@ -223,7 +225,7 @@ export function isCommand(p: Record<string, unknown>): boolean {
     case 'restore-context': return isContext(p.context)
     case 'navigate': return typeof p.path === 'string'
     case 'capture': return safeId(p.requestId)
-    case 'configure': return (p.chrome === undefined || isChrome(p.chrome)) && (p.activeTargets === undefined || Array.isArray(p.activeTargets) && p.activeTargets.every(key => typeof key === 'string' && key.length < 2000)) && (p.displayScale === undefined || typeof p.displayScale === 'number' && p.displayScale >= .05 && p.displayScale <= 4) && ['browse', 'select', 'annotate'].includes(String(p.mode)) && ['note', 'arrow', 'rectangle', 'ellipse', 'highlight', 'pen'].includes(String(p.tool)) && typeof p.color === 'string' && /^#[\da-f]{6}$/i.test(p.color) && Array.isArray(p.targets) && p.targets.every(isTarget) && Array.isArray(p.marks) && p.marks.every(isMark)
+    case 'configure': return (p.chrome === undefined || isChrome(p.chrome)) && (p.activeMarks === undefined || Array.isArray(p.activeMarks) && p.activeMarks.every(safeId)) && (p.activeTargets === undefined || Array.isArray(p.activeTargets) && p.activeTargets.every(key => typeof key === 'string' && key.length < 2000)) && (p.displayScale === undefined || typeof p.displayScale === 'number' && p.displayScale >= .05 && p.displayScale <= 4) && ['browse', 'select', 'annotate'].includes(String(p.mode)) && ['note', 'arrow', 'rectangle', 'ellipse', 'highlight', 'pen'].includes(String(p.tool)) && typeof p.color === 'string' && /^#[\da-f]{6}$/i.test(p.color) && Array.isArray(p.targets) && p.targets.every(isTarget) && Array.isArray(p.marks) && p.marks.every(isMark)
     default: return false
   }
 }
