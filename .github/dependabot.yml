@@ -14,6 +14,13 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
     open-pull-requests-limit: 5
+    # eslint-plugin-react-refresh 0.5 is a major in everything but its version number: it reports 86
+    # `only-export-components` errors against code that has not changed. Held below it, so a monthly
+    # group of harmless updates is not red because of one that is a refactor. Lift this with the
+    # ESLint 10 and react-hooks 7 upgrade, which is the same piece of work.
+    ignore:
+      - dependency-name: eslint-plugin-react-refresh
+        versions: ['>=0.5.0']
 
   - package-ecosystem: github-actions
     directory: /
