@@ -248,11 +248,21 @@ reported`.
 Two things are still out of reach, and will stay there: the browser's own
 screen-sharing picker, and browser zoom as a setting. Both need a person.
 
-One finding was deliberately not fixed: 12 of the shared inspector widgets the
-workspace hosts are under 44 px under a finger — the section titles at 16, the
-reset marks at 20, the context triggers at 32, the colour chip at 42 wide. They
-belong to the drawing and scene editors as much as to this one, so
-`web-a11y.e2e.mjs` reports them with their measurements and changes nothing.
+The 12 shared inspector widgets under 44 px were fixed afterwards, on request. They
+belong to the drawing and scene editors as much as to this one, so the changes are
+all inside `@media (any-pointer: coarse)` — nothing moves for a mouse — and the two
+other editors were re-run: 277 checks across the 19 drawing scripts, 49 across the
+scene editor's touch and panel scripts, all passing.
+
+What had to give: a section head is 44 px tall under a finger rather than 16, and
+the strip a control row reserves for its context trigger widens from 32 px to 48,
+because the panel clips at its own edge and a trigger hanging past it is hit-tested
+nowhere. The reset mark keeps its 6 px dot inside a 44 px button. A colour row could
+not hold a 44 px chip, a 44 px reset, eight characters at 16 px, a 44 px button and
+its own name, so under a finger the name takes a line of its own — squeezing it
+instead had produced "Prim…". `web-a11y.e2e.mjs` measures what answers a tap rather
+than what is drawn, since several of these keep a small mark in a larger box, and it
+is now a check rather than a report.
 
 ## What could not be verified (as written at the end of prompt 1)
 

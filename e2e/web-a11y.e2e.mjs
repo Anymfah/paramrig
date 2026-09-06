@@ -201,6 +201,25 @@ export default run('web-a11y', async ({ page, check, log }) => {
      */
     const OWN = '.web-toolbar button, .mobile-dock button, .web-inspector-head button, .web-ticket-list > button, .web-picks button, .web-target-row button, .web-ancestors button, .web-disclosure summary, .web-actions button, .web-comment-pin, .web-markup-toolbar button'
     const SHARED = '.web-inspector .section__title, .web-inspector .field-reset, .web-inspector .context-touch-trigger, .web-inspector .color-swatch'
+    /*
+     * What answers a finger, rather than what is drawn. Several of these widgets keep a small mark
+     * and take their room from a pseudo-element, which `getBoundingClientRect` knows nothing about,
+     * so the region is found by asking the page what is under each point around the centre.
+     */
+    const answering = (selector) => page.evaluate(css => [...document.querySelectorAll(css)]
+      .filter(el => { const b = el.getBoundingClientRect(); return b.width > 4 && b.height > 4 && b.top > 0 && b.bottom < innerHeight })
+      .map(el => {
+        const box = el.getBoundingClientRect()
+        const cx = Math.round(box.x + box.width / 2)
+        const cy = Math.round(box.y + box.height / 2)
+        const hits = (x, y) => { const top = document.elementFromPoint(x, y); return !!top && (top === el || el.contains(top)) }
+        const reach = (dx, dy) => { let step = 0; while (step < 40 && hits(cx + dx * (step + 1), cy + dy * (step + 1))) step += 1; return step }
+        return {
+          label: (el.getAttribute('aria-label') ?? el.textContent?.trim() ?? '').slice(0, 22),
+          w: hits(cx, cy) ? reach(-1, 0) + reach(1, 0) + 1 : 0,
+          h: hits(cx, cy) ? reach(0, -1) + reach(0, 1) + 1 : 0,
+        }
+      }), selector)
     const sized = (selector) => page.evaluate(css => [...document.querySelectorAll(css)]
       .filter(el => { const box = el.getBoundingClientRect(); return box.width > 4 && box.height > 4 })
       .map(el => {
@@ -214,7 +233,7 @@ export default run('web-a11y', async ({ page, check, log }) => {
     await page.locator('button[aria-label="Project controls"]').click().catch(() => undefined)
     await page.waitForTimeout(400)
     const controls = await measure()
-    const sharedAll = await sized(SHARED)
+    const sharedAll = await answering(SHARED)
     await page.locator('button[aria-label^="Comments"]').click().catch(() => undefined)
     await page.waitForTimeout(400)
     const targets = [...bar, ...controls, ...await measure()]
@@ -222,7 +241,8 @@ export default run('web-a11y', async ({ page, check, log }) => {
     log(`NOTE ${targets.length} touch targets in the workspace, ${small.length} under 44 px: ${JSON.stringify(small)}`)
     check('every control of the workspace is at least 44 px under a finger', small.length === 0, JSON.stringify(small))
     const shared = sharedAll.filter(t => t.h < 44 || t.w < 44)
-    log(`NOTE ${sharedAll.length} shared inspector widgets, ${shared.length} under 44 px, reported not owned here: ${JSON.stringify(shared)}`)
+    log(`NOTE ${sharedAll.length} shared inspector widgets, measured by what answers rather than what is drawn: ${JSON.stringify(sharedAll)}`)
+    check('the shared inspector widgets answer a finger on 44 px too', shared.length === 0, JSON.stringify(shared))
     await page.getByRole('button', { name: 'Page', exact: true }).click().catch(() => undefined)
     await page.waitForTimeout(400)
 

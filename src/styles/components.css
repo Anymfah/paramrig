@@ -1404,6 +1404,17 @@ a.menu__item:visited { color: var(--text-primary); }
   .inspector .gradient-handle:focus-visible { border-width: 10px; }
   .inspector .gradient-handle:active { border-width: 12px; }
   .segment__opt { min-height: 44px; }
+  /*
+   * Measured under a finger in the inspector: the reset mark answered on 20 x 20, the colour chip
+   * on 42 where flex had squeezed it, and a section head on 16. The marks a person sees do not
+   * change size — the 6 px dot is still a 6 px dot — only the boxes around them do.
+   */
+  .color-swatch { flex: none; }
+  .field-reset { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
+  .field-reset::before { margin: 19px auto; }
+  /* A 16 px section head cannot hold a 44 px anything, so under a finger it is 44 px tall. */
+  .section__head { min-height: var(--hit-target-coarse); }
+  .section__title { align-self: stretch; }
   .inspector .slider::-webkit-slider-thumb,
   .inspector .slider::-moz-range-thumb {
     border-width: 16px;
@@ -1468,6 +1479,29 @@ a.menu__item:visited { color: var(--text-primary); }
   .context-touch-trigger { display: block; position: absolute; inset: 0 -8px auto auto; width: 32px; min-height: 44px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); transition: background-color var(--duration-fast) var(--ease-out); }
   .context-touch-trigger:hover, .context-touch-trigger:active { background: var(--surface-overlay); }
   .number-value__input, .color-field__hex, .snapshot-name, .search-field input { font-size: 16px; }
+}
+/*
+ * The context trigger measured 32 px wide however wide it was set: a control's panel clips at its
+ * own edge, so anything hanging past it is drawn and hit-tested nowhere. Under a finger it takes
+ * its 44 px from the strip the row reserves instead, and the strip grows to hold it — 16 px off
+ * the width of a control, and only where there is a finger. This follows the block above because
+ * it overrides it.
+ */
+@media (any-pointer: coarse) {
+  .context-target:has(> .control), .context-target:has(> .section__head) { padding-inline-end: var(--space-7); }
+  .context-touch-trigger { inset: 0 0 auto auto; width: var(--hit-target-coarse); }
+  /* A colour row holds a 44 px chip, a 44 px reset mark and eight characters set at 16 px, which is
+     a few pixels more than it has. The hex gives them up rather than overlapping the mark. */
+  .color-field__hex { flex: 0 1 auto; min-width: 7ch; }
+  /*
+   * The tooltip wrapper is a flex item: left to shrink, it clipped the 44 px button inside it back
+   * to 34. Given its width back, the row holds a 44 px chip, a 44 px reset, eight characters and
+   * another 44 px button — and no name. So under a finger the name takes a line of its own rather
+   * than being cut to "Prim…", which is what squeezing it produced.
+   */
+  .color-field { flex-wrap: wrap; }
+  .color-field > .tt__anchor { flex: none; }
+  .color-field__label { order: -1; flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 
 /* Parameter instruments share their visual and interaction contract in docs and rigs. */
