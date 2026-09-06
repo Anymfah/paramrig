@@ -59,7 +59,10 @@ export function WebWorkspace({ rigId }: { rigId: string }) {
   const manifest = remembered ?? connected
   if (manifest) return <ConnectedWebWorkspace key={manifest.id} initialManifest={manifest} />
   if (missing) return <main className="web-connect"><h1>Connect this web project</h1><p>The local web service is not connected to <code>{webProjectId(rigId)}</code>. Point it at that project folder, then open it from the connections page.</p><Link to="/web">Open connections</Link></main>
-  return <main className="web-connect"><h1>Connect this web project</h1><StatusMessage>Asking the local web service about this project…</StatusMessage></main>
+  // A different heading from the fallback below: the two states are told apart by what they say,
+  // not only by what they offer, and a person reading "Connect this web project" while the answer
+  // is still on its way has been told the wrong thing.
+  return <main className="web-connect"><h1>Opening this web project</h1><StatusMessage>Asking the local web service about it…</StatusMessage></main>
 }
 
 function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjectManifest }) {
