@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Anymfah/paramrig/packages/web-sdk/schemas/batch.schema.json",
+  "title": "ParamRig approved feedback batch",
+  "description": "One immutable file at .paramrig/batches/<id>.json, written when a person approves. A second expression of isBatch in @paramrig/web; the guard stays the authority at runtime. Its file name must be <id>.json, which only the service can check.",
+  "type": "object",
+  "required": ["version", "id", "projectId", "sourceRevision", "createdAt", "values", "changes", "tickets"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "$ref": "#/$defs/identifier" },
+    "projectId": { "$ref": "#/$defs/identifier" },
+    "sourceRevision": { "$ref": "#/$defs/text" },
+    "createdAt": { "$ref": "#/$defs/text" },
+    "values": { "$ref": "#/$defs/values" },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["paramId", "label", "before", "after", "bindings"],
+        "properties": {
+          "paramId": { "$ref": "#/$defs/identifier" },
+          "label": { "type": "string" },
+          "before": { "$ref": "#/$defs/value" },
+          "after": { "$ref": "#/$defs/value" },
+          "bindings": { "type": "array" }
+        }
+      }
+    },
+    "tickets": { "type": "array", "items": { "$ref": "#/$defs/ticket" } }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "value": { "description": "Any JSON a control can hold, at most 12 deep." },
+    "values": { "type": "object" },
+    "colour": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "rect": {
+      "type": "object", "required": ["x", "y", "width", "height"],
+      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number", "minimum": 0 }, "height": { "type": "number", "minimum": 0 } }
+    },
+    "target": {
+      "type": "object",
+      "required": ["key", "selector", "fingerprint", "label", "tag", "pageId", "rect", "ancestors", "status"],
+      "properties": {
+        "key": { "$ref": "#/$defs/text" },
+        "stable": { "type": "object", "required": ["id"], "properties": { "id": { "$ref": "#/$defs/text" }, "instance": { "$ref": "#/$defs/text" } } },
+        "selector": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "label": { "type": "string" },
+        "tag": { "type": "string" },
+        "source": { "type": "string" },
+        "pageId": { "type": "string" },
+        "rect": { "$ref": "#/$defs/rect" },
+        "clip": { "$ref": "#/$defs/rect" },
+        "ancestors": {
+          "type": "array",
+          "items": { "type": "object", "required": ["key", "label"], "properties": { "key": { "$ref": "#/$defs/text" }, "label": { "type": "string" }, "stable": { "type": "object" } } }
+        },
+        "status": { "enum": ["resolved", "provisional", "missing", "ambiguous"] },
+        "controls": { "type": "integer", "minimum": 0, "maximum": 1000 }
+      }
+    },
+    "mark": {
+      "type": "object",
+      "required": ["id", "tool", "color", "width", "points", "pageId", "viewport"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "tool": { "enum": ["note", "arrow", "rectangle", "ellipse", "highlight", "pen"] },
+        "color": { "$ref": "#/$defs/colour" },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 32 },
+        "points": { "type": "array", "maxItems": 10000, "items": { "type": "object", "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } } },
+        "targetKey": { "type": "string" },
+        "pageId": { "type": "string" },
+        "viewport": { "type": "object", "required": ["width", "height"], "properties": { "width": { "type": "number" }, "height": { "type": "number" } } }
+      }
+    },
+    "capture": {
+      "type": "object",
+      "required": ["id", "kind", "status", "note"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": { "enum": ["dom", "screen"] },
+        "status": { "enum": ["ready", "failed"] },
+        "createdAt": { "type": "string" },
+        "file": { "type": "string" },
+        "note": { "type": "string" },
+        "dataUrl": { "type": "string" }
+      }
+    },
+    "context": {
+      "type": "object",
+      "required": ["pageId", "url", "viewport", "scroll", "scrollers"],
+      "properties": {
+        "pageId": { "type": "string" },
+        "url": { "type": "string" },
+        "viewport": {
+          "type": "object", "required": ["width", "height", "dpr"],
+          "properties": { "width": { "type": "number", "exclusiveMinimum": 0 }, "height": { "type": "number", "exclusiveMinimum": 0 }, "dpr": { "type": "number", "exclusiveMinimum": 0 } }
+        },
+        "scroll": { "type": "object", "required": ["x", "y"], "properties": { "x": { "type": "number" }, "y": { "type": "number" } } },
+        "scrollers": {
+          "type": "array", "maxItems": 1000,
+          "items": { "type": "object", "required": ["target", "x", "y"], "properties": { "target": { "$ref": "#/$defs/target" }, "x": { "type": "number" }, "y": { "type": "number" } } }
+        }
+      }
+    },
+    "ticket": {
+      "type": "object",
+      "required": ["id", "comment", "status", "revision", "createdAt", "context", "targets", "marks", "captures"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "number": { "type": "integer", "exclusiveMinimum": 0, "maximum": 100000 },
+        "comment": { "type": "string", "maxLength": 20000 },
+        "status": { "enum": ["draft", "todo", "review", "validated", "clarification"] },
+        "revision": { "$ref": "#/$defs/text" },
+        "createdAt": { "$ref": "#/$defs/text" },
+        "context": { "$ref": "#/$defs/context" },
+        "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } },
+        "marks": { "type": "array", "items": { "$ref": "#/$defs/mark" } },
+        "captures": { "type": "array", "items": { "$ref": "#/$defs/capture" } },
+        "batchId": { "type": "string" },
+        "response": { "type": "string" },
+        "responseRevision": { "type": "string" }
+      }
+    }
+  }
+}

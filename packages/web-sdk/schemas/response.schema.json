@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Anymfah/paramrig/packages/web-sdk/schemas/response.schema.json",
+  "title": "ParamRig agent response",
+  "description": "What the project's agent writes at .paramrig/responses/<id>.json after applying a batch. A second expression of isResponse in @paramrig/web; the guard stays the authority at runtime. Three rules need the batch beside it and live in the workspace instead: the response must name an existing batch, its sourceRevision must be that batch's, and every ticket it answers must belong to it.",
+  "type": "object",
+  "required": ["version", "id", "batchId", "projectId", "sourceRevision", "resultRevision", "createdAt", "summary", "tickets"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "$ref": "#/$defs/identifier" },
+    "batchId": { "$ref": "#/$defs/identifier" },
+    "projectId": { "$ref": "#/$defs/identifier" },
+    "sourceRevision": { "$ref": "#/$defs/text" },
+    "resultRevision": { "$ref": "#/$defs/text" },
+    "createdAt": { "$ref": "#/$defs/text" },
+    "summary": { "type": "string" },
+    "tickets": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "status", "message"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "status": { "enum": ["implemented", "needs-info"] },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2000 }
+  }
+}

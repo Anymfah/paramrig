@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Anymfah/paramrig/packages/web-sdk/schemas/manifest.schema.json",
+  "title": "ParamRig web project manifest",
+  "description": "The contract a project writes at .paramrig/manifest.json. A second expression of parseManifest in @paramrig/web; the guard stays the authority at runtime. Two of its rules cannot be written in JSON Schema and are checked only by the guard: control and page identifiers must be unique, and every binding's paramId must name a declared control.",
+  "type": "object",
+  "required": ["version", "id", "name", "revision", "origin", "pages", "groups", "parameters", "bindings"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": { "$ref": "#/$defs/identifier" },
+    "name": { "$ref": "#/$defs/text" },
+    "revision": { "$ref": "#/$defs/text" },
+    "origin": {
+      "type": "string",
+      "description": "An HTTP or HTTPS origin and nothing else: no path, no credentials, lower case.",
+      "pattern": "^https?://([a-z0-9.-]+|\\[[0-9a-f:.]+\\])(:[0-9]{1,5})?$"
+    },
+    "pages": {
+      "type": "array", "minItems": 1, "maxItems": 100,
+      "items": {
+        "type": "object", "required": ["id", "name", "path"],
+        "properties": {
+          "id": { "$ref": "#/$defs/identifier" },
+          "name": { "$ref": "#/$defs/text" },
+          "path": { "type": "string", "description": "Same-origin, so one leading slash and no second.", "pattern": "^/([^/\\\\].*)?$" }
+        }
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": { "type": "object", "required": ["id", "label"], "properties": { "id": { "$ref": "#/$defs/identifier" }, "label": { "$ref": "#/$defs/text" } } }
+    },
+    "parameters": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/parameter" } },
+    "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "parameter": {
+      "type": "object",
+      "required": ["id", "label", "group", "kind", "defaultValue"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "label": { "$ref": "#/$defs/text" },
+        "group": { "type": "string" },
+        "kind": {
+          "enum": ["number", "color", "select", "curve", "switch", "gradient", "text", "vector", "range", "palette", "points", "radial", "group", "list", "resource", "gizmo2d", "gizmo3d", "camera", "textureFrame", "multiselect", "action", "preset"]
+        },
+        "unit": { "type": "string" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number", "exclusiveMinimum": 0 },
+        "options": { "type": "array", "items": { "type": "object", "required": ["value", "label"], "properties": { "value": { "type": "string" }, "label": { "$ref": "#/$defs/text" } } } },
+        "fields": { "type": "array", "items": { "$ref": "#/$defs/parameter" } },
+        "item": { "$ref": "#/$defs/parameter" }
+      },
+      "allOf": [
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "number" } } }, "then": { "required": ["min", "max", "step"] } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "enum": ["select", "preset", "multiselect"] } } }, "then": { "required": ["options"] } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "group" } } }, "then": { "required": ["fields"] } },
+        { "if": { "required": ["kind"], "properties": { "kind": { "const": "list" } } }, "then": { "required": ["item"] } }
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "required": ["paramId", "scope", "kind", "property"],
+      "properties": {
+        "paramId": { "type": "string" },
+        "scope": { "enum": ["global", "page", "element"] },
+        "kind": { "enum": ["css-variable", "style", "adapter"] },
+        "property": { "$ref": "#/$defs/text" },
+        "pageId": { "type": "string" },
+        "unit": { "type": "string" },
+        "source": { "type": "string" },
+        "target": { "type": "object", "required": ["id"], "properties": { "id": { "$ref": "#/$defs/text" }, "instance": { "$ref": "#/$defs/text" } } }
+      },
+      "allOf": [
+        { "if": { "required": ["scope"], "properties": { "scope": { "const": "element" } } }, "then": { "required": ["target"] } },
+        { "if": { "required": ["scope"], "properties": { "scope": { "const": "page" } } }, "then": { "required": ["pageId"] } }
+      ]
+    }
+  }
+}

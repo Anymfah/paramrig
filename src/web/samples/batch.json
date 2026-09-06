@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "id": "56d85579-fa4c-49e1-935e-0ccbb0c873fd",
+  "projectId": "fieldnotes",
+  "sourceRevision": "study-1",
+  "createdAt": "2026-09-06T04:12:52.800Z",
+  "values": {
+    "accent": "#bc593d",
+    "paper": "#b0a7a7",
+    "heading-font": "Georgia",
+    "content-width": 1016,
+    "hero-size": 76,
+    "card-radius": 4,
+    "hero-copy": "Make room for the outside."
+  },
+  "changes": [
+    {
+      "paramId": "paper",
+      "label": "Page color",
+      "before": "#f4f1e9",
+      "after": "#b0a7a7",
+      "bindings": [
+        {
+          "paramId": "paper",
+          "scope": "global",
+          "kind": "css-variable",
+          "property": "--fn-paper",
+          "source": "examples/web/source.css"
+        }
+      ]
+    },
+    {
+      "paramId": "content-width",
+      "label": "Content width",
+      "before": 1120,
+      "after": 1016,
+      "bindings": [
+        {
+          "paramId": "content-width",
+          "scope": "global",
+          "kind": "css-variable",
+          "property": "--fn-width",
+          "unit": "px",
+          "source": "examples/web/source.css"
+        }
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "160592d9-d46e-4ce6-a780-cbead907363f",
+      "number": 1,
+      "comment": "Give the hero a little more room.",
+      "status": "todo",
+      "revision": "study-1",
+      "createdAt": "2026-09-06T04:12:51.652Z",
+      "context": {
+        "pageId": "home",
+        "url": "http://127.0.0.1:5174/examples/web/index.html",
+        "viewport": {
+          "width": 1120,
+          "height": 847,
+          "dpr": 1
+        },
+        "scroll": {
+          "x": 0,
+          "y": 0
+        },
+        "scrollers": []
+      },
+      "targets": [
+        {
+          "key": "id:home:hero-title:",
+          "stable": {
+            "id": "hero-title"
+          },
+          "selector": "#root > div:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > h1:nth-of-type(1)",
+          "fingerprint": "h1|||Make room for the outside.",
+          "label": "Hero title",
+          "tag": "h1",
+          "source": "src/web/example/Demo.tsx",
+          "pageId": "home",
+          "rect": {
+            "x": 100,
+            "y": 286.46875,
+            "width": 466.40625,
+            "height": 155.03125
+          },
+          "clip": {
+            "x": 0,
+            "y": 0,
+            "width": 1120,
+            "height": 847
+          },
+          "ancestors": [
+            {
+              "key": "dom:home:#root > div:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1)",
+              "label": "Unnamed div"
+            },
+            {
+              "key": "id:home:hero:",
+              "label": "Hero",
+              "stable": {
+                "id": "hero"
+              }
+            },
+            {
+              "key": "id:home:page:",
+              "label": "Page",
+              "stable": {
+                "id": "page"
+              }
+            },
+            {
+              "key": "dom:home:#root",
+              "label": "Unnamed div"
+            },
+            {
+              "key": "dom:home:body:nth-of-type(1)",
+              "label": "Unnamed body"
+            },
+            {
+              "key": "dom:home:html",
+              "label": "Unnamed html"
+            }
+          ],
+          "controls": 2,
+          "status": "resolved"
+        }
+      ],
+      "marks": [
+        {
+          "id": "00fcc039-3aec-4482-a4e8-5f91ecce7663",
+          "tool": "note",
+          "color": "#df7757",
+          "width": 2,
+          "points": [
+            {
+              "x": 0.04288107202680067,
+              "y": 0.07740374924410401
+            },
+            {
+              "x": 0.04288107202680067,
+              "y": 0.07740374924410401
+            }
+          ],
+          "targetKey": "id:home:hero-title:",
+          "pageId": "home",
+          "viewport": {
+            "width": 1120,
+            "height": 847
+          }
+        }
+      ],
+      "captures": [
+        {
+          "id": "8fe926ba-ff8e-4806-bdbc-b5b4c3399bf1",
+          "kind": "dom",
+          "createdAt": "2026-09-06T04:12:51.732Z",
+          "status": "ready",
+          "note": "DOM reconstruction. Effects, external resources and live media may differ from the screen.",
+          "file": "captures/8fe926ba-ff8e-4806-bdbc-b5b4c3399bf1.png"
+        }
+      ]
+    }
+  ]
+}

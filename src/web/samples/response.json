@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "id": "response-001",
+  "projectId": "fieldnotes",
+  "batchId": "56d85579-fa4c-49e1-935e-0ccbb0c873fd",
+  "sourceRevision": "study-1",
+  "resultRevision": "study-2",
+  "createdAt": "2026-09-05T12:00:00.000Z",
+  "summary": "Applied the approved palette and adjusted the hero.",
+  "tickets": [
+    {
+      "id": "160592d9-d46e-4ce6-a780-cbead907363f",
+      "status": "implemented",
+      "message": "Check the hero at mobile width."
+    }
+  ]
+}

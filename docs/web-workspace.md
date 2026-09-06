@@ -76,6 +76,14 @@ The resulting package is `packages/web-sdk`. Install that local package in the
 target project's own development environment, or serve the generated ES module
 and its accompanying chunks. No registry publication is needed.
 
+**`packages/web-sdk/README.md` is the integration guide**, written for the agent
+that maintains the project being tuned: every manifest field, the control kinds,
+the three binding kinds and their scopes, the `data-paramrig-*` attributes, the
+framing header, what to commit, and the shape of the answer to write back. It also
+ships JSON Schema for the manifest, the batch and the response under
+`packages/web-sdk/schemas/`. What follows here is the workbench's own side; the
+two do not repeat each other.
+
 ```ts
 import { connectWeb, parseManifest } from '@paramrig/web'
 import manifestFile from './.paramrig/manifest.json'
