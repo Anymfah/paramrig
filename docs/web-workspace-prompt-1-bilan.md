@@ -228,9 +228,36 @@ Three things were fixed in passing because they got in the way of the work:
   own file when that choice is offered, and clears the comments a script leaves behind; the eight
   web scripts share it.
 
-## What could not be verified
+## What was left aside, and closed afterwards
 
-Headless, on this machine, with the harness available:
+A second pass went back to the list below and closed all of it but two items. It is
+recorded here rather than in a separate document, so the list and its answer stay
+together; the work is in the commits after `The exact count the last verification
+reported`.
+
+| Left aside in prompt 1 | What happened |
+| --- | --- |
+| A real agent response | Driven end to end by `web-response.e2e.mjs`, which writes response files exactly as an agent would. **Found one defect**: reopening a comment kept the agent's previous answer on it and carried it into the next batch. |
+| Screen capture | Driven by `web-capture.e2e.mjs`, which replaces `getDisplayMedia` and only that with a real `MediaStream` from a canvas. **Found two**: an action's failure was written into the project's connection status, which the next successful save clears; and the fold the kept image lands in was closed. |
+| Forced colours | Driven by `web-a11y.e2e.mjs` through `emulateMedia`. **Found two**: a review swatch was painted the system colour, so every colour looked the same; the crop rectangle had no forced-colours treatment at all. |
+| Touch | Driven by real touch events over CDP. **Found one**: the page picker stopped at 32 px, Review changes at 36, the folds at 40 and the inspector's icons were 28 wide. All 47 controls the workspace owns are now at least 44. |
+| 200% browser zoom | Zoom itself is not a CDP surface. What it leaves — 720 CSS pixels in a 1440 window — is measured, and nothing overflows. |
+| Reduced motion | Measured: nothing in the workspace animates. |
+| A real mouse below the fold of the frame | **The note was wrong.** It is not intermittent and not about scrolling: input aimed at an out-of-process iframe is hit-tested against the real browser window rather than the emulated viewport, so the top ~540 px of a 900 px emulated page answers a real click and the rest does not, deterministically. `web-select.e2e.mjs` now uses a real mouse within that reach. |
+
+Two things are still out of reach, and will stay there: the browser's own
+screen-sharing picker, and browser zoom as a setting. Both need a person.
+
+One finding was deliberately not fixed: 12 of the shared inspector widgets the
+workspace hosts are under 44 px under a finger — the section titles at 16, the
+reset marks at 20, the context triggers at 32, the colour chip at 42 wide. They
+belong to the drawing and scene editors as much as to this one, so
+`web-a11y.e2e.mjs` reports them with their measurements and changes nothing.
+
+## What could not be verified (as written at the end of prompt 1)
+
+The list the second pass then went through. Headless, on this machine, with the
+harness available:
 
 - **Screen capture.** `getDisplayMedia` has no headless equivalent and no synthetic replacement. The
   cropping is covered by a component test on a stubbed canvas; acquiring the frame, the permission
