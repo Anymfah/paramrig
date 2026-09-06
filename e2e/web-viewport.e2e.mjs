@@ -6,14 +6,12 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { run, BASE, OUTPUT } from './lib.mjs'
+import { run, OUTPUT } from './lib.mjs'
+import { openWorkspace } from './web-lib.mjs'
 
 export default run('web-viewport', async ({ page, check, log, shot }) => {
   mkdirSync(join(OUTPUT, 'web-viewport'), { recursive: true })
-  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Open project' }).click()
-  await page.waitForSelector('.web-toolbar')
-  await page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
+  await openWorkspace(page)
 
   const size = () => page.locator('.web-size-trigger').innerText()
   const stage = () => page.evaluate(() => {
@@ -98,8 +96,9 @@ export default run('web-viewport', async ({ page, check, log, shot }) => {
   await page.locator('.web-project-button').click()
   await page.waitForTimeout(400)
   const menu = await page.locator('[role="menu"]').innerText()
-  log(`NOTE project menu at 390: ${JSON.stringify(menu.split('\n')[0])}`)
-  check('the state is readable in the project menu', /Saved to project|Connecting|offline|conflict|interrupted/i.test(menu), menu.slice(0, 80))
+  const status = await page.locator('.web-sync').getAttribute('aria-label')
+  log(`NOTE project menu at 390: ${JSON.stringify(menu.split('\n')[0])} · toolbar says ${JSON.stringify(status)}`)
+  check('the state is readable in the project menu', menu.split('\n')[0] === status, `${menu.split('\n')[0]} vs ${status}`)
   await page.keyboard.press('Escape')
   await page.waitForTimeout(300)
   await shot('web-viewport/toolbar-390.png')

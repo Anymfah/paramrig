@@ -1,0 +1,29 @@
+handshake open: 2002 / 1991 / 51 ms (spread 1951 ms)
+handshake reload: 63 / 2003 / 2018 ms (spread 1955 ms)
+handshake page change: 1816 / 1873 / 1885 ms (spread 69 ms)
+during handshake: {"notice":"Connecting to preview","selectPressed":"false","selectDisabled":false,"selectInert":false,"reviewDisabled":true,"controlsInert":false,"veil":false}
+postMessage origin warnings after one reload: 3
+deep link with an empty registry: "This rig is not in the example registry"
+card selected: inspector title="story card"
+first control section title: "ALL INSTANCES"
+floating Comment button over the selection: 1
+kicker selected: {"title":"A journal for a slower pace","chips":["hero","page",""],"body":"hero page"}
+ticket editor present: true
+review panel:
+3 controls · 1 comment
+
+Primary color
+
+#bc593d → #f32f00
+
+Page color
+
+#f4f1e9 → #d1cece
+
+Content width
+
+1120 → 1016
+
+The kicker sits too close to the title.
+Validate feedback
+Back

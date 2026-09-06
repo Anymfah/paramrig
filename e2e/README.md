@@ -60,6 +60,88 @@ Conventions worth keeping:
 - `page.mouse.dblclick`, never `click({ clickCount: 2 })`; modifiers through `keyboard.down` /
   `keyboard.up`; focus `#main` before pressing a tool key.
 
+## The web scripts
+
+`web-*.e2e.mjs` drive the connected web workspace: the workbench at `localhost:5174` with the
+Fieldnotes example running inside an iframe at `127.0.0.1:5174` — a different browser origin, on
+purpose, because that is what a real project is.
+
+- **`web-connect`** — the pairing. How long "Connecting to preview" lasts at open, at reload and at
+  a page change, three passes each; that the tools are inert while it lasts; that a selection made a
+  tenth of a second after Connected lands; and that nothing is posted at a frame that has not loaded.
+- **`web-deeplink`** — `/r/web-fieldnotes` on a browser with an empty `paramrig.web-projects.v1`,
+  and the connections page it falls back to when the service is connected to something else.
+- **`web-select`** — the hover caption, the pointer leaving the page, and the panel a selection with
+  no controls of its own shows instead of nothing.
+- **`web-scope`** — what a section of controls is called and what badge it carries, the comment
+  action in the inspector header, and the hierarchy read as a path.
+- **`web-marks`** — two comments with an arrow each, and the proof that drawing in one leaves the
+  other alone.
+- **`web-review`** — a comment approved end to end, the batch read back from `/api/web/state`, and
+  what the workspace says once the agent has something to read.
+- **`web-viewport`** — a preset wider than the stage, the zoom ladder, the page picker's width and
+  where the connection state is legible at 390 px.
+- **`web-reference`** — the record: `e2e/reference/web/after/`, the handshake over three passes, and
+  a sweep of 1440, 1024 and 390 px in both themes looking for anything that does not fit.
+
+Run them together with `docker compose run --rm app npm run e2e -- web-`.
+
+`web-lib.mjs` carries the moves they share: `openWorkspace` goes through the connections page and
+waits for the preview to answer, `settleRecovery` takes the project's own file when the browser is
+holding a draft ahead of the one on disk, and `clearComments` empties the shared draft afterwards.
+
+### Traps particular to driving the workspace
+
+- **Wait for the toolbar first, then for the notice to go.** `.web-toolbar` appears before
+  `.web-connection-notice` does; waiting for the notice first resolves against an empty page and
+  proves nothing. Probe an element that may be absent with `count()`, never `textContent()`, which
+  waits thirty seconds for it.
+- **Never wait for `networkidle`.** The workspace holds an EventSource open on the project service
+  for as long as it is on screen, so the network is never idle. Use `domcontentloaded` and then wait
+  for the element the check is about.
+- **The iframe is cross-origin, and the mouse gets lost in it.** A pointer driven over CDP arrives at
+  the top of the frame and then goes astray after a scroll or near the frame's lower band: the parent
+  receives the `pointerdown` with the `<iframe>` element as its target and the frame sees nothing.
+  This is the harness, not the application. Drive the SDK from inside the frame instead:
+
+  ```js
+  const frame = page.frames().find(f => f.url().includes('127.0.0.1'))
+  await frame.evaluate(() => {
+    const el = document.querySelector('[data-paramrig-id="hero-title"]')
+    const r = el.getBoundingClientRect()
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, composed: true, button: 0, pointerId: 9, clientX: r.x + 8, clientY: r.y + 8 }))
+  })
+  ```
+
+  A mark is a whole gesture: `pointerdown`, a `pointermove` or two, `pointerup`. A note is sent on
+  the way up, so a lone `pointerdown` creates nothing. Keyboard goes through
+  `frame.press('body', 'Escape')`. Before concluding a handler is silent, put a witness listener in
+  both the parent and the frame.
+- **What the overlay draws is behind a closed shadow root.** Nothing in the page can read it. The
+  SDK's own host element carries `data-hover` with what the outline is captioned, which is the one
+  way to check the hover from a script.
+- **Selectors.** `.web-toolbar`, `.web-connection-notice`, `.web-connection-veil`,
+  `.web-preview-stage[data-mode]`, `.web-inspector-head strong` (the inspector's title),
+  `.web-picks button`, `.web-ancestors button` and `.web-crumb`, `.web-ticket-editor`,
+  `textarea[aria-label="Comment"]`, `.web-markup-toolbar button[aria-label=…]`,
+  `.web-ticket-list button`, `button[aria-label="Remove ticket"]`, `.web-review-button`,
+  `.web-feedback-review`, `.web-comment-pin`, `.web-size-trigger`, `.web-view-popover`.
+  Two traps: the comments icon is called `Comments (n)` as soon as there is one, so match
+  `button[aria-label^="Comments"]`; and `:has-text("Back")` also matches "Approve feed**back**", so
+  use `getByRole('button', { name: 'Back', exact: true })`.
+- **The size popover toggles.** Choosing a preset leaves it open, so a second click on the trigger
+  shuts it rather than opening it. Check whether `.web-view-popover` is already there first.
+- **The draft is shared, and a killed run blocks it.** `.local/web/.paramrig/draft.json` belongs to
+  every window: a script that creates comments removes them at the end, and a second window open on
+  the same project goes to "Draft changed elsewhere" on the first write, which is expected. A run
+  killed mid-save also leaves the browser's IndexedDB copy ahead of the file, and the workspace then
+  refuses every write until someone chooses between the two — a script that does not make that
+  choice writes nothing and fails on the state it thought it had saved. `openWorkspace` makes it. Approved batches are immutable —
+  a publication test makes its own comment and tolerates the batches already there. Never delete
+  anything in `.local/web/.paramrig/` by hand.
+- **Screen capture cannot be tested here.** `getDisplayMedia` has no headless equivalent, so the
+  cropping is covered by a component test and the capture itself is not covered at all.
+
 ## The scene scripts
 
 `scene-*.e2e.mjs` drive the 3D editor. A viewport cannot be checked with selectors alone — a script

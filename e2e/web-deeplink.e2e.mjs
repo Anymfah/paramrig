@@ -4,6 +4,7 @@
  * the local service instead of showing the library's "not in the example registry" page.
  */
 import { run, BASE } from './lib.mjs'
+import { settled, settleRecovery } from './web-lib.mjs'
 
 export default run('web-deeplink', async ({ page, check, log }) => {
   const forget = () => page.evaluate(() => localStorage.removeItem('paramrig.web-projects.v1'))
@@ -14,7 +15,8 @@ export default run('web-deeplink', async ({ page, check, log }) => {
   await page.waitForSelector('.web-toolbar', { timeout: 20000 })
   check('a link to an unopened project opens the workspace', await page.locator('.web-toolbar').count() === 1)
   check('the registry page is never shown for a web link', await page.locator('h1:has-text("not in the example registry")').count() === 0)
-  await page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
+  await settled(page)
+  await settleRecovery(page)
   const name = await page.locator('.web-project-button > span:not(.web-project-mark)').innerText()
   check('the project arrives with the name the service gave it', name === 'Fieldnotes', name)
 

@@ -12,6 +12,7 @@
  * measured. A rAF loop reading the DOM costs nothing and answers in the page's own clock.
  */
 import { run, BASE } from './lib.mjs'
+import { settleRecovery } from './web-lib.mjs'
 
 const watcher = () => {
   window.__hs = []
@@ -59,6 +60,7 @@ export default run('web-connect', async ({ page, check, log }) => {
     await page.getByRole('button', { name: 'Open project' }).click()
     await page.waitForSelector('.web-toolbar')
     await settled()
+    await settleRecovery(page)
   }
 
   // The notice's whole life, three passes over each of the three cases.

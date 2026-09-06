@@ -5,14 +5,12 @@
  */
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { run, BASE, OUTPUT } from './lib.mjs'
+import { run, OUTPUT } from './lib.mjs'
+import { openWorkspace } from './web-lib.mjs'
 
 export default run('web-scope', async ({ page, check, log, shot }) => {
   mkdirSync(join(OUTPUT, 'web-scope'), { recursive: true })
-  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Open project' }).click()
-  await page.waitForSelector('.web-toolbar')
-  await page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
+  await openWorkspace(page)
 
   const sections = () => page.evaluate(() => [...document.querySelectorAll('.web-inspector__body .section__title')].map(title => ({
     name: title.querySelector('span:not(.web-section-scope)')?.textContent ?? '',

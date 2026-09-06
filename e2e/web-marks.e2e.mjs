@@ -7,7 +7,8 @@
  * The drawing is driven inside the frame: the mouse driven over CDP loses its way in a cross-origin
  * frame after a scroll, and everything the SDK reads from a pointer gesture is in the events.
  */
-import { run, BASE } from './lib.mjs'
+import { run } from './lib.mjs'
+import { clearComments, openWorkspace } from './web-lib.mjs'
 
 const gesture = ([selector, from, to, id]) => {
   const el = document.querySelector(selector)
@@ -21,10 +22,7 @@ const gesture = ([selector, from, to, id]) => {
 }
 
 export default run('web-marks', async ({ page, check, log }) => {
-  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Open project' }).click()
-  await page.waitForSelector('.web-toolbar')
-  await page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
+  await openWorkspace(page)
   const frame = () => page.frames().find(f => f.url().includes('127.0.0.1'))
   const draft = () => page.evaluate(async () => (await (await fetch('/api/web/state', { cache: 'no-store' })).json()).draft.document)
 
@@ -102,15 +100,5 @@ export default run('web-marks', async ({ page, check, log }) => {
   await page.locator('button[aria-label="Finish drawing"]').click()
 
   // The comments this script made go away again; the shared draft belongs to everyone.
-  await comments.click()
-  await page.waitForTimeout(300)
-  for (let guard = 0; guard < 8; guard += 1) {
-    const rows = page.locator('.web-ticket-list button')
-    if (await rows.count() === 0) break
-    await rows.first().click()
-    await page.waitForTimeout(300)
-    await page.locator('button[aria-label="Remove ticket"]').click()
-    await page.waitForTimeout(400)
-  }
-  check('the script leaves no comment behind', await page.locator('.web-ticket-list button').count() === 0)
+  check('the script leaves no comment behind', await clearComments(page) === 0)
 })

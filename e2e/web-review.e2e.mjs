@@ -5,13 +5,11 @@
  * Approved batches are immutable and shared, so this script adds its own comment, approves it and
  * then removes what is left of its own draft. It never touches a batch that was already there.
  */
-import { run, BASE } from './lib.mjs'
+import { run } from './lib.mjs'
+import { clearComments, openWorkspace } from './web-lib.mjs'
 
 export default run('web-review', async ({ page, check, log }) => {
-  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
-  await page.getByRole('button', { name: 'Open project' }).click()
-  await page.waitForSelector('.web-toolbar')
-  await page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
+  await openWorkspace(page)
   const state = () => page.evaluate(async () => (await (await fetch('/api/web/state', { cache: 'no-store' })).json()))
   const before = await state()
   const comments = page.locator('button[aria-label^="Comments"]')
@@ -99,13 +97,5 @@ export default run('web-review', async ({ page, check, log }) => {
   check('the comment reads as sent rather than as a contract value', status.includes('Sent to agent'), JSON.stringify(status))
 
   // Clean up this script's own draft; the approved batch stays, as it must.
-  for (let guard = 0; guard < 8; guard += 1) {
-    const rows = page.locator('.web-ticket-list button')
-    if (await rows.count() === 0) break
-    await rows.first().click()
-    await page.waitForTimeout(300)
-    await page.locator('button[aria-label="Remove ticket"]').click()
-    await page.waitForTimeout(400)
-  }
-  check('the script leaves no comment behind', await page.locator('.web-ticket-list button').count() === 0)
+  check('the script leaves no comment behind', await clearComments(page) === 0)
 })
