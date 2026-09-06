@@ -104,7 +104,8 @@ element a person happens to select:
 
 - `css-variable` — writes a CSS custom property. `property` is the property name,
   `--accent`. Prefer this for design tokens: one binding moves everything that
-  reads the token.
+  reads the token. A string is written as it is: `Public Sans` needs no quotes
+  to reach `font-family` through `var()`.
 - `style` — writes one declared CSS property on the target. `property` is the CSS
   property, `font-size`. The original inline value and its priority are preserved
   and restored.
@@ -125,7 +126,9 @@ computed style for a CSS property or custom property. `defaultValue` is the
 fallback when that read gives nothing. A computed length comes back in pixels
 whatever the stylesheet declared, so the SDK converts it into the binding's
 `unit` when the two are commensurable — `rem`, `em`, `vw`, `pt` and the other
-lengths, `s` and `ms`, `deg` and `turn`. A percentage cannot be read back, nor
+lengths, `s` and `ms`, `deg` and `turn`. A custom property reads back as you
+declared it, and the same conversion applies when it carries a unit. A
+percentage cannot be read back, nor
 can a bare number the browser reports with a unit, such as a unitless
 `line-height`; there the `defaultValue` stands, so keep it true.
 
@@ -185,9 +188,9 @@ React:
 ```tsx
 useEffect(() => {
   if (!import.meta.env.DEV) return
-  const connection = connectWeb({ manifest, adapters })
+  const connection = connectWeb({ manifest: parseManifest(manifestFile), adapters })
   return () => connection.dispose()
-}, [manifest])
+}, [])
 ```
 
 **Always dispose.** On unmount, and on hot-module replacement — `import.meta.hot`
@@ -195,9 +198,12 @@ in Vite, `module.hot` in webpack. A second `connectWeb` without a `dispose` is
 handled (it warns and replaces the first, so two overlays never coexist), but the
 warning is telling you the cleanup is missing.
 
-**Keep it out of production.** Guard the import so the module is not in the
-production bundle at all: `import.meta.env.DEV`, `process.env.NODE_ENV`, or a
-dynamic `import()` behind that check.
+**Keep it out of production.** The example above is enough under Vite: the
+package declares `sideEffects: false`, the guarded call is dead code once
+`import.meta.env.DEV` is `false`, and the bundler drops the import with it. Keep
+`parseManifest` and the manifest inside the guard too, or they stay in the
+bundle. With another bundler, or `process.env.NODE_ENV`, put a dynamic
+`import()` behind the same check.
 
 `hostOrigin` is optional and takes one origin or a list. It defaults to
 `['http://localhost:5174', 'http://127.0.0.1:5174']`, the two addresses the
@@ -270,7 +276,9 @@ that moved), `changes` (each with `before`, `after` and the bindings it writes),
 and `tickets` (the comments, each with its targets, marks, page, viewport, scroll
 context and captures). A batch restates every difference from your source, so the
 newest one alone is the whole picture, and a control present in `values` but
-absent from `changes` did not move.
+absent from `changes` did not move. A ticket need not map to a change either:
+when the approved values already do what it asks — one binding carrying a font
+to every heading — say so in its message rather than look for a second edit.
 
 **Apply it in the source.** Move the real values in the real files — the batch is
 a request, not a patch. A value behind an adapter usually lives in three places
@@ -298,7 +306,9 @@ code the controls describe has changed.
 }
 ```
 
-- `id` must be unique, and the file must be named `<id>.json`.
+- `id` must be unique, and the file must be named `<id>.json`. Any name the
+  identifier pattern accepts will do — letters, digits, `-` and `_`, no dot —
+  `response-<uuid>` and a counter alike.
 - `projectId` is the manifest's `id`; `batchId` names the batch you read.
 - `sourceRevision` is the batch's own `sourceRevision`. `resultRevision` is the
   new manifest revision. A response naming another revision is reported, not
