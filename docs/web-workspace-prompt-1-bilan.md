@@ -243,7 +243,7 @@ reported`.
 | Touch | Driven by real touch events over CDP. **Found one**: the page picker stopped at 32 px, Review changes at 36, the folds at 40 and the inspector's icons were 28 wide. All 47 controls the workspace owns are now at least 44. |
 | 200% browser zoom | Zoom itself is not a CDP surface. What it leaves — 720 CSS pixels in a 1440 window — is measured, and nothing overflows. |
 | Reduced motion | Measured: nothing in the workspace animates. |
-| A real mouse below the fold of the frame | **The note was wrong.** It is not intermittent and not about scrolling: input aimed at an out-of-process iframe is hit-tested against the real browser window rather than the emulated viewport, so the top ~540 px of a 900 px emulated page answers a real click and the rest does not, deterministically. `web-select.e2e.mjs` now uses a real mouse within that reach. |
+| A real mouse below the fold of the frame | **The note was wrong, and the limit is gone.** It was never intermittent and never about scrolling: input aimed at an out-of-process iframe is hit-tested against the real browser window rather than the emulated viewport, and the QA browser opened 1500 × 600 against an emulated 1440 × 900. `--window-size` cannot change it — this build pins the height at 600 — but `Browser.setWindowBounds` can, so `run()` sizes the window before it starts. The same walk down the frame goes from 10 points heard to 20, and `web-select.e2e.mjs` clicks an element 803 px down the page with a real mouse. |
 
 Two things are still out of reach, and will stay there: the browser's own
 screen-sharing picker, and browser zoom as a setting. Both need a person.

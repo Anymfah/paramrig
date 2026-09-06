@@ -22,7 +22,22 @@ fails, so it can gate a commit.
   the container.
 - **The browser** is the persistent headless GPU Chrome on the host, reached over CDP at
   `http://host.docker.internal:9223`. The scripts connect to it; they never launch one, which is
-  what keeps a window from appearing on the user's desktop.
+  what keeps a window from appearing on the user's desktop. When it needs starting again:
+
+  ```sh
+  "$HOME/Library/Caches/ms-playwright/chromium-1234/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" \
+    --headless=new --use-angle=metal --enable-gpu \
+    --remote-debugging-port=9223 --remote-allow-origins='*' \
+    --user-data-dir="$HOME/.claude/chrome-perf-profile" --window-size=1500,1000 \
+    --no-first-run --no-default-browser-check \
+    --disable-backgrounding-occluded-windows --disable-renderer-backgrounding \
+    --disable-background-timer-throttling --disable-features=CalculateNativeWinOcclusion \
+    about:blank &
+  ```
+
+  `run()` sizes the window itself over CDP, so the flag is a hint rather than the mechanism: this
+  build pins the height at 600 whatever it is told. Everything else in that line matters — the GPU
+  through Metal is what makes the scene scripts measure a real renderer.
 
 Both addresses can be overridden — `PARAMRIG_CDP` and `PARAMRIG_BASE` — for a run straight from
 macOS:
@@ -105,18 +120,22 @@ holding a draft ahead of the one on disk, and `clearComments` empties the shared
 - **Never wait for `networkidle`.** The workspace holds an EventSource open on the project service
   for as long as it is on screen, so the network is never idle. Use `domcontentloaded` and then wait
   for the element the check is about.
-- **A real mouse reaches the top of the cross-origin frame and stops.** Not intermittently, and not
-  because of scrolling: input aimed at an out-of-process iframe is hit-tested against the *real*
-  browser window rather than the viewport the harness emulates. The QA browser's window is 1500 × 600
-  (`outerHeight`) while the scripts emulate 1440 × 900, so a real click lands anywhere in the top
-  ~540 px of the page and nowhere below it — measured by walking the frame at 40 px steps, in browse
-  mode, with a listener on the frame's own document: heard down to y 380, nothing after. Shrink the
-  viewport to fit the real window and the whole frame answers again (at a 520 px viewport, every
-  step of a 467 px frame was heard). `web-lib.mjs` has `pointInFrame` for the mapping and
-  `mouseReach` for the limit; `web-select.e2e.mjs` uses a real mouse within it.
+- **A real mouse only reaches as far as the browser's real window.** Input aimed at an
+  out-of-process iframe is hit-tested against the real window, not against the viewport the harness
+  emulates. The QA browser opened 1500 × 600 while the scripts emulate 1440 × 900, so a real click
+  landed in the top ~540 px of the page and nowhere below — not intermittently and nothing to do
+  with scrolling: walked at 40 px steps in browse mode, with a listener on the frame's own document,
+  it was heard down to y 380 and never after, across the full width.
 
-  Below that line, drive the SDK from inside the frame instead — which is what every other web
-  script does, since it does not depend on the window's real size:
+  `--window-size` does not fix it — this headless build pins the height at 600 whatever the flag
+  and the profile's saved bounds say — but `Browser.setWindowBounds` over CDP does, so `run()` sets
+  the window to 1500 × 1000 before it starts and the whole preview answers: the same walk is now
+  heard to y 780, and `web-select.e2e.mjs` clicks an element 803 px down the page. `web-lib.mjs`
+  keeps `pointInFrame` for the mapping and `mouseReach` for the limit, which still reports honestly
+  on a browser that refuses to be resized.
+
+  Where a real mouse is not wanted, drive the SDK from inside the frame — which is what most web
+  scripts do, since it does not depend on the window at all:
 
   ```js
   const frame = page.frames().find(f => f.url().includes('127.0.0.1'))

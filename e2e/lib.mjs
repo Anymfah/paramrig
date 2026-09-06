@@ -70,6 +70,7 @@ export async function run(name, body) {
      * with "execution context was destroyed" rather than with a number.
      */
     await page.waitForLoadState('domcontentloaded').catch(() => undefined)
+    await ensureWindow(page)
     await page.setViewportSize({ width: 1440, height: 900 })
     /*
      * The canary. A shared headless browser sometimes stops drawing — an occluded window, a page
@@ -122,6 +123,30 @@ export async function run(name, body) {
     writeFileSync(join(OUTPUT, `${name}.txt`), lines.join('\n'))
   }
   return results
+}
+
+/**
+ * The real window has to be at least as big as the viewport the scripts emulate.
+ *
+ * Input aimed at an out-of-process iframe — the web workspace's preview is one, on purpose — is
+ * hit-tested against the real window rather than the emulated viewport. The QA browser opens
+ * 1500 x 600 whatever `--window-size` says, so a real click reached the top 540 px of a 900 px page
+ * and nothing below it. `Browser.setWindowBounds` does what the flag cannot; it is a no-op once the
+ * window is already big enough, so only the first run of a session pays for it, and a browser that
+ * refuses is left alone rather than failing the run.
+ */
+const WINDOW = { width: 1500, height: 1000 }
+async function ensureWindow(page) {
+  try {
+    const cdp = await page.context().newCDPSession(page)
+    const { targetInfo } = await cdp.send('Target.getTargetInfo')
+    const { windowId } = await cdp.send('Browser.getWindowForTarget', { targetId: targetInfo.targetId })
+    const { bounds } = await cdp.send('Browser.getWindowBounds', { windowId })
+    if (bounds.width >= WINDOW.width && bounds.height >= WINDOW.height) return
+    await cdp.send('Browser.setWindowBounds', { windowId, bounds: { ...WINDOW, windowState: 'normal' } })
+    // A window that has just changed size is a window whose compositor is still catching up.
+    await page.waitForTimeout(400)
+  } catch { /* A browser that will not be resized is one the scripts still run in, less deeply. */ }
 }
 
 /**

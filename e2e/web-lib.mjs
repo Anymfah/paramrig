@@ -101,10 +101,12 @@ export async function pointInFrame(page, selector, { down = 12 } = {}) {
  * How far down the preview a real mouse can go, in page pixels.
  *
  * Input aimed at a cross-origin frame is hit-tested against the *real* browser window, not against
- * the viewport the harness emulates. The QA browser's window is 600 px tall while the scripts
- * emulate 900, so roughly the top half of the preview answers a real click and the rest does not.
- * It is positional and repeatable rather than intermittent, and it is the browser, not the page:
- * the frame's own document hears nothing either. Below it, dispatch inside the frame instead.
+ * the viewport the harness emulates. The QA browser used to open 1500 x 600 whatever `--window-size`
+ * said, so a real click reached the top 540 px of a 900 px page and nothing below it — positional
+ * and repeatable rather than intermittent, and the browser rather than the page: the frame's own
+ * document heard nothing either. `run()` now sets the window bounds over CDP, which is what the
+ * flag could not do, so the whole preview answers. This still says where the limit is, because a
+ * browser that refuses to be resized is left as it is.
  */
 export async function mouseReach(page) {
   const real = await page.evaluate(() => ({ outer: outerHeight, inner: innerHeight }))
