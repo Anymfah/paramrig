@@ -9,7 +9,7 @@ export const typeSpecimenManifest: RigManifest = {
   rendererLabel: 'HTML / CSS',
   collection: 'examples',
   title: 'Examples/HTML',
-  sourceFile: 'examples/type-specimen.rig.tsx',
+  sourceFile: 'src/rigs/examples/type-specimen.ts',
   tags: ['html', 'type', 'rhythm'],
   groups: [
     { id: 'type', label: 'Type' },

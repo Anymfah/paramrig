@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { apertureMarkDocument, APERTURE_MARK_ID } from '@/rigs/examples/aperture-mark'
-import { getVectorDocument, listVectorDocuments, sanitizeVectorDocument, vectorManifest } from '@/vector/document'
+import { getVectorDocument, isBundledDocument, listVectorDocuments, saveVectorDocument, sanitizeVectorDocument, vectorManifest } from '@/vector/document'
 import { getRig, listRigs } from '@/rigs/registry'
 import { resolveRigValues, rigDefaults } from '@/vector/rig'
 
@@ -21,8 +21,32 @@ describe('the vector rig that ships with the app', () => {
     expect(manifest.collection).toBe('examples')
     expect(manifest.title).toBe('Examples/Vector')
     expect(manifest.summary).toBe('Vector · 5 controls')
+    expect(manifest.sourceFile).toBe('src/rigs/examples/aperture-mark.ts')
+    expect(manifest.tags).toContain('example')
     expect(listRigs().some((rig) => rig.id === APERTURE_MARK_ID)).toBe(true)
     expect(getRig(APERTURE_MARK_ID)?.parameters).toHaveLength(5)
+  })
+
+  it('stays an example until it is changed, then becomes this browser\'s own', () => {
+    const shipped = getVectorDocument(APERTURE_MARK_ID)!
+    expect(isBundledDocument(APERTURE_MARK_ID)).toBe(true)
+
+    // Opening it saves it as it was found, which must not count as editing it.
+    saveVectorDocument(shipped)
+    expect(isBundledDocument(APERTURE_MARK_ID)).toBe(true)
+    expect(vectorManifest(getVectorDocument(APERTURE_MARK_ID)!).title).toBe('Examples/Vector')
+
+    saveVectorDocument({ ...shipped, name: 'Mine' })
+    expect(getVectorDocument(APERTURE_MARK_ID)?.name).toBe('Mine')
+    expect(isBundledDocument(APERTURE_MARK_ID)).toBe(false)
+    const mine = vectorManifest(getVectorDocument(APERTURE_MARK_ID)!)
+    expect(mine.collection).toBe('project')
+    expect(mine.title).toBe('Projects/Vector')
+    // Its source file no longer describes it, so it stops claiming one.
+    expect(mine.sourceFile).toBe('Local document')
+    expect(mine.tags).toContain('project')
+    // And it is listed once, not twice.
+    expect(listVectorDocuments().filter((entry) => entry.id === APERTURE_MARK_ID)).toHaveLength(1)
   })
 
   it('draws itself the way its controls rest', () => {

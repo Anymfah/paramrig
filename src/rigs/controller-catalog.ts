@@ -92,7 +92,7 @@ export const controllerDefinitions:ParameterDef[]=[
 export const controllerExamples=controllerDefinitions.filter(parameter=>!parameter.hidden)
 
 export const controllerManifest:RigManifest={
-  id:'controller-lab',name:'Controller lab',summary:'All controller families in one live session',description:'Explore parameter types, reusable instruments, local resources and animation. Every edit shares the same undo history.',
+  id:'controller-lab',name:'Controller lab',summary:'HTML / CSS · Every controller family at once',description:'Explore parameter types, reusable instruments, local resources and animation. Every edit shares the same undo history.',
   renderer:'html',rendererLabel:'HTML / CSS',collection:'examples',title:'Examples/HTML',sourceFile:'src/rigs/controller-catalog.ts',tags:['controllers','playground','parameters'],
   groups:controllerCategories,parameters:controllerDefinitions,
   animation:{duration:8,fps:30,loop:true,tracks:[{paramId:'angle',interpolation:'linear',keyframes:[{time:0,value:0},{time:8,value:360}]}]},

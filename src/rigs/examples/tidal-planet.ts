@@ -9,7 +9,7 @@ export const tidalPlanetManifest: RigManifest = {
   rendererLabel: '3D',
   collection: 'examples',
   title: 'Examples/3D',
-  sourceFile: 'examples/tidal-planet.rig.tsx',
+  sourceFile: 'src/rigs/examples/tidal-planet.ts',
   tags: ['3d', 'procedural', 'terrain', 'minimal'],
   inspectorCategories: [
     { id: 'surface', label: 'Surface' },

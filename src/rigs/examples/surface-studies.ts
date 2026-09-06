@@ -9,7 +9,7 @@ export const surfaceStudiesManifest: RigManifest = {
   rendererLabel: 'HTML / CSS',
   collection: 'examples',
   title: 'Examples/HTML',
-  sourceFile: 'examples/surface-studies.rig.tsx',
+  sourceFile: 'src/rigs/examples/surface-studies.ts',
   tags: ['html', 'material', 'light'],
   groups: [
     { id: 'light', label: 'Light' },

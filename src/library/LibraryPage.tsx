@@ -10,7 +10,9 @@ import { IconCube, IconPlus, IconSearch } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
+import { ControllerMark } from '@/renderers/html/ControllerLabPreview'
 import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
+import { WebProjectMark } from '@/renderers/html/WebProjectMark'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
 import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
@@ -352,5 +354,7 @@ function RigThumb({ rig }: { rig: RigManifest }) {
   if (id === 'tidal-planet') return <PlanetMark />
   if (id === 'surface-studies') return <SurfaceMark />
   if (id === 'type-specimen') return <TypeMark />
+  if (rig.renderer === 'web') return <WebProjectMark />
+  if (rig.renderer === 'html') return <ControllerMark />
   return null
 }

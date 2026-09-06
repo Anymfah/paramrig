@@ -20,3 +20,25 @@ export function ControllerLabPreview({values}:{values:Record<string,ParamValue>}
     <span>{String(values.title??'Make it move.')}</span>
   </div>
 }
+
+/**
+ * The library card. The lab has no single picture — it is every controller family at once — so the
+ * mark shows the controls rather than the shape they drive: a slider part-way along, a row of
+ * swatches, a switch that is on, and a curve.
+ */
+export function ControllerMark() {
+  return (
+    <svg viewBox="0 0 320 200" aria-hidden="true">
+      <rect width="320" height="200" fill="#E8EBE2" />
+      <rect x="36" y="52" width="176" height="4" rx="2" fill="#C8CCC0" />
+      <rect x="36" y="52" width="104" height="4" rx="2" fill="#1C201C" />
+      <circle cx="140" cy="54" r="9" fill="#1C201C" />
+      {['#F4F3EB', '#8CBDA8', '#1C201C'].map((color, i) => (
+        <rect key={color} x={36 + i * 32} y={88} width="24" height="24" rx="6" fill={color} stroke="#C8CCC0" />
+      ))}
+      <rect x="152" y="88" width="44" height="24" rx="12" fill="#8CBDA8" />
+      <circle cx="184" cy="100" r="9" fill="#F4F3EB" />
+      <path d="M36 160c44 0 44-32 88-32s88 16 132 16" stroke="#1C201C" strokeWidth="3" fill="none" strokeLinecap="round" />
+    </svg>
+  )
+}

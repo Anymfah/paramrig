@@ -82,13 +82,32 @@ export function getVectorDocument(id: string): VectorDocument | null {
   return bundled ? sanitizeVectorDocument(bundled) : null
 }
 
-/** Whether a document is one of the app's own examples rather than one of this browser's. */
+/**
+ * Whether a document is one of the app's own examples rather than one of this browser's.
+ *
+ * The storage check is the whole of it, and `listVectorDocuments` above has always read the same
+ * way: an example that has been changed is this browser's document now, and saying otherwise made
+ * the library file it under Examples while its `sourceFile` claimed a file that no longer describes
+ * it. The scene documents have answered this question this way from the start.
+ */
 export function isBundledDocument(id: string): boolean {
-  return BUNDLED_DOCUMENTS.some((document) => document.id === id)
+  return BUNDLED_DOCUMENTS.some((document) => document.id === id) && !readAll()[id]
+}
+
+/** Whether a document is a bundled one that nothing has altered, down to the last number. */
+function unchangedBundle(document: VectorDocument): boolean {
+  const shipped = BUNDLED_DOCUMENTS.find((entry) => entry.id === document.id)
+  return !!shipped && JSON.stringify(sanitizeVectorDocument(shipped) ?? shipped) === JSON.stringify(document)
 }
 
 export function saveVectorDocument(document: VectorDocument): StorageResult {
   const documents = readAll()
+  /*
+   * Opening a bundled example is not editing it. The editor saves whatever it loads, so without
+   * this a drawing the app ships would be copied into storage by being looked at — and would then
+   * be listed as a project of this browser's rather than as the example it still is.
+   */
+  if (!documents[document.id] && unchangedBundle(document)) return { ok: true }
   documents[document.id] = sanitizeVectorDocument(document) ?? document
   return writeAll(documents)
 }
@@ -101,6 +120,7 @@ export function vectorManifest(document: VectorDocument): RigManifest {
   const count = document.elements.filter((element) => element.kind !== 'group').length
   const rig = document.rig
   const controls = rig?.parameters.length ?? 0
+  const bundled = isBundledDocument(document.id)
   return {
     id: document.id,
     name: document.name,
@@ -110,10 +130,10 @@ export function vectorManifest(document: VectorDocument): RigManifest {
     description: '',
     renderer: 'vector',
     rendererLabel: 'Vector',
-    collection: isBundledDocument(document.id) ? 'examples' : 'project',
-    title: isBundledDocument(document.id) ? 'Examples/Vector' : 'Projects/Vector',
-    sourceFile: isBundledDocument(document.id) ? 'rigs/examples/aperture-mark.ts' : 'Local document',
-    tags: ['vector', 'svg', 'project', ...(controls > 0 ? ['rig'] : [])],
+    collection: bundled ? 'examples' : 'project',
+    title: bundled ? 'Examples/Vector' : 'Projects/Vector',
+    sourceFile: bundled ? `src/rigs/examples/${document.id.replace(/^(?:vector-)?example-/, '')}.ts` : 'Local document',
+    tags: ['vector', 'svg', bundled ? 'example' : 'project', ...(controls > 0 ? ['rig'] : [])],
     groups: rig?.groups ?? [],
     parameters: rig?.parameters ?? [],
     ...(rig?.inspectorCategories ? { inspectorCategories: rig.inspectorCategories } : {}),
