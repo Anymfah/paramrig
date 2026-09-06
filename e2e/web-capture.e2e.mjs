@@ -9,36 +9,7 @@
  * browser's own picker and a person choosing a surface in it.
  */
 import { run } from './lib.mjs'
-import { clearComments, openWorkspace } from './web-lib.mjs'
-
-/**
- * A display stream that is really a canvas. `captureStream` gives back a live MediaStreamTrack, so
- * the page cannot tell the difference until someone looks at the picture.
- */
-const fakeDisplay = () => {
-  window.__display = { calls: 0, stopped: 0, deny: false }
-  const media = navigator.mediaDevices ?? {}
-  media.getDisplayMedia = async () => {
-    window.__display.calls += 1
-    if (window.__display.deny) throw new DOMException('Denied', 'NotAllowedError')
-    const canvas = document.createElement('canvas')
-    canvas.width = 640
-    canvas.height = 400
-    const context = canvas.getContext('2d')
-    context.fillStyle = '#1d3f36'; context.fillRect(0, 0, 640, 400)
-    context.fillStyle = '#df7757'; context.fillRect(0, 0, 320, 200)
-    // A stream with no frames never fires requestVideoFrameCallback; the canvas is redrawn so the
-    // track keeps producing, exactly as a real screen does.
-    setInterval(() => { context.fillRect(0, 0, 320, 200) }, 60)
-    const stream = canvas.captureStream(30)
-    for (const track of stream.getTracks()) {
-      const stop = track.stop.bind(track)
-      track.stop = () => { window.__display.stopped += 1; stop() }
-    }
-    return stream
-  }
-  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, get: () => media })
-}
+import { clearComments, fakeDisplay, openWorkspace } from './web-lib.mjs'
 
 export default run('web-capture', async ({ page, check, log }) => {
   await page.addInitScript(fakeDisplay)

@@ -44,6 +44,40 @@ export function settled(page) {
   return page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
 }
 
+/**
+ * A display stream that is really a canvas, installed in place of `getDisplayMedia`.
+ *
+ * The permission and the browser's own picker have no headless equivalent; everything behind them
+ * does. `captureStream` hands back a live MediaStreamTrack, so the video element, the frame, the
+ * canvas and the track being stopped all run exactly as they do for a real screen. Pass it to
+ * `page.addInitScript` before opening the workspace; `window.__display` counts the calls and the
+ * stops, and `deny` makes the next call refuse the way a person declining does.
+ */
+export const fakeDisplay = () => {
+  window.__display = { calls: 0, stopped: 0, deny: false }
+  const media = navigator.mediaDevices ?? {}
+  media.getDisplayMedia = async () => {
+    window.__display.calls += 1
+    if (window.__display.deny) throw new DOMException('Denied', 'NotAllowedError')
+    const canvas = document.createElement('canvas')
+    canvas.width = 640
+    canvas.height = 400
+    const context = canvas.getContext('2d')
+    context.fillStyle = '#1d3f36'; context.fillRect(0, 0, 640, 400)
+    context.fillStyle = '#df7757'; context.fillRect(0, 0, 320, 200)
+    // A stream with no new frames never fires requestVideoFrameCallback; redrawing keeps the track
+    // producing, exactly as a real screen does.
+    setInterval(() => { context.fillRect(0, 0, 320, 200) }, 60)
+    const stream = canvas.captureStream(30)
+    for (const track of stream.getTracks()) {
+      const stop = track.stop.bind(track)
+      track.stop = () => { window.__display.stopped += 1; stop() }
+    }
+    return stream
+  }
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, get: () => media })
+}
+
 /** Removes every comment in the draft. The draft is shared, so a script cleans up after itself. */
 export async function clearComments(page, guard = 10) {
   await page.locator('button[aria-label^="Comments"]').click()

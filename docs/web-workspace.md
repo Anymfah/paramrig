@@ -315,7 +315,15 @@ docker compose run --rm app npm run build:web-sdk
 ```
 
 Use the Fieldnotes example for real-browser checks. Chrome desktop is the primary
-acceptance target. Check narrow layouts, 200% zoom, both themes, reduced motion,
-forced colors, keyboard selection, repeated instances, nested scrolling, capture
-failure, reload and a real agent response. Existing drawing and scene routes must
-continue to open and edit normally.
+acceptance target. `npm run e2e -- web-` covers narrow layouts, both themes, the
+room 200% zoom leaves, reduced motion, forced colors, a coarse pointer, keyboard
+selection, repeated instances, capture failure and success, reload, and an agent
+response written into `.paramrig/responses/`. What it cannot cover is the browser's
+own screen-sharing picker, a real mouse below the fold of the cross-origin frame,
+and browser zoom itself. Existing drawing and scene routes must continue to open
+and edit normally.
+
+Every control the workspace owns is at least 44 px under a coarse pointer. The
+shared inspector widgets it hosts — section titles, reset marks, context triggers,
+the colour chip — are smaller; `web-a11y.e2e.mjs` reports them rather than owning
+them, since the drawing and scene editors host the same ones.
