@@ -1,0 +1,34 @@
+
+## Example page alone at the manifest origin
+  url: http://127.0.0.1:5174/examples/web/index.html
+  #root innerHTML length: 3902
+  paramrig-overlay elements: 0
+  console messages (3):
+    debug: [vite] connecting...
+    info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+    debug: [vite] connected.
+
+## Example page alone through the localhost alias
+  url: http://localhost:5174/examples/web/index.html
+  #root innerHTML length: 3902
+  paramrig-overlay elements: 0
+  console messages (4):
+    debug: [vite] connecting...
+    debug: [vite] connected.
+    info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+    warning: ParamRig: this page is at http://localhost:5174 and .paramrig/manifest.json declares http://127.0.0.1:5174. Open the page at the manifest origin, or set the manifest's "origin" to http://localhost:5174. The page is left untouched.
+
+## Workbench opened by 127.0.0.1:5174
+  connected, no notice
+
+## A preview that never answers, after 8 s
+  Preview unavailable
+  
+  The project's development server is not answering at http://127.0.0.1:5174.
+  The page does not load the ParamRig SDK, or its integration does not accept this workbench origin (http://localhost:5174).
+  Framing is refused by the page: check its Content-Security-Policy frame-ancestors and X-Frame-Options.
+
+## An SDK that announces itself and then refuses this workbench, after 2 s
+  The page's SDK is present but did not accept this workbench origin (http://localhost:5174)
+  
+  Add http://localhost:5174 to the hostOrigin option of connectWeb, or leave that option out to accept both of the workbench's own addresses.
