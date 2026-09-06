@@ -1,0 +1,32 @@
+# The verification chain agents run in Docker, run again on every push.
+#
+# It is deliberately the same list of commands, in the same order, minus `npm run e2e`: those
+# scripts drive a headless GPU Chrome on the developer's own machine and need the running services
+# beside it, neither of which exists here. What they cover — layout, pointer behaviour, the
+# handshake — stays a local gate.
+name: verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:web-service
+      - run: npm run build
+      # Also checks the package holds nothing but the SDK, and compiles a reference consumer
+      # against the declarations it emitted.
+      - run: npm run build:web-sdk
+      - run: npm pack --dry-run
+        working-directory: packages/web-sdk

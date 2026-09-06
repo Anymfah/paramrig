@@ -126,9 +126,12 @@ font.
 Repository conventions, including the prohibition on AI signatures in commit
 messages, are documented in [`AGENTS.md`](AGENTS.md).
 
-## Licensing status
+## Licensing
 
-No project license has been selected yet; public repository access alone does
-not grant an open-source license. Runtime dependencies and their licenses are
-listed in `package.json`. Bundled third-party fonts retain their accompanying
-license notices.
+ParamRig is MIT licensed. The terms are in `LICENSE`, and both `package.json`
+files declare it. `packages/web-sdk` carries its own copy so the published
+package travels with it.
+
+That covers ParamRig's own code. Runtime dependencies keep their own licences,
+listed in `package.json`, and the bundled Public Sans keeps the SIL Open Font
+License that ships beside it in `public/fonts/PublicSans-OFL.txt`.

@@ -4,7 +4,9 @@ Options -Indexes
   RewriteEngine On
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteRule ^(?:r/[^/]+/?|docs(?:/controls)?/?)$ index.html [L]
+  # Every route src/App.tsx declares, so a reload or a shared link answers with the application
+  # rather than with Apache's 404. src/App.routes.test.ts fails when a route is added without one.
+  RewriteRule ^(?:r/[^/]+/?|web/?|docs(?:/controls|/vector-rigs|/scene-rigs)?/?)$ index.html [L]
 </IfModule>
 
 <IfModule mod_headers.c>

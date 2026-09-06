@@ -23,6 +23,9 @@ workproduct/lean-mvp/
 # Playwright CLI session artifacts
 .playwright-cli/
 
-# Local web feedback, captures and browser QA
+# Local web feedback, captures and browser QA.
+# `output/` and `e2e/output/` are what a QA run writes; `e2e/reference/` is the record it is
+# compared against, and that one is tracked.
 .local/
-e2e/output/web-*/
+output/
+e2e/output/

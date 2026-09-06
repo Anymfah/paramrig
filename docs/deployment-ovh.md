@@ -23,16 +23,35 @@ SFTP or another encrypted transfer method supported by the subscribed offer.
 Never commit host credentials or put them in a public workflow.
 
 Upload the contents of `dist/`, including the hidden `.htaccess`. The rewrite
-rules support direct visits and reloads of `/r/contour-bloom`,
-`/r/tidal-planet`, `/docs` and `/docs/controls`. Missing static assets are not
-rewritten to HTML. The demo is marked `noindex`; discovery pages belong on the
-public website.
+rules cover every route the router declares, so a direct visit or a reload
+answers with the application rather than with Apache's 404: `/r/<any rig>`,
+`/web`, `/docs`, `/docs/controls`, `/docs/vector-rigs` and `/docs/scene-rigs`.
+Missing static assets are not rewritten to HTML. `src/App.routes.test.ts` reads
+both `src/App.tsx` and `public/.htaccess` and fails when a route is added without
+its rewrite. The demo is marked `noindex`; discovery pages belong on the public
+website.
 
 Download or rename the current deployed directory before replacement. Keep it
 until the new version passes its smoke checks; restore it to roll back.
 
+## Before any of this
+
+Two things outside this repository are not ready, and the deployment waits on
+them. Measured on 6 September 2026:
+
+- `paramrig.com` has an A record but refuses HTTPS: `curl -sI https://paramrig.com/`
+  returns nothing, and `http://` redirects to `www.paramrig.com`. The library
+  links to `https://paramrig.com/docs/persistence/` from
+  `src/library/LibraryPage.tsx`; that link is deliberately unchanged, because the
+  address is right and it is the site that is missing.
+- `demo.paramrig.com` has no DNS record at all.
+
+The public site is not in this repository, so neither is fixed here.
+
 ## Acceptance
 
+- Open and reload every route directly over HTTPS: a rig, `/web`, `/docs`,
+  `/docs/controls`, `/docs/vector-rigs` and `/docs/scene-rigs`.
 - Open and reload both rig URLs directly over HTTPS.
 - Change a parameter, reload and verify that its local draft is restored.
 - Copy and download the JSON export; confirm that no source files are changed.
