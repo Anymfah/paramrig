@@ -5,19 +5,39 @@ import { envelope, isAnnouncement, parseManifest, type HostCommand, type SDKAnno
 
 const hostOrigin = 'http://localhost:5174'
 let connection: ReturnType<typeof connectWeb> | null = null
-afterEach(() => { connection?.dispose(); connection = null; vi.restoreAllMocks(); document.body.replaceChildren(); document.documentElement.removeAttribute('style') })
-function setup({ pair = true } = {}) {
+const ownParent = Object.getOwnPropertyDescriptor(window, 'parent')
+afterEach(() => {
+  connection?.dispose(); connection = null; vi.restoreAllMocks()
+  if (ownParent) Object.defineProperty(window, 'parent', ownParent); else Reflect.deleteProperty(window, 'parent')
+  document.body.replaceChildren(); document.documentElement.removeAttribute('style')
+})
+
+/*
+ * The SDK only installs itself inside a frame, so the tests have to be inside one.
+ *
+ * jsdom answers `window.parent` with the window itself, which is the very case the SDK now declines
+ * — and declining it is what these tests are here to hold. A stub in that slot both restores the
+ * framed path and gives the posts somewhere honest to land: the announcement and every later
+ * envelope are addressed to the parent, not broadcast at the page.
+ */
+function frame(posted: unknown[]) {
+  const parent = { postMessage: (message: unknown) => { posted.push(message) } } as unknown as Window
+  Object.defineProperty(window, 'parent', { configurable: true, get: () => parent })
+  return parent
+}
+function setup({ pair = true, host }: { pair?: boolean; host?: string | readonly string[] } = {}) {
   const manifest = parseManifest({ ...example, origin: location.origin, pages: [{ id: 'home', name: 'Home', path: location.pathname }] })
   document.body.innerHTML = '<main><h1 data-paramrig-id="hero-title">Original</h1><article data-paramrig-id="story-card" data-paramrig-instance="coast"><button data-paramrig-id="action">Read coast</button></article><article data-paramrig-id="story-card" data-paramrig-instance="forest"><button data-paramrig-id="action">Read forest</button></article><button id="plain">Plain button</button></main>'
   const events: SDKEvent[] = []
   const posted: unknown[] = []
-  vi.spyOn(window, 'postMessage').mockImplementation(message => { posted.push(message); if (message?.payload) events.push(message.payload as SDKEvent) })
+  const parent = frame(posted)
+  vi.spyOn(parent, 'postMessage').mockImplementation(message => { posted.push(message); if ((message as { payload?: SDKEvent }).payload) events.push((message as { payload: SDKEvent }).payload) })
   if (!globalThis.CSS?.escape) vi.stubGlobal('CSS', { escape: (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, ch => `\\${ch}`) })
-  connection = connectWeb({ manifest, hostOrigin })
-  const send = (payload: HostCommand, origin = hostOrigin, sessionId = 'test-session') => window.dispatchEvent(new MessageEvent('message', { origin, source: window, data: envelope(sessionId, payload) }))
+  connection = connectWeb({ manifest, hostOrigin: host })
+  const send = (payload: HostCommand, origin = hostOrigin, sessionId = 'test-session') => window.dispatchEvent(new MessageEvent('message', { origin, source: parent, data: envelope(sessionId, payload) }))
   if (pair) send({ type: 'hello', projectId: manifest.id })
   const announcements = () => posted.filter((m): m is SDKAnnouncement => isAnnouncement(m))
-  return { manifest, events, send, posted, announcements }
+  return { manifest, events, send, posted, announcements, parent }
 }
 const configure = (mode: 'browse' | 'select' | 'annotate'): HostCommand => ({ type: 'configure', mode, tool: 'note', color: '#df7757', targets: [], marks: [] })
 
@@ -210,5 +230,93 @@ describe('page-side web integration', () => {
     send({ ...configure('annotate'), tool: 'rectangle' } as HostCommand)
     button.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 7 }))
     expect(events.some(e => e.type === 'mark')).toBe(false)
+  })
+})
+
+describe('what the SDK does to a page that is not a workbench preview', () => {
+  const page = () => { document.body.innerHTML = '<main><h1 data-paramrig-id="hero-title">Original</h1><button id="plain">Plain button</button></main>' }
+  const manifest = () => parseManifest({ ...example, origin: location.origin, pages: [{ id: 'home', name: 'Home', path: location.pathname }] })
+
+  it('installs nothing at all when the page is not in a frame', () => {
+    page()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const posted = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
+    const observe = vi.spyOn(MutationObserver.prototype, 'observe')
+    const listen = vi.spyOn(window, 'addEventListener')
+    connection = connectWeb({ manifest: manifest() })
+    expect(posted).not.toHaveBeenCalled()
+    expect(observe).not.toHaveBeenCalled()
+    expect(listen).not.toHaveBeenCalled()
+    expect(document.querySelector('paramrig-overlay')).toBeNull()
+    expect([...warn.mock.calls, ...error.mock.calls, ...log.mock.calls]).toEqual([])
+    // The page keeps its own clicks, and letting go of a connection that holds nothing is safe.
+    const clicked = vi.fn(); document.querySelector('#plain')!.addEventListener('click', clicked)
+    document.querySelector('#plain')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(clicked).toHaveBeenCalledOnce()
+    expect(() => { connection?.dispose(); connection?.dispose() }).not.toThrow()
+  })
+
+  it('warns once and leaves the application standing when the origins disagree', () => {
+    page()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const posted: unknown[] = []
+    frame(posted)
+    const elsewhere = parseManifest({ ...example, origin: 'http://127.0.0.1:5174', pages: [{ id: 'home', name: 'Home', path: '/' }] })
+    expect(() => { connection = connectWeb({ manifest: elsewhere }) }).not.toThrow()
+    expect(warn).toHaveBeenCalledOnce()
+    expect(String(warn.mock.calls[0]![0])).toContain(location.origin)
+    expect(String(warn.mock.calls[0]![0])).toContain('http://127.0.0.1:5174')
+    expect(posted).toEqual([])
+    expect(document.querySelector('paramrig-overlay')).toBeNull()
+  })
+
+  it('warns and stands down when the host origin option is not an origin', () => {
+    page()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const posted: unknown[] = []
+    frame(posted)
+    connection = connectWeb({ manifest: manifest(), hostOrigin: 'http://localhost:5174/workbench' })
+    expect(warn).toHaveBeenCalledOnce()
+    expect(posted).toEqual([])
+    connection.dispose()
+    connection = connectWeb({ manifest: manifest(), hostOrigin: [] })
+    expect(warn).toHaveBeenCalledTimes(2)
+    expect(posted).toEqual([])
+  })
+
+  it('accepts a hello from any declared origin, and from no other', () => {
+    page()
+    const { manifest: m, events, send } = setup({ pair: false, host: ['http://localhost:5174', 'http://127.0.0.1:5174'] })
+    send({ type: 'hello', projectId: m.id }, 'http://evil.example')
+    expect(events).toEqual([])
+    send({ type: 'hello', projectId: m.id }, 'http://127.0.0.1:5174')
+    expect(events.filter(e => e.type === 'ready')).toHaveLength(1)
+    // The origin that answered is the one every later message is checked against, in both
+    // directions: the other declared origin is no longer heard once the session is open.
+    send(configure('select'), 'http://localhost:5174', 'test-session')
+    expect(events.some(e => e.type === 'scene')).toBe(false)
+  })
+
+  it('defaults to the workbench own two addresses when no host origin is given', () => {
+    page()
+    const { manifest: m, events, send } = setup({ pair: false })
+    send({ type: 'hello', projectId: m.id }, 'http://127.0.0.1:5174')
+    expect(events.filter(e => e.type === 'ready')).toHaveLength(1)
+  })
+
+  it('replaces a connection the caller forgot to dispose, rather than running two', () => {
+    page()
+    const { manifest: m, send } = setup()
+    expect(document.querySelectorAll('paramrig-overlay')).toHaveLength(1)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const second = connectWeb({ manifest: m, hostOrigin })
+    expect(warn).toHaveBeenCalledOnce()
+    expect(document.querySelectorAll('paramrig-overlay')).toHaveLength(0)
+    send({ type: 'hello', projectId: m.id })
+    expect(document.querySelectorAll('paramrig-overlay')).toHaveLength(1)
+    second.dispose()
+    expect(document.querySelectorAll('paramrig-overlay')).toHaveLength(0)
   })
 })

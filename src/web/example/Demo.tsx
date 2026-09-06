@@ -9,7 +9,7 @@ export function Demo({ manifest }: { manifest: WebProjectManifest }) {
   const [title, setTitle] = useState('Make room for the outside.')
   const journal = location.pathname.includes('journal')
   useEffect(() => {
-    const connection = connectWeb({ manifest, hostOrigin: 'http://localhost:5174', adapters: {
+    const connection = connectWeb({ manifest, adapters: {
       headingFont: { read: () => 'Georgia', apply: v => setFont(String(v)), restore: () => setFont('Georgia') },
       heroCopy: { read: () => 'Make room for the outside.', apply: v => setTitle(String(v)), restore: () => setTitle('Make room for the outside.') },
     } })

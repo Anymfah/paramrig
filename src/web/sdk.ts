@@ -7,13 +7,60 @@ export type { WebProjectManifest, WebBinding, WebTarget, FeedbackBatch, AgentRes
 export type { ParameterDef, ParamValue } from '../rigs/types.ts'
 
 export type WebAdapter = { read: () => ParamValue; apply: (value: ParamValue) => void; restore: () => void }
-export type ConnectWebOptions = { manifest: WebProjectManifest; hostOrigin: string; adapters?: Record<string, WebAdapter> }
+export type ConnectWebOptions = { manifest: WebProjectManifest; hostOrigin?: string | readonly string[]; adapters?: Record<string, WebAdapter> }
+
+/** Where the workbench runs by default. Both aliases, because a browser reaches it by either. */
+export const DEFAULT_HOST_ORIGINS: readonly string[] = ['http://localhost:5174', 'http://127.0.0.1:5174']
+
+/** A bare origin and nothing else: no path, no query, no trailing slash. */
+const isOrigin = (value: unknown) => { try { return typeof value === 'string' && new URL(value).origin === value } catch { return false } }
+
+/** A connection that holds nothing, for every case where the SDK declines to install itself. */
+const idle = () => ({ dispose() { /* Nothing was installed, so nothing has to be taken down. */ } })
+
+/*
+ * The live connection of this document, if any.
+ *
+ * A hot reload that replaces a module without running its cleanup calls `connectWeb` again while
+ * the previous one is still listening. Two connections mean two overlays, two sets of capturing
+ * listeners and two answers to every command. The newer call wins: its adapters close over the
+ * component state that has just been rebuilt, whereas the older ones write into a tree that is
+ * gone. Refusing the second call would keep the dead one instead, which looks like a workbench
+ * that has stopped responding.
+ */
+let active: { dispose: () => void } | null = null
 
 /** Framework-neutral, development-only integration. No listeners become active before pairing. */
-export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }: ConnectWebOptions) {
+export function connectWeb({ manifest: rawManifest, hostOrigin = DEFAULT_HOST_ORIGINS, adapters = {} }: ConnectWebOptions) {
   const manifest = parseManifest(rawManifest)
-  if (new URL(hostOrigin).origin !== hostOrigin || manifest.origin !== location.origin) throw new Error('Check the ParamRig host and project origins.')
+  /*
+   * Three reasons not to install, and none of them removes the application from the screen.
+   *
+   * A development integration that throws takes the page down with it — an origin typed one way
+   * rather than another left a project blank, which is a far worse day than an unavailable
+   * workbench. Each reason says what to correct, once, and hands back a connection that holds
+   * nothing. `parseManifest` still throws: an invalid manifest is a programming error, and the
+   * integrator calls it themselves.
+   */
+  const allowed = typeof hostOrigin === 'string' ? [hostOrigin] : [...hostOrigin]
+  if (!allowed.length || allowed.some(origin => !isOrigin(origin))) {
+    console.warn(`ParamRig: hostOrigin must be one or more workbench origins such as "http://localhost:5174", but is ${JSON.stringify(hostOrigin)}. The page is left untouched.`)
+    return idle()
+  }
+  if (manifest.origin !== location.origin) {
+    console.warn(`ParamRig: this page is at ${location.origin} and .paramrig/manifest.json declares ${manifest.origin}. Open the page at the manifest origin, or set the manifest's "origin" to ${location.origin}. The page is left untouched.`)
+    return idle()
+  }
+  // Outside a frame there is no workbench to answer, so the SDK installs nothing at all: no
+  // listener, no observer, no overlay, and not one line in the console. A developer opening their
+  // own page has no reason to know this module is in the bundle.
+  if (window.parent === window) return idle()
+  if (active) {
+    console.warn('ParamRig: connectWeb was called again before the previous connection was disposed. The previous one is replaced; call dispose() in the effect cleanup and in the hot-reload handler.')
+    active.dispose()
+  }
   let sessionId = ''
+  let pairedOrigin = ''
   const instanceId = crypto.randomUUID()
   let mode: 'browse' | 'select' | 'annotate' = 'browse'
   let tool: WebMark['tool'] = 'note'
@@ -152,7 +199,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     for (const el of document.querySelectorAll('[data-paramrig-id]')) if (el.scrollTop || el.scrollLeft) scrollers.push({ target: describe(el, false), x: el.scrollLeft, y: el.scrollTop })
     return { pageId: pageId(), url: location.href, viewport: { width: innerWidth, height: innerHeight, dpr: devicePixelRatio }, scroll: { x: scrollX, y: scrollY }, scrollers }
   }
-  function send(payload: SDKEvent) { if (sessionId && !disposed) window.parent.postMessage(envelope(sessionId, payload), hostOrigin) }
+  function send(payload: SDKEvent) { if (sessionId && pairedOrigin && !disposed) window.parent.postMessage(envelope(sessionId, payload), pairedOrigin) }
   function draw() {
     svg.replaceChildren()
     delete host.dataset.hover
@@ -297,11 +344,15 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     } catch (e) { send({ type: 'capture', requestId, error: e instanceof Error ? e.message : 'DOM capture is unavailable.' }) }
   }
   function message(event: MessageEvent) {
-    if (event.source !== window.parent || event.origin !== hostOrigin || !isEnvelope(event.data)) return
+    if (event.source !== window.parent || !isEnvelope(event.data)) return
+    // Until a workbench has been accepted, any of the declared origins may speak; the `hello` that
+    // opens the session pins the one that sent it, and nothing else is heard from afterwards.
+    if (pairedOrigin ? event.origin !== pairedOrigin : !allowed.includes(event.origin)) return
     const msg = event.data
     if (msg.payload.type === 'hello') {
       if (msg.payload.projectId !== manifest.id) return
-      if (msg.version !== WEB_PROTOCOL) { window.parent.postMessage(envelope(msg.sessionId, { type: 'error', message: 'Incompatible web protocol. Update the project integration.' }), hostOrigin); return }
+      if (msg.version !== WEB_PROTOCOL) { window.parent.postMessage(envelope(msg.sessionId, { type: 'error', message: 'Incompatible web protocol. Update the project integration.' }), event.origin); return }
+      pairedOrigin = event.origin
       if (sessionId !== msg.sessionId) {
         sessionId = msg.sessionId
         try { restore(); readSource() } catch (e) { send({ type: 'error', message: `Cannot read the source controls: ${String(e)}` }); return }
@@ -418,17 +469,38 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   window.addEventListener('pointerdown', down, true); window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', cancel, true)
   window.addEventListener('click', click, true); window.addEventListener('keydown', key, true); window.addEventListener('blur', blur)
   window.addEventListener('pointerout', leave, true); window.addEventListener('pointerleave', leave, true)
-  // The host cannot know when the application finished booting, so the SDK says so itself. Until
-  // this frame arrives the host is guessing, and a guess costs a whole retry interval.
-  window.parent.postMessage(announcement(manifest.id, instanceId), hostOrigin)
+  /*
+   * The host cannot know when the application finished booting, so the SDK says so itself. Until
+   * this frame arrives the host is guessing, and a guess costs a whole retry interval.
+   *
+   * Where to address it. `location.ancestorOrigins` names the parent outright in Chrome and Safari;
+   * Firefox has no such list, and `document.referrer` is the next best hint. When either answers,
+   * the announcement goes to that exact origin and the browser has nothing to warn about — which
+   * is what a workbench reached by either of its aliases needs, since the frame cannot know in
+   * advance which one a person typed. Otherwise it goes to '*'. That is the one relaxation here,
+   * and it is narrow: the announcement carries the project identifier and a random instance
+   * identifier, nothing secret, and it grants nothing. The session is opened by the `hello` that
+   * answers, whose origin has to be one of the declared ones, and every message after it — in
+   * either direction — is checked against that single pinned origin.
+   *
+   * It is deliberately posted even when the parent turns out not to be a declared origin, so that
+   * a workbench opened at an address the project has not listed can say so instead of timing out.
+   */
+  const framedBy = (): string | undefined => {
+    const ancestor = location.ancestorOrigins?.[0]
+    if (isOrigin(ancestor)) return ancestor
+    try { return document.referrer ? new URL(document.referrer).origin : undefined } catch { return undefined }
+  }
+  window.parent.postMessage(announcement(manifest.id, instanceId), framedBy() ?? '*')
   let previousPage = pageId()
   const heartbeat = setInterval(() => {
     if (!sessionId) return
     if (previousPage !== pageId()) { previousPage = pageId(); restore(); readSource(); applyValues(); ready() }
     schedule()
   }, 750)
-  return {
+  const connection = {
     dispose() {
+      if (active === connection) active = null
       disposed = true; cancel(); restore(); document.documentElement.style.touchAction = originalTouchAction; host.remove(); observer.disconnect(); resize.disconnect(); clearInterval(heartbeat); cancelAnimationFrame(frame)
       window.removeEventListener('message', message); window.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule)
       window.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', end, true); window.removeEventListener('pointercancel', cancel, true)
@@ -436,4 +508,6 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
       window.removeEventListener('pointerout', leave, true); window.removeEventListener('pointerleave', leave, true)
     },
   }
+  active = connection
+  return connection
 }

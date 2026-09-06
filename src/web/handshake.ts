@@ -28,3 +28,31 @@ export function helloQueue(send: () => void, answered: () => boolean): () => voi
   tick()
   return () => window.clearTimeout(timer)
 }
+
+/** How long an announced SDK has to accept us before its silence means it has refused. */
+export const REFUSAL_GRACE = 2000
+
+/**
+ * What the workspace says when the preview has not answered, and why.
+ *
+ * The status line stays short — the toolbar carries the same string, and at 390 px it is the only
+ * place the state is legible — so the reasons come back beside it rather than inside it.
+ *
+ * An announcement heard changes the answer entirely: the page is reachable, the SDK is loaded and
+ * the frame is allowed, because none of that produces an announcement. All that is left is an
+ * integration that does not accept this workbench's address, which is one cause rather than three.
+ */
+export function unanswered(announced: boolean, hostOrigin: string, projectOrigin: string): { status: string; causes: string[] } {
+  if (announced) return {
+    status: `The page's SDK is present but did not accept this workbench origin (${hostOrigin})`,
+    causes: [`Add ${hostOrigin} to the hostOrigin option of connectWeb, or leave that option out to accept both of the workbench's own addresses.`],
+  }
+  return {
+    status: 'Preview unavailable',
+    causes: [
+      `The project's development server is not answering at ${projectOrigin}.`,
+      `The page does not load the ParamRig SDK, or its integration does not accept this workbench origin (${hostOrigin}).`,
+      'Framing is refused by the page: check its Content-Security-Policy frame-ancestors and X-Frame-Options.',
+    ],
+  }
+}

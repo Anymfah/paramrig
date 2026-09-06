@@ -21,7 +21,7 @@ import { StatusMessage } from '../ui/StatusMessage'
 import { envelope, isAnnouncement, isEnvelope, isEvent, WEB_PROTOCOL, type Capture, type FeedbackBatch, type HostCommand, type MarkTool, type SDKEvent, type WebContext, type WebProjectManifest, type WebTarget, type WebTicket } from './contracts'
 import { listWebProjects, rememberWebProject, webProjectId, webRigId } from './projects'
 import { readWebState } from './client'
-import { helloQueue } from './handshake'
+import { helloQueue, REFUSAL_GRACE, unanswered } from './handshake'
 import { AGENT_INSTRUCTION, batchPath } from './handoff'
 import { reopen, ticketNumber } from './session'
 import { useWebDocument } from './useWebDocument'
@@ -86,6 +86,17 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const [reattachKey, setReattachKey] = useState<string | null>(null)
   const [context, setContext] = useState<WebContext | null>(null)
   const [connection, setConnection] = useState('Connecting to preview')
+  /*
+   * What is missing, in the order it usually is.
+   *
+   * The status line has to stay short — the toolbar shows the same string, and at 390 px it is the
+   * only place the state is legible. So the reasons live under it, inside the veil, where there is
+   * room to name all three.
+   */
+  const [causes, setCauses] = useState<string[]>([])
+  // `ready` arrives on every reconnection and every page change, so clearing the reasons has to
+  // cost nothing when there are none: a fresh empty array would re-render the workspace each time.
+  const clearCauses = useCallback(() => setCauses(current => current.length ? [] : current), [])
   const [readyRevision, setReadyRevision] = useState('')
   const [previewMode, setPreviewMode] = useState<'current' | 'reference' | 'source'>('current')
   const [fixedViewport, setFixedViewport] = useState<{ width: number; height: number } | null>(null)
@@ -121,6 +132,10 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const targetList = useMemo(() => [...new Map([...doc.tickets.flatMap(t => t.targets), ...selected].map(t => [t.key, t])).values()], [doc.tickets, selected])
   const marks = useMemo(() => doc.tickets.filter(t => t.status !== 'validated').flatMap(t => t.marks), [doc.tickets])
   const frameReady = useRef(false)
+  // An announcement heard is an SDK that is loaded and framed. What is left, if nothing follows it,
+  // is a workbench this page's integration does not accept — worth saying rather than guessing.
+  const announced = useRef(false)
+  const refusal = useRef(0)
   const [frameLoad, setFrameLoad] = useState(0)
   /*
    * Nothing is posted at a frame that has not proved where it is. Before its load event the iframe
@@ -170,7 +185,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     if (event.type === 'ready') {
       if (event.manifest.id !== manifest.id || event.manifest.origin !== manifest.origin) return
       if (sdkInstance.current !== event.instanceId) { sdkInstance.current = event.instanceId; setPreviewEpoch(n => n + 1) }
-      lastReady.current = Date.now(); setReadyRevision(event.manifest.revision); setContext(event.context)
+      lastReady.current = Date.now(); clearTimeout(refusal.current); clearCauses(); setReadyRevision(event.manifest.revision); setContext(event.context)
       if (event.manifest.revision !== manifest.revision) { setConnection('Waiting for matching source revision'); return }
       setConnection('Connected'); session.replaceSource(event.manifest, event.sourceValues)
       if (pendingContext.current?.pageId === event.context.pageId) { send({ type: 'restore-context', context: pendingContext.current }); pendingContext.current = null }
@@ -218,7 +233,15 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       // reply, and every message after it is checked against that session as before.
       if (isAnnouncement(event.data)) {
         if (event.data.projectId !== manifest.id) return
-        frameArrived(); send({ type: 'hello', projectId: manifest.id }); return
+        announced.current = true
+        frameArrived(); send({ type: 'hello', projectId: manifest.id })
+        clearTimeout(refusal.current)
+        refusal.current = window.setTimeout(() => {
+          if (lastReady.current) return
+          const { status, causes: why } = unanswered(true, location.origin, manifest.origin)
+          setConnection(status); setCauses(why)
+        }, REFUSAL_GRACE)
+        return
       }
       if (!isEnvelope(event.data) || event.data.sessionId !== sessionId.current) return
       if (event.data.version !== WEB_PROTOCOL) { setConnection('Incompatible preview protocol'); return }
@@ -229,16 +252,22 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     return () => window.removeEventListener('message', receive)
   }, [manifest.id, manifest.origin, send, frameArrived])
   // A frame pointed somewhere new has to prove itself again before anything is posted at it.
-  useEffect(() => { frameReady.current = false }, [iframeKey, pagePath])
+  useEffect(() => { frameReady.current = false; announced.current = false; clearTimeout(refusal.current); clearCauses() }, [iframeKey, pagePath, clearCauses])
   useEffect(() => {
     if (!frameLoad) return
     const stop = helloQueue(() => {
       send({ type: 'hello', projectId: manifest.id })
       if (lastReady.current && Date.now() - lastReady.current > 6500) setConnection('Preview connection interrupted')
     }, () => !!lastReady.current)
-    const timeout = window.setTimeout(() => { if (!lastReady.current) setConnection('Preview unavailable or SDK missing. Check the page URL and frame permissions.') }, 8000)
+    const timeout = window.setTimeout(() => {
+      // An announcement was heard: the SDK is there and the reason is already named, more precisely
+      // than this list could.
+      if (lastReady.current || announced.current) return
+      const { status, causes: why } = unanswered(false, location.origin, manifest.origin)
+      setConnection(status); setCauses(why)
+    }, 8000)
     return () => { stop(); clearTimeout(timeout) }
-  }, [manifest.id, send, frameLoad])
+  }, [manifest.id, manifest.origin, send, frameLoad])
   useEffect(() => {
     const captures = requests.current
     // A reloaded preview will never answer the captures the previous one was asked for.
@@ -426,7 +455,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           <WebAnnotations tickets={doc.tickets} targets={liveTargets} context={context} viewport={viewport} scale={scale} activeId={activeTicketId} onOpen={ticket => openTicket(ticket, false)} />
         </div>
       </div>
-      {previewReady ? null : <div className="web-connection-veil"><p className="web-connection-notice" role="status">{connection}</p></div>}
+      {previewReady ? null : <div className="web-connection-veil"><div className="web-connection-notice" role="status"><p>{connection}</p>{causes.length ? <ul>{causes.map(cause => <li key={cause}>{cause}</li>)}</ul> : null}</div></div>}
       {mode === 'annotate' ? <div className="web-markup-toolbar" role="group" aria-label="Markup tools" inert={!previewReady}>
         {tools.map(t => <Tooltip key={t.id} content={t.label}><IconButton label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)}><t.icon size={16} /></IconButton></Tooltip>)}
         <Tooltip content="Draw in page coordinates"><IconButton label="Draw on page" aria-pressed={pageAnchor} onClick={() => setPageAnchor(!pageAnchor)}><Frame size={16} /></IconButton></Tooltip>

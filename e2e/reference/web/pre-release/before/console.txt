@@ -1,0 +1,31 @@
+
+## Example page alone at the manifest origin
+  url: http://127.0.0.1:5174/examples/web/index.html
+  #root innerHTML length: 3902
+  paramrig-overlay elements: 0
+  console messages (5):
+    debug: [vite] connecting...
+    debug: [vite] connected.
+    info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+    error: Failed to load resource: the server responded with a status of 404 (Not Found)
+    warning: Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('http://localhost:5174') does not match the recipient window's origin ('http://127.0.0.1:5174').
+
+## Example page alone through the localhost alias
+  url: http://localhost:5174/examples/web/index.html
+  #root innerHTML length: 0
+  paramrig-overlay elements: 0
+  console messages (6):
+    debug: [vite] connecting...
+    debug: [vite] connected.
+    info: %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+    error: Failed to load resource: the server responded with a status of 404 (Not Found)
+    pageerror: Error: Check the ParamRig host and project origins.
+    warning: %s
+
+%s
+ An error occurred in the <Demo> component. Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+## Workbench opened by 127.0.0.1:5174, SDK hostOrigin hard-coded to localhost
+  .web-connection-notice count: 1
+  notice text: "Preview unavailable or SDK missing. Check the page URL and frame permissions."

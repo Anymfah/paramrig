@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { HELLO_HEARTBEAT, helloDelay, helloQueue } from './handshake'
+import { HELLO_HEARTBEAT, helloDelay, helloQueue, unanswered } from './handshake'
 
 afterEach(() => { vi.useRealTimers() })
 
@@ -41,5 +41,29 @@ describe('the host greeting queue', () => {
   it('never waits longer than the heartbeat, and never longer than it did before answering', () => {
     expect([0, 1, 2, 3, 4, 5].map(step => helloDelay(step, false))).toEqual([100, 200, 400, 800, HELLO_HEARTBEAT, HELLO_HEARTBEAT])
     expect([0, 1, 2].map(step => helloDelay(step, true))).toEqual([HELLO_HEARTBEAT, HELLO_HEARTBEAT, HELLO_HEARTBEAT])
+  })
+})
+
+describe('what the workspace says when the preview does not answer', () => {
+  const host = 'http://127.0.0.1:5174'
+  const project = 'http://localhost:3000'
+
+  it('names the three causes in the order they usually are', () => {
+    const { status, causes } = unanswered(false, host, project)
+    expect(status).toBe('Preview unavailable')
+    expect(causes).toHaveLength(3)
+    expect(causes[0]).toContain(project)
+    expect(causes[1]).toContain(host)
+    expect(causes[2]).toContain('frame-ancestors')
+  })
+
+  it('says the SDK is there and names this workbench once an announcement has been heard', () => {
+    const { status, causes } = unanswered(true, host, project)
+    expect(status).toBe(`The page's SDK is present but did not accept this workbench origin (${host})`)
+    expect(causes).toHaveLength(1)
+    expect(causes[0]).toContain('hostOrigin')
+    // The page answered, so nothing here may blame the development server or the frame permission.
+    expect(`${status} ${causes.join(' ')}`).not.toContain(project)
+    expect(causes[0]).not.toContain('frame-ancestors')
   })
 })

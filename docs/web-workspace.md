@@ -61,7 +61,6 @@ import manifestFile from './.paramrig/manifest.json'
 
 const connection = connectWeb({
   manifest: parseManifest(manifestFile),
-  hostOrigin: 'http://localhost:5174',
   adapters: {
     headingFont: {
       read: () => initialHeadingFont,
@@ -79,6 +78,34 @@ Install the connection only in development. For React, create it in an effect an
 dispose it in the cleanup. The complete React example lives in
 `src/web/example/Demo.tsx`. The SDK itself does not depend on React.
 
+`hostOrigin` is optional and accepts one origin or a list; it defaults to
+`['http://localhost:5174', 'http://127.0.0.1:5174']`, the two addresses a browser
+reaches the workbench by. Give it a list of your own only when the workbench runs
+somewhere else.
+
+### What it does to a page that is not a preview
+
+A development integration that shuts the application down is worse than an
+unavailable workbench, so `connectWeb` never throws. It declines instead, and
+hands back a connection whose `dispose()` is safe to call:
+
+- **Outside a frame** — the page opened normally, which is most of a developer's
+  day — it installs nothing: no listener, no observer, no overlay, and not one
+  line in the console.
+- **When `manifest.origin` is not the page's own origin**, or `hostOrigin` is not
+  an origin, it writes a single `console.warn` naming both addresses and what to
+  correct. A development server usually answers to both `localhost` and
+  `127.0.0.1`; opening the page by the other name is a misconfiguration worth one
+  line, not a blank screen.
+- **Called again before `dispose()`** — a hot reload with no cleanup — it warns
+  and replaces the previous connection. The newer call's adapters close over the
+  state that has just been rebuilt; keeping the older ones would write into a tree
+  that is gone, which reads as a workbench that has stopped responding. Two
+  overlays never coexist either way.
+
+`parseManifest` still throws. An invalid manifest is a programming error, and the
+integrator calls it themselves.
+
 ## Pairing
 
 `connectWeb` posts one announcement to the parent as soon as its listeners are
@@ -94,6 +121,40 @@ posts nothing at the frame before the frame has loaded or spoken, which is what
 `postMessage` needs to stop warning about a recipient origin. `WEB_PROTOCOL` is
 unchanged: an SDK that never announces itself is greeted by the same `hello` it
 always was.
+
+### Where the announcement is addressed
+
+The workbench answers at two addresses, and the framed page cannot know which one
+a person typed. So the announcement is addressed to the parent's exact origin when
+the browser will name it — `location.ancestorOrigins` in Chrome and Safari, and
+`document.referrer` where that list does not exist — and to `'*'` otherwise. That
+is the one place the checks are relaxed, and it is deliberately narrow:
+
+- The announcement carries the project identifier and a random per-load instance
+  identifier. Nothing else, and nothing secret.
+- It grants nothing. The session is opened by the `hello` that answers it, and
+  that reply is accepted only from an origin the integration declared.
+- The accepted `hello` **pins** its origin. Every message afterwards, in both
+  directions, is checked against that single origin and that session — a second
+  workbench at another address is not heard.
+
+The announcement is posted even when the parent turns out not to be a declared
+origin, so a workbench opened at an address the project has not listed can say so
+rather than time out.
+
+### When the preview does not answer
+
+The workspace waits eight seconds, then names the three causes in the order they
+usually are: the project's development server is not answering at the manifest's
+origin; the page does not load the SDK, or its integration does not accept this
+workbench's origin; framing is refused by the page's `frame-ancestors` or
+`X-Frame-Options`.
+
+An announcement heard changes the answer. It proves the page is reachable, the
+SDK is loaded and the frame is allowed, because none of that produces an
+announcement. So an announcement with no `ready` two seconds later is reported on
+its own — **The page's SDK is present but did not accept this workbench origin
+(…)** — with the option to correct.
 
 While the preview has not answered, the selection tool, the drawing palette and
 the controls are `inert` rather than merely dim, **Review changes** is refused,

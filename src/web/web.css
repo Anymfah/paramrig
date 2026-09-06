@@ -61,6 +61,8 @@
 .web-context-action { position: absolute; inset-block-start: var(--space-3); left: 50%; transform: translateX(-50%); background: var(--surface-raised); border-radius: var(--radius-sm); box-shadow: var(--elevation-overlay); }
 .web-connection-veil { position: absolute; inset: 0; display: grid; place-items: center; padding: var(--space-4); background: color-mix(in srgb, var(--surface-preview) 84%, transparent); pointer-events: none; }
 .web-connection-notice { margin: 0; max-width: 44ch; text-align: center; padding: var(--space-2) var(--space-3); background: var(--surface-raised); color: var(--text-secondary); font-size: var(--text-xs); border: 1px solid var(--border-default); border-radius: var(--radius-sm); user-select: none; }
+.web-connection-notice p { margin: 0; }
+.web-connection-notice ul { margin: var(--space-2) 0 0; padding: 0; list-style: none; display: grid; gap: var(--space-1); text-align: start; color: var(--text-muted); }
 .web-annotations { position: absolute; inset: 0; pointer-events: none; user-select: none; overflow: hidden; }
 .web-comment-pin { position: absolute; display: grid; place-items: center; width: var(--hit-target); height: var(--hit-target); padding: 0; transform: translate(-50%, -50%); background: none; border: 0; pointer-events: auto; cursor: pointer; font: inherit; }
 .web-comment-pin span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50% 50% 50% 0; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--elevation-raised); font-size: var(--text-xs); transition: background var(--duration-fast), transform var(--duration-fast); }
