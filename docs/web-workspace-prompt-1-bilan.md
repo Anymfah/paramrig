@@ -261,7 +261,7 @@ scripts.
 ```sh
 docker compose run --rm app npm run typecheck      # clean
 docker compose run --rm app npm run lint           # clean
-docker compose run --rm app npm test               # 236 files, 3400+ tests
+docker compose run --rm app npm test               # 239 files, 3411 tests
 docker compose run --rm app npm run test:web-service
 docker compose run --rm app npm run build:web-sdk
 docker compose run --rm app npm run e2e -- web-    # 8 scripts
