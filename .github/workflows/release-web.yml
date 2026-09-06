@@ -1,0 +1,40 @@
+# Publishes @paramrig/web to the npm registry when a `web-v<version>` tag is pushed.
+#
+# The tag has to name the version packages/web-sdk/package.json declares, so a release is never a
+# surprise about which code it carries. The job signs in with GitHub's OIDC token: the package's
+# trusted publisher on npmjs.com names this repository and this file, no registry token lives in the
+# repository's secrets, and npm attaches provenance on its own. The verification chain runs again
+# here rather than trusting an earlier run, because a tag can be pushed to any commit.
+name: release web
+
+on:
+  push:
+    tags: ['web-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - name: The tag names the version the package declares
+        run: |
+          declared="web-v$(node -p "require('./packages/web-sdk/package.json').version")"
+          test "$GITHUB_REF_NAME" = "$declared" || { echo "tag $GITHUB_REF_NAME, package says $declared"; exit 1; }
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build:web-sdk
+      # Trusted publishing needs npm 11.5.1 or later; the npm Node 22 ships is older.
+      - run: npm install -g npm@11
+      - run: npm publish
+        working-directory: packages/web-sdk

@@ -123,8 +123,10 @@ font.
 
 ## Contributions
 
-Repository conventions, including the prohibition on AI signatures in commit
-messages, are documented in [`AGENTS.md`](AGENTS.md).
+How to run the checks, open a pull request and where things live is in
+[`CONTRIBUTING.md`](CONTRIBUTING.md); repository conventions, including the
+prohibition on AI signatures in commit messages, are in [`AGENTS.md`](AGENTS.md).
+To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
 
 ## Licensing
 

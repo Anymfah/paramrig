@@ -1,0 +1,19 @@
+# Dependency updates arrive once a month, grouped, so a single maintainer reviews one pull request
+# rather than a stream. Security updates are separate and come as soon as an advisory does.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      dependencies:
+        patterns: ['*']
+    open-pull-requests-limit: 3
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
