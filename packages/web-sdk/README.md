@@ -50,7 +50,7 @@ says what can be tuned, where the page runs, and which source revision it descri
 | `version` | Always `1`. |
 | `id` | Stable identifier, `[A-Za-z0-9][A-Za-z0-9_-]{0,127}`. Never change it: the workbench's library, its saved drafts and every batch on disk are keyed by it. |
 | `name` | What a person sees. |
-| `revision` | The source revision this manifest describes. **Increment it whenever you change the code the controls describe.** The workbench waits rather than applying a batch to code it does not match. |
+| `revision` | The source revision this manifest describes: any string — a counter, a date, a short label — as long as each one is new. **Change it whenever you change the code the controls describe.** The workbench waits rather than applying a batch to code it does not match. |
 | `origin` | The exact HTTP or HTTPS origin the development server answers on — scheme, host and port, nothing else. |
 | `pages` | At least one, at most 100. Each has a unique `id`, a `name` and a `path` starting with `/`. |
 | `groups` | Named sections for the controls. Each has an `id` and a `label`. |
@@ -69,12 +69,20 @@ Every parameter has `id`, `label`, `group`, `kind` and `defaultValue`.
 `resource` · `gizmo2d` · `gizmo3d` · `camera` · `textureFrame` · `multiselect` ·
 `action` · `preset`
 
-Four of them ask for more:
+Four of them require more:
 
-- `number` requires `min`, `max` and a `step` greater than zero.
+- `number` requires `min`, `max` and a `step` greater than zero. Its `unit` is
+  what a person reads beside the control; the binding's `unit`, below, is what is
+  written to CSS. They are usually the same string.
 - `select`, `multiselect` and `preset` require `options`, each `{ value, label }`.
 - `group` requires `fields`, an array of parameters, nested at most 8 deep.
 - `list` requires `item`, one parameter describing an element.
+
+The others carry optional fields of their own — `text` has `maxLength` and
+`multiline`, for instance — listed in the package's type declarations,
+`dist/rigs/extended-types.d.ts`. All twenty-one exist because the same controls
+serve ParamRig's vector and 3D rigs; on a web page, the useful ones are those
+whose value maps onto a CSS value or onto an adapter you write.
 
 Start with `number`, `color`, `select`, `switch` and `text`. They cover most of
 what a person wants to move, and every one of them reads clearly in a review.
@@ -106,6 +114,20 @@ element a person happens to select:
 
 `unit` is appended to numeric CSS values — `"unit": "px"`. Without it a number is
 written bare, which is what `line-height` and `opacity` want.
+
+`source` is optional: a file path shown beside the control, the same claim as
+`data-paramrig-source` on an element. Nothing reads it as an instruction, and a
+stale one is not an error, only a hint that lies.
+
+**How the source value is read.** When the workbench pairs, the SDK reads what
+the page shows rather than trusting the manifest: `read()` for an adapter, the
+computed style for a CSS property or custom property. `defaultValue` is the
+fallback when that read gives nothing. A computed length comes back in pixels
+whatever the stylesheet declared, so the SDK converts it into the binding's
+`unit` when the two are commensurable — `rem`, `em`, `vw`, `pt` and the other
+lengths, `s` and `ms`, `deg` and `turn`. A percentage cannot be read back, nor
+can a bare number the browser reports with a unit, such as a unitless
+`line-height`; there the `defaultValue` stands, so keep it true.
 
 Callbacks never travel through a manifest, a batch or a message. Resource controls
 carry metadata, not file bytes; expose a URL your project owns, or an adapter.
@@ -247,12 +269,16 @@ an instruction naming it.
 that moved), `changes` (each with `before`, `after` and the bindings it writes),
 and `tickets` (the comments, each with its targets, marks, page, viewport, scroll
 context and captures). A batch restates every difference from your source, so the
-newest one alone is the whole picture.
+newest one alone is the whole picture, and a control present in `values` but
+absent from `changes` did not move.
 
 **Apply it in the source.** Move the real values in the real files — the batch is
-a request, not a patch. Preserve every `data-paramrig-id` and
-`data-paramrig-instance`. Then increment `revision` in `manifest.json`, because
-the code the controls describe has changed.
+a request, not a patch. A value behind an adapter usually lives in three places
+that move together: the initial state, `read` and `restore`. Preserve every
+`data-paramrig-id` and `data-paramrig-instance`. Then, in `manifest.json`, set
+each changed control's `defaultValue` to the value you applied, so the manifest
+tells the truth even without a page to read, and change `revision`, because the
+code the controls describe has changed.
 
 **Write one response**, atomically: a temporary file, then a rename.
 
@@ -285,9 +311,22 @@ Use `needs-info` when you cannot act. Say precisely what you need — a value, a
 choice between two readings, a page you cannot reach. It reopens the ticket for
 another round rather than closing it wrongly.
 
+**A response is a claim, not an approval.** Write `summary` and each `message` as
+what you did and how to check it, never as a certification. Only the person
+validates a correction, in the workbench.
+
+**One round, end to end.** The batch says `accent` moved from `#bc593d` to
+`#336b72` through `--accent`, and `heading-font` from `Georgia` to `Public Sans`
+through the `headings` adapter; one ticket on the hero asks for the coastal
+palette. You change `--accent` in the stylesheet; you change the initial font,
+`read` and `restore` in the adapter; you set both `defaultValue`s, move
+`revision` from `study-1` to `study-2`, and write `responses/response-001.json`
+naming the batch, `study-1` as `sourceRevision`, `study-2` as `resultRevision`,
+and the ticket as `implemented` with a message saying where to look. The batch
+itself you do not touch.
+
 **What never changes.** Do not edit or delete a batch, `draft.json`, or a capture
-file. Batches are immutable, and the workbench refuses a rewrite. Only the person
-validates a correction; a response is a claim, not an approval. A ticket that is
+file. Batches are immutable, and the workbench refuses a rewrite. A ticket that is
 reopened leaves its batch and drops the answer that batch received, so a later
 response to a batch a ticket has left does not reach it.
 

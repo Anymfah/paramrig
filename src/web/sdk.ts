@@ -31,6 +31,42 @@ const idle = () => ({ dispose() { /* Nothing was installed, so nothing has to be
 let active: { dispose: () => void } | null = null
 
 /** Framework-neutral, development-only integration. No listeners become active before pairing. */
+/*
+ * A computed style answers in canonical units — px for a length, s for a time, deg for an angle —
+ * whatever the stylesheet declared. A control declared in rem would otherwise read its source back
+ * in px, and the review would show a "before" in the wrong unit. So a source number is converted
+ * into the binding's unit when the two are commensurable, and left to the manifest's default when
+ * they are not: a percentage has no fixed size, and a wrong number is worse than a declared one.
+ */
+const PX_PER: Record<string, number> = { px: 1, pt: 96 / 72, pc: 16, in: 96, cm: 96 / 2.54, mm: 96 / 25.4, q: 96 / 101.6 }
+const S_PER: Record<string, number> = { s: 1, ms: 1 / 1000 }
+const DEG_PER: Record<string, number> = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 }
+function pxPer(unit: string, el: Element, property: string): number | undefined {
+  if (unit in PX_PER) return PX_PER[unit]
+  const fontSize = (of: Element) => parseFloat(getComputedStyle(of).fontSize) || 16
+  if (unit === 'rem') return fontSize(document.documentElement)
+  // em on font-size itself is relative to the parent's size; on every other property, to the element's own.
+  if (unit === 'em') return fontSize(property === 'font-size' && el.parentElement ? el.parentElement : el)
+  if (unit === 'vw') return window.innerWidth / 100
+  if (unit === 'vh') return window.innerHeight / 100
+  if (unit === 'vmin') return Math.min(window.innerWidth, window.innerHeight) / 100
+  if (unit === 'vmax') return Math.max(window.innerWidth, window.innerHeight) / 100
+  return undefined
+}
+function convertUnit(n: number, from: string, to: string, el: Element, property: string): number | undefined {
+  for (const per of [S_PER, DEG_PER]) if (from in per && to in per) return n * per[from]! / per[to]!
+  const a = pxPer(from, el, property), b = pxPer(to, el, property)
+  return a !== undefined && b !== undefined && b > 0 ? n * a / b : undefined
+}
+/** The number a computed value stands for, in the unit the binding declares; undefined when there is no honest answer. */
+function sourceNumber(raw: string, b: WebBinding, el: Element): number | undefined {
+  const m = /^(-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)([a-z%]*)$/i.exec(raw)
+  if (!m) { const n = parseFloat(raw); return Number.isFinite(n) ? n : undefined }
+  const n = Number(m[1]), from = m[2]!.toLowerCase(), to = (b.unit ?? '').toLowerCase()
+  if (!from || from === to) return n
+  const converted = convertUnit(n, from, to, el, b.property)
+  return converted === undefined ? undefined : Math.round(converted * 1e6) / 1e6
+}
 export function connectWeb({ manifest: rawManifest, hostOrigin = DEFAULT_HOST_ORIGINS, adapters = {} }: ConnectWebOptions) {
   const manifest = parseManifest(rawManifest)
   /*
@@ -294,7 +330,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin = DEFAULT_HOST_OR
       const el = bindingElements(b)[0]; if (!el) continue
       const raw = getComputedStyle(el).getPropertyValue(b.property).trim()
       if (!raw) continue
-      if (p.kind === 'number') { const n = parseFloat(raw); if (Number.isFinite(n)) sourceValues[p.id] = n }
+      if (p.kind === 'number') { const n = sourceNumber(raw, b, el); if (n !== undefined) sourceValues[p.id] = n }
       else if (p.kind === 'color') {
         if (/^#[\da-f]{6}([\da-f]{2})?$/i.test(raw)) { sourceValues[p.id] = raw.toLowerCase(); continue }
         const c = document.createElement('canvas').getContext('2d')

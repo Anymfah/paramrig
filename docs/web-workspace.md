@@ -202,8 +202,10 @@ parameter, scope (`global`, `page`, `element`) and destination:
 - `style`: writes a declared CSS property on the selected target family.
 - `adapter`: calls a registered `read`/`apply`/`restore` adapter in the application.
 
-Use `unit` for numeric CSS values. Page bindings declare `pageId`; element bindings
-declare a target ID and optionally an instance. An omitted instance in a binding
+Use `unit` for numeric CSS values: the SDK writes it, and converts the computed
+value it reads back into that unit when the two are commensurable (a percentage
+is not, and the manifest default then stands). Page bindings declare `pageId`;
+element bindings declare a target ID and optionally an instance. An omitted instance in a binding
 intentionally applies to every instance of that target family. Scope is declared
 by the agent and does not change when a user selects a different instance.
 Adapters handle composite values; resource controls transfer metadata, not file

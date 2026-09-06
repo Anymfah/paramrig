@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import example from '../../examples/web/manifest.json'
 import { connectWeb } from './sdk'
-import { envelope, isAnnouncement, parseManifest, type HostCommand, type SDKAnnouncement, type SDKEvent } from './contracts'
+import { envelope, isAnnouncement, parseManifest, type HostCommand, type SDKAnnouncement, type SDKEvent, type WebBinding } from './contracts'
 
 const hostOrigin = 'http://localhost:5174'
 let connection: ReturnType<typeof connectWeb> | null = null
@@ -25,8 +25,8 @@ function frame(posted: unknown[]) {
   Object.defineProperty(window, 'parent', { configurable: true, get: () => parent })
   return parent
 }
-function setup({ pair = true, host }: { pair?: boolean; host?: string | readonly string[] } = {}) {
-  const manifest = parseManifest({ ...example, origin: location.origin, pages: [{ id: 'home', name: 'Home', path: location.pathname }] })
+function setup({ pair = true, host, adjust = m => m }: { pair?: boolean; host?: string | readonly string[]; adjust?: (manifest: Record<string, unknown>) => Record<string, unknown> } = {}) {
+  const manifest = parseManifest(adjust({ ...example, origin: location.origin, pages: [{ id: 'home', name: 'Home', path: location.pathname }] }))
   document.body.innerHTML = '<main><h1 data-paramrig-id="hero-title">Original</h1><article data-paramrig-id="story-card" data-paramrig-instance="coast"><button data-paramrig-id="action">Read coast</button></article><article data-paramrig-id="story-card" data-paramrig-instance="forest"><button data-paramrig-id="action">Read forest</button></article><button id="plain">Plain button</button></main>'
   const events: SDKEvent[] = []
   const posted: unknown[] = []
@@ -102,6 +102,17 @@ describe('page-side web integration', () => {
     expect(document.documentElement.style.getPropertyValue('--fn-accent')).toBe('')
     send({ type: 'values', values: { accent: '#123456' }, source: false })
     expect(document.documentElement.style.getPropertyValue('--fn-accent')).toBe('#123456')
+  })
+  it('reads a source number back in the unit the binding declares, and keeps the default where nothing converts', () => {
+    document.documentElement.style.fontSize = '16px'
+    const declare = (b: WebBinding): WebBinding => b.paramId === 'hero-size' ? { ...b, unit: 'rem' } : b.paramId === 'card-radius' ? { ...b, unit: '%' } : b
+    const { manifest, events, send } = setup({ pair: false, adjust: m => ({ ...m, bindings: (m.bindings as WebBinding[]).map(declare) }) })
+    document.querySelector<HTMLElement>('h1')!.style.fontSize = '92px'
+    document.querySelector<HTMLElement>('article')!.style.borderRadius = '12px'
+    send({ type: 'hello', projectId: manifest.id })
+    const ready = events.find(e => e.type === 'ready')
+    // 92px is 5.75rem at a 16px root; a percentage has no pixel size to read back from, so the manifest's 4 stands.
+    expect(ready?.type === 'ready' ? ready.sourceValues : null).toMatchObject({ 'hero-size': 5.75, 'card-radius': 4 })
   })
   it('restores original inline declarations before source review and on disposal', () => {
     document.documentElement.style.setProperty('--fn-accent', '#bc593d', 'important')
