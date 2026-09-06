@@ -71,9 +71,12 @@ export function createSceneLights(): SceneLights {
         place(light, worldMatrix(document, object))
         const wantsShadow = options.shadows && data.shadow !== false && casting < options.maxShadows
         light.castShadow = wantsShadow
-        if (wantsShadow && light.shadow) {
-          light.shadow.mapSize.set(2048, 2048)
-          light.shadow.bias = -0.0005
+        // Only these three carry a shadow camera; a RectAreaLight has none, and three no longer
+        // declares one on the base class.
+        const casts = light instanceof DirectionalLight || light instanceof SpotLight || light instanceof PointLight ? light : null
+        if (wantsShadow && casts) {
+          casts.shadow.mapSize.set(2048, 2048)
+          casts.shadow.bias = -0.0005
           casting += 1
         }
       }
