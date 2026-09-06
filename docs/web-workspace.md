@@ -160,8 +160,13 @@ Duplicate stable IDs produce an ambiguous target. Closed shadow roots and extern
 iframes are selected at their host boundary.
 
 The workspace opens at the available width and 100% zoom. The size menu changes
-its real viewport independently from display zoom. Project switching lives in
-the project menu; the library is not shown while editing.
+its real viewport independently from display zoom: zoom runs 50, 75, 100, 150 and
+200% plus **Fit width**. A preset wider than the stage switches to Fit width, and
+the size button's tooltip says what it is fitted to; **Available width** puts the
+zoom back to 100%. Project switching lives in the project menu, which also carries
+the connection state in words — the only place it is legible at 390 px. **Review
+changes** is quiet and empty-handed while there is nothing to send, and carries a
+count otherwise, split into controls and comments in its tooltip.
 
 Browse leaves application interaction intact. Select prevents application clicks;
 Shift-click adds another target. Arrow keys navigate parent, child and siblings.

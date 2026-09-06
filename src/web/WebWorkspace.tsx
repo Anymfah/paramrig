@@ -299,7 +299,8 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const lastBatch = [...(service?.batches ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1)
   const pendingValues = Object.keys(doc.values).filter(id => !valuesEqual(doc.values[id]!, doc.sourceValues[id]!)
     && (lastBatch?.values[id] === undefined || !valuesEqual(doc.values[id]!, lastBatch.values[id])))
-  const changeCount = doc.tickets.filter(t => t.status === 'draft').length + pendingValues.length
+  const changes = { controls: pendingValues.length, comments: doc.tickets.filter(t => t.status === 'draft').length }
+  const changeCount = changes.controls + changes.comments
   const hasFeedback = changeCount > 0
   const commentsCount = doc.tickets.filter(t => t.status !== 'validated').length
   const projectControls = () => { setSelected([]); setPanel('controls'); setActiveTicketId(null); setAddingTargets(false) }
@@ -389,12 +390,19 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     <WebToolbar manifest={manifest} pageId={context?.pageId ?? manifest.pages[0]!.id}
       onPage={id => { const page = manifest.pages.find(page => page.id === id); if (page) { setPagePath(page.path); setSelected([]); setConnection('Connecting to preview') } }}
       mode={mode} onMode={next => { setMode(next); setAddingTargets(false); setReattachKey(null) }} viewport={viewport} fluid={!fixedViewport}
-      onViewport={size => { setFixedViewport(size); if (!size) setZoom('1') }} zoom={zoom} onZoom={setZoom}
+      onViewport={size => {
+        setFixedViewport(size)
+        // A 1440 preset in a 1120 stage used to overflow and be cut off at 100%. Fitting it is the
+        // only way to show the whole width, and Available width puts the preview back at its size.
+        if (!size) setZoom('1')
+        else if (size.width > available.width) setZoom('fit')
+        else if (zoom === 'fit') setZoom('1')
+      }} zoom={zoom} onZoom={setZoom}
       previewMode={previewMode} onPreviewMode={setPreviewMode} undoLabel={session.undoLabel} redoLabel={session.redoLabel} onUndo={() => session.undo()} onRedo={() => session.redo()}
       onSnapshots={() => { updatePrefs({ inspectorCollapsed: false }); setPanel('snapshots'); setMobile('inspector'); setMode('browse'); setAddingTargets(false) }}
       onReload={() => { lastReady.current = 0; setIframeKey(n => n + 1); sync.reconnect(); setConnection('Connecting to preview') }}
       status={connection === 'Connected' ? sync.syncStatus : connection} connected={connection === 'Connected' && sync.syncStatus === 'Saved to project'}
-      changeCount={changeCount} reviewDisabled={!previewReady || !context || pendingCapture || !hasFeedback || !!batch || !!screen} onReview={prepare} ready={previewReady} />
+      changes={changes} reviewDisabled={!previewReady || !context || pendingCapture || !hasFeedback || !!batch || !!screen} onReview={prepare} ready={previewReady} scale={scale} />
     <div className="web-preview-area">
       <div ref={stage} className="web-preview-stage" id="main" tabIndex={-1} data-mode={mode} data-fluid={!fixedViewport}>
         <div className="web-preview-size" style={{ width: viewport.width * scale, height: viewport.height * scale }}>

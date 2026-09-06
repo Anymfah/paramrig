@@ -52,6 +52,20 @@ function isKeyboardFocus(el: Element): boolean {
   }
 }
 
+/*
+ * Focus handed back by a closing overlay is not a request for a tooltip.
+ *
+ * Escape closes a popover or a menu, the browser returns focus to the trigger, and the trigger is
+ * `:focus-visible` because the gesture was a key — so the tooltip opened over the very control the
+ * person had just dismissed something from. Only a focus that arrives without a recent Escape is
+ * treated as a keyboard arrival.
+ */
+const ESCAPE_GRACE = 400
+let escapedAt = 0
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (event) => { if (event.key === 'Escape') escapedAt = Date.now() }, true)
+}
+
 type Coords = { top: number; left: number; side: TooltipSide; arrow: number }
 
 export function Tooltip({ content, children, side = 'top', instant = false, block = false, disabled = false }: TooltipProps) {
@@ -191,6 +205,7 @@ export function Tooltip({ content, children, side = 'top', instant = false, bloc
   }
 
   const onFocus = (e: ReactFocusEvent<HTMLSpanElement>) => {
+    if (Date.now() - escapedAt < ESCAPE_GRACE) return
     if (e.target instanceof HTMLElement && isKeyboardFocus(e.target)) show(0)
   }
 

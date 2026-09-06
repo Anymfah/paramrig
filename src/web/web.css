@@ -8,7 +8,7 @@
 .web-connect__project { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); padding-block: var(--space-5); border-block: 1px solid var(--border-default); }
 .web-connect__project > div { flex: 1; min-width: 0; }
 .web-connect__project p, .web-connect code { overflow-wrap: anywhere; }
-.web-status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
+.web-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex-shrink: 0; }
 .web-status-dot[data-offline] { background: var(--warning); }
 .web-setup { max-width: 64rem; padding-block: var(--space-3); }
 .web-setup summary { padding-block: var(--space-2); cursor: pointer; user-select: none; }
@@ -29,9 +29,12 @@
 .web-project-mark { display: flex; flex: none; width: 24px; }
 .web-project-mark svg { width: 100%; height: 24px; }
 .web-project-button:hover, .web-size-trigger:hover { background: var(--surface-overlay); }
-.web-page-picker { width: 112px; min-width: 64px; }
-.web-page-picker .select-trigger { min-height: 32px; padding-inline: var(--space-2); background: transparent; box-shadow: none; }
+/* The page picker is as wide as the page it names, with the chevron against the label. */
+.web-page-picker { width: auto; min-width: 0; max-width: 12rem; }
+.web-page-picker .select-trigger { width: auto; min-width: 0; min-height: 32px; justify-content: flex-start; gap: var(--space-1); padding-inline: var(--space-2); background: transparent; box-shadow: none; }
+.web-page-picker .select-trigger__value { text-align: start; }
 .web-page-picker .select-trigger__label { display: none; }
+.web-menu-status { gap: var(--space-2); }
 .web-size-trigger { font-size: var(--text-xs); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .web-size-trigger > svg { flex: none; }
 .web-size-unit { color: var(--text-muted); }

@@ -25,6 +25,7 @@ type Props = {
   onZoom: (zoom: string) => void
   previewMode: 'current' | 'reference' | 'source'
   onPreviewMode: (mode: 'current' | 'reference' | 'source') => void
+  scale: number
   undoLabel: string | undefined
   redoLabel: string | undefined
   onUndo: () => void
@@ -33,22 +34,29 @@ type Props = {
   onReload: () => void
   status: string
   connected: boolean
-  changeCount: number
+  /** What is waiting to be reviewed, split so the tooltip can say what it is made of. */
+  changes: { controls: number; comments: number }
   reviewDisabled: boolean
   onReview: () => void
   /** The preview has answered. Until it has, the controls that speak to it are inert. */
   ready: boolean
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
 export function WebToolbar(p: Props) {
   const theme = useSyncExternalStore(subscribeTheme, resolvedTheme)
   const [viewOpen, setViewOpen] = useState(false)
+  const waiting = p.changes.controls + p.changes.comments
+  const waitingWords = [p.changes.controls ? plural(p.changes.controls, 'control') : null, p.changes.comments ? plural(p.changes.comments, 'comment') : null].filter(Boolean).join(' · ')
   return <div className="web-toolbar">
     <Menu.Root modal={false}>
       <Menu.Trigger asChild><button className="web-project-button" type="button" aria-label={`${p.manifest.name} project menu`}>
         <CoformSymbol className="web-project-mark" /><span>{p.manifest.name}</span><ChevronDown size={12} />
       </button></Menu.Trigger>
       <Menu.Portal><Menu.Content className="menu" align="start" sideOffset={8} collisionPadding={8}>
+        <Menu.Item className="menu__item web-menu-status" disabled><span className="web-status-dot" data-offline={!p.connected || undefined} />{p.status}</Menu.Item>
+        <Menu.Separator className="menu__sep" />
         <Menu.Item asChild className="menu__item"><Link to="/">Library</Link></Menu.Item>
         <Menu.Item asChild className="menu__item"><Link to="/web">Connect project…</Link></Menu.Item>
         {listWebProjects().filter(project => project.id !== p.manifest.id).map(project => <Menu.Item key={project.id} asChild className="menu__item"><Link to={`/r/${webRigId(project.id)}`}>{project.name}</Link></Menu.Item>)}
@@ -58,7 +66,7 @@ export function WebToolbar(p: Props) {
     </Menu.Root>
     <div className="web-page-picker"><SelectField presentation="menu" label="Page" value={p.pageId} options={p.manifest.pages.map(page => ({ value: page.id, label: page.name }))} onChange={p.onPage} /></div>
     <Popover.Root>
-      <Tooltip content="Preview size"><Popover.Trigger asChild><button type="button" className="web-size-trigger" aria-label="Preview size">
+      <Tooltip content={p.zoom === 'fit' ? `Preview size · fitted to ${Math.round(p.scale * 100)}%` : 'Preview size'}><Popover.Trigger asChild><button type="button" className="web-size-trigger" aria-label="Preview size">
         {p.fluid ? <Maximize size={15} /> : p.viewport.width < 600 ? <Smartphone size={15} /> : <Monitor size={15} />}<span>{p.viewport.width}<span className="web-size-unit"> px</span></span><ChevronDown size={12} />
       </button></Popover.Trigger></Tooltip>
       <Popover.Portal><Popover.Content className="popover web-view-popover" sideOffset={8} collisionPadding={8} aria-label="Preview size">
@@ -66,7 +74,7 @@ export function WebToolbar(p: Props) {
           {([{ label: 'Available width', icon: Maximize, size: null }, { label: 'Desktop', icon: Monitor, size: { width: 1440, height: 900 } }, { label: 'Tablet', icon: Tablet, size: { width: 768, height: 900 } }, { label: 'Mobile', icon: Smartphone, size: { width: 390, height: 844 } }]).map(preset => <Tooltip key={preset.label} content={preset.label}><IconButton label={preset.label} aria-pressed={preset.size ? !p.fluid && p.viewport.width === preset.size.width : p.fluid} onClick={() => p.onViewport(preset.size)}><preset.icon size={17} /></IconButton></Tooltip>)}
         </div>
         <NumberController param={{ id: 'web-width', kind: 'number', label: 'Width', group: 'viewport', defaultValue: 1440, min: 320, max: 2560, step: 1, unit: 'px', view: 'field' }} value={p.viewport.width} onChange={width => p.onViewport({ ...p.viewport, width })} />
-        <SelectField label="Zoom" presentation="menu" value={p.zoom} onChange={p.onZoom} options={[{ value: '1', label: '100%' }, { value: 'fit', label: 'Fit width' }, { value: '.75', label: '75%' }, { value: '.5', label: '50%' }]} />
+        <SelectField label="Zoom" presentation="menu" value={p.zoom} onChange={p.onZoom} options={[{ value: '.5', label: '50%' }, { value: '.75', label: '75%' }, { value: '1', label: '100%' }, { value: '1.5', label: '150%' }, { value: '2', label: '200%' }, { value: 'fit', label: 'Fit width' }]} />
       </Popover.Content></Popover.Portal>
     </Popover.Root>
     <div className="web-mode" role="group" aria-label="Preview interaction" inert={!p.ready}>
@@ -91,7 +99,11 @@ export function WebToolbar(p: Props) {
         <Menu.Item className="menu__item" onSelect={p.onReload}><RefreshCw size={16} />Reload preview</Menu.Item>
       </Menu.Content></Menu.Portal>
     </Menu.Root>
-    <Tooltip content={p.status}><span className="web-sync" tabIndex={0} role="status" aria-label={p.status}><span className="web-status-dot" data-offline={!p.connected || undefined} /></span></Tooltip>
-    <Button size="sm" className="web-review-button" onClick={p.onReview} disabled={p.reviewDisabled}><span className="web-review-label">Review changes</span><span className="web-review-mobile">Review</span>{p.changeCount > 0 ? <span className="web-count">{p.changeCount}</span> : null}</Button>
+    <Tooltip instant content={p.status}><span className="web-sync" tabIndex={0} role="status" aria-label={p.status}><span className="web-status-dot" data-offline={!p.connected || undefined} /></span></Tooltip>
+    <Tooltip content={waiting ? `Review ${waitingWords}` : 'Nothing to review yet'}>
+      <Button size="sm" variant={waiting ? 'solid' : 'quiet'} className="web-review-button" onClick={p.onReview} disabled={p.reviewDisabled}>
+        <span className="web-review-label">Review changes</span><span className="web-review-mobile">Review</span>{waiting ? <span className="web-count">{waiting}</span> : null}
+      </Button>
+    </Tooltip>
   </div>
 }
