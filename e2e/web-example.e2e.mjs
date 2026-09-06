@@ -21,7 +21,7 @@ const measure = () => {
   const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05) }
   const paper = px(getComputedStyle(document.documentElement).getPropertyValue('--fn-paper'))
   const ground = (el) => { let node = el; while (node) { const back = getComputedStyle(node).backgroundColor; if (back && back !== 'transparent' && !back.endsWith(', 0)')) return px(back); node = node.parentElement } return paper }
-  return ['.fn-hero p', '.fn-card p', '.fn-kicker', '.fn-eyebrow', '.fn-caption', '.fn-scroll p', '.fn-colophon span', '.fn-nav a:not(.fn-brand)', '.fn-menu > button', '.fn-link', '.fn-card a', '.fn-masthead > span', '.fn-facts dt', '.fn-facts dd']
+  return ['.fn-hero p', '.fn-card p', '.fn-kicker', '.fn-eyebrow', '.fn-caption', '.fn-scroll p', '.fn-colophon .fn-inner span', '.fn-nav a:not(.fn-brand)', '.fn-menu > button', '.fn-link', '.fn-card a', '.fn-masthead', '.fn-facts dt', '.fn-facts dd']
     .map((selector) => {
       const el = document.querySelector(selector)
       if (!el) return { selector, missing: true }
@@ -35,11 +35,22 @@ export default run('web-example', async ({ page, check, log }) => {
   await page.waitForSelector('.fn-page', { timeout: 30000 })
   await page.waitForTimeout(500)
 
-  // Calibration: the notebook line is full ink on paper, which is ~11:1 by hand. A probe that does
-  // not see that is a broken probe, and every number under it would be worth nothing.
+  /*
+   * Calibration, against pairs whose ratio is fixed by the formula rather than by this page: black
+   * on white is exactly 21, and #767676 on white is the 4.5 threshold itself. A probe that does not
+   * report those is broken, and every number under it would be worth nothing. Anchoring on one of
+   * the page's own colours is what went stale the first time the palette moved.
+   */
+  const calibration = await page.evaluate(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1
+    const ctx = canvas.getContext('2d')
+    const px = (value) => { ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, 1, 1); ctx.fillStyle = value; ctx.fillRect(0, 0, 1, 1); return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3) }
+    const lum = (rgb) => { const [r, g, b] = rgb.map(v => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 }); return 0.2126 * r + 0.7152 * g + 0.0722 * b }
+    const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05) }
+    return { black: +ratio(px('#000'), px('#fff')).toFixed(2), threshold: +ratio(px('#767676'), px('#fff')).toFixed(2) }
+  })
+  check('the contrast probe agrees with two ratios fixed by the formula', calibration.black === 21 && Math.abs(calibration.threshold - 4.54) < 0.02, JSON.stringify(calibration))
   const readings = await page.evaluate(measure)
-  const notebook = readings.find(r => r.selector === '.fn-scroll p')
-  check('the contrast probe agrees with a ratio worked out by hand', notebook.ratio > 10 && notebook.ratio < 12, `${notebook.ratio}:1 for full ink on paper`)
   for (const reading of readings) log(`  ${reading.missing ? 'MISSING' : `${String(reading.ratio).padStart(5)} : 1`}  ${reading.selector}`)
   check('every text colour on the page clears 4.5:1', readings.every(r => !r.missing && r.ratio >= 4.5), readings.filter(r => r.missing || r.ratio < 4.5).map(r => `${r.selector} ${r.ratio ?? 'missing'}`).join(', '))
 

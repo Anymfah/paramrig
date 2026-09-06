@@ -1,7 +1,7 @@
-handshake, open: 92 / 79 / 73 ms · spread 19 ms
-handshake, reload preview: 117 / 88 / 86 ms · spread 31 ms
-handshake, page change: 46 / 46 / 47 ms · spread 1 ms
-from the SDK announcing itself to Connected: 13 / 10 / 11 / 18 / 7 / 9 / 14 / 9 / 10 ms · spread 11 ms
+handshake, open: 120 / 76 / 84 ms · spread 44 ms
+handshake, reload preview: 145 / 123 / 123 ms · spread 22 ms
+handshake, page change: 62 / 63 / 49 ms · spread 14 ms
+from the SDK announcing itself to Connected: 13 / 17 / 19 / 12 / 9 / 20 / 16 / 13 / 6 ms · spread 14 ms
 1440 px light: overflow {"page":0,"toolbar":0,"inspector":0}
 1024 px light: overflow {"page":0,"toolbar":0,"inspector":0}
 390 px light: overflow {"page":0,"toolbar":0,"inspector":0}

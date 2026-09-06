@@ -116,7 +116,13 @@ export default run('web-select', async ({ page, check, log, shot }) => {
   await page.mouse.up()
   await page.waitForTimeout(700)
   const picked = await page.locator('.web-inspector-head strong').innerText()
-  check('a real click far down the preview selects too', Math.round(low.y) > 600 && picked !== 'Hero title' && picked !== 'Project controls', `${Math.round(low.y)} px down, selected ${JSON.stringify(picked)}`)
+  /*
+   * 540 px is not a round number: it is where a real click used to stop being heard, walked at 40 px
+   * steps and recorded in the prompt 1 report. The check is that the point is past it and that what
+   * was under the pointer is what got selected — not that the example page is any particular height.
+   */
+  const OLD_DEAD_ZONE = 540
+  check('a real click far down the preview selects too', Math.round(low.y) > OLD_DEAD_ZONE && picked !== 'Hero title' && picked !== 'Project controls', `${Math.round(low.y)} px down, past ${OLD_DEAD_ZONE}, selected ${JSON.stringify(picked)}`)
   await frame().evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(400)
 

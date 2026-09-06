@@ -131,7 +131,13 @@ export default run('web-response', async ({ page, check, log }) => {
      * that was validated is the one that has to go, and the one still waiting has to stay.
      */
     check('and a validated comment leaves the page', await page.getByRole('button', { name: 'Open comment 1' }).count() === 0)
-    check('while the comment still waiting keeps its pin', await page.getByRole('button', { name: 'Open comment 2' }).count() === 1)
+    /*
+     * And the other comment is untouched. Read from the list rather than from its pin: a pin is only
+     * drawn while its target is inside the preview's viewport, so on a page where the second target
+     * sits below the fold the pin is legitimately absent and proves nothing either way.
+     */
+    const statuses = await state().then(s => Object.fromEntries((s.draft.document?.tickets ?? []).map(t => [t.comment, t.status])))
+    check('while the comment still waiting is left as it was', statuses[ROOM] === 'validated' && statuses[RADIUS] && statuses[RADIUS] !== 'validated', JSON.stringify(statuses))
 
     await openComment(RADIUS)
     check('a needs-info answer asks rather than closes', await ticketStatus() === 'Needs clarification', await ticketStatus())

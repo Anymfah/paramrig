@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { connectWeb } from '../sdk'
 import { type WebProjectManifest } from '../contracts'
 
@@ -10,6 +10,20 @@ function Arrow() { return <svg data-paramrig-id="story-arrow" aria-label="Read s
  * its own — the strokes are `currentColor` and the accent, so the drawing follows the palette the
  * workbench is driving instead of staying green while the paper around it changes.
  */
+/*
+ * The ridgelines behind the hero: seven filled silhouettes from a value-noise field, the far ones
+ * high and shallow, the near ones low and tall, each a step deeper than the one behind it. They
+ * are drawn from the palette rather than painted, so the page's own colours reach them.
+ */
+const RIDGES = [
+  { t: 0, d: 'M0 438Q18 438 27 437Q36 436 45 435Q54 434 63 433Q72 432 81 430Q90 429 99 427Q108 426 117 424Q126 422 135 420Q144 417 153 414Q162 411 171 408Q180 405 189 404Q198 403 207 406Q216 409 225 411Q234 414 243 417Q252 419 261 422Q270 424 279 427Q288 429 297 431Q306 433 315 435Q324 437 333 439Q342 441 351 442Q360 443 369 444Q378 444 387 444Q396 444 405 444Q414 443 423 443Q432 443 441 444Q450 444 459 445Q468 445 477 446Q486 447 495 448Q504 449 513 450Q522 451 531 452Q540 452 549 452Q558 452 567 452Q576 451 585 451Q594 450 603 449Q612 449 621 448Q630 447 639 446Q648 445 657 444Q666 443 675 442Q684 440 693 439Q702 438 711 436Q720 435 729 434Q738 432 747 430Q756 428 765 426Q774 424 783 422Q792 419 801 417Q810 414 819 411Q828 408 837 405Q846 402 855 404Q864 406 873 408Q882 411 891 413Q900 415 909 417Q918 419 927 420Q936 421 945 422Q954 423 963 423Q972 424 981 423Q990 423 999 422Q1008 421 1017 419Q1026 418 1035 416Q1044 414 1053 411Q1062 408 1071 405Q1080 402 1089 404Q1098 406 1107 409Q1116 412 1125 414Q1134 416 1143 417Q1152 418 1161 419Q1170 419 1179 419Q1188 419 1197 418Q1206 418 1215 417Q1224 417 1233 417Q1242 417 1251 418Q1260 419 1269 420Q1278 421 1287 422Q1296 424 1305 425Q1314 426 1323 428Q1332 429 1341 430Q1350 431 1359 431Q1368 432 1377 433Q1386 434 1395 434Q1404 435 1413 436Q1422 436 1431 437Q1440 437 1449 437Q1458 437 1467 436Q1476 435 1485 434Q1494 432 1503 430Q1512 428 1521 425Q1530 423 1539 420Q1548 417 1557 414Q1566 411 1575 408L1600 406L1600 900L0 900Z' },
+  { t: 0.2, d: 'M0 466Q18 466 27 465Q36 465 45 463Q54 462 63 460Q72 459 81 456Q90 454 99 452Q108 450 117 449Q126 449 135 448Q144 448 153 446Q162 445 171 442Q180 439 189 445Q198 451 207 459Q216 466 225 474Q234 481 243 488Q252 494 261 498Q270 502 279 504Q288 505 297 506Q306 507 315 507Q324 507 333 508Q342 508 351 509Q360 510 369 510Q378 511 387 511Q396 510 405 510Q414 509 423 509Q432 509 441 508Q450 508 459 508Q468 507 477 506Q486 505 495 504Q504 503 513 501Q522 500 531 499Q540 498 549 498Q558 498 567 499Q576 500 585 500Q594 501 603 501Q612 500 621 498Q630 496 639 492Q648 489 657 485Q666 481 675 478Q684 474 693 471Q702 468 711 466Q720 464 729 463Q738 461 747 460Q756 459 765 458Q774 458 783 459Q792 459 801 460Q810 460 819 460Q828 460 837 459Q846 459 855 458Q864 456 873 455Q882 454 891 452Q900 451 909 449Q918 446 927 444Q936 441 945 442Q954 443 963 447Q972 451 981 456Q990 460 999 464Q1008 468 1017 473Q1026 477 1035 481Q1044 486 1053 490Q1062 493 1071 497Q1080 501 1089 504Q1098 507 1107 509Q1116 511 1125 512Q1134 514 1143 514Q1152 515 1161 514Q1170 514 1179 510Q1188 507 1197 503Q1206 499 1215 494Q1224 489 1233 485Q1242 481 1251 478Q1260 476 1269 474Q1278 473 1287 471Q1296 470 1305 469Q1314 467 1323 465Q1332 462 1341 458Q1350 455 1359 450Q1368 445 1377 444Q1386 442 1395 447Q1404 452 1413 456Q1422 459 1431 461Q1440 463 1449 463Q1458 464 1467 464Q1476 464 1485 465Q1494 465 1503 466Q1512 468 1521 469Q1530 470 1539 470Q1548 470 1557 469Q1566 469 1575 468L1600 466L1600 900L0 900Z' },
+  { t: 0.4, d: 'M0 533Q18 529 27 524Q36 519 45 513Q54 507 63 502Q72 497 81 494Q90 492 99 492Q108 492 117 492Q126 492 135 490Q144 488 153 483Q162 477 171 482Q180 487 189 492Q198 497 207 498Q216 500 225 497Q234 494 243 489Q252 484 261 481Q270 478 279 481Q288 484 297 485Q306 485 315 486Q324 486 333 486Q342 486 351 485Q360 484 369 481Q378 478 387 481Q396 483 405 489Q414 494 423 497Q432 501 441 500Q450 500 459 496Q468 493 477 489Q486 485 495 481Q504 478 513 478Q522 479 531 483Q540 487 549 491Q558 495 567 499Q576 502 585 504Q594 505 603 503Q612 501 621 498Q630 494 639 491Q648 488 657 487Q666 486 675 486Q684 486 693 486Q702 486 711 486Q720 486 729 485Q738 484 747 483Q756 481 765 480Q774 479 783 478Q792 477 801 477Q810 477 819 478Q828 480 837 482Q846 484 855 485Q864 487 873 488Q882 489 891 490Q900 491 909 492Q918 493 927 493Q936 494 945 493Q954 492 963 489Q972 486 981 483Q990 479 999 478Q1008 477 1017 478Q1026 478 1035 477Q1044 476 1053 478Q1062 480 1071 483Q1080 487 1089 491Q1098 496 1107 504Q1116 511 1125 521Q1134 530 1143 540Q1152 550 1161 558Q1170 566 1179 573Q1188 579 1197 585Q1206 590 1215 594Q1224 599 1233 600Q1242 602 1251 600Q1260 599 1269 593Q1278 587 1287 580Q1296 572 1305 565Q1314 559 1323 552Q1332 546 1341 540Q1350 533 1359 528Q1368 523 1377 521Q1386 519 1395 520Q1404 521 1413 524Q1422 526 1431 529Q1440 532 1449 536Q1458 539 1467 543Q1476 546 1485 550Q1494 553 1503 555Q1512 558 1521 559Q1530 560 1539 561Q1548 562 1557 565Q1566 568 1575 572L1600 576L1600 900L0 900Z' },
+  { t: 0.6, d: 'M0 544Q18 541 27 538Q36 535 45 531Q54 527 63 523Q72 520 81 518Q90 515 99 515Q108 514 117 514Q126 514 135 514Q144 514 153 514Q162 514 171 516Q180 517 189 522Q198 528 207 535Q216 541 225 548Q234 554 243 557Q252 560 261 558Q270 555 279 548Q288 541 297 532Q306 524 315 519Q324 513 333 516Q342 520 351 522Q360 525 369 527Q378 530 387 531Q396 532 405 531Q414 530 423 528Q432 525 441 521Q450 517 459 518Q468 519 477 524Q486 528 495 531Q504 534 513 535Q522 536 531 538Q540 540 549 544Q558 548 567 552Q576 556 585 559Q594 562 603 566Q612 569 621 574Q630 580 639 587Q648 594 657 600Q666 605 675 606Q684 607 693 606Q702 604 711 602Q720 600 729 598Q738 595 747 593Q756 590 765 585Q774 580 783 577Q792 573 801 571Q810 569 819 567Q828 565 837 563Q846 560 855 558Q864 556 873 554Q882 552 891 550Q900 547 909 546Q918 544 927 543Q936 543 945 545Q954 548 963 551Q972 555 981 557Q990 560 999 559Q1008 557 1017 553Q1026 549 1035 545Q1044 540 1053 541Q1062 541 1071 547Q1080 552 1089 560Q1098 568 1107 574Q1116 580 1125 582Q1134 584 1143 583Q1152 582 1161 580Q1170 577 1179 573Q1188 569 1197 564Q1206 559 1215 553Q1224 547 1233 539Q1242 532 1251 525Q1260 518 1269 517Q1278 516 1287 519Q1296 521 1305 524Q1314 527 1323 531Q1332 536 1341 538Q1350 540 1359 538Q1368 536 1377 532Q1386 528 1395 524Q1404 521 1413 518Q1422 516 1431 516Q1440 516 1449 521Q1458 526 1467 531Q1476 536 1485 538Q1494 540 1503 540Q1512 540 1521 539Q1530 539 1539 540Q1548 540 1557 542Q1566 543 1575 544L1600 545L1600 900L0 900Z' },
+  { t: 0.8, d: 'M0 624Q18 616 27 608Q36 600 45 593Q54 586 63 583Q72 579 81 575Q90 572 99 566Q108 560 117 561Q126 562 135 574Q144 586 153 596Q162 605 171 611Q180 616 189 618Q198 620 207 622Q216 623 225 623Q234 622 243 618Q252 614 261 611Q270 608 279 606Q288 604 297 601Q306 598 315 594Q324 591 333 590Q342 590 351 592Q360 595 369 597Q378 600 387 600Q396 601 405 601Q414 602 423 603Q432 603 441 605Q450 607 459 608Q468 609 477 604Q486 599 495 585Q504 570 513 570Q522 571 531 587Q540 603 549 611Q558 620 567 622Q576 625 585 628Q594 631 603 635Q612 638 621 641Q630 644 639 646Q648 649 657 649Q666 650 675 648Q684 646 693 642Q702 639 711 634Q720 629 729 623Q738 617 747 611Q756 606 765 606Q774 605 783 611Q792 617 801 624Q810 631 819 634Q828 637 837 639Q846 641 855 647Q864 652 873 664Q882 676 891 688Q900 701 909 706Q918 712 927 712Q936 711 945 710Q954 708 963 705Q972 703 981 699Q990 694 999 687Q1008 679 1017 672Q1026 665 1035 658Q1044 651 1053 642Q1062 633 1071 623Q1080 612 1089 596Q1098 581 1107 567Q1116 553 1125 563Q1134 573 1143 578Q1152 582 1161 585Q1170 588 1179 590Q1188 592 1197 588Q1206 583 1215 575Q1224 567 1233 565Q1242 562 1251 568Q1260 574 1269 581Q1278 588 1287 590Q1296 593 1305 590Q1314 587 1323 582Q1332 577 1341 576Q1350 575 1359 582Q1368 588 1377 597Q1386 605 1395 609Q1404 613 1413 606Q1422 600 1431 588Q1440 576 1449 567Q1458 559 1467 559Q1476 559 1485 567Q1494 574 1503 579Q1512 585 1521 585Q1530 585 1539 584Q1548 583 1557 581Q1566 579 1575 572L1600 565L1600 900L0 900Z' },
+  { t: 1, d: 'M0 622Q18 628 27 632Q36 635 45 632Q54 629 63 626Q72 623 81 622Q90 622 99 620Q108 618 117 617Q126 615 135 621Q144 627 153 640Q162 653 171 666Q180 678 189 683Q198 688 207 683Q216 677 225 662Q234 647 243 626Q252 605 261 613Q270 622 279 644Q288 665 297 673Q306 681 315 678Q324 675 333 673Q342 670 351 668Q360 666 369 665Q378 663 387 660Q396 657 405 655Q414 652 423 652Q432 652 441 657Q450 662 459 667Q468 671 477 671Q486 670 495 670Q504 669 513 670Q522 670 531 667Q540 664 549 658Q558 653 567 651Q576 650 585 652Q594 654 603 652Q612 651 621 641Q630 632 639 622Q648 612 657 603Q666 594 675 598Q684 603 693 610Q702 617 711 613Q720 609 729 599Q738 589 747 599Q756 608 765 617Q774 626 783 635Q792 643 801 648Q810 654 819 659Q828 664 837 669Q846 674 855 674Q864 675 873 672Q882 670 891 665Q900 660 909 653Q918 646 927 637Q936 629 945 624Q954 619 963 617Q972 614 981 609Q990 604 999 598Q1008 592 1017 590Q1026 589 1035 591Q1044 593 1053 600Q1062 607 1071 618Q1080 629 1089 639Q1098 648 1107 653Q1116 657 1125 660Q1134 664 1143 665Q1152 667 1161 665Q1170 663 1179 662Q1188 661 1197 668Q1206 675 1215 689Q1224 703 1233 717Q1242 730 1251 734Q1260 737 1269 733Q1278 729 1287 726Q1296 722 1305 712Q1314 701 1323 685Q1332 669 1341 655Q1350 641 1359 630Q1368 620 1377 607Q1386 594 1395 595Q1404 597 1413 598Q1422 599 1431 602Q1440 606 1449 607Q1458 609 1467 607Q1476 606 1485 603Q1494 601 1503 599Q1512 598 1521 594Q1530 590 1539 596Q1548 602 1557 608Q1566 614 1575 623L1600 632L1600 900L0 900Z' },
+]
+
 const CONTOURS = [
   { d: 'M12.9 0L15.2 7.3L21.2 11.9L22.1 18.2L20.5 24.2L18.2 30.5L15.2 37.9L12.1 44.6L9 48.5L1.5 51.5L0 52M55.5 0L48.5 0.6L42.3 0M106.5 0L103 3.7L98.9 9.1L93.9 14.8L89.8 18.2L83.3 21.2L75.8 22.1L70.6 18.2L71.6 9.1L74.5 3L77.3 0M174.1 0L169.3 3L161.2 6.1L154.5 7.3L145.5 7.1L139.8 3L138 0M400 126.1L395.7 121.2L396.7 112.1L397.7 106.1L397 97.6L393.9 93.1L389 87.9L386.6 81.8L386.3 72.7L385.6 63.6L381.8 57.7L378.2 54.5L373.9 48.5L372.7 40.9L372.3 33.3L366.7 27.3L360.6 25.9L354.4 24.2L348.5 19.5L345.5 14.3L339.4 9.9L330.3 9.5L321.2 10.8L315.2 12.5L308.7 15.2L303 18.6L297 22.7L290.9 26.1L284.8 27.4L278.8 24.5L274.7 21.2L266.7 19.5L257.6 18.9L251.5 17.8L245.5 12.6L243.9 6.1L241.7 0M11.8 51.5L18.2 49.5L27.3 49.9L31.2 54.5L29.6 60.6L24.7 66.7L19.7 69.7L12.1 71.9L5 69.7L6.1 62.5L9.1 55.1L11.8 51.5ZM0 111L6.5 112.1L10.4 118.2L10 127.3L12.1 134.6L18.2 138.4L24.2 142.2L26.3 148.5L25.4 157.6L24.7 166.7L27.3 173.2L31.2 178.8L31.5 187.9L28.9 193.9L24.5 200L21.2 203.6L15.7 209.1L12.1 213.1L8.7 218.2L6.6 227.3L9.4 233.3L12.8 239.4L12.7 248.5L11.4 254.5L9.3 263.6L8.9 269.7L11.8 275.8L15.2 280.6L15.4 287.9L12.3 293.9L9.1 297.6L3 302.7L0 304.9M400 169.8L395.4 166.7L396.6 157.6L400 152.7M0 340.1L1.1 348.5L1.3 357.6L6.1 362.9L12.1 364.9L18.2 367.3L21.6 372.7L22.5 381.8L24.4 387.9L30.3 393L35.2 397L38 403L38.5 412.1L39.4 419.3L42.4 424.7L47.7 430.3L50.3 436.4L50.1 445.5L48.7 454.5L51.5 461.3L57.6 463.9L63.2 469.7L61.8 478.8L57.6 484.5L53.6 487.9L48.5 492L43.8 497L41.9 500M60.8 500L66.7 494.7L72.7 491.4L78.8 489.8L87.9 490.2L93.6 493.9L97 499.5L97.3 500M357.4 500L360.9 497L367.8 497L367.5 500M287.2 500L293.9 498.5L303 497.9L309.2 500', index: false },
   { d: 'M400 218L393.9 212.5L391.8 206.1L391.1 197L389.2 190.9L384.8 186L380.7 181.8L378.2 175.8L378 166.7L377.9 157.6L375.7 151.5L372.3 145.5L371.2 136.4L372.7 129.7L375.8 121.4L377.7 115.2L376.6 106.1L373.1 100L372 93.9L372.7 86.5L373.5 78.8L372.6 72.7L368.1 66.7L363.6 62.6L360.4 57.6L358.3 48.5L355.2 42.4L349.6 39.4L342.4 38.1L333.3 36.9L327.3 34.5L321.2 31.4L312.1 33.3L306.1 36.2L300 38.8L293.9 40.9L287.9 42.5L278.8 44.1L269.7 44.3L263.1 42.4L257.6 38L251.5 34.5L242.4 33.6L233.3 35L227.3 36.7L218.2 39.3L213.1 33.3L215.3 27.3L212.1 22.6L206.1 25.1L200 27.8L192 30.3L184.8 31.7L175.8 32.1L167.8 30.3L163.5 27.3L157.6 23.5L148.5 22.9L142.4 24.3L135.9 27.3L130.3 31.3L125 36.4L121.2 40.4L116.1 45.5L112.1 48.7L106.1 52.4L100 55L92.8 57.6L84.8 60.4L78.8 63.3L74.8 66.7L70.7 72.7L67.8 78.8L65.4 84.8L63.6 91.9L63.6 97.5L66.7 105.1L66.8 112.1L64.1 118.2L60.6 122.9L56.7 127.3L51.5 132.7L48.5 136.4L44.5 142.4L42 148.5L41.6 157.6L44.3 163.6L46.7 169.7L46.6 178.8L45.5 185.3L43.8 193.9L44 203L46 209.1L45.8 218.2L42.7 224.2L39.4 228.8L35.9 233.3L31.6 239.4L28.4 245.5L26.5 251.5L27.3 259L30.3 263.9L33.3 271.4L33.3 277.2L32.4 284.8L32.4 293.9L36.2 300L39.4 303.1L42.5 309.1L42.4 315.8L40.6 324.2L39.3 330.3L41 336.4L45.5 339.6L49.2 345.5L48.5 351.9L45.5 359.4L42.4 366.7L41.4 372.7L44 378.8L48.5 383.2L51.5 390.9L51.5 394.2L51 403L51.5 409.3L54.5 415.5L59.2 421.2L61.9 427.3L63 436.4L64.1 442.4L68 448.5L72.7 452.1L78.3 457.6L80.9 463.6L83.4 469.7L87.9 473.8L93.9 475.8L103 478.2L108.8 481.8L112.1 485.8L118.2 490.9L124.2 492.1L133.3 491.6L139.4 490.5L148.5 489L155.6 490.9L158 497L166.7 499.4L175.8 497.7L181.8 497L189 497L196.9 500M400 441.6L393.9 439.1L389.4 433.3L390.9 426.4L393.9 419.9L397.1 415.2L400 411.8M241.3 500L245.5 495.9L250.1 490.9L254.5 486.7L260.6 482.2L266.7 479.1L272.7 477.3L281.8 476.6L289.1 478.8L297 481.5L306.1 480.3L312.1 477.5L318.2 473.1L321.8 469.7L327.3 464.3L331.9 460.6L337.3 457.6L345.5 454.8L351.5 453.6L360.6 452.9L366.7 454.9L369.7 463.6L372.7 468.2L378.8 469.9L384.8 469.1L390.9 466.6L397 461L400 456', index: false },
@@ -27,11 +41,31 @@ const CONTOURS = [
 /* Trailhead at the foot, two switchbacks across the shoulder, then the ridge to the summit. */
 const ROUTE = 'M86 452C104 444 118 436 128 424C138 412 132 400 122 392C112 384 116 374 132 366C150 357 168 352 176 340C185 327 178 314 186 304C195 293 214 288 232 276'
 
-function Ridge() {
-  return <svg className="fn-survey" viewBox="0 0 400 500" role="img" aria-label="A contour survey of a ridge, with a route traced to the summit">
+function Scene() {
+  return <div className="fn-scene" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      <defs>
+        <linearGradient id="fn-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" className="fn-sky-top" />
+          <stop offset="1" className="fn-sky-horizon" />
+        </linearGradient>
+        {/* Low and just behind the crest, a little left of centre, so the ridges are lit from behind. */}
+        <radialGradient id="fn-sun" cx="0.42" cy="0.55" r="0.42">
+          <stop offset="0" className="fn-sun-core" />
+          <stop offset="1" className="fn-sun-edge" />
+        </radialGradient>
+      </defs>
+      <rect className="fn-sky" width="1600" height="900" fill="url(#fn-sky)" />
+      <rect className="fn-sun" width="1600" height="900" fill="url(#fn-sun)" />
+      {RIDGES.map(ridge => <path key={ridge.t} className="fn-ridge" style={{ '--t': ridge.t } as CSSProperties} d={ridge.d} />)}
+    </svg>
+  </div>
+}
+
+/** The survey, now the notebook's mark: the same walk, read as a map rather than as a horizon. */
+function Survey() {
+  return <svg className="fn-survey" viewBox="0 0 400 500" role="img" aria-label="A contour survey of the ridge, with the route traced to the summit">
     <g className="fn-survey__lines">{CONTOURS.map(level => <path key={level.d} d={level.d} className={level.index ? 'fn-survey__index' : undefined} />)}</g>
-    {/* The route switchbacks up the shoulder before the last pull to the top, the way one does.
-        A casing in the sky colour is drawn under it so it stays legible across the contours. */}
     <path className="fn-survey__casing" d={ROUTE} />
     <path className="fn-survey__route" d={ROUTE} />
     <g className="fn-survey__mark" transform="translate(232 276)">
@@ -39,8 +73,7 @@ function Ridge() {
       <circle r="16" />
     </g>
     <text className="fn-survey__label" x="256" y="272">1 412 m</text>
-    <text className="fn-survey__label fn-survey__label--foot" x="86" y="470">Trailhead</text>
-    <circle className="fn-survey__waypoint fn-survey__waypoint--start" cx="86" cy="452" r="4" />
+    <circle className="fn-survey__waypoint" cx="86" cy="452" r="4" />
   </svg>
 }
 export function Demo({ manifest }: { manifest: WebProjectManifest }) {
@@ -56,15 +89,41 @@ export function Demo({ manifest }: { manifest: WebProjectManifest }) {
     return () => connection.dispose()
   }, [manifest])
   return <div className="fn-page" data-paramrig-id="page" data-paramrig-source="src/web/example/Demo.tsx">
-    <nav className="fn-nav" aria-label="Fieldnotes navigation"><a className="fn-brand" href="/examples/web/index.html">fieldnotes.</a><a href="/examples/web/journal.html">The journal</a><div className="fn-menu"><button type="button" data-paramrig-id="menu-button" aria-expanded={menu} onClick={() => setMenu(v => !v)}>Explore</button>{menu ? <div className="fn-menu-panel"><a href="/examples/web/index.html">Home</a><a href="/examples/web/journal.html">Journal</a><button type="button" onClick={() => setMenu(false)}>Close menu</button></div> : null}</div></nav>
-    <div className="fn-masthead"><span>Issue four</span><span>September</span><span>Ridge &amp; shoreline</span><span className="fn-masthead__folio">{journal ? 'p. 12' : 'p. 1'}</span></div>
-    <section className="fn-hero" data-paramrig-id="hero"><div className="fn-hero-copy"><span className="fn-kicker">{journal ? 'Notes from the trail' : 'A journal for a slower pace'}</span><h1 data-paramrig-id="hero-title" style={{ fontFamily: font }}>{journal ? 'A little further from ordinary.' : title}</h1><p>Stories from quiet trails, open skies, and the places that remind us to pay attention.</p><a data-paramrig-id="hero-button" className="fn-link" href={journal ? '/examples/web/index.html' : '/examples/web/journal.html'}>{journal ? 'Back to fieldnotes' : 'Find your next story'}<Arrow /></a>
-      <dl className="fn-facts">{[['Distance', '14.2 km'], ['Ascent', '940 m'], ['On foot', '5 h 20']].map(([term, value]) => <div key={term}><dt>{term}</dt><dd>{value}</dd></div>)}</dl></div>
-      <figure className="fn-figure"><div className="fn-art"><Ridge /></div><figcaption className="fn-caption"><span>{journal ? 'Above the treeline, late September' : 'The long way round, drawn from memory'}</span><span className="fn-caption__scale">1:25 000</span></figcaption></figure>
+    <section className="fn-hero" data-paramrig-id="hero">
+      <Scene />
+      <div className="fn-hero__top">
+        <nav className="fn-nav fn-inner" aria-label="Fieldnotes navigation"><a className="fn-brand" href="/examples/web/index.html">fieldnotes.</a><a href="/examples/web/journal.html">The journal</a><div className="fn-menu"><button type="button" data-paramrig-id="menu-button" aria-expanded={menu} onClick={() => setMenu(v => !v)}>Explore</button>{menu ? <div className="fn-menu-panel"><a href="/examples/web/index.html">Home</a><a href="/examples/web/journal.html">Journal</a><button type="button" onClick={() => setMenu(false)}>Close menu</button></div> : null}</div></nav>
+      </div>
+      <div className="fn-hero__copy fn-inner">
+        <span className="fn-kicker">{journal ? 'Notes from the trail' : 'A journal for a slower pace'}</span>
+        <h1 data-paramrig-id="hero-title" style={{ fontFamily: font }}>{journal ? 'A little further from ordinary.' : title}</h1>
+        <p>Stories from quiet trails, open skies, and the places that remind us to pay attention.</p>
+        <a data-paramrig-id="hero-button" className="fn-link" href={journal ? '/examples/web/index.html' : '/examples/web/journal.html'}>{journal ? 'Back to fieldnotes' : 'Find your next story'}<Arrow /></a>
+      </div>
+      <div className="fn-hero__foot fn-inner">
+        <dl className="fn-facts">{[['Distance', '14.2 km'], ['Ascent', '940 m'], ['On foot', '5 h 20']].map(([term, value]) => <div key={term}><dt>{term}</dt><dd>{value}</dd></div>)}</dl>
+        <span className="fn-masthead">Issue four · September · {journal ? 'p. 12' : 'p. 1'}</span>
+      </div>
     </section>
-    <div className="fn-section-head"><h2 style={{ fontFamily: font }}>From the journal</h2><span className="fn-eyebrow">Two stories</span></div>
-    <section className="fn-stories" aria-label="Stories">{[{ id: 'coast', title: 'Following the coastline', text: 'A walk with no destination, only the sound of water and a path that keeps unfolding.' }, { id: 'forest', title: 'The shape of a quiet morning', text: 'On familiar trails, the smallest details are often the ones worth coming back for.' }].map((story, i) => <article className="fn-card" key={story.id} data-paramrig-id="story-card" data-paramrig-instance={story.id}><span className="fn-kicker">0{i + 1} / Field notes</span><h2 data-paramrig-id="story-title" style={{ fontFamily: font }}>{story.title}</h2><p>{story.text}</p><a data-paramrig-id="story-link" href="/examples/web/journal.html">Read the story<Arrow /></a></article>)}</section>
-    <section className="fn-reading"><h2 style={{ fontFamily: font }}>The pocket notebook</h2><p>Six lines kept on the back page, copied out whenever the book is replaced.</p><div className="fn-scroll" data-paramrig-id="notebook" tabIndex={0} aria-label="Scrollable notebook">{['Pack light. Leave space for what you find.', 'Take the route that gives you time to notice.', 'Stop for a while. A landscape is more than a view.', 'Remember the weather, the colors, the way back.', 'Some days the best plan is a longer walk.', 'Bring these notes home, then go outside again.'].map((line, i) => <p key={line} data-paramrig-id="notebook-line" data-paramrig-instance={String(i)}>{line}</p>)}</div></section>
-    <footer className="fn-colophon"><span>Fieldnotes — an outdoor journal</span><span>A ParamRig example page</span></footer>
+
+    <section className="fn-band fn-band--light">
+      <div className="fn-inner">
+        <div className="fn-section-head"><h2 style={{ fontFamily: font }}>From the journal</h2><span className="fn-eyebrow">Two stories</span></div>
+        <div className="fn-stories" aria-label="Stories">{[{ id: 'coast', title: 'Following the coastline', text: 'A walk with no destination, only the sound of water and a path that keeps unfolding.' }, { id: 'forest', title: 'The shape of a quiet morning', text: 'On familiar trails, the smallest details are often the ones worth coming back for.' }].map((story, i) => <article className="fn-card" key={story.id} data-paramrig-id="story-card" data-paramrig-instance={story.id}><span className="fn-kicker">0{i + 1} / Field notes</span><h2 data-paramrig-id="story-title" style={{ fontFamily: font }}>{story.title}</h2><p>{story.text}</p><a data-paramrig-id="story-link" href="/examples/web/journal.html">Read the story<Arrow /></a></article>)}</div>
+      </div>
+    </section>
+
+    <section className="fn-band fn-band--deep fn-reading">
+      <div className="fn-inner fn-reading__grid">
+        <figure className="fn-figure"><Survey /><figcaption className="fn-caption"><span>{journal ? 'Above the treeline, late September' : 'The long way round, drawn from memory'}</span><span className="fn-caption__scale">1:25 000</span></figcaption></figure>
+        <div>
+          <h2 style={{ fontFamily: font }}>The pocket notebook</h2>
+          <p className="fn-reading__standfirst">Six lines kept on the back page, copied out whenever the book is replaced.</p>
+          <div className="fn-scroll" data-paramrig-id="notebook" tabIndex={0} aria-label="Scrollable notebook">{['Pack light. Leave space for what you find.', 'Take the route that gives you time to notice.', 'Stop for a while. A landscape is more than a view.', 'Remember the weather, the colors, the way back.', 'Some days the best plan is a longer walk.', 'Bring these notes home, then go outside again.'].map((line, i) => <p key={line} data-paramrig-id="notebook-line" data-paramrig-instance={String(i)}>{line}</p>)}</div>
+        </div>
+      </div>
+    </section>
+
+    <footer className="fn-band fn-band--deep fn-colophon"><div className="fn-inner"><span>Fieldnotes — an outdoor journal</span><span>A ParamRig example page</span></div></footer>
   </div>
 }
