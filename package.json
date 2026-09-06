@@ -2,7 +2,11 @@
   "name": "paramrig",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,7 +17,7 @@
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc -b --noEmit",
     "e2e": "node e2e/run.mjs",
-    "build:web-sdk": "tsc -p tsconfig.web-sdk.json && vite build --config vite.web-sdk.config.ts",
+    "build:web-sdk": "vite build --config vite.web-sdk.config.ts && tsc -p tsconfig.web-sdk.json && node scripts/check-web-sdk.mjs",
     "test:web-service": "node --experimental-strip-types --test services/web/server.test.mjs"
   },
   "dependencies": {

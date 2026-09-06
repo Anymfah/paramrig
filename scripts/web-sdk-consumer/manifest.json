@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "reference-consumer",
+  "name": "Reference consumer",
+  "revision": "r1",
+  "origin": "http://localhost:3000",
+  "pages": [{ "id": "home", "name": "Home", "path": "/" }],
+  "groups": [{ "id": "brand", "label": "Brand" }],
+  "parameters": [
+    { "id": "accent", "kind": "color", "label": "Accent", "group": "brand", "defaultValue": "#df7757" },
+    { "id": "heroSize", "kind": "number", "label": "Hero size", "group": "brand", "defaultValue": 48, "min": 24, "max": 96, "step": 1 },
+    { "id": "headingFont", "kind": "select", "label": "Heading font", "group": "brand", "defaultValue": "Georgia", "options": [{ "value": "Georgia", "label": "Georgia" }, { "value": "Inter", "label": "Inter" }] }
+  ],
+  "bindings": [
+    { "paramId": "accent", "scope": "global", "kind": "css-variable", "property": "--accent" },
+    { "paramId": "heroSize", "scope": "element", "kind": "style", "property": "font-size", "unit": "px", "target": { "id": "hero-title" } },
+    { "paramId": "headingFont", "scope": "page", "pageId": "home", "kind": "adapter", "property": "headings" }
+  ]
+}

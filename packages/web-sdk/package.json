@@ -3,7 +3,21 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "license": "MIT",
   "description": "Development integration for the ParamRig connected web workspace",
-  "exports": { ".": { "types": "./dist/web/sdk.d.ts", "import": "./dist/paramrig-web.js" } },
-  "files": ["dist"]
+  "keywords": ["paramrig", "design-tokens", "developer-tools", "design-review", "feedback", "iframe"],
+  "homepage": "https://github.com/Anymfah/paramrig/tree/main/packages/web-sdk#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/Anymfah/paramrig.git", "directory": "packages/web-sdk" },
+  "bugs": "https://github.com/Anymfah/paramrig/issues",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/web/sdk.d.ts",
+      "import": "./dist/paramrig-web.js",
+      "default": "./dist/paramrig-web.js"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "schemas", "README.md"]
 }
