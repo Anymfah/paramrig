@@ -21,6 +21,7 @@ import { envelope, isAnnouncement, isEnvelope, isEvent, WEB_PROTOCOL, type Captu
 import { listWebProjects, rememberWebProject, webProjectId, webRigId } from './projects'
 import { readWebState } from './client'
 import { helloQueue } from './handshake'
+import { AGENT_INSTRUCTION, batchPath } from './handoff'
 import { ticketNumber } from './session'
 import { useWebDocument } from './useWebDocument'
 import { ScreenCapture } from './ScreenCapture'
@@ -32,7 +33,8 @@ const tools = [
   { id: 'rectangle', label: 'Rectangle', icon: Square }, { id: 'ellipse', label: 'Ellipse', icon: Circle },
   { id: 'highlight', label: 'Highlight', icon: Highlighter }, { id: 'pen', label: 'Freehand', icon: Pencil },
 ] as const
-const statusNames = { draft: 'Draft', todo: 'To do', review: 'Ready for review', validated: 'Validated', clarification: 'Needs clarification' }
+// The contract still calls it `todo`; a person is told what actually happened to it.
+const statusNames = { draft: 'Draft', todo: 'Sent to agent', review: 'Ready for review', validated: 'Validated', clarification: 'Needs clarification' }
 type Mode = 'browse' | 'select' | 'annotate'
 
 export function WebWorkspace({ rigId }: { rigId: string }) {
@@ -92,6 +94,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const [pagePath, setPagePath] = useState(initialManifest.pages[0]!.path)
   const [batch, setBatch] = useState<FeedbackBatch | null>(null)
   const [publishing, setPublishing] = useState(false)
+  const [published, setPublished] = useState<string | null>(null)
   const [screen, setScreen] = useState<{ image: string; ticketId: string } | null>(null)
   const [snapshotName, setSnapshotName] = useState('')
   const [responseNotes, setResponseNotes] = useState<string[]>([])
@@ -288,7 +291,15 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     updatePrefs({ inspectorCollapsed: false }); setPanel('feedback'); setMobile('inspector'); setMode('browse'); setAddingTargets(false); setReattachKey(null)
     setBatch(session.batch(doc.tickets.filter(t => t.status === 'draft').map(t => t.id)))
   }
-  const changeCount = doc.tickets.filter(t => t.status === 'draft').length + Object.keys(doc.values).filter(id => !valuesEqual(doc.values[id]!, doc.sourceValues[id]!)).length
+  /*
+   * What is still waiting to be sent. A value that differs from the source but matches the last
+   * approved batch has already been handed over: counting it again would keep the button lit over
+   * a batch the agent is already holding, and asking for it twice would send a duplicate.
+   */
+  const lastBatch = [...(service?.batches ?? [])].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).at(-1)
+  const pendingValues = Object.keys(doc.values).filter(id => !valuesEqual(doc.values[id]!, doc.sourceValues[id]!)
+    && (lastBatch?.values[id] === undefined || !valuesEqual(doc.values[id]!, lastBatch.values[id])))
+  const changeCount = doc.tickets.filter(t => t.status === 'draft').length + pendingValues.length
   const hasFeedback = changeCount > 0
   const commentsCount = doc.tickets.filter(t => t.status !== 'validated').length
   const projectControls = () => { setSelected([]); setPanel('controls'); setActiveTicketId(null); setAddingTargets(false) }
@@ -303,16 +314,16 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     try {
       const ready = structuredClone(approved)
       for (const t of ready.tickets) for (const c of t.captures) if (c.dataUrl) { const result = await sync.upload(c.id, c.dataUrl); c.file = result.file; delete c.dataUrl }
-      await sync.publish(ready); setBatch(null)
+      await sync.publish(ready); setBatch(null); setPublished(ready.id)
     } finally { setPublishing(false) }
   }
 
   return <WorkspaceShell rigs={listRigs()} activeId={webRigId(manifest.id)} mobilePanel={mobile} onMobilePanel={next => { setMobile(next); if (next === 'inspector') updatePrefs({ inspectorCollapsed: false }) }} mainLabel="Page" hideNavigation inspector={
     <aside className="inspector web-inspector" aria-label="Web inspector">
       <div className="inspector__head web-inspector-head">
-        <strong>{batch ? 'Review changes' : screen ? 'Screen capture' : panel === 'snapshots' ? 'Snapshots' : panel === 'feedback' ? ticket ? `Comment ${ticketNumber(doc.tickets, ticket)}` : 'Comments' : selection?.label ?? 'Project controls'}</strong>
+        <strong>{batch ? 'Review changes' : published ? 'Feedback approved' : screen ? 'Screen capture' : panel === 'snapshots' ? 'Snapshots' : panel === 'feedback' ? ticket ? `Comment ${ticketNumber(doc.tickets, ticket)}` : 'Comments' : selection?.label ?? 'Project controls'}</strong>
         <div className="web-actions">
-          {!batch && !screen ? <>
+          {!batch && !screen && !published ? <>
             {selection && panel === 'controls' ? <Tooltip content="Comment · C"><IconButton label="Comment on selection" onClick={() => newTicket(currentSelection)}><MessageSquarePlus size={16} /></IconButton></Tooltip> : null}
             <Tooltip content="Project controls"><IconButton label="Project controls" aria-pressed={panel === 'controls' && !selection} onClick={projectControls}><SlidersHorizontal size={16} /></IconButton></Tooltip>
             <Tooltip content="Comments"><IconButton label={`Comments${commentsCount ? ` (${commentsCount})` : ''}`} aria-pressed={panel === 'feedback'} onClick={() => { setPanel('feedback'); setActiveTicketId(null); setAddingTargets(false) }}><MessageSquare size={16} />{commentsCount ? <span className="web-icon-count">{commentsCount}</span> : null}</IconButton></Tooltip>
@@ -320,14 +331,22 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           <Tooltip content="Hide inspector"><IconButton label="Hide inspector" onClick={closeInspector}><X size={15} /></IconButton></Tooltip>
         </div>
       </div>
-      <div className="inspector__body web-inspector__body scroll-area" tabIndex={0} role="region" id={`web-panel-${panel}`} aria-label={batch ? 'Feedback review' : screen ? 'Screen capture' : panel}>
+      <div className="inspector__body web-inspector__body scroll-area" tabIndex={0} role="region" id={`web-panel-${panel}`} aria-label={batch ? 'Feedback review' : published ? 'Feedback approved' : screen ? 'Screen capture' : panel}>
         {sync.error && !sync.recovered ? <StatusMessage tone="error">{sync.error}</StatusMessage> : null}
         {sync.recovered ? <section className="web-section"><h2>Draft changed elsewhere</h2><p>Which version should stay open?</p><Button variant="ghost" onClick={() => run(() => sync.chooseRecovery(true))}>Keep browser draft</Button><Button variant="quiet" onClick={() => run(() => sync.chooseRecovery(false))}>Use project draft</Button></section> : null}
         {responseNotes.map(n => <StatusMessage key={n}>{n}</StatusMessage>)}
         {doc.conflicts.map(c => <section className="web-section" key={c.id}><h2>{manifest.parameters.find(p => p.id === c.id)?.label ?? c.id}</h2><p>{c.removed ? 'Control removed.' : 'This value changed in the project.'}</p><code>Your choice: {JSON.stringify(c.chosen)}</code>{!c.removed ? <><code>Source: {JSON.stringify(c.source)}</code><Button variant="ghost" onClick={() => session.resolveConflict(c.id, true)}>Keep my value</Button></> : null}<Button variant="quiet" onClick={() => session.resolveConflict(c.id, false)}>{c.removed ? 'Acknowledge removal' : 'Use source value'}</Button></section>)}
-        {batch ? <FeedbackReview key={batch.id} batch={batch} publishing={publishing} disabled={pendingCapture || !!sync.recovered || doc.conflicts.length > 0 || readyRevision !== manifest.revision} onPublish={approved => run(() => publish(approved))} onBack={() => setBatch(null)} /> : null}
+        {batch ? <FeedbackReview key={batch.id} batch={batch} manifest={manifest} sent={lastBatch?.values} publishing={publishing} disabled={pendingCapture || !!sync.recovered || doc.conflicts.length > 0 || readyRevision !== manifest.revision} onPublish={ready => run(() => publish(ready))} onBack={() => setBatch(null)} /> : null}
+        {published ? <section className="web-section web-published">
+          <StatusMessage tone="ok">Sent to the agent.</StatusMessage>
+          <p>Written to</p>
+          <code>{batchPath(published)}</code>
+          <p>Restart the project's agent with:</p>
+          <code>{AGENT_INSTRUCTION}</code>
+          <Button variant="ghost" onClick={() => { setPublished(null); setPanel('feedback'); setActiveTicketId(null) }}>Back to comments</Button>
+        </section> : null}
         {screen ? <ScreenCapture image={screen.image} onCancel={() => setScreen(null)} onSave={async image => { await attachCapture(screen.ticketId, { id: crypto.randomUUID(), kind: 'screen', createdAt: new Date().toISOString(), status: 'ready', dataUrl: image, note: 'Screen capture, cropped and approved by the user.' }); setScreen(null) }} /> : null}
-        {!batch && !screen && panel === 'controls' ? <>
+        {!batch && !screen && !published && panel === 'controls' ? <>
           {selection ? <section className="web-section web-selection">
             <nav className="web-ancestors" aria-label="Element hierarchy">
               {trail.length > 2 ? <><Menu.Root modal={false}><Menu.Trigger asChild><button type="button" aria-label="Element hierarchy"><MoreHorizontal size={13} /></button></Menu.Trigger><Menu.Portal><Menu.Content className="menu" align="start" sideOffset={8} collisionPadding={8} aria-label="Element hierarchy">{[...trail].reverse().map(ancestor => <Menu.Item key={ancestor.key} className="menu__item" onSelect={() => chooseAncestor(ancestor)}>{ancestor.label}</Menu.Item>)}</Menu.Content></Menu.Portal></Menu.Root><span className="web-crumb-sep" aria-hidden="true">›</span></> : null}
@@ -340,7 +359,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           {!boundParams.length && !selection && !elsewhere.length ? <StatusMessage>No controls on this page.</StatusMessage> : null}
           {!selection && elsewhere.length ? <details className="web-disclosure"><summary>On this page<span>{elsewhere.length}</span></summary><TargetPicks targets={elsewhere} label="Elements with controls" onPick={selectTarget} /></details> : null}
         </> : null}
-        {!batch && !screen && panel === 'feedback' ? <>
+        {!batch && !screen && !published && panel === 'feedback' ? <>
           <div className="web-actions">{ticket ? <Button size="sm" variant="quiet" onClick={() => { setActiveTicketId(null); setAddingTargets(false); setMode('select') }}><ChevronLeft size={14} />Comments</Button> : <Button variant="ghost" onClick={startNote} disabled={!context}><Plus size={14} />Comment on page</Button>}</div>
           {ticket || !doc.tickets.length ? null : <div className="web-ticket-list">{doc.tickets.map(t => <button type="button" aria-pressed={activeTicketId === t.id} key={t.id} onClick={() => openTicket(t)}><span><span className="web-list-number">{ticketNumber(doc.tickets, t)}</span>{t.comment || t.targets[0]?.label || 'Visual feedback'}</span><small>{statusNames[t.status]}</small></button>)}</div>}
           {ticket ? <section className="web-section web-ticket-editor"><div className="web-section__head"><span className="web-scope">{statusNames[ticket.status]}</span><Tooltip content="Remove ticket"><IconButton label="Remove ticket" onClick={() => { session.change('Remove feedback', d => { d.tickets = d.tickets.filter(t => t.id !== ticket.id) }); setActiveTicketId(null) }}><Trash2 size={14} /></IconButton></Tooltip></div><label className="web-label"><span className="visually-hidden">Comment</span><textarea ref={commentInput} aria-label="Comment" value={ticket.comment} maxLength={20000} placeholder="What should change?" onFocus={() => session.begin('Edit comment')} onBlur={() => session.end()} onChange={e => session.editTicket(ticket.id, t => { t.comment = e.target.value; if (t.status !== 'draft') { t.status = 'draft'; delete t.batchId } })} /></label>
@@ -362,7 +381,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           <div className="web-ticket-navigation"><Button size="sm" variant="quiet" disabled={doc.tickets.indexOf(ticket) === 0} onClick={() => openTicket(doc.tickets[doc.tickets.indexOf(ticket) - 1]!)}><ChevronLeft size={14} />Previous</Button><Button size="sm" variant="quiet" disabled={doc.tickets.indexOf(ticket) === doc.tickets.length - 1} onClick={() => openTicket(doc.tickets[doc.tickets.indexOf(ticket) + 1]!)}>Next<ChevronRight size={14} /></Button></div>
           </section> : null}
         </> : null}
-        {!batch && !screen && panel === 'snapshots' ? <section className="web-section"><label className="web-label">Snapshot name<input value={snapshotName} onChange={e => setSnapshotName(e.target.value)} placeholder="Name" /></label><Button variant="ghost" onClick={() => { session.snapshot(snapshotName.trim() || `Variation ${doc.snapshots.length + 1}`); setSnapshotName('') }}>Save snapshot</Button>{doc.snapshots.map(s => <div className="web-target-row" key={s.id}><span>{s.name}{s.revision !== doc.sourceRevision ? <small>Earlier revision</small> : null}</span><Button size="sm" variant="quiet" disabled={s.revision !== doc.sourceRevision} onClick={() => session.restoreSnapshot(s.id)}>Restore</Button><Button size="sm" variant="quiet" onClick={() => session.change('Remove snapshot', d => { d.snapshots = d.snapshots.filter(v => v.id !== s.id) })}>Remove</Button></div>)}</section> : null}
+        {!batch && !screen && !published && panel === 'snapshots' ? <section className="web-section"><label className="web-label">Snapshot name<input value={snapshotName} onChange={e => setSnapshotName(e.target.value)} placeholder="Name" /></label><Button variant="ghost" onClick={() => { session.snapshot(snapshotName.trim() || `Variation ${doc.snapshots.length + 1}`); setSnapshotName('') }}>Save snapshot</Button>{doc.snapshots.map(s => <div className="web-target-row" key={s.id}><span>{s.name}{s.revision !== doc.sourceRevision ? <small>Earlier revision</small> : null}</span><Button size="sm" variant="quiet" disabled={s.revision !== doc.sourceRevision} onClick={() => session.restoreSnapshot(s.id)}>Restore</Button><Button size="sm" variant="quiet" onClick={() => session.change('Remove snapshot', d => { d.snapshots = d.snapshots.filter(v => v.id !== s.id) })}>Remove</Button></div>)}</section> : null}
       </div>
     </aside>
   }>

@@ -122,14 +122,22 @@
 .web-disclosure summary:active { color: var(--text-muted); }
 .web-disclosure summary span { margin-inline-start: var(--space-2); color: var(--text-muted); }
 .web-disclosure .web-capture + .web-capture { padding-block-start: var(--space-3); }
-.web-review-change { display: flex; flex-direction: column; gap: var(--space-1); }
+.web-review-change > span, .web-review-ticket > span { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .web-review-change strong { font-size: var(--text-sm); font-weight: 500; }
+.web-review-move { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-1); color: var(--text-secondary); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.web-value { display: inline-flex; align-items: center; gap: var(--space-1); }
+.web-swatch { display: inline-block; width: 12px; height: 12px; flex: none; border-radius: 3px; border: 1px solid var(--border-strong); }
+.web-review-ticket small, .web-already { color: var(--text-muted); font-size: var(--text-xs); }
+.web-already { margin-inline-start: var(--space-2); }
+.web-review-thumb { flex: none; width: 56px; height: 40px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-hairline); }
+.web-published code { display: block; padding: var(--space-3); background: var(--surface-inset); border-radius: var(--radius-sm); user-select: text; }
+.web-published .btn { align-self: flex-start; }
 .web-ticket-list { margin-block-start: var(--space-3); }
 .web-capture-crop { position: relative; }
 .web-capture-crop img { width: 100%; display: block; }
 .web-capture-crop > div { position: absolute; border: 2px solid var(--focus-ring); background: color-mix(in srgb, var(--focus-ring) 12%, transparent); pointer-events: none; }
-.web-check { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); }
-.web-check input { appearance: none; flex: 0 0 16px; width: 16px; height: 16px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-inset); }
+.web-check { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); min-height: var(--hit-target); padding-block: var(--space-1); cursor: pointer; user-select: none; }
+.web-check input { appearance: none; flex: 0 0 16px; width: 16px; height: 16px; margin-block-start: 2px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-inset); cursor: pointer; }
 .web-check input:checked { background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
 .web-toolbar button, .web-setup summary, .web-ancestors button, .web-target-row button, .web-ticket-list button, .web-picks button, .web-inline, .web-recent a, .web-comment-pin { touch-action: manipulation; transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast); }
 .web-toolbar button:active, .web-ticket-list button:active, .web-ancestors button:active, .web-picks button:active { background: var(--surface-overlay); }

@@ -210,12 +210,25 @@ A ticket carries the `number` a person sees beside it, assigned once and never
 reused, so removing one comment does not renumber the ones already named in
 conversation. A draft written before `number` existed falls back to its position.
 
-The user chooses **Review changes**, reviews changed values and included
-tickets, then selects **Validate feedback**. Later edits are a new draft. Each
-batch includes values, before/after changes, bindings, targets, comment, markup,
-page, viewport, scroll context and capture references.
+The user chooses **Review changes**, then keeps or drops each control change and
+each comment, and selects **Approve feedback**. Every change shows before and
+after — a swatch for a colour, the unit for a number — and every comment shows
+its page, its main target, how many marks it carries and its last capture. A
+change already carried by the previous batch is labelled **Already sent**: a
+batch always restates every difference from the project source, so an agent that
+reads only the newest one still sees the whole picture, while the button counts
+only what is new.
 
-The user then restarts their agent with an instruction such as:
+Dropping a control puts its source value back into the batch's `values` and takes
+it out of `changes`, so the batch never asks for something the values beside it
+contradict. Later edits are a new draft. Each batch includes values,
+before/after changes, bindings, targets, comment, markup, page, viewport, scroll
+context and capture references. A ticket's status is `todo` in the file and reads
+as **Sent to agent** in the workspace.
+
+Once approved, the workspace names the file it wrote — `.paramrig/batches/<id>.json` —
+and gives the instruction to hand over in a block that can be selected. The user
+then restarts their agent with it:
 
 > Read the new approved batch in `.paramrig/batches`, apply its values and
 > requested changes to this project, preserve target IDs, and write a response

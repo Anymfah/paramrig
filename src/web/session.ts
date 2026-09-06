@@ -44,6 +44,26 @@ export function reconcile(draft: WebDraft, manifest: WebProjectManifest, source:
   return next
 }
 
+/**
+ * The batch as approved, once the user has taken things out of it.
+ *
+ * An excluded control is not simply dropped: its source value goes back into `values`, so the
+ * batch still describes the whole state the agent should end up with, and it leaves `changes`, so
+ * nothing tells the agent to act on it. Anything else would ask for a change that the values
+ * beside it contradict.
+ */
+export function approved(batch: FeedbackBatch, excluded: { changes?: string[]; tickets?: string[] } = {}): FeedbackBatch {
+  const changes = excluded.changes ?? []
+  const values = { ...batch.values }
+  for (const change of batch.changes) if (changes.includes(change.paramId)) values[change.paramId] = structuredClone(change.before)
+  return {
+    ...batch,
+    values,
+    changes: batch.changes.filter(change => !changes.includes(change.paramId)),
+    tickets: batch.tickets.filter(ticket => !(excluded.tickets ?? []).includes(ticket.id)),
+  }
+}
+
 export class WebSession {
   document: WebDraft
   manifest: WebProjectManifest
