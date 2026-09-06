@@ -1488,7 +1488,13 @@ a.menu__item:visited { color: var(--text-primary); }
  * it overrides it.
  */
 @media (any-pointer: coarse) {
-  .context-target:has(> .control), .context-target:has(> .section__head) { padding-inline-end: var(--space-7); }
+  /*
+   * The row holds the trigger rather than the trigger hanging out of it. A control with nothing to
+   * reset is 36 px tall, and a 44 px trigger pinned to its top then reached 8 px into the row
+   * below, which paints after it and takes the tap — so the target measured 44 × 36 in exactly the
+   * state a project opens in, with no value moved yet.
+   */
+  .context-target:has(> .control), .context-target:has(> .section__head) { padding-inline-end: var(--space-7); min-height: var(--hit-target-coarse); }
   .context-touch-trigger { inset: 0 0 auto auto; width: var(--hit-target-coarse); }
   /* A colour row holds a 44 px chip, a 44 px reset mark and eight characters set at 16 px, which is
      a few pixels more than it has. The hex gives them up rather than overlapping the mark. */

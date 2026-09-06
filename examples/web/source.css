@@ -50,10 +50,23 @@ nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-colophon { user-
 :focus-visible { outline: 2px solid var(--fn-accent); outline-offset: 3px; border-radius: 2px; }
 ::selection { background: color-mix(in oklab, var(--fn-accent) 24%, transparent); }
 
-.fn-page { max-width: var(--fn-width); margin: auto; padding: 0 var(--fn-7) var(--fn-9); }
+/*
+ * Grain. A field this flat bands on a wide gradient and reads as screen rather than as paper; 3%
+ * of turbulence fixes both. It is one fixed layer behind everything, so it costs one paint.
+ */
+body::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .035; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E"); }
+.fn-page { position: relative; z-index: 1; max-width: var(--fn-width); margin: auto; padding: 0 var(--fn-7) var(--fn-9); }
 
 /* Masthead ---------------------------------------------------------------- */
-.fn-nav { display: flex; align-items: center; gap: var(--fn-6); padding: var(--fn-5) 0; border-bottom: 1px solid var(--fn-rule); }
+.fn-nav { display: flex; align-items: center; gap: var(--fn-6); padding: var(--fn-5) 0 var(--fn-4); }
+/*
+ * The running head. A journal is an object with an issue and a page number, and one strip of small
+ * capitals between two rules is what says so — it does more for the register than any ornament.
+ */
+.fn-masthead { display: flex; gap: var(--fn-5); padding: var(--fn-3) 0; border-block: 1px solid var(--fn-rule); font-size: 11px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; color: var(--fn-ink-faint); user-select: none; }
+.fn-masthead > span { position: relative; }
+.fn-masthead > span + span:not(.fn-masthead__folio)::before { content: '·'; position: absolute; left: calc(var(--fn-5) / -2); transform: translateX(-50%); }
+.fn-masthead__folio { margin-left: auto; font-variant-numeric: tabular-nums; }
 .fn-brand { margin-right: auto; font-size: 21px; font-weight: 700; letter-spacing: -.02em; text-decoration: none; }
 .fn-brand::after { content: ''; display: block; width: 0; height: 2px; margin-top: 3px; background: var(--fn-accent); transition: width var(--fn-settle); }
 .fn-brand:hover::after { width: 100%; }
@@ -77,6 +90,11 @@ nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-colophon { user-
 .fn-hero h1 { font-size: clamp(2.75rem, 4vw + 1.4rem, 4.75rem); font-weight: 400; line-height: 1.02; letter-spacing: -.03em; text-wrap: balance; }
 .fn-hero p { max-width: 34ch; font-size: 15px; line-height: 1.7; color: var(--fn-ink-soft); }
 
+/* The route's own figures, so the column that talks about the walk ends where the map does. */
+.fn-facts { display: flex; gap: var(--fn-6); margin: var(--fn-3) 0 0; padding-top: var(--fn-5); border-top: 1px solid var(--fn-rule); }
+.fn-facts dt { font-size: 11px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; color: var(--fn-ink-faint); }
+.fn-facts dd { margin: var(--fn-2) 0 0; font-size: 17px; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+
 .fn-link { display: inline-flex; align-items: center; gap: var(--fn-3); padding: var(--fn-4) var(--fn-5); background: color-mix(in oklab, var(--fn-accent) 94%, var(--fn-ink)); color: var(--fn-on-accent); border: 0; border-radius: var(--fn-1); font-size: 13px; font-weight: 600; text-decoration: none; transition: background var(--fn-quick), transform var(--fn-quick), box-shadow var(--fn-settle); }
 .fn-link svg { transition: transform 220ms var(--fn-ease); }
 .fn-link:hover { background: color-mix(in oklab, var(--fn-accent) 84%, var(--fn-ink)); box-shadow: 0 10px 24px -14px var(--fn-accent); }
@@ -86,7 +104,21 @@ nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-colophon { user-
 .fn-figure { margin: 0; }
 .fn-art { position: relative; aspect-ratio: 4 / 5; max-width: 384px; margin-inline: auto; overflow: hidden; background: var(--fn-sky); border-radius: 999px 999px var(--fn-2) var(--fn-2); }
 .fn-art svg { display: block; width: 100%; height: 100%; }
-.fn-caption { display: block; max-width: 384px; margin-inline: auto; padding-top: var(--fn-3); font-size: 12px; letter-spacing: .04em; color: var(--fn-ink-faint); }
+.fn-caption { display: flex; justify-content: space-between; gap: var(--fn-4); max-width: 384px; margin-inline: auto; padding-top: var(--fn-3); font-size: 12px; letter-spacing: .04em; color: var(--fn-ink-faint); }
+.fn-caption__scale { font-variant-numeric: tabular-nums; }
+
+/* The survey. Every stroke is the ink or the accent, so the drawing follows the palette. */
+.fn-survey { color: var(--fn-ink); }
+.fn-survey__lines path { fill: none; stroke: currentColor; stroke-width: 1; opacity: .28; }
+.fn-survey__lines .fn-survey__index { stroke-width: 1.6; opacity: .46; }
+.fn-survey__casing { fill: none; stroke: var(--fn-sky); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+.fn-survey__route { fill: none; stroke: var(--fn-accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 7 5; }
+.fn-survey__waypoint { fill: var(--fn-accent); stroke: var(--fn-sky); stroke-width: 2.4; }
+.fn-survey__mark path { fill: var(--fn-accent); }
+.fn-survey__mark circle { fill: none; stroke: var(--fn-accent); stroke-width: 1.2; opacity: .55; }
+/* Painted stroke-first, so each label carries its own clearing through the contour lines. */
+.fn-survey__label { fill: currentColor; stroke: var(--fn-sky); stroke-width: 4; paint-order: stroke fill; opacity: .72; font-family: 'Public Sans', system-ui, sans-serif; font-size: 13px; letter-spacing: .08em; }
+.fn-survey__label--foot { text-anchor: middle; }
 
 /* Stories ----------------------------------------------------------------- */
 .fn-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--fn-5); padding: var(--fn-6) 0 var(--fn-5); border-top: 1px solid var(--fn-rule); }

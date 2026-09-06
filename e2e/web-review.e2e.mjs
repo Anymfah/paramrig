@@ -31,9 +31,23 @@ export default run('web-review', async ({ page, check, log }) => {
   await page.locator('textarea[aria-label="Comment"]').fill('Give the hero a little more room.')
   await page.waitForTimeout(700)
 
-  // A control change to go with it.
+  /*
+   * A control change to go with it — really made, not assumed. This used to open the panel and
+   * trust that something in the shared draft was already moved, so the two checks below passed on
+   * whatever an earlier session had left behind and failed the moment the project was put back to
+   * its shipped values. Both fields commit on blur.
+   */
   await page.locator('button[aria-label="Project controls"]').click()
   await page.waitForTimeout(300)
+  const hex = page.locator('.color-field__hex').first()
+  const number = page.locator('.number-value__input').first()
+  const shipped = { hex: await hex.inputValue(), number: await number.inputValue() }
+  await hex.fill('#2f6f5a')
+  await hex.blur()
+  await page.waitForTimeout(400)
+  await number.fill('880')
+  await number.blur()
+  await page.waitForTimeout(500)
 
   await page.locator('.web-review-button').click()
   await page.waitForSelector('.web-feedback-review')
@@ -96,4 +110,25 @@ export default run('web-review', async ({ page, check, log }) => {
 
   // Clean up this script's own draft; the approved batch stays, as it must.
   check('the script leaves no comment behind', await clearComments(page) === 0)
+
+  /*
+   * And put the two controls back where they were found. A value left moved here is a value every
+   * later run and every person opening the example inherits, which is how the project came to be
+   * sitting on a colour nobody chose.
+   */
+  await page.locator('button[aria-label="Project controls"]').click()
+  await page.waitForSelector('.color-field__hex', { timeout: 15000 })
+  // Through the row's own menu, which is the way a person undoes a value they have moved.
+  for (const label of ['Primary color', 'Content width']) {
+    const row = page.locator('.context-target', { has: page.getByText(label, { exact: true }) }).first()
+    await row.click({ button: 'right' })
+    await page.waitForTimeout(300)
+    const reset = page.getByRole('menuitem', { name: `Reset ${label}` }).first()
+    if (await reset.count() && await reset.isEnabled().catch(() => false)) await reset.click()
+    else await page.keyboard.press('Escape')
+    await page.waitForTimeout(500)
+  }
+  const rested = await page.evaluate(() => fetch('/api/web/state', { cache: 'no-store' }).then(r => r.json())
+    .then(s => { const d = s.draft.document; return !d || Object.keys(d.sourceValues).every(id => JSON.stringify(d.values[id]) === JSON.stringify(d.sourceValues[id])) }))
+  check('the script leaves the project on the values it ships', rested)
 })
