@@ -11,6 +11,8 @@ export function useWebDocument(manifest: WebProjectManifest) {
   const [syncStatus, setSyncStatus] = useState('Connecting to project files')
   const [error, setError] = useState<string | null>(null)
   const [recovered, setRecovered] = useState<Recovery | null>(null)
+  // The version the recovered one is being weighed against, so the choice can describe both.
+  const [rival, setRival] = useState<Recovery | null>(null)
   const state = useRef({ loaded: false, canRecover: false, disposed: false, saving: false, blocked: false, diskRevision: 0, saved: '', token: '', timer: 0, service: null as WebServiceState | null })
   const [retry, setRetry] = useState(0)
 
@@ -56,10 +58,12 @@ export function useWebDocument(manifest: WebProjectManifest) {
           s.diskRevision = next.draft.revision
           if (next.draft.document) session.recover(next.draft.document)
           s.saved = JSON.stringify(session.document); s.loaded = true; s.canRecover = true
-          if (local && JSON.stringify(local.document) !== s.saved) { s.blocked = true; setRecovered(local); setSyncStatus('Browser recovery available'); setError(null) }
+          if (local && JSON.stringify(local.document) !== s.saved) { s.blocked = true; setRecovered(local); setRival({ document: session.document, diskRevision: next.draft.revision, savedAt: next.draft.savedAt ?? '' }); setSyncStatus('Browser recovery available'); setError(null) }
           else { setSyncStatus('Saved to project'); setError(null) }
         } else if (!s.saving && next.draft.revision > s.diskRevision) {
-          s.blocked = true; setSyncStatus('Project changed elsewhere'); setError('The project draft changed outside this window. Choose which draft to keep.'); setRecovered({ document: session.document, diskRevision: s.diskRevision, savedAt: new Date().toISOString() })
+          s.blocked = true; setSyncStatus('Project changed elsewhere'); setError('The project draft changed outside this window. Choose which draft to keep.')
+          setRecovered({ document: session.document, diskRevision: s.diskRevision, savedAt: new Date().toISOString() })
+          if (next.draft.document) setRival({ document: next.draft.document, diskRevision: next.draft.revision, savedAt: next.draft.savedAt ?? '' })
         }
         if (next.issues.length) setError(next.issues.join(' '))
       } catch (e) {
@@ -87,7 +91,7 @@ export function useWebDocument(manifest: WebProjectManifest) {
     const document = useBrowser ? recovered?.document : current.draft.document
     if (document && isDraft(document)) session.recover(document)
     s.saved = useBrowser ? '' : JSON.stringify(session.document)
-    setRecovered(null); setError(null); await save()
+    setRecovered(null); setRival(null); setError(null); await save()
   }
   const publish = async (batch: FeedbackBatch) => {
     if (state.current.blocked) throw new Error('Resolve the save conflict before validating feedback.')
@@ -96,5 +100,5 @@ export function useWebDocument(manifest: WebProjectManifest) {
     setRetry(n => n + 1)
   }
   const upload = async (id: string, dataUrl: string) => postWeb<{ file: string }>('captures', state.current.token, { id, dataUrl })
-  return { session, revision, service, syncStatus, error, setError, recovered, chooseRecovery, publish, upload, reconnect: () => setRetry(n => n + 1), save }
+  return { session, revision, service, syncStatus, error, setError, recovered, rival, chooseRecovery, publish, upload, reconnect: () => setRetry(n => n + 1), save }
 }

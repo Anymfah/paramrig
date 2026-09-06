@@ -277,11 +277,16 @@ batch; the DOM image itself excludes the overlay.
 
 **Capture screen** uses the browser's display-sharing permission. The sharing
 stream stops after a frame is acquired. The user previews and crops that frame
-before saving it. Rejecting capture leaves existing feedback intact. The browser
+before saving it: a rectangle on the image, dragged whole or by any of its eight
+grips, with arrow keys to nudge it and the exact percentages behind an **Exact
+crop** fold. The saved pixels are the same either way. Rejecting capture leaves existing feedback intact. The browser
 must expose `getDisplayMedia`; there is no synthetic replacement for screen capture.
 
 Drafts and unsynced captures are also saved to IndexedDB. A different project draft
-or browser recovery copy requires an explicit choice before more writes. API writes
+or browser recovery copy requires an explicit choice before more writes: the
+workspace describes both versions — when each was saved, how many comments it
+holds and how many values it has moved — and offers the newer one first. The
+service reports the draft file's own `savedAt` so the two can be compared. API writes
 use a local pairing token, same-origin browser requests and atomic files. Symlinks,
 path traversal and arbitrary file destinations are refused.
 

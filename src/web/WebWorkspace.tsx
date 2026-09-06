@@ -10,6 +10,7 @@ import { WebToolbar } from './WebToolbar'
 import { WebAnnotations } from './WebAnnotations'
 import { needsReattach, overlayChrome, selectionControls } from './selection'
 import { NoControls, TargetPicks, TargetStatus } from './WebTargets'
+import { WebRecovery } from './WebRecovery'
 import { WebControls } from './WebControls'
 import { FeedbackReview } from './FeedbackReview'
 import { valuesEqual } from '../state/values'
@@ -334,7 +335,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       </div>
       <div className="inspector__body web-inspector__body scroll-area" tabIndex={0} role="region" id={`web-panel-${panel}`} aria-label={batch ? 'Feedback review' : published ? 'Feedback approved' : screen ? 'Screen capture' : panel}>
         {sync.error && !sync.recovered ? <StatusMessage tone="error">{sync.error}</StatusMessage> : null}
-        {sync.recovered ? <section className="web-section"><h2>Draft changed elsewhere</h2><p>Which version should stay open?</p><Button variant="ghost" onClick={() => run(() => sync.chooseRecovery(true))}>Keep browser draft</Button><Button variant="quiet" onClick={() => run(() => sync.chooseRecovery(false))}>Use project draft</Button></section> : null}
+        {sync.recovered ? <WebRecovery browser={{ document: sync.recovered.document, savedAt: sync.recovered.savedAt }} project={{ document: sync.rival?.document ?? doc, savedAt: sync.rival?.savedAt }} onChoose={useBrowser => run(() => sync.chooseRecovery(useBrowser))} /> : null}
         {responseNotes.map(n => <StatusMessage key={n}>{n}</StatusMessage>)}
         {doc.conflicts.map(c => <section className="web-section" key={c.id}><h2>{manifest.parameters.find(p => p.id === c.id)?.label ?? c.id}</h2><p>{c.removed ? 'Control removed.' : 'This value changed in the project.'}</p><code>Your choice: {JSON.stringify(c.chosen)}</code>{!c.removed ? <><code>Source: {JSON.stringify(c.source)}</code><Button variant="ghost" onClick={() => session.resolveConflict(c.id, true)}>Keep my value</Button></> : null}<Button variant="quiet" onClick={() => session.resolveConflict(c.id, false)}>{c.removed ? 'Acknowledge removal' : 'Use source value'}</Button></section>)}
         {batch ? <FeedbackReview key={batch.id} batch={batch} manifest={manifest} sent={lastBatch?.values} publishing={publishing} disabled={pendingCapture || !!sync.recovered || doc.conflicts.length > 0 || readyRevision !== manifest.revision} onPublish={ready => run(() => publish(ready))} onBack={() => setBatch(null)} /> : null}

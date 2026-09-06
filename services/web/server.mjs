@@ -73,9 +73,15 @@ export async function createWebService({ projectDir, seedManifest, allowedOrigin
   async function state() {
     const manifest = parseManifest(await read('manifest.json'))
     const issues = []
-    let draft = { revision: 0, document: null }
-    try { draft = await read('draft.json'); if (!Number.isInteger(draft.revision) || !isDraft(draft.document) || draft.document.projectId !== manifest.id) throw new Error('Invalid draft') }
-    catch (e) { if (e.code !== 'ENOENT') { issues.push('The saved draft cannot be read. Use browser recovery or restore the file.'); draft = { revision: -1, document: null } } }
+    let draft = { revision: 0, document: null, savedAt: null }
+    try {
+      draft = await read('draft.json')
+      if (!Number.isInteger(draft.revision) || !isDraft(draft.document) || draft.document.projectId !== manifest.id) throw new Error('Invalid draft')
+      // When two windows disagree about the draft, the person choosing between them needs to know
+      // which one is newer. The file's own timestamp is the only honest answer.
+      draft.savedAt = (await fs.stat(await confined('draft.json'))).mtime.toISOString()
+    }
+    catch (e) { if (e.code !== 'ENOENT') { issues.push('The saved draft cannot be read. Use browser recovery or restore the file.'); draft = { revision: -1, document: null, savedAt: null } } }
     const batches = await listing('batches', isBatch, issues)
     const responses = await listing('responses', isResponse, issues)
     return { manifest, draft, batches: batches.filter(b => b.projectId === manifest.id), responses: responses.filter(r => r.projectId === manifest.id), issues, token }

@@ -136,9 +136,24 @@
 .web-published code { display: block; padding: var(--space-3); background: var(--surface-inset); border-radius: var(--radius-sm); user-select: text; }
 .web-published .btn { align-self: flex-start; }
 .web-ticket-list { margin-block-start: var(--space-3); }
-.web-capture-crop { position: relative; }
-.web-capture-crop img { width: 100%; display: block; }
-.web-capture-crop > div { position: absolute; border: 2px solid var(--focus-ring); background: color-mix(in srgb, var(--focus-ring) 12%, transparent); pointer-events: none; }
+.web-capture-crop { position: relative; touch-action: none; user-select: none; }
+.web-capture-crop img { width: 100%; display: block; -webkit-user-drag: none; }
+.web-crop-box { position: absolute; border: 2px solid var(--focus-ring); background: color-mix(in srgb, var(--focus-ring) 12%, transparent); cursor: move; }
+.web-crop-box:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+/* The visible grip stays small; what answers the pointer is the whole hit target around it. */
+.web-crop-handle { position: absolute; display: grid; place-items: center; width: var(--hit-target); height: var(--hit-target); transform: translate(-50%, -50%); padding: 0; border: 0; background: none; cursor: pointer; }
+.web-crop-handle::before { content: ''; width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--surface); background: var(--focus-ring); }
+.web-crop-handle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -8px; border-radius: var(--radius-sm); }
+.web-crop-handle[data-handle='nw'], .web-crop-handle[data-handle='se'] { cursor: nwse-resize; }
+.web-crop-handle[data-handle='ne'], .web-crop-handle[data-handle='sw'] { cursor: nesw-resize; }
+.web-crop-handle[data-handle='n'], .web-crop-handle[data-handle='s'] { cursor: ns-resize; }
+.web-crop-handle[data-handle='e'], .web-crop-handle[data-handle='w'] { cursor: ew-resize; }
+.web-recovery p { max-width: 48ch; }
+.web-version { display: flex; align-items: center; gap: var(--space-3); padding-block: var(--space-3); border-top: 1px solid var(--border-hairline); }
+.web-version > div { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.web-version strong { font-size: var(--text-sm); font-weight: 500; }
+.web-version small { color: var(--text-muted); font-size: var(--text-xs); }
+.web-version .btn { flex: none; }
 .web-check { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-sm); min-height: var(--hit-target); padding-block: var(--space-1); cursor: pointer; user-select: none; }
 .web-check input { appearance: none; flex: 0 0 16px; width: 16px; height: 16px; margin-block-start: 2px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface-inset); cursor: pointer; }
 .web-check input:checked { background: var(--accent); box-shadow: inset 0 0 0 3px var(--surface); }
@@ -166,6 +181,7 @@
 @media (pointer: coarse) {
   .web-comment-pin { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
   .web-picks button { min-height: var(--hit-target-coarse); }
+  .web-crop-handle { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
   .web-mode button, .web-toolbar .icon-btn, .web-size-trigger, .web-project-button, .web-markup-toolbar .icon-btn { min-width: var(--hit-target-coarse); min-height: var(--hit-target-coarse); }
 }
 @media (prefers-reduced-motion: reduce) { .web-toolbar *, .web-inspector *, .web-preview-area * { transition: none !important; } }
