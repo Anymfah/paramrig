@@ -8,7 +8,7 @@ it('opens the spatial comment, follows geometry at display scale, and hides clip
   const context: WebContext = { pageId: 'home', url: 'http://localhost', viewport: { width: 800, height: 600, dpr: 1 }, scroll: { x: 0, y: 0 }, scrollers: [] }
   const ticket: WebTicket = { id: 'ticket', comment: 'Increase spacing', status: 'draft', targets: [target], marks: [], captures: [], context, revision: '1', createdAt: '2026-09-05T00:00:00Z' }
   const onOpen = vi.fn()
-  const props = { tickets: [ticket], targets: [target], context, scale: .5, viewport: { width: 800, height: 600 }, activeId: null, canComment: false, onComment: vi.fn(), onOpen }
+  const props = { tickets: [ticket], targets: [target], context, scale: .5, viewport: { width: 800, height: 600 }, activeId: null, onOpen }
   const { rerender } = render(<WebAnnotations {...props} />)
   const pin = screen.getByRole('button', { name: 'Open comment 1' })
   expect(pin).toHaveStyle({ left: '110px', top: '50px' })

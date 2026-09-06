@@ -1,5 +1,3 @@
-import { MessageSquare } from 'lucide-react'
-import { Button } from '../ui/Button'
 import { Tooltip } from '../ui/Tooltip'
 import type { WebContext, WebTarget, WebTicket } from './contracts'
 import { markPoints } from './geometry'
@@ -14,20 +12,18 @@ function visibleBox(target: WebTarget, viewport: { width: number; height: number
   return right > x && bottom > y ? { x, y, right, bottom } : null
 }
 
-export function WebAnnotations({ tickets, targets, selected, context, scale, viewport, activeId, canComment, onComment, onOpen }: {
+/** The numbered bubbles over the page. Nothing else floats here: a button pinned over the
+ * selection covered the very heading a person had just chosen to talk about. */
+export function WebAnnotations({ tickets, targets, context, scale, viewport, activeId, onOpen }: {
   tickets: WebTicket[]
   targets: WebTarget[]
-  selected?: WebTarget
   context: WebContext | null
   scale: number
   viewport: { width: number; height: number }
   activeId: string | null
-  canComment: boolean
-  onComment: () => void
   onOpen: (ticket: WebTicket) => void
 }) {
   if (!context) return null
-  const box = selected?.pageId === context.pageId ? visibleBox(selected, viewport) : null
   const occupied: { x: number; y: number }[] = []
   return <div className="web-annotations" aria-label="Page comments">
     {tickets.map((ticket, index) => {
@@ -45,6 +41,5 @@ export function WebAnnotations({ tickets, targets, selected, context, scale, vie
       occupied.push({ x, y })
       return <Tooltip key={ticket.id} content={ticket.comment || target?.label || `Comment ${index + 1}`}><button type="button" className="web-comment-pin" style={{ left: x, top: y }} aria-label={`Open comment ${index + 1}`} aria-pressed={activeId === ticket.id} onClick={() => onOpen(ticket)}><span>{index + 1}</span></button></Tooltip>
     })}
-    {box && canComment ? <Button size="sm" variant="ghost" className="web-quick-comment" style={{ left: Math.max(8, Math.min(viewport.width * scale - 120, box.x * scale)), top: box.y * scale >= 44 ? box.y * scale - 40 : Math.min(viewport.height * scale - 40, box.bottom * scale + 8) }} onClick={onComment}><MessageSquare size={14} />Comment</Button> : null}
   </div>
 }

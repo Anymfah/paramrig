@@ -169,7 +169,14 @@ The inspector shows local controls first, followed by inherited controls. Contro
 that affect repeated components are identified as applying to all instances.
 The hierarchy menu includes unnamed HTML ancestors without filling the inspector.
 
-Choose **Comment** beside the selected element, or press **C**, to start typing.
+A section of controls is named after its group; how far it reaches — **Global**,
+**Page**, **All instances**, **From Story card** — is a badge beside that name,
+dropped once several sections on screen agree on it. The hierarchy reads as a
+path, **Page › Stories › Story card**, with the two nearest ancestors in the row
+and the rest in its menu.
+
+Choose **Comment on selection** in the inspector header, or press **C**, to start
+typing.
 Numbered bubbles reopen comments without changing the current preview size.
 **Draw** opens notes, arrows, rectangles, ellipses, highlights and freehand tools;
 **Draw on page** switches from the selected element to document coordinates.

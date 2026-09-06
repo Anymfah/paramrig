@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Circle, Highlighter, Maximize, MessageSquare, Pencil, Plus, SlidersHorizontal, Square, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, ChevronLeft, ChevronRight, Circle, Highlighter, Maximize, MessageSquare, MessageSquarePlus, MoreHorizontal, Pencil, Plus, SlidersHorizontal, Square, Trash2, X } from 'lucide-react'
 import { WorkspaceShell } from '../shell/WorkspaceShell'
 import { listRigs } from '../rigs/registry'
 import { updatePrefs } from '../state/workspace'
@@ -289,6 +289,8 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const startNote = () => { setActiveTicketId(null); setSelected([]); setMode('annotate'); setTool('note'); setMobile('main'); setPanel('feedback') }
   const closeInspector = () => { if (innerWidth < 1024) setMobile('main'); else updatePrefs({ inspectorCollapsed: true }) }
   const chooseAncestor = (ancestor: WebTarget['ancestors'][number]) => { if (selection) selectTarget({ ...selection, ...ancestor, ancestors: [], stable: ancestor.stable }) }
+  // Nearest first, as the page sends them. Wrappers nobody named are left out of the path.
+  const trail = (selection?.ancestors ?? []).filter(ancestor => ancestor.stable || !ancestor.label.startsWith('Unnamed '))
   const publish = async (approved: FeedbackBatch) => {
     if (!batch || readyRevision !== manifest.revision) return
     setPublishing(true)
@@ -305,6 +307,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
         <strong>{batch ? 'Review changes' : screen ? 'Screen capture' : panel === 'snapshots' ? 'Snapshots' : panel === 'feedback' ? ticket ? `Comment ${doc.tickets.indexOf(ticket) + 1}` : 'Comments' : selection?.label ?? 'Project controls'}</strong>
         <div className="web-actions">
           {!batch && !screen ? <>
+            {selection && panel === 'controls' ? <Tooltip content="Comment · C"><IconButton label="Comment on selection" onClick={() => newTicket(currentSelection)}><MessageSquarePlus size={16} /></IconButton></Tooltip> : null}
             <Tooltip content="Project controls"><IconButton label="Project controls" aria-pressed={panel === 'controls' && !selection} onClick={projectControls}><SlidersHorizontal size={16} /></IconButton></Tooltip>
             <Tooltip content="Comments"><IconButton label={`Comments${commentsCount ? ` (${commentsCount})` : ''}`} aria-pressed={panel === 'feedback'} onClick={() => { setPanel('feedback'); setActiveTicketId(null); setAddingTargets(false) }}><MessageSquare size={16} />{commentsCount ? <span className="web-icon-count">{commentsCount}</span> : null}</IconButton></Tooltip>
           </> : null}
@@ -320,11 +323,11 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
         {screen ? <ScreenCapture image={screen.image} onCancel={() => setScreen(null)} onSave={async image => { await attachCapture(screen.ticketId, { id: crypto.randomUUID(), kind: 'screen', createdAt: new Date().toISOString(), status: 'ready', dataUrl: image, note: 'Screen capture, cropped and approved by the user.' }); setScreen(null) }} /> : null}
         {!batch && !screen && panel === 'controls' ? <>
           {selection ? <section className="web-section web-selection">
-            <div className="web-ancestors">
-              {selection.ancestors.filter(ancestor => ancestor.stable || !['div', 'body', 'html'].includes(ancestor.label)).slice(0, 2).map(ancestor => <button key={ancestor.key} type="button" onClick={() => chooseAncestor(ancestor)}>{ancestor.label}</button>)}
-              {selection.ancestors.length ? <Menu.Root modal={false}><Menu.Trigger asChild><button type="button" aria-label="Element hierarchy"><ChevronDown size={13} /></button></Menu.Trigger><Menu.Portal><Menu.Content className="menu" align="start" sideOffset={8} collisionPadding={8} aria-label="Element hierarchy">{selection.ancestors.map(ancestor => <Menu.Item key={ancestor.key} className="menu__item" onSelect={() => chooseAncestor(ancestor)}>{ancestor.label}</Menu.Item>)}</Menu.Content></Menu.Portal></Menu.Root> : null}
-            </div>
-            {mode !== 'select' ? <Button variant="ghost" size="sm" onClick={() => newTicket(currentSelection)}><MessageSquare size={14} />Comment</Button> : null}
+            <nav className="web-ancestors" aria-label="Element hierarchy">
+              {trail.length > 2 ? <><Menu.Root modal={false}><Menu.Trigger asChild><button type="button" aria-label="Element hierarchy"><MoreHorizontal size={13} /></button></Menu.Trigger><Menu.Portal><Menu.Content className="menu" align="start" sideOffset={8} collisionPadding={8} aria-label="Element hierarchy">{[...trail].reverse().map(ancestor => <Menu.Item key={ancestor.key} className="menu__item" onSelect={() => chooseAncestor(ancestor)}>{ancestor.label}</Menu.Item>)}</Menu.Content></Menu.Portal></Menu.Root><span className="web-crumb-sep" aria-hidden="true">›</span></> : null}
+              {[...trail.slice(0, 2)].reverse().map(ancestor => <Fragment key={ancestor.key}><button type="button" onClick={() => chooseAncestor(ancestor)}>{ancestor.label}</button><span className="web-crumb-sep" aria-hidden="true">›</span></Fragment>)}
+              <span className="web-crumb">{selection.label}</span>
+            </nav>
           </section> : null}
           <WebControls session={session} controls={boundParams} values={previewMode === 'current' ? doc.values : doc.sourceValues} disabled={previewMode !== 'current' || !previewReady} />
           {boundParams.length || !selection ? null : <NoControls ancestors={aroundIt} page={elsewhere} onPick={selectTarget} />}
@@ -371,7 +374,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       <div ref={stage} className="web-preview-stage" id="main" tabIndex={-1} data-mode={mode} data-fluid={!fixedViewport}>
         <div className="web-preview-size" style={{ width: viewport.width * scale, height: viewport.height * scale }}>
           <iframe key={iframeKey} ref={iframe} title={`${manifest.name} live preview`} src={new URL(pagePath, manifest.origin).href} width={viewport.width} height={viewport.height} style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" onLoad={() => { lastReady.current = 0; frameArrived() }} />
-          <WebAnnotations tickets={doc.tickets} targets={liveTargets} selected={selection} context={context} viewport={viewport} scale={scale} activeId={activeTicketId} canComment={mode === 'select' && panel === 'controls' && !batch} onComment={() => newTicket(currentSelection)} onOpen={ticket => openTicket(ticket, false)} />
+          <WebAnnotations tickets={doc.tickets} targets={liveTargets} context={context} viewport={viewport} scale={scale} activeId={activeTicketId} onOpen={ticket => openTicket(ticket, false)} />
         </div>
       </div>
       {previewReady ? null : <div className="web-connection-veil"><p className="web-connection-notice" role="status">{connection}</p></div>}

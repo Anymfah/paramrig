@@ -63,7 +63,6 @@
 .web-comment-pin span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50% 50% 50% 0; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--text-primary); box-shadow: var(--elevation-raised); font-size: var(--text-xs); transition: background var(--duration-fast), transform var(--duration-fast); }
 .web-comment-pin:hover span, .web-comment-pin[aria-pressed=true] span { background: var(--accent); color: var(--text-on-accent); transform: translateY(-2px); }
 .web-comment-pin:active span { transform: translateY(0); }
-.web-quick-comment { position: absolute; pointer-events: auto; background: var(--surface-raised); box-shadow: var(--elevation-overlay); gap: var(--space-2); }
 .web-inspector-head { gap: var(--space-2); }
 .web-inspector-head > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .web-inspector-head > .web-actions { flex: none; flex-wrap: nowrap; gap: var(--space-1); }
@@ -73,8 +72,7 @@
 .web-list-number { color: var(--text-muted); margin-inline-end: var(--space-2); font-size: var(--text-xs); }
 .web-inspector { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .web-inspector__body { overflow: auto; }
-.web-section-scope { margin-inline-start: var(--space-2); font-weight: 400; text-transform: none; letter-spacing: normal; }
-.web-control-scope { margin-block: var(--space-1) 0; }
+.web-section-scope { margin-inline: auto var(--space-2); padding: 1px var(--space-2); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); color: var(--text-muted); font-weight: 400; font-size: var(--text-xs); text-transform: none; letter-spacing: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 14ch; }
 .web-inspector__body > .status-msg { margin: 0; }
 .web-section { display: flex; flex-direction: column; gap: var(--space-3); padding-block: var(--space-3); border-bottom: 1px solid var(--border-hairline); min-width: 0; }
 .web-section p { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
@@ -88,8 +86,11 @@
 .web-scope { font-size: var(--text-xs); color: var(--text-muted); user-select: none; }
 .web-inline { border: 0; background: transparent; color: var(--text-secondary); text-decoration: underline; cursor: pointer; padding: var(--space-1); font: inherit; font-size: var(--text-xs); user-select: none; }
 .web-inline:hover { color: var(--text-primary); }
-.web-ancestors { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.web-ancestors button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--space-1) var(--space-2); border: 1px solid var(--border-hairline); border-radius: var(--radius-sm); background: transparent; font: inherit; font-size: var(--text-xs); color: var(--text-secondary); cursor: pointer; user-select: none; }
+.web-ancestors { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); font-size: var(--text-xs); }
+.web-ancestors button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; font: inherit; color: var(--text-secondary); cursor: pointer; user-select: none; }
+.web-ancestors button:hover { color: var(--text-primary); background: var(--surface-raised); }
+.web-crumb-sep { color: var(--text-muted); user-select: none; }
+.web-crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: var(--space-1) 0; color: var(--text-primary); user-select: none; }
 .web-label { display: flex; flex-direction: column; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-secondary); }
 .web-label input, .web-label textarea { min-width: 0; width: 100%; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-inset); color: var(--text-primary); padding: var(--space-3); font: inherit; font-size: var(--text-base); user-select: text; }
 .web-label textarea { min-height: 112px; resize: vertical; line-height: var(--leading-normal); }
