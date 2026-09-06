@@ -66,15 +66,19 @@ projects this browser has opened.
 
 ## Install the SDK
 
-Build the local package from ParamRig:
+In the project being tuned:
+
+```sh
+npm install --save-dev @paramrig/web
+```
+
+To try a change that is not released yet, build the package here and install
+`packages/web-sdk` as a local dependency instead, or serve the generated ES
+module and its accompanying chunks:
 
 ```sh
 docker compose run --rm app npm run build:web-sdk
 ```
-
-The resulting package is `packages/web-sdk`. Install that local package in the
-target project's own development environment, or serve the generated ES module
-and its accompanying chunks. No registry publication is needed.
 
 **`packages/web-sdk/README.md` is the integration guide**, written for the agent
 that maintains the project being tuned: every manifest field, the control kinds,
