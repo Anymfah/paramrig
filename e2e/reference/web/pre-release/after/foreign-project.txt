@@ -1,0 +1,5 @@
+No web manifest found. Add .paramrig/manifest.json to the connected project.
+
+The service is connected to a project that has no manifest yet. Write it here, then reconnect.
+
+/project/.paramrig/manifest.json

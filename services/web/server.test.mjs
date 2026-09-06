@@ -7,9 +7,10 @@ import { createWebService } from './server.mjs'
 
 const opened = []
 afterEach(async () => { for (const item of opened.splice(0)) { await item.service.close(); await fs.rm(item.root, { recursive: true, force: true }) } })
+const example = () => fs.readFile(new URL('../../examples/web/manifest.json', import.meta.url), 'utf8').then(JSON.parse)
 async function setup() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'paramrig-web-'))
-  const manifest = JSON.parse(await fs.readFile(new URL('../../examples/web/manifest.json', import.meta.url), 'utf8'))
+  const manifest = await example()
   const service = await createWebService({ projectDir: root, seedManifest: manifest })
   await new Promise(resolve => service.server.listen(0, '127.0.0.1', resolve))
   opened.push({ root, service })
@@ -53,4 +54,49 @@ test('malformed responses remain visible as issues and do not break the project'
   await fs.writeFile(path.join(root, '.paramrig/responses/bad.json'), '{')
   const next = await (await fetch(`${url}/api/web/state`)).json()
   assert.equal(next.manifest.id, 'fieldnotes'); assert.match(next.issues[0], /responses\/bad.json/)
+})
+
+test('the example manifest is seeded into an empty folder and refused everywhere else', async () => {
+  const seedManifest = await example()
+  const empty = await fs.mkdtemp(path.join(os.tmpdir(), 'paramrig-empty-'))
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'paramrig-project-'))
+  await fs.writeFile(path.join(project, 'package.json'), '{"name":"someone-elses-app"}')
+  const one = await createWebService({ projectDir: empty, seedManifest })
+  const two = await createWebService({ projectDir: project, seedManifest })
+  opened.push({ root: empty, service: one }, { root: project, service: two })
+
+  assert.equal(one.refusedSeed, '')
+  assert.equal((await one.state()).manifest.id, 'fieldnotes')
+  // Forgetting PARAMRIG_SEED_MANIFEST= must not write Fieldnotes into a stranger's repository.
+  assert.match(two.refusedSeed, /is not empty/)
+  await assert.rejects(two.state(), e => e.code === 'ENOENT')
+  assert.deepEqual((await fs.readdir(path.join(project, '.paramrig'))).sort(), ['.gitignore', 'README.md', 'batches', 'captures', 'responses'])
+})
+
+test('a project with no manifest is told which file to write, and the service keeps serving', async () => {
+  const project = await fs.mkdtemp(path.join(os.tmpdir(), 'paramrig-bare-'))
+  await fs.writeFile(path.join(project, 'package.json'), '{"name":"someone-elses-app"}')
+  const service = await createWebService({ projectDir: project, seedManifest: await example() })
+  await new Promise(resolve => service.server.listen(0, '127.0.0.1', resolve))
+  opened.push({ root: project, service })
+  const res = await fetch(`http://127.0.0.1:${service.server.address().port}/api/web/state`)
+  const body = await res.json()
+  assert.equal(res.status, 404)
+  assert.equal(body.error, 'No web manifest found. Add .paramrig/manifest.json to the connected project.')
+  assert.equal(body.path, path.join(await fs.realpath(project), '.paramrig', 'manifest.json'))
+})
+
+test('the feedback gitignore covers only what ParamRig rewrites, and is never written over', async () => {
+  const { root, service } = await setup()
+  const file = path.join(root, '.paramrig/.gitignore')
+  assert.equal(await fs.readFile(file, 'utf8'), 'draft.json\ncaptures/\n')
+  // A project that edits it keeps its edit, however many times the service starts. Deleting it is
+  // how README.md behaves too: the next start writes it again, because absent reads as new.
+  await fs.writeFile(file, 'draft.json\n')
+  for (let start = 0; start < 2; start += 1) {
+    const again = await createWebService({ projectDir: root, seedManifest: await example() })
+    await again.close()
+  }
+  assert.equal(await fs.readFile(file, 'utf8'), 'draft.json\n')
+  await service.close()
 })

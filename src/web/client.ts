@@ -1,8 +1,11 @@
 import { isBatch, isDraft, isResponse, parseManifest, record, type AgentResponse, type FeedbackBatch, type WebDraft, type WebProjectManifest } from './contracts'
 
 export type WebServiceState = { manifest: WebProjectManifest; draft: { revision: number; document: WebDraft | null; savedAt?: string | null }; batches: FeedbackBatch[]; responses: AgentResponse[]; issues: string[]; token: string }
+/** A service that is running and connected to a project that has not been instrumented yet. */
+export class NoManifest extends Error { constructor(message: string, readonly path: string) { super(message) } }
 export async function readWebState(): Promise<WebServiceState> {
   const res = await fetch('/api/web/state', { cache: 'no-store' }); const value: unknown = await res.json().catch(() => null)
+  if (record(value) && typeof value.error === 'string' && typeof value.path === 'string') throw new NoManifest(value.error, value.path)
   if (!res.ok || !record(value) || !record(value.draft) || !Array.isArray(value.batches) || !Array.isArray(value.responses) || !Array.isArray(value.issues) || typeof value.token !== 'string') throw new Error(record(value) && typeof value.error === 'string' ? value.error : 'The local web service is unavailable. Start the Web profile and reconnect.')
   const manifest = parseManifest(value.manifest)
   if (value.draft.document !== null && !isDraft(value.draft.document) || !value.batches.every(isBatch) || !value.responses.every(isResponse)) throw new Error('The service returned invalid feedback data.')

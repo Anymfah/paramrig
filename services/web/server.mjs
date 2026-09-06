@@ -54,10 +54,37 @@ export async function createWebService({ projectDir, seedManifest, allowedOrigin
       else await fs.rename(tmp, target)
     } finally { await fs.unlink(tmp).catch(() => {}) }
   }
+  /*
+   * The seed belongs to the example, and to nothing else.
+   *
+   * `PARAMRIG_SEED_MANIFEST` carries a default in compose.yml so the Fieldnotes example opens with
+   * no variables at all. Pointed at a real project and left alone, that default used to copy the
+   * example's manifest into it — immutably, since manifests are written with `link` — and the
+   * workbench then offered someone else's code under the name Fieldnotes. Forgetting a variable
+   * should not write into a stranger's repository.
+   *
+   * A real project has files in it; the folder the example is handed has none. So the seed is
+   * offered to an empty directory and to no other. The alternative was a second Compose service
+   * for the example, sharing the `web` network alias behind a second profile: that moves the
+   * default out of the generic service but leaves two services that must never run together, and
+   * changes the command the documentation has always given. This costs one `readdir`, no second
+   * variable and no second service, and it makes the command in the documentation safe as written.
+   */
+  let refusedSeed = ''
   if (seedManifest) {
-    try { await atomic('manifest.json', parseManifest(seedManifest), true) } catch (e) { if (e.code !== 'EEXIST') throw e }
+    const already = (await fs.readdir(project)).filter(name => name !== '.paramrig')
+    if (already.length) refusedSeed = `${project} is not empty, so the example manifest was not copied into it.`
+    else try { await atomic('manifest.json', parseManifest(seedManifest), true) } catch (e) { if (e.code !== 'EEXIST') throw e }
   }
   await fs.writeFile(await confined('README.md'), GUIDE, { flag: 'wx', mode: 0o600 }).catch(e => { if (e.code !== 'EEXIST') throw e })
+  /*
+   * Written when it is absent, like the guide beside it, and never written over: an edit survives.
+   * It covers only what ParamRig owns and rewrites — the draft, which is mutable by design, and the
+   * capture images, which are large and reproducible. The manifest, the approved batches and the
+   * agent's responses are the project's own record of a conversation, and whether they are
+   * committed is the project's call; the guide explains that choice rather than making it.
+   */
+  await fs.writeFile(await confined('.gitignore'), 'draft.json\ncaptures/\n', { flag: 'wx', mode: 0o600 }).catch(e => { if (e.code !== 'EEXIST') throw e })
   async function listing(folder, validate, issues) {
     const names = (await fs.readdir(await confined(folder))).filter(n => /^[\w-]+\.json$/.test(n)).sort()
     const result = []
@@ -139,7 +166,9 @@ export async function createWebService({ projectDir, seedManifest, allowedOrigin
         changed()
       })
     } catch (error) {
-      if (!res.headersSent) json(res, error.status ?? 400, { error: error.code === 'ENOENT' ? 'No web manifest found. Add .paramrig/manifest.json to the connected project.' : error.message })
+      // A missing manifest is the one failure a person can act on, so it names the file to write.
+      if (!res.headersSent && error.code === 'ENOENT') json(res, 404, { error: 'No web manifest found. Add .paramrig/manifest.json to the connected project.', path: path.join(root, 'manifest.json') })
+      else if (!res.headersSent) json(res, error.status ?? 400, { error: error.message })
       else res.end()
     }
   })
@@ -154,7 +183,8 @@ export async function createWebService({ projectDir, seedManifest, allowedOrigin
   }, 1500)
   poll.unref()
   server.on('close', () => { clearInterval(poll); for (const res of clients) res.end() })
-  return { server, root, state, close: () => { for (const res of clients) res.end(); return new Promise(resolve => server.close(resolve)) } }
+  if (refusedSeed) console.warn(`ParamRig: ${refusedSeed} A project supplies its own .paramrig/manifest.json.`)
+  return { server, root, state, refusedSeed, close: () => { for (const res of clients) res.end(); return new Promise(resolve => server.close(resolve)) } }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

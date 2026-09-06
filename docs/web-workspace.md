@@ -21,18 +21,39 @@ Open `/web`, then **Open project**. The example runs at `127.0.0.1:5174`, a
 different browser origin from the workbench at `localhost:5174`. Its two pages
 include repeated components, a menu and an internally scrollable notebook.
 
-For an existing project, supply its absolute directory and disable example seeding:
+For an existing project, supply its absolute directory:
 
 ```sh
-PARAMRIG_PROJECT_DIR=/absolute/path/to/project PARAMRIG_SEED_MANIFEST= \
-  docker compose --profile web up -d
+PARAMRIG_PROJECT_DIR=/absolute/path/to/project docker compose --profile web up -d
 ```
+
+On Linux, add `PARAMRIG_UID=$(id -u) PARAMRIG_GID=$(id -g)` so the files the
+service writes belong to whoever runs the project — they are `0600`, and the
+project's own agent has to read them. Docker Desktop maps ownership itself and
+needs neither. This has not been tried on Linux from this repository.
 
 The project must contain `.paramrig/manifest.json`. Its development server remains
 managed by that project. ParamRig's service only writes inside its `.paramrig`
 directory. It does not launch the target application, install dependencies in it,
 or modify its source. The connection stays local and single-user. A recent project
 can be reopened when its folder is connected to the service again.
+
+The example manifest is copied only into a project directory that is empty. A real
+project has files in it, so forgetting a variable can no longer put Fieldnotes into
+someone else's repository, and no second variable is needed to prevent it. A
+project with no manifest keeps the message it always had — **No web manifest found.
+Add .paramrig/manifest.json to the connected project.** — and `/web` now shows the
+absolute path of the file it is waiting for.
+
+### What is committed in `.paramrig`
+
+Alongside `README.md`, the service writes a `.paramrig/.gitignore` when there is
+none, covering `draft.json` and `captures/`: the draft is mutable by design and the
+capture images are large and reproducible. It is never written over, so an edit
+survives; deleting it brings it back on the next start, exactly as `README.md`
+does. What to do with `manifest.json`, `batches/` and `responses/` is the project's
+own call — they are its record of a conversation with its agent — and
+`packages/web-sdk/README.md` sets out the trade-off rather than deciding it.
 
 The public static demo does not run this file service. Local browser recovery
 belongs to the workbench origin; it is not a cloud backup.
@@ -271,6 +292,7 @@ The service creates the following within the connected project's `.paramrig`:
 | `responses/<id>.json` | Agent | Implementation results or clarification |
 | `captures/<id>.png` | ParamRig | Ticket images |
 | `README.md` | ParamRig | Agent handoff instructions |
+| `.gitignore` | ParamRig | Written once when absent: `draft.json` and `captures/` |
 
 A ticket carries the `number` a person sees beside it, assigned once and never
 reused, so removing one comment does not renumber the ones already named in

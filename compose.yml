@@ -40,6 +40,11 @@ services:
     command: node --experimental-strip-types services/web/server.mjs
     init: true
     restart: "no"
+    # The feedback files belong to whoever runs the project, not to the image's own user. Docker
+    # Desktop maps ownership for you; on Linux a bind mount keeps the container's numeric ids, so
+    # export PARAMRIG_UID=$(id -u) and PARAMRIG_GID=$(id -g) there or the project's agent cannot
+    # read the batches written for it. The files stay 0600 either way.
+    user: "${PARAMRIG_UID:-1000}:${PARAMRIG_GID:-1000}"
     environment:
       PARAMRIG_PROJECT_DIR: /project
       PARAMRIG_SEED_MANIFEST: ${PARAMRIG_SEED_MANIFEST-/workspace/examples/web/manifest.json}
