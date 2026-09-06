@@ -54,9 +54,6 @@ export default run('web-review', async ({ page, check, log }) => {
   const waiting = async () => Number(await page.locator('.web-count').innerText().catch(() => '0'))
   const before2 = await waiting()
   const dropped = await page.locator('.web-review-change').first().innerText()
-  // A change the previous batch already carried is not waiting for anything; the row says so, and
-  // withholding it therefore leaves nothing behind.
-  const withheldWasWaiting = !dropped.includes('Already sent')
   const droppedLabel = dropped.split('\n')[0]
   await page.locator('.web-review-change input').first().uncheck()
   await page.waitForTimeout(200)
@@ -84,13 +81,14 @@ export default run('web-review', async ({ page, check, log }) => {
   const selectable = await page.evaluate(() => getComputedStyle(document.querySelector('.web-published code')).userSelect)
   check('the instruction can be selected', selectable === 'text', selectable)
   /*
-   * Everything that was approved leaves the button; the control taken back out stays, because it
-   * is still a local override the agent has not been told about. Resting means "nothing unsent",
-   * not "nothing changed".
+   * Everything approved leaves the button. The control taken back out stays on it, and stays even
+   * when an earlier batch had carried it: the batch just approved asks for its source value, so the
+   * override still on screen is something the agent has not been told about. Resting means "nothing
+   * unsent", not "nothing changed", which is why what is left is exactly the one withheld.
    */
   const left = await waiting()
-  log(`NOTE waiting to be reviewed: ${before2} before, ${left} after; the withheld control was ${withheldWasWaiting ? '' : 'not '}waiting`)
-  check('what was approved leaves the review button', left === (withheldWasWaiting ? 1 : 0) && left < before2, `${before2} → ${left}`)
+  log(`NOTE waiting to be reviewed: ${before2} before, ${left} after`)
+  check('what was approved leaves the review button', left === 1, `${before2} → ${left}`)
   await page.getByRole('button', { name: 'Back to comments' }).click()
   await page.waitForTimeout(400)
   const status = await page.locator('.web-ticket-list small').allInnerTexts()

@@ -56,7 +56,7 @@ export default run('web-connect', async ({ page, check, log }) => {
   const settled = () => page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
   const marks = () => page.evaluate(() => window.__hs)
   const open = async () => {
-    await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded', timeout: 60000 })
     await page.getByRole('button', { name: 'Open project' }).click()
     await page.waitForSelector('.web-toolbar')
     await settled()

@@ -6,7 +6,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { run, OUTPUT } from './lib.mjs'
-import { openWorkspace } from './web-lib.mjs'
+import { mouseReach, openWorkspace, pointInFrame } from './web-lib.mjs'
 
 export default run('web-select', async ({ page, check, log, shot }) => {
   mkdirSync(join(OUTPUT, 'web-select'), { recursive: true })
@@ -72,6 +72,25 @@ export default run('web-select', async ({ page, check, log, shot }) => {
   await page.waitForTimeout(300)
   const folded = await page.locator('.web-picks button').allInnerTexts()
   check('and it holds the same elements', folded.some(p => p.includes('Hero title')), JSON.stringify(folded))
+
+  /*
+   * A real mouse, not a dispatched event. It only reaches the part of the preview that falls inside
+   * the browser's real window — see `mouseReach` — so the check is made at the top of the frame,
+   * which is always within it, and how far down it goes is recorded rather than guessed at.
+   */
+  await page.locator('button[aria-label="Project controls"]').click()
+  await page.waitForTimeout(300)
+  const at = await pointInFrame(page, '[data-paramrig-id="hero-title"]')
+  const reach = await mouseReach(page)
+  log(`NOTE a real mouse reaches about ${reach} px down the page; the click is at y ${Math.round(at.y)}`)
+  await page.mouse.move(at.x, at.y)
+  await page.waitForTimeout(120)
+  const hovered = await frame().evaluate(() => document.querySelector('paramrig-overlay')?.dataset.hover ?? null)
+  check('a real mouse moving over the preview lights the outline', hovered === 'Hero title · 2 controls', String(hovered))
+  await page.mouse.down()
+  await page.mouse.up()
+  await page.waitForTimeout(700)
+  check('and a real click selects what is under it', await page.locator('.web-inspector-head strong').innerText() === 'Hero title')
 
   // Nothing is left selected for the scripts that follow.
   await page.keyboard.press('Escape')

@@ -81,6 +81,12 @@ purpose, because that is what a real project is.
   what the workspace says once the agent has something to read.
 - **`web-viewport`** — a preset wider than the stage, the zoom ladder, the page picker's width and
   where the connection state is legible at 390 px.
+- **`web-response`** — an agent's answer, written as a file: two comments in one batch answered one
+  way each, the correction validated, and the responses that must be refused with a reason.
+- **`web-capture`** — screen capture with everything but the picker: declined, accepted, cropped by
+  a grip, saved, and read back from the service.
+- **`web-a11y`** — forced colours, reduced motion, the room 200% browser zoom leaves, and a coarse
+  pointer with every tap a real touch event.
 - **`web-reference`** — the record: `e2e/reference/web/after/`, the handshake over three passes, and
   a sweep of 1440, 1024 and 390 px in both themes looking for anything that does not fit.
 
@@ -99,10 +105,18 @@ holding a draft ahead of the one on disk, and `clearComments` empties the shared
 - **Never wait for `networkidle`.** The workspace holds an EventSource open on the project service
   for as long as it is on screen, so the network is never idle. Use `domcontentloaded` and then wait
   for the element the check is about.
-- **The iframe is cross-origin, and the mouse gets lost in it.** A pointer driven over CDP arrives at
-  the top of the frame and then goes astray after a scroll or near the frame's lower band: the parent
-  receives the `pointerdown` with the `<iframe>` element as its target and the frame sees nothing.
-  This is the harness, not the application. Drive the SDK from inside the frame instead:
+- **A real mouse reaches the top of the cross-origin frame and stops.** Not intermittently, and not
+  because of scrolling: input aimed at an out-of-process iframe is hit-tested against the *real*
+  browser window rather than the viewport the harness emulates. The QA browser's window is 1500 × 600
+  (`outerHeight`) while the scripts emulate 1440 × 900, so a real click lands anywhere in the top
+  ~540 px of the page and nowhere below it — measured by walking the frame at 40 px steps, in browse
+  mode, with a listener on the frame's own document: heard down to y 380, nothing after. Shrink the
+  viewport to fit the real window and the whole frame answers again (at a 520 px viewport, every
+  step of a 467 px frame was heard). `web-lib.mjs` has `pointInFrame` for the mapping and
+  `mouseReach` for the limit; `web-select.e2e.mjs` uses a real mouse within it.
+
+  Below that line, drive the SDK from inside the frame instead — which is what every other web
+  script does, since it does not depend on the window's real size:
 
   ```js
   const frame = page.frames().find(f => f.url().includes('127.0.0.1'))
@@ -116,7 +130,9 @@ holding a draft ahead of the one on disk, and `clearComments` empties the shared
   A mark is a whole gesture: `pointerdown`, a `pointermove` or two, `pointerup`. A note is sent on
   the way up, so a lone `pointerdown` creates nothing. Keyboard goes through
   `frame.press('body', 'Escape')`. Before concluding a handler is silent, put a witness listener in
-  both the parent and the frame.
+  the parent — one in the frame will not fire, because the SDK listens on `window` in the capture
+  phase and calls `stopImmediatePropagation`, so anything registered after it never runs. What the
+  overlay is captioned is readable from `data-hover` on its host element.
 - **What the overlay draws is behind a closed shadow root.** Nothing in the page can read it. The
   SDK's own host element carries `data-hover` with what the outline is captioned, which is the one
   way to check the hover from a script.
@@ -139,8 +155,16 @@ holding a draft ahead of the one on disk, and `clearComments` empties the shared
   choice writes nothing and fails on the state it thought it had saved. `openWorkspace` makes it. Approved batches are immutable —
   a publication test makes its own comment and tolerates the batches already there. Never delete
   anything in `.local/web/.paramrig/` by hand.
-- **Screen capture cannot be tested here.** `getDisplayMedia` has no headless equivalent, so the
-  cropping is covered by a component test and the capture itself is not covered at all.
+- **Only the picker is out of reach in screen capture.** `getDisplayMedia` has no headless
+  equivalent, but everything behind it does: `web-lib.mjs` exports `fakeDisplay`, which replaces
+  that one call with a real `MediaStream` from a canvas, and `web-capture.e2e.mjs` then drives the
+  video element, the frame, the track stopping, the crop, the PNG and the file the service serves
+  back. What stays untested is the browser's own surface picker.
+- **An agent's answer is a file.** `web-response.e2e.mjs` writes into
+  `.local/web/.paramrig/responses/`, which the `app` container has read-write at
+  `/workspace/.local/web/.paramrig`. The service notices within its 1.5 s poll and pushes the change
+  over SSE. Responses a script writes are its own and are removed with its comments; the batches
+  they answer are immutable and stay.
 
 ## The scene scripts
 

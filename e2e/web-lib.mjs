@@ -66,16 +66,49 @@ export const fakeDisplay = () => {
     context.fillStyle = '#1d3f36'; context.fillRect(0, 0, 640, 400)
     context.fillStyle = '#df7757'; context.fillRect(0, 0, 320, 200)
     // A stream with no new frames never fires requestVideoFrameCallback; redrawing keeps the track
-    // producing, exactly as a real screen does.
-    setInterval(() => { context.fillRect(0, 0, 320, 200) }, 60)
+    // producing, exactly as a real screen does. It stops with the track, so the page is not left
+    // painting for the scripts that follow.
+    const paint = setInterval(() => { context.fillRect(0, 0, 320, 200) }, 60)
     const stream = canvas.captureStream(30)
     for (const track of stream.getTracks()) {
       const stop = track.stop.bind(track)
-      track.stop = () => { window.__display.stopped += 1; stop() }
+      track.stop = () => { window.__display.stopped += 1; clearInterval(paint); stop() }
     }
     return stream
   }
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, get: () => media })
+}
+
+/**
+ * Where a point inside the preview lands on the page, ready for `page.mouse`.
+ *
+ * The frame's own rect is already past its scroll, and the iframe's box already carries the scale
+ * the preview is drawn at, so the two compose without knowing either.
+ */
+export async function pointInFrame(page, selector, { down = 12 } = {}) {
+  const frame = page.frames().find(f => f.url().includes('127.0.0.1'))
+  const box = await page.locator('iframe').boundingBox()
+  const declared = await page.locator('iframe').evaluate(el => Number(el.getAttribute('width')))
+  const scale = box.width / declared
+  const inner = await frame.evaluate(sel => {
+    const r = document.querySelector(sel).getBoundingClientRect()
+    return { x: r.x + r.width / 2, y: r.y, height: r.height }
+  }, selector)
+  return { x: box.x + inner.x * scale, y: box.y + (inner.y + Math.min(down, inner.height / 2)) * scale, inner, scale }
+}
+
+/**
+ * How far down the preview a real mouse can go, in page pixels.
+ *
+ * Input aimed at a cross-origin frame is hit-tested against the *real* browser window, not against
+ * the viewport the harness emulates. The QA browser's window is 600 px tall while the scripts
+ * emulate 900, so roughly the top half of the preview answers a real click and the rest does not.
+ * It is positional and repeatable rather than intermittent, and it is the browser, not the page:
+ * the frame's own document hears nothing either. Below it, dispatch inside the frame instead.
+ */
+export async function mouseReach(page) {
+  const real = await page.evaluate(() => ({ outer: outerHeight, inner: innerHeight }))
+  return Math.max(0, real.outer - 60)
 }
 
 /** Removes every comment in the draft. The draft is shared, so a script cleans up after itself. */
