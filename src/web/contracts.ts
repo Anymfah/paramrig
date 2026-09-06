@@ -40,7 +40,11 @@ export type WebTarget = {
   clip?: Rect
   ancestors: { key: string; label: string; stable?: TargetKey }[]
   status: 'resolved' | 'provisional' | 'missing' | 'ambiguous'
+  /** How many of the manifest's controls reach this element. Absent means none were counted. */
+  controls?: number
 }
+/** Colours the host hands the page so the overlay follows the workbench theme. */
+export type WebChrome = { outline: string; chip: string; chipText: string }
 export type WebContext = {
   pageId: string
   url: string
@@ -121,7 +125,7 @@ export type AgentResponse = {
 }
 export type HostCommand =
   | { type: 'hello'; projectId: string }
-  | { type: 'configure'; mode: 'browse' | 'select' | 'annotate'; tool: MarkTool; color: string; targets: WebTarget[]; marks: WebMark[]; activeTarget?: string; activeTargets?: string[]; displayScale?: number }
+  | { type: 'configure'; mode: 'browse' | 'select' | 'annotate'; tool: MarkTool; color: string; targets: WebTarget[]; marks: WebMark[]; activeTarget?: string; activeTargets?: string[]; displayScale?: number; chrome?: WebChrome }
   | { type: 'values'; values: Values; source: boolean }
   | { type: 'select'; target: WebTarget }
   | { type: 'reveal-target'; target: WebTarget }
@@ -130,7 +134,7 @@ export type HostCommand =
   | { type: 'capture'; requestId: string }
 export type SDKEvent =
   | { type: 'ready'; instanceId: string; manifest: WebProjectManifest; sourceValues: Values; context: WebContext }
-  | { type: 'scene'; context: WebContext; targets: WebTarget[] }
+  | { type: 'scene'; context: WebContext; targets: WebTarget[]; page?: WebTarget[] }
   | { type: 'selection'; target: WebTarget; additive: boolean }
   | { type: 'comment'; target: WebTarget }
   | { type: 'exit-tool' }
@@ -184,8 +188,10 @@ export function parseManifest(value: unknown): WebProjectManifest {
 function isRect(v: unknown): v is Rect { return record(v) && ['x', 'y', 'width', 'height'].every(k => Number.isFinite(v[k])) && Number(v.width) >= 0 && Number(v.height) >= 0 }
 export function isTarget(v: unknown): v is WebTarget {
   const stable = (key: unknown) => key === undefined || record(key) && text(key.id) && (key.instance === undefined || text(key.instance))
-  return record(v) && text(v.key) && typeof v.tag === 'string' && stable(v.stable) && typeof v.selector === 'string' && typeof v.fingerprint === 'string' && typeof v.label === 'string' && typeof v.pageId === 'string' && Array.isArray(v.ancestors) && v.ancestors.every(a => record(a) && text(a.key) && typeof a.label === 'string' && stable(a.stable)) && isRect(v.rect) && (v.clip === undefined || isRect(v.clip)) && ['resolved', 'provisional', 'missing', 'ambiguous'].includes(String(v.status))
+  return record(v) && text(v.key) && typeof v.tag === 'string' && stable(v.stable) && typeof v.selector === 'string' && typeof v.fingerprint === 'string' && typeof v.label === 'string' && typeof v.pageId === 'string' && Array.isArray(v.ancestors) && v.ancestors.every(a => record(a) && text(a.key) && typeof a.label === 'string' && stable(a.stable)) && isRect(v.rect) && (v.clip === undefined || isRect(v.clip)) && ['resolved', 'provisional', 'missing', 'ambiguous'].includes(String(v.status)) && (v.controls === undefined || Number.isInteger(v.controls) && Number(v.controls) >= 0 && Number(v.controls) <= 1000)
 }
+const hex = (v: unknown) => typeof v === 'string' && /^#[\da-f]{3,8}$/i.test(v)
+export function isChrome(v: unknown): v is WebChrome { return record(v) && hex(v.outline) && hex(v.chip) && hex(v.chipText) }
 export function isContext(v: unknown): v is WebContext {
   return record(v) && typeof v.pageId === 'string' && typeof v.url === 'string' && record(v.viewport) && ['width', 'height', 'dpr'].every(k => Number.isFinite((v.viewport as Record<string, unknown>)[k]) && Number((v.viewport as Record<string, unknown>)[k]) > 0) && record(v.scroll) && Number.isFinite(v.scroll.x) && Number.isFinite(v.scroll.y) && Array.isArray(v.scrollers) && v.scrollers.length <= 1000 && v.scrollers.every(s => record(s) && isTarget(s.target) && Number.isFinite(s.x) && Number.isFinite(s.y))
 }
@@ -217,14 +223,14 @@ export function isCommand(p: Record<string, unknown>): boolean {
     case 'restore-context': return isContext(p.context)
     case 'navigate': return typeof p.path === 'string'
     case 'capture': return safeId(p.requestId)
-    case 'configure': return (p.activeTargets === undefined || Array.isArray(p.activeTargets) && p.activeTargets.every(key => typeof key === 'string' && key.length < 2000)) && (p.displayScale === undefined || typeof p.displayScale === 'number' && p.displayScale >= .05 && p.displayScale <= 4) && ['browse', 'select', 'annotate'].includes(String(p.mode)) && ['note', 'arrow', 'rectangle', 'ellipse', 'highlight', 'pen'].includes(String(p.tool)) && typeof p.color === 'string' && /^#[\da-f]{6}$/i.test(p.color) && Array.isArray(p.targets) && p.targets.every(isTarget) && Array.isArray(p.marks) && p.marks.every(isMark)
+    case 'configure': return (p.chrome === undefined || isChrome(p.chrome)) && (p.activeTargets === undefined || Array.isArray(p.activeTargets) && p.activeTargets.every(key => typeof key === 'string' && key.length < 2000)) && (p.displayScale === undefined || typeof p.displayScale === 'number' && p.displayScale >= .05 && p.displayScale <= 4) && ['browse', 'select', 'annotate'].includes(String(p.mode)) && ['note', 'arrow', 'rectangle', 'ellipse', 'highlight', 'pen'].includes(String(p.tool)) && typeof p.color === 'string' && /^#[\da-f]{6}$/i.test(p.color) && Array.isArray(p.targets) && p.targets.every(isTarget) && Array.isArray(p.marks) && p.marks.every(isMark)
     default: return false
   }
 }
 export function isEvent(p: Record<string, unknown>): boolean {
   switch (p.type) {
     case 'ready': try { parseManifest(p.manifest); return safeId(p.instanceId) && isValues(p.sourceValues) && isContext(p.context) } catch { return false }
-    case 'scene': return isContext(p.context) && Array.isArray(p.targets) && p.targets.every(isTarget)
+    case 'scene': return isContext(p.context) && Array.isArray(p.targets) && p.targets.every(isTarget) && (p.page === undefined || Array.isArray(p.page) && p.page.length <= 500 && p.page.every(isTarget))
     case 'selection': return isTarget(p.target) && typeof p.additive === 'boolean'
     case 'comment': return isTarget(p.target)
     case 'exit-tool': return true

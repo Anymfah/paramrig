@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { ArrowUpRight, ChevronDown, ChevronLeft, ChevronRight, Circle, Highlighter, Maximize, MessageSquare, Pencil, Plus, SlidersHorizontal, Square, Trash2, X } from 'lucide-react'
 import { WorkspaceShell } from '../shell/WorkspaceShell'
 import { listRigs } from '../rigs/registry'
 import { updatePrefs } from '../state/workspace'
+import { resolvedTheme, subscribeTheme } from '../state/theme'
 import { WebToolbar } from './WebToolbar'
 import { WebAnnotations } from './WebAnnotations'
-import { selectionControls } from './selection'
+import { needsReattach, overlayChrome, selectionControls } from './selection'
+import { NoControls, TargetPicks, TargetStatus } from './WebTargets'
 import { WebControls } from './WebControls'
 import { FeedbackReview } from './FeedbackReview'
 import { valuesEqual } from '../state/values'
@@ -61,6 +63,9 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const { session, service, setError } = sync
   const doc = session.document
   const manifest = service?.manifest ?? initialManifest
+  const theme = useSyncExternalStore(subscribeTheme, resolvedTheme)
+  // The overlay is drawn inside the project's page, which knows nothing of the workbench palette.
+  const chrome = useMemo(() => overlayChrome(theme), [theme])
   const [mode, setMode] = useState<Mode>('browse')
   const [tool, setTool] = useState<MarkTool>('note')
   const [pageAnchor, setPageAnchor] = useState(false)
@@ -69,6 +74,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const [panel, setPanel] = useState<'controls' | 'feedback' | 'snapshots'>('controls')
   const [selected, setSelected] = useState<WebTarget[]>([])
   const [resolved, setResolved] = useState<WebTarget[]>([])
+  const [pageTargets, setPageTargets] = useState<WebTarget[]>([])
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null)
   const [reattachKey, setReattachKey] = useState<string | null>(null)
   const [context, setContext] = useState<WebContext | null>(null)
@@ -149,7 +155,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       if (event.manifest.revision !== manifest.revision) { setConnection('Waiting for matching source revision'); return }
       setConnection('Connected'); session.replaceSource(event.manifest, event.sourceValues)
       if (pendingContext.current?.pageId === event.context.pageId) { send({ type: 'restore-context', context: pendingContext.current }); pendingContext.current = null }
-    } else if (event.type === 'scene') { setContext(event.context); setResolved(event.targets) }
+    } else if (event.type === 'scene') { setContext(event.context); setResolved(event.targets); setPageTargets(event.page ?? []) }
     else if (event.type === 'selection') {
       if (reattachKey && ticket) {
         const previous = ticket.targets.find(t => t.key === reattachKey)
@@ -216,7 +222,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     return () => { captures.forEach(r => clearTimeout(r.timer)); captures.clear(); setPendingCapture(false) }
   }, [iframeKey])
 
-  useEffect(() => { send({ type: 'configure', mode, tool, color, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), displayScale: scale }) }, [send, mode, tool, color, targetList, marks, selected, connection, frameLoad, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
+  useEffect(() => { send({ type: 'configure', mode, tool, color, chrome, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), displayScale: scale }) }, [send, mode, tool, color, chrome, targetList, marks, selected, connection, frameLoad, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
   useEffect(() => { send({ type: 'values', values: previewMode === 'reference' ? doc.sourceValues : doc.values, source: previewMode === 'source' }) }, [send, doc.values, doc.sourceValues, previewMode, connection, frameLoad, readyRevision, previewEpoch])
   useEffect(() => {
     const observer = new ResizeObserver(entries => { const r = entries[0]?.contentRect; if (r) setAvailable({ width: r.width, height: r.height }) })
@@ -255,9 +261,12 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   // control that looks ready and does nothing is worse than one that is plainly not ready yet.
   const previewReady = connection === 'Connected'
   const liveTargets = targetList.map(t => resolved.find(r => r.key === t.key) ?? t)
+  const withControls = pageTargets.filter(t => (t.controls ?? 0) > 0)
   const currentSelection = selected.filter(target => target.pageId === context?.pageId)
   const boundParams = selectionControls(manifest, currentSelection, context?.pageId)
   const selection = liveTargets.find(target => target.key === currentSelection[0]?.key)
+  const elsewhere = withControls.filter(t => t.key !== selection?.key)
+  const aroundIt = (selection?.ancestors ?? []).flatMap(a => withControls.filter(t => t.key === a.key))
   const selectTarget = (t: WebTarget) => { setSelected([t]); send({ type: 'select', target: t }) }
   const openTicket = (t: WebTicket, restore = true) => {
     updatePrefs({ inspectorCollapsed: false }); setActiveTicketId(t.id); setPanel('feedback'); setMode('select'); setMobile('inspector'); setAddingTargets(false)
@@ -318,7 +327,9 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
             {mode !== 'select' ? <Button variant="ghost" size="sm" onClick={() => newTicket(currentSelection)}><MessageSquare size={14} />Comment</Button> : null}
           </section> : null}
           <WebControls session={session} controls={boundParams} values={previewMode === 'current' ? doc.values : doc.sourceValues} disabled={previewMode !== 'current' || !previewReady} />
-          {!boundParams.length && !selection ? <StatusMessage>No controls on this page.</StatusMessage> : null}
+          {boundParams.length || !selection ? null : <NoControls ancestors={aroundIt} page={elsewhere} onPick={selectTarget} />}
+          {!boundParams.length && !selection && !elsewhere.length ? <StatusMessage>No controls on this page.</StatusMessage> : null}
+          {!selection && elsewhere.length ? <details className="web-disclosure"><summary>On this page<span>{elsewhere.length}</span></summary><TargetPicks targets={elsewhere} label="Elements with controls" onPick={selectTarget} /></details> : null}
         </> : null}
         {!batch && !screen && panel === 'feedback' ? <>
           <div className="web-actions">{ticket ? <Button size="sm" variant="quiet" onClick={() => { setActiveTicketId(null); setAddingTargets(false); setMode('select') }}><ChevronLeft size={14} />Comments</Button> : <Button variant="ghost" onClick={startNote} disabled={!context}><Plus size={14} />Comment on page</Button>}</div>
@@ -328,7 +339,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
               <Button variant="ghost" size="sm" aria-pressed={mode === 'annotate'} onClick={() => { setMode(mode === 'annotate' ? 'select' : 'annotate'); setTool('arrow'); setPageAnchor(false); setMobile('main'); setAddingTargets(false) }}><Pencil size={14} />Draw</Button>
               <Button variant="quiet" size="sm" aria-pressed={addingTargets} onClick={() => { setAddingTargets(!addingTargets); setMode('select'); setMobile('main') }}><Plus size={14} />{addingTargets ? 'Done selecting' : 'Add target'}</Button>
             </div>
-            {ticket.targets.map(t => { const live = liveTargets.find(v => v.key === t.key) ?? t; return <div key={t.key} className="web-target-row"><button type="button" onClick={() => { setSelected([t]); send({ type: 'reveal-target', target: t }) }}>{t.label}{live.status !== 'resolved' ? <small>{live.status}</small> : null}</button>{live.status !== 'resolved' ? <Button variant="quiet" size="sm" onClick={() => { setReattachKey(t.key); setMode('select') }}>Reattach</Button> : null}</div> })}
+            {ticket.targets.map(t => { const live = liveTargets.find(v => v.key === t.key) ?? t; return <div key={t.key} className="web-target-row"><button type="button" onClick={() => { setSelected([t]); send({ type: 'reveal-target', target: t }) }}>{t.label}<TargetStatus status={live.status} /></button>{needsReattach(live.status) ? <Button variant="quiet" size="sm" onClick={() => { setReattachKey(t.key); setMode('select') }}>Reattach</Button> : null}</div> })}
             {reattachKey ? <p className="status-msg" role="status">Click the replacement element in the page. <button type="button" className="web-inline" onClick={() => setReattachKey(null)}>Cancel</button></p> : null}
             {ticket.marks.some(mark => mark.tool !== 'note') ? <details className="web-disclosure"><summary>Marks<span>{ticket.marks.filter(mark => mark.tool !== 'note').length}</span></summary>{ticket.marks.filter(mark => mark.tool !== 'note').map(mark => <div className="web-mark-row" key={mark.id}><span>{tools.find(tool => tool.id === mark.tool)?.label}</span><Button size="sm" variant="quiet" onClick={() => session.editTicket(ticket.id, t => { t.marks = t.marks.filter(item => item.id !== mark.id); t.status = 'draft'; delete t.batchId }, 'Remove annotation')}>Remove</Button></div>)}</details> : null}
             {ticket.status === 'review' && ticket.responseRevision !== doc.sourceRevision ? <StatusMessage>This correction belongs to an earlier source revision. Reopen it for a fresh review.</StatusMessage> : null}

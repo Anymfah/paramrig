@@ -1,4 +1,8 @@
 /*
+ * `networkidle` is never waited for here: the workspace holds an EventSource open on the project
+ * service for as long as it is on screen, so the network is never idle and the wait is a timeout
+ * dressed as a load. The scripts wait for the elements they are about to use instead.
+ *
  * The handshake. How long the preview says it is connecting, in the three cases a person meets —
  * opening the workspace, reloading the preview, changing page — and what the workspace lets them
  * touch while it is saying so.
@@ -51,7 +55,7 @@ export default run('web-connect', async ({ page, check, log }) => {
   const settled = () => page.waitForFunction(() => document.querySelectorAll('.web-connection-notice').length === 0, null, { timeout: 30000 })
   const marks = () => page.evaluate(() => window.__hs)
   const open = async () => {
-    await page.goto(`${BASE}/web`, { waitUntil: 'networkidle' })
+    await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: 'Open project' }).click()
     await page.waitForSelector('.web-toolbar')
     await settled()

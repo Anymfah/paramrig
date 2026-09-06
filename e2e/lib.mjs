@@ -64,6 +64,12 @@ export async function run(name, body) {
     setTimeout(() => resolve(frames), 400)
   }))
   try {
+    /*
+     * The borrowed page can still be navigating: the run before this one ends with a goto to a
+     * blank page and then drops its CDP connection, and a probe that arrives in between is answered
+     * with "execution context was destroyed" rather than with a number.
+     */
+    await page.waitForLoadState('domcontentloaded').catch(() => undefined)
     await page.setViewportSize({ width: 1440, height: 900 })
     /*
      * The canary. A shared headless browser sometimes stops drawing — an occluded window, a page

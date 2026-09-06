@@ -28,7 +28,7 @@ describe('web selection toggle', () => {
     fireEvent.click(select)
     expect(select).toHaveAttribute('aria-pressed', 'true')
     await user.hover(select)
-    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Stop selecting (Esc)'))
+    await waitFor(() => expect(screen.getByRole('tooltip')).toHaveTextContent('Select element · Esc to leave'))
     await user.click(select)
     expect(select).toHaveAttribute('aria-pressed', 'false')
     await user.keyboard('{Enter}')

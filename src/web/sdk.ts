@@ -1,4 +1,4 @@
-import { announcement, envelope, isCommand, isEnvelope, parseManifest, WEB_PROTOCOL, type HostCommand, type SDKEvent, type Values, type WebBinding, type WebContext, type WebMark, type WebProjectManifest, type WebTarget, type TargetKey, type Point } from './contracts.ts'
+import { announcement, envelope, isCommand, isEnvelope, parseManifest, WEB_PROTOCOL, type HostCommand, type SDKEvent, type Values, type WebBinding, type WebContext, type WebMark, type WebProjectManifest, type WebTarget, type WebChrome, type TargetKey, type Point } from './contracts.ts'
 import { markPoints, pathForMark, storedPoint } from './geometry.ts'
 import type { ParamValue } from '../rigs/types.ts'
 
@@ -36,6 +36,9 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   let frame = 0
   let lastScene = ''
   let lastDrawing = ''
+  let lastInstrumented = ''
+  let instrumented: WebTarget[] = []
+  let chrome: WebChrome = { outline: '#488a99', chip: '#1e2423', chipText: '#eef2f1' }
   const originalTouchAction = document.documentElement.style.touchAction
   const resolvedElements = new Map<string, Element>()
   const baselineStyles = new Map<Element, Map<string, { value: string; priority: string }>>()
@@ -68,11 +71,30 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     return parts.join(' > ') || 'html'
   }
   const fingerprint = (el: Element) => `${el.localName}|${el.getAttribute('role') ?? ''}|${el.getAttribute('aria-label') ?? ''}|${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 160)}`
+  /** `story-card` reads as `Story card`: a declared identifier is a name, not a slug. */
+  const named = (id: string) => { const words = id.replace(/[-_]+/g, ' ').trim(); return words ? words[0]!.toUpperCase() + words.slice(1) : '' }
+  /*
+   * What a person calls this element. The declared label wins, then the identifier the integration
+   * chose, then the accessible name, then the words on screen. The last resort still says which
+   * element it is: an inspector headed `div` names nothing.
+   */
   const label = (el: Element) => {
-    const declared = el.getAttribute('data-paramrig-label') || el.getAttribute('aria-label')
+    const declared = el.getAttribute('data-paramrig-label')
     if (declared) return declared.slice(0, 90)
-    const content = el.matches('a,button,p,h1,h2,h3,h4,h5,h6,label,span,li') ? (el.textContent ?? '').trim().replace(/\s+/g, ' ') : ''
-    return (content || el.getAttribute('data-paramrig-id')?.replace(/[-_]/g, ' ') || el.localName).slice(0, 60)
+    const id = el.getAttribute('data-paramrig-id')
+    if (id && named(id)) return named(id).slice(0, 60)
+    const aria = el.getAttribute('aria-label')
+    if (aria) return aria.slice(0, 90)
+    // Leaf-ish elements only: a container's text is its whole subtree, which names nothing.
+    const content = el.matches('a,button,p,h1,h2,h3,h4,h5,h6,label,span,li,em,strong,small,figcaption,summary,td,th,dt,dd,legend') ? (el.textContent ?? '').trim().replace(/\s+/g, ' ') : ''
+    return (content || `Unnamed ${el.localName}`).slice(0, 60)
+  }
+  /** How many of the manifest's controls reach this element, counted where the manifest lives. */
+  const controlCount = (el: Element) => {
+    const stable = ownStable(el)
+    if (!stable) return 0
+    return new Set(manifest.bindings.filter(b => applies(b) && b.scope === 'element' && b.target?.id === stable.id
+      && (b.target.instance === undefined || b.target.instance === stable.instance)).map(b => b.paramId)).size
   }
   function describe(el: Element, ancestors = true): WebTarget {
     const stable = ownStable(el)
@@ -98,7 +120,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
         parents.push({ key, label: label(parent), stable }); parent = parent.parentElement
       }
     }
-    return { key, stable, selector: sel, fingerprint: fingerprint(el), label: label(el), tag: el.localName, ...(source ? { source } : {}), pageId: pageId(), rect: { x: r.x, y: r.y, width: r.width, height: r.height }, clip, ancestors: parents, status: stable ? elements(stable, true).length === 1 ? 'resolved' : 'ambiguous' : 'provisional' }
+    return { key, stable, selector: sel, fingerprint: fingerprint(el), label: label(el), tag: el.localName, ...(source ? { source } : {}), pageId: pageId(), rect: { x: r.x, y: r.y, width: r.width, height: r.height }, clip, ancestors: parents, controls: controlCount(el), status: stable ? elements(stable, true).length === 1 ? 'resolved' : 'ambiguous' : 'provisional' }
   }
   function resolve(target: WebTarget): { element?: Element; target: WebTarget } {
     if (target.pageId !== pageId()) return { target: { ...target, status: 'missing' } }
@@ -112,6 +134,18 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     // A positional selector alone never silently reattaches an annotation to a different element.
     return { target: { ...target, status: 'missing' } }
   }
+  /*
+   * Every instrumented element on the page, so the workspace can say where the controls are without
+   * a person having to guess which element to click. Rebuilt only when the cast changes: the boxes
+   * in it go stale as the page scrolls, and nothing reads them — a target is reselected through its
+   * stable key, which is re-described at that moment.
+   */
+  function pageTargets(): WebTarget[] {
+    const els = [...document.querySelectorAll('[data-paramrig-id]')].slice(0, 200)
+    const signature = `${pageId()}|${els.map(el => `${el.getAttribute('data-paramrig-id')}/${ownStable(el)?.instance ?? ''}`).join(',')}`
+    if (signature !== lastInstrumented) { lastInstrumented = signature; instrumented = els.map(el => describe(el, false)) }
+    return instrumented
+  }
   function context(): WebContext {
     const scrollers: WebContext['scrollers'] = []
     for (const el of document.querySelectorAll('[data-paramrig-id]')) if (el.scrollTop || el.scrollLeft) scrollers.push({ target: describe(el, false), x: el.scrollLeft, y: el.scrollTop })
@@ -120,6 +154,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   function send(payload: SDKEvent) { if (sessionId && !disposed) window.parent.postMessage(envelope(sessionId, payload), hostOrigin) }
   function draw() {
     svg.replaceChildren()
+    delete host.dataset.hover
     const clippedGroup = (target?: WebTarget) => {
       if (!target?.clip) return svg
       const clip = document.createElementNS(svgNS, 'clipPath'); const box = document.createElementNS(svgNS, 'rect')
@@ -130,9 +165,11 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     }
     const outlined = mode === 'browse' ? [] : [hover, ...targets.filter(t => activeTargets.includes(t.key))]
     for (const t of outlined.filter((t): t is WebTarget => !!t && !['missing', 'ambiguous'].includes(t.status))) {
+      const group = clippedGroup(t)
       const rect = document.createElementNS(svgNS, 'rect')
       for (const key of ['x', 'y', 'width', 'height'] as const) rect.setAttribute(key, String(t.rect[key]))
-      rect.setAttribute('fill', '#62aab714'); rect.setAttribute('stroke', '#488a99'); rect.setAttribute('stroke-width', '1.5'); clippedGroup(t).append(rect)
+      rect.setAttribute('fill', `${chrome.outline.slice(0, 7)}14`); rect.setAttribute('stroke', chrome.outline); rect.setAttribute('stroke-width', '1.5'); group.append(rect)
+      if (t === hover) caption(group, t)
     }
     for (const m of [...marks.filter(m => m.id !== draft?.id), ...(draft ? [draft] : [])]) {
       if (m.pageId !== pageId()) continue
@@ -146,6 +183,35 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
       }
     }
   }
+  /*
+   * The name of the element under the pointer, and how many controls reach it. Without it an
+   * instrumented element looks exactly like every other one, and the only way to find the controls
+   * is to click around until the inspector fills. Drawn in the page's own coordinates, so it is
+   * divided by the display scale to stay the same size on the workbench's screen.
+   */
+  function caption(group: Element, t: WebTarget) {
+    const scale = 1 / Math.max(.05, displayScale)
+    const size = 11 * scale
+    const height = 18 * scale
+    const pad = 6 * scale
+    const words = t.controls ? `${t.label} · ${t.controls} control${t.controls === 1 ? '' : 's'}` : t.label
+    // The overlay's root is closed, so what it says about the element under the pointer is readable
+    // from its own host element and nowhere else.
+    host.dataset.hover = words
+    const box = document.createElementNS(svgNS, 'rect')
+    const text = document.createElementNS(svgNS, 'text')
+    text.textContent = words
+    text.setAttribute('font-family', 'system-ui, -apple-system, Segoe UI, sans-serif')
+    text.setAttribute('font-size', String(size)); text.setAttribute('fill', chrome.chipText); text.setAttribute('dominant-baseline', 'central')
+    group.append(box, text)
+    // jsdom has no text metrics; the estimate keeps the unit tests able to draw an overlay.
+    const width = Math.min((text.getComputedTextLength?.() ?? words.length * size * .55) + pad * 2, innerWidth)
+    const x = Math.max(0, Math.min(innerWidth - width, t.rect.x))
+    const y = t.rect.y - height - 2 * scale >= 0 ? t.rect.y - height - 2 * scale : Math.min(innerHeight - height, t.rect.y + 2 * scale)
+    for (const [key, value] of [['x', x], ['y', y], ['width', width], ['height', height], ['rx', 3 * scale]] as const) box.setAttribute(key, String(value))
+    box.setAttribute('fill', chrome.chip); box.setAttribute('stroke', chrome.outline); box.setAttribute('stroke-width', String(scale))
+    text.setAttribute('x', String(x + pad)); text.setAttribute('y', String(y + height / 2))
+  }
   function refresh() {
     frame = 0
     if (!sessionId || disposed) return
@@ -153,8 +219,8 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     if (hover) { const el = resolvedElements.get(hover.key); hover = el?.isConnected ? describe(el) : null }
     const drawing = JSON.stringify([hover, targets, activeTargets, marks, draft, mode, scrollX, scrollY])
     if (drawing !== lastDrawing) { draw(); lastDrawing = drawing }
-    const c = context(); const signature = JSON.stringify([c, targets])
-    if (signature !== lastScene) { lastScene = signature; send({ type: 'scene', context: c, targets }) }
+    const c = context(); const page = pageTargets(); const signature = JSON.stringify([c, targets, lastInstrumented])
+    if (signature !== lastScene) { lastScene = signature; send({ type: 'scene', context: c, targets, page }) }
     if (!document.hidden && (mode !== 'browse' || marks.length > 0 || targets.length > 0)) schedule()
   }
   function schedule() { if (!frame && sessionId) frame = requestAnimationFrame(refresh) }
@@ -242,6 +308,7 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     if (p.type === 'configure') {
       if (p.mode !== mode || p.tool !== tool) cancel()
       mode = p.mode; displayScale = p.displayScale ?? 1
+      if (p.chrome) chrome = p.chrome
       if (mode === 'browse') hover = null
       tool = p.tool; color = p.color; targets = p.targets; marks = p.marks; activeTarget = p.activeTarget
       activeTargets = p.activeTargets ?? (p.activeTarget ? [p.activeTarget] : [])
@@ -311,6 +378,16 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
     draft = null; pointerId = undefined; pointerOwner = null; dragTarget = undefined; dragIndex = undefined
     schedule()
   }
+  /*
+   * The pointer left the page. Without this the last outline stays drawn for good — usually the one
+   * around the whole document — and follows the workspace into review, snapshots and every capture
+   * taken afterwards.
+   */
+  function leave(event: PointerEvent) {
+    if (!isEditing() || event.relatedTarget || !hover) return
+    hover = null; schedule()
+  }
+  function blur() { cancel(); if (hover) { hover = null; schedule() } }
   function click(event: MouseEvent) { if (isEditing()) { event.preventDefault(); event.stopImmediatePropagation() } }
   function key(event: KeyboardEvent) {
     if (!isEditing()) return
@@ -332,7 +409,8 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   window.addEventListener('message', message)
   window.addEventListener('scroll', schedule, true); window.addEventListener('resize', schedule)
   window.addEventListener('pointerdown', down, true); window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', cancel, true)
-  window.addEventListener('click', click, true); window.addEventListener('keydown', key, true); window.addEventListener('blur', cancel)
+  window.addEventListener('click', click, true); window.addEventListener('keydown', key, true); window.addEventListener('blur', blur)
+  window.addEventListener('pointerout', leave, true); window.addEventListener('pointerleave', leave, true)
   // The host cannot know when the application finished booting, so the SDK says so itself. Until
   // this frame arrives the host is guessing, and a guess costs a whole retry interval.
   window.parent.postMessage(announcement(manifest.id, instanceId), hostOrigin)
@@ -347,7 +425,8 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
       disposed = true; cancel(); restore(); document.documentElement.style.touchAction = originalTouchAction; host.remove(); observer.disconnect(); resize.disconnect(); clearInterval(heartbeat); cancelAnimationFrame(frame)
       window.removeEventListener('message', message); window.removeEventListener('scroll', schedule, true); window.removeEventListener('resize', schedule)
       window.removeEventListener('pointerdown', down, true); window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', end, true); window.removeEventListener('pointercancel', cancel, true)
-      window.removeEventListener('click', click, true); window.removeEventListener('keydown', key, true); window.removeEventListener('blur', cancel)
+      window.removeEventListener('click', click, true); window.removeEventListener('keydown', key, true); window.removeEventListener('blur', blur)
+      window.removeEventListener('pointerout', leave, true); window.removeEventListener('pointerleave', leave, true)
     },
   }
 }

@@ -8,9 +8,9 @@ import { run, BASE } from './lib.mjs'
 export default run('web-deeplink', async ({ page, check, log }) => {
   const forget = () => page.evaluate(() => localStorage.removeItem('paramrig.web-projects.v1'))
 
-  await page.goto(`${BASE}/web`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
   await forget()
-  await page.goto(`${BASE}/r/web-fieldnotes`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/r/web-fieldnotes`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.web-toolbar', { timeout: 20000 })
   check('a link to an unopened project opens the workspace', await page.locator('.web-toolbar').count() === 1)
   check('the registry page is never shown for a web link', await page.locator('h1:has-text("not in the example registry")').count() === 0)
@@ -24,7 +24,7 @@ export default run('web-deeplink', async ({ page, check, log }) => {
 
   // An identifier the service is not connected to lands on the fallback, not on the library error.
   await forget()
-  await page.goto(`${BASE}/r/web-nothinghere`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/r/web-nothinghere`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.web-connect h1', { timeout: 20000 })
   await page.waitForFunction(() => document.querySelector('.web-connect h1')?.textContent === 'Connect this web project', null, { timeout: 20000 }).catch(() => undefined)
   const heading = await page.locator('.web-connect h1').innerText()
@@ -32,7 +32,7 @@ export default run('web-deeplink', async ({ page, check, log }) => {
   check('the fallback offers the way out', await page.locator('.web-connect a[href="/web"]').count() === 1)
 
   // The connections page says what the workspace is for, and what the project is.
-  await page.goto(`${BASE}/web`, { waitUntil: 'networkidle' })
+  await page.goto(`${BASE}/web`, { waitUntil: 'domcontentloaded' })
   await page.waitForSelector('.web-connect__project', { timeout: 20000 })
   const lede = await page.locator('.web-connect > p').first().innerText()
   const row = await page.locator('.web-connect__project p').innerText()

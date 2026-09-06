@@ -70,7 +70,7 @@ export function WebToolbar(p: Props) {
       </Popover.Content></Popover.Portal>
     </Popover.Root>
     <div className="web-mode" role="group" aria-label="Preview interaction" inert={!p.ready}>
-      <Tooltip content={p.mode === 'browse' ? 'Select element' : 'Stop selecting (Esc)'}>
+      <Tooltip content={p.mode === 'browse' ? 'Select element' : 'Select element · Esc to leave'}>
         <IconButton label="Select element" aria-pressed={p.mode !== 'browse'} onClick={() => p.onMode(p.mode === 'browse' ? 'select' : 'browse')}>
           <MousePointer2 size={16} aria-hidden="true" />
         </IconButton>

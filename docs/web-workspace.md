@@ -136,6 +136,23 @@ Instance keys are inherited by descendants. Supply stable semantic IDs for the
 elements most likely to receive feedback. The source reference is a hint supplied
 by the integration, not an inferred source-map guarantee.
 
+An element is named by `data-paramrig-label`, else by its `data-paramrig-id` read
+as a sentence (`story-card` becomes **Story card**), else by its accessible name,
+else by the words on screen, and only then as **Unnamed div**. The outline under
+the pointer carries that name and, when the manifest reaches the element, how
+many controls it has; the outline's colours travel with `configure` from the
+workbench tokens, so it follows the theme. The outline leaves with the pointer.
+
+An element with no controls of its own is not an empty panel: the inspector says
+so, then offers the ancestors that do have controls and the other instrumented
+elements of the page, each with its count. Choosing one selects and reveals it.
+With nothing selected, the same list is a folded **On this page** section in the
+project controls. Repeated components are told apart by their instance.
+
+A target's state is shown in words — **Not instrumented**, **Missing on this
+page**, **Several matches** — and **Reattach** is offered only for the last two,
+which are the ones a person can repair.
+
 Uninstrumented elements can also be selected. Their DOM reference is provisional;
 after replacement or reload they must be explicitly reattached. Positional CSS
 selectors are recorded as context but never silently resolve a moved target.

@@ -41,6 +41,39 @@ describe('page-side web integration', () => {
     expect(announcements()).toHaveLength(1)
   })
 
+  it('names an element the way a person would, and never with a bare tag', () => {
+    const { send, events } = setup(); send(configure('select'))
+    document.body.insertAdjacentHTML('beforeend', '<section id="plain-box"><h2 data-paramrig-id="story-title" data-paramrig-label="The card heading">Coast</h2><h3 data-paramrig-id="hero-title">Ignored text</h3><nav aria-label="Fieldnotes navigation"><em>menu</em></nav><div id="bare"><i>x</i></div></section>')
+    const named = (selector: string) => {
+      document.querySelector(selector)!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+      return events.filter(e => e.type === 'selection').at(-1)!.target
+    }
+    expect(named('[data-paramrig-label]').label).toBe('The card heading')
+    expect(named('#plain-box h3').label).toBe('Hero title')
+    expect(named('#plain-box nav').label).toBe('Fieldnotes navigation')
+    expect(named('#plain-box em').label).toBe('menu')
+    expect(named('#bare').label).toBe('Unnamed div')
+    // The count travels with the target, so the page can label its own outline with it.
+    expect(named('#plain-box h3').controls).toBe(2)
+    expect(named('#bare').controls).toBe(0)
+  })
+
+  it('labels the element under the pointer, and drops the outline when the pointer leaves', async () => {
+    const { send } = setup()
+    const title = document.querySelector('h1')!
+    send(configure('select'))
+    title.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }))
+    const overlay = () => document.querySelector('paramrig-overlay') as HTMLElement
+    await vi.waitFor(() => expect(overlay().dataset.hover).toBe('Hero title · 2 controls'))
+    window.dispatchEvent(new PointerEvent('pointerout', { bubbles: true }))
+    await vi.waitFor(() => expect(overlay().dataset.hover).toBeUndefined())
+    // Escape and a return to browsing clear it too.
+    title.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 5, clientY: 5 }))
+    await vi.waitFor(() => expect(overlay().dataset.hover).toBe('Hero title · 2 controls'))
+    send(configure('browse'))
+    await vi.waitFor(() => expect(overlay().dataset.hover).toBeUndefined())
+  })
+
   it('accepts only the paired parent origin and session', () => {
     const { send } = setup()
     send({ type: 'values', values: { accent: '#123456' }, source: false }, 'https://untrusted.example')
@@ -69,7 +102,7 @@ describe('page-side web integration', () => {
     buttons[1]!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, shiftKey: true }))
     const selected = events.filter(e => e.type === 'selection')
     expect(selected.map(e => e.target.stable?.instance)).toEqual(['coast', 'forest'])
-    expect(selected[0]!.target.ancestors[0]!.label).toBe('story card')
+    expect(selected[0]!.target.ancestors[0]!.label).toBe('Story card')
     expect(selected.every(e => e.target.status === 'resolved')).toBe(true); expect(clicked).not.toHaveBeenCalled()
     expect(document.activeElement?.tagName.toLowerCase()).toBe('paramrig-overlay')
     document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }))
