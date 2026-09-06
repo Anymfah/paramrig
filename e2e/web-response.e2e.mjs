@@ -124,7 +124,14 @@ export default run('web-response', async ({ page, check, log }) => {
     await validate.click()
     await page.waitForTimeout(800)
     check('validating closes the comment', await ticketStatus() === 'Validated', await ticketStatus())
-    check('and a validated comment leaves the page', await page.locator('.web-comment-pin').count() === 0)
+    /*
+     * Its own pin, not every pin. A pin is drawn for a comment that is neither validated nor
+     * scrolled out of view, so counting them all passes or fails on where the preview happens to
+     * be sitting — which it did, silently, until the example page's rhythm changed. The comment
+     * that was validated is the one that has to go, and the one still waiting has to stay.
+     */
+    check('and a validated comment leaves the page', await page.getByRole('button', { name: 'Open comment 1' }).count() === 0)
+    check('while the comment still waiting keeps its pin', await page.getByRole('button', { name: 'Open comment 2' }).count() === 1)
 
     await openComment(RADIUS)
     check('a needs-info answer asks rather than closes', await ticketStatus() === 'Needs clarification', await ticketStatus())

@@ -1,13 +1,142 @@
+/*
+ * Fieldnotes — the page the connected web workspace opens.
+ *
+ * It is a real editorial page rather than a demo harness: an integrator judges ParamRig by what
+ * their own project will look like beside it. Three custom properties are driven from the
+ * workbench and everything else is derived from them, so tuning the paper or the accent moves the
+ * whole page in step instead of leaving hard-coded greys behind — which is the point being made.
+ */
 @font-face { font-family: 'Public Sans'; src: url('/fonts/PublicSans.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
-:root { --fn-accent: #bc593d; --fn-paper: #f4f1e9; --fn-width: 1120px; color: #283831; background: var(--fn-paper); font-family: 'Public Sans', sans-serif; }
-* { box-sizing: border-box; } body { margin: 0; } h1,h2,p { margin: 0; } a { color: inherit; } button,a { touch-action: manipulation; } button { cursor: pointer; font: inherit; } nav a,button { user-select: none; } :focus-visible { outline: 2px solid var(--fn-accent); outline-offset: 4px; }
-.fn-page { max-width: var(--fn-width); margin: auto; padding: 0 48px 64px; }
-.fn-nav { display:flex; align-items:center; gap:32px; padding:32px 0; border-bottom:1px solid #28383120; } .fn-brand { font-size:24px; letter-spacing:-1px; font-weight:650; text-decoration:none; margin-right:auto; } .fn-nav > a:not(.fn-brand) { font-size:13px; text-decoration:none; } .fn-menu { position:relative; } .fn-menu button { border:1px solid #28383130; background:transparent; padding:8px 16px; border-radius:4px; color:inherit; } .fn-menu-panel { position:absolute; right:0; top:40px; display:flex; flex-direction:column; gap:16px; background:var(--fn-paper); padding:24px; border:1px solid #28383120; z-index:4; min-width:160px; }
-.fn-hero { display:grid; grid-template-columns:1.15fr 1fr; gap:48px; padding:64px 0; align-items:center; } .fn-kicker { text-transform:uppercase; letter-spacing:2px; color:var(--fn-accent); font-size:11px; font-weight:650; } .fn-hero-copy { display:flex; flex-direction:column; gap:24px; } .fn-hero h1 { font-size:76px; font-weight:400; line-height:1.02; letter-spacing:-3px; } .fn-hero p { font-size:15px; line-height:1.7; max-width:38ch; color:#536258; }
-.fn-link { display:inline-flex; align-items:center; align-self:flex-start; gap:12px; background:var(--fn-accent); color:#fffaf2; border:none; border-radius:4px; padding:16px 24px; font-size:13px; text-decoration:none; transition:filter 120ms; } .fn-link:hover { filter:brightness(.92); }
-.fn-art { aspect-ratio:4/5; overflow:hidden; background:#dedfca; border-radius:160px 160px 4px 4px; position:relative; } .fn-art svg { width:100%; height:100%; display:block; }
-.fn-section-head { display:flex; justify-content:space-between; align-items:baseline; border-top:1px solid #28383120; padding:24px 0; } .fn-section-head h2 { font-size:26px; font-weight:400; } .fn-section-head span { font-size:11px; letter-spacing:1px; color:#627064; }
-.fn-stories { display:grid; grid-template-columns:1fr 1fr; gap:24px; } .fn-card { padding:24px; border:1px solid #28383120; border-radius:4px; display:flex; flex-direction:column; gap:16px; background:#fff6; } .fn-card h2 { font-size:28px; font-weight:400; } .fn-card p { line-height:1.7; color:#536258; font-size:14px; } .fn-card a { text-decoration:none; font-size:13px; color:var(--fn-accent); display:flex; align-items:center; gap:12px; }
-.fn-reading { margin-top:48px; padding-top:24px; border-top:1px solid #28383120; } .fn-reading h2 { font-size:24px; font-weight:400; padding-bottom:16px; } .fn-scroll { max-height:180px; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; } .fn-scroll p { line-height:1.8; padding:16px 0; border-top:1px solid #28383114; font-size:14px; }
-@media(max-width:760px) { .fn-page { padding:0 24px 32px; } .fn-nav { gap:16px; padding:24px 0; } .fn-nav > a:not(.fn-brand) { display:none; } .fn-hero { grid-template-columns:1fr; padding:32px 0; gap:32px; } .fn-hero h1 { font-size:52px; } .fn-art { aspect-ratio:4/3; border-radius:160px 160px 4px 4px; } .fn-stories { grid-template-columns:1fr; } }
-@media(prefers-reduced-motion:reduce) { * { transition:none!important; } }
+
+:root {
+  /* Driven from the workbench. Everything below is mixed from these three. */
+  --fn-accent: #bc593d;
+  --fn-paper: #f4f1e9;
+  --fn-width: 1120px;
+
+  --fn-ink: #283831;
+  --fn-ink-soft: color-mix(in oklab, var(--fn-ink) 74%, var(--fn-paper));
+  --fn-ink-faint: color-mix(in oklab, var(--fn-ink) 68%, var(--fn-paper));
+  /* A saturated accent carries fills, rules and glows; small text takes a darker step off the same
+     ramp, because #bc593d on this paper is 4.0:1 and body text owes 4.5. */
+  --fn-accent-text: color-mix(in oklab, var(--fn-accent) 78%, var(--fn-ink));
+  --fn-on-accent: color-mix(in oklab, var(--fn-paper) 6%, #fff);
+  --fn-rule: color-mix(in oklab, var(--fn-ink) 14%, transparent);
+  --fn-rule-soft: color-mix(in oklab, var(--fn-ink) 7%, transparent);
+  --fn-raised: color-mix(in oklab, var(--fn-paper) 62%, #fff);
+  --fn-sky: color-mix(in oklab, var(--fn-paper) 55%, var(--fn-ink) 12%);
+
+  --fn-1: 4px; --fn-2: 8px; --fn-3: 12px; --fn-4: 16px; --fn-5: 24px;
+  --fn-6: 32px; --fn-7: 48px; --fn-8: 64px; --fn-9: 96px;
+
+  --fn-ease: cubic-bezier(.2, .7, .3, 1);
+  --fn-quick: 140ms var(--fn-ease);
+  --fn-settle: 260ms var(--fn-ease);
+
+  color: var(--fn-ink);
+  background: var(--fn-paper);
+  font-family: 'Public Sans', system-ui, sans-serif;
+  font-synthesis-weight: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; -webkit-font-smoothing: antialiased; }
+h1, h2, h3, p { margin: 0; }
+a { color: inherit; }
+button, a { touch-action: manipulation; }
+button { cursor: pointer; font: inherit; }
+/* Prose stays selectable; everything that is an action does not. */
+nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-colophon { user-select: none; }
+:focus-visible { outline: 2px solid var(--fn-accent); outline-offset: 3px; border-radius: 2px; }
+::selection { background: color-mix(in oklab, var(--fn-accent) 24%, transparent); }
+
+.fn-page { max-width: var(--fn-width); margin: auto; padding: 0 var(--fn-7) var(--fn-9); }
+
+/* Masthead ---------------------------------------------------------------- */
+.fn-nav { display: flex; align-items: center; gap: var(--fn-6); padding: var(--fn-5) 0; border-bottom: 1px solid var(--fn-rule); }
+.fn-brand { margin-right: auto; font-size: 21px; font-weight: 700; letter-spacing: -.02em; text-decoration: none; }
+.fn-brand::after { content: ''; display: block; width: 0; height: 2px; margin-top: 3px; background: var(--fn-accent); transition: width var(--fn-settle); }
+.fn-brand:hover::after { width: 100%; }
+.fn-nav > a:not(.fn-brand) { position: relative; font-size: 13px; text-decoration: none; color: var(--fn-ink-soft); transition: color var(--fn-quick); }
+.fn-nav > a:not(.fn-brand):hover { color: var(--fn-ink); }
+.fn-menu { position: relative; }
+/* Secondary to the hero's one loud action, so it is a ghost rather than an outlined button. */
+.fn-menu > button { border: 0; background: transparent; color: var(--fn-ink-soft); padding: var(--fn-2) var(--fn-3); border-radius: var(--fn-1); font-size: 13px; transition: background var(--fn-quick), color var(--fn-quick); }
+.fn-menu > button:hover, .fn-menu > button[aria-expanded=true] { background: var(--fn-rule-soft); color: var(--fn-ink); }
+.fn-menu > button:active { transform: translateY(1px); }
+.fn-menu-panel { position: absolute; right: 0; top: calc(100% + var(--fn-2)); z-index: 4; display: flex; flex-direction: column; align-items: flex-start; gap: var(--fn-3); min-width: 176px; padding: var(--fn-4); background: var(--fn-raised); border: 1px solid var(--fn-rule); border-radius: var(--fn-2); box-shadow: 0 12px 32px -12px color-mix(in oklab, var(--fn-ink) 28%, transparent); transform-origin: top right; animation: fn-open 160ms var(--fn-ease); }
+.fn-menu-panel a, .fn-menu-panel button { font-size: 13px; text-decoration: none; color: var(--fn-ink-soft); padding: 0; background: none; border: 0; transition: color var(--fn-quick); }
+.fn-menu-panel a:hover, .fn-menu-panel button:hover { color: var(--fn-accent); }
+@keyframes fn-open { from { opacity: 0; transform: scale(.96) translateY(-4px); } }
+
+/* Hero -------------------------------------------------------------------- */
+.fn-hero { display: grid; grid-template-columns: 1.12fr .88fr; gap: var(--fn-8); align-items: center; padding: var(--fn-8) 0; }
+.fn-hero-copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fn-5); padding-bottom: var(--fn-2); }
+.fn-kicker { display: inline-flex; align-items: center; gap: var(--fn-3); font-size: 12px; font-weight: 650; letter-spacing: .14em; text-transform: uppercase; color: var(--fn-accent-text); }
+.fn-kicker::before { content: ''; width: 28px; height: 1px; background: currentColor; }
+.fn-hero h1 { font-size: clamp(2.75rem, 4vw + 1.4rem, 4.75rem); font-weight: 400; line-height: 1.02; letter-spacing: -.03em; text-wrap: balance; }
+.fn-hero p { max-width: 34ch; font-size: 15px; line-height: 1.7; color: var(--fn-ink-soft); }
+
+.fn-link { display: inline-flex; align-items: center; gap: var(--fn-3); padding: var(--fn-4) var(--fn-5); background: color-mix(in oklab, var(--fn-accent) 94%, var(--fn-ink)); color: var(--fn-on-accent); border: 0; border-radius: var(--fn-1); font-size: 13px; font-weight: 600; text-decoration: none; transition: background var(--fn-quick), transform var(--fn-quick), box-shadow var(--fn-settle); }
+.fn-link svg { transition: transform 220ms var(--fn-ease); }
+.fn-link:hover { background: color-mix(in oklab, var(--fn-accent) 84%, var(--fn-ink)); box-shadow: 0 10px 24px -14px var(--fn-accent); }
+.fn-link:hover svg { transform: translateX(4px); }
+.fn-link:active { transform: translateY(1px); box-shadow: none; }
+
+.fn-figure { margin: 0; }
+.fn-art { position: relative; aspect-ratio: 4 / 5; max-width: 384px; margin-inline: auto; overflow: hidden; background: var(--fn-sky); border-radius: 999px 999px var(--fn-2) var(--fn-2); }
+.fn-art svg { display: block; width: 100%; height: 100%; }
+.fn-caption { display: block; max-width: 384px; margin-inline: auto; padding-top: var(--fn-3); font-size: 12px; letter-spacing: .04em; color: var(--fn-ink-faint); }
+
+/* Stories ----------------------------------------------------------------- */
+.fn-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--fn-5); padding: var(--fn-6) 0 var(--fn-5); border-top: 1px solid var(--fn-rule); }
+.fn-section-head h2 { font-size: 30px; font-weight: 400; letter-spacing: -.015em; }
+.fn-eyebrow { font-size: 12px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase; color: var(--fn-ink-faint); }
+
+.fn-stories { display: grid; grid-template-columns: 1fr 1fr; gap: var(--fn-5); }
+/*
+ * A hairline rather than a full-strength outline, over a ground raised off the paper. Two reasons
+ * it keeps a box at all: the workbench binds this card's `border-radius`, and a radius on an
+ * element with no visible edge is a control that appears to do nothing; and the accent rule along
+ * the top is what carries the eye across the pair.
+ */
+.fn-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--fn-4); padding: var(--fn-6) var(--fn-5) var(--fn-5); border: 1px solid var(--fn-rule); border-radius: var(--fn-1); background: var(--fn-raised); transition: border-color var(--fn-settle), transform var(--fn-settle), box-shadow var(--fn-settle); }
+.fn-card::before { content: ''; position: absolute; inset-inline: -1px; top: -1px; height: 2px; border-radius: inherit; background: var(--fn-accent); opacity: .85; }
+.fn-card:hover { transform: translateY(-2px); border-color: color-mix(in oklab, var(--fn-ink) 22%, transparent); box-shadow: 0 18px 34px -26px color-mix(in oklab, var(--fn-ink) 60%, transparent); }
+.fn-card h2 { font-size: 27px; font-weight: 400; line-height: 1.2; letter-spacing: -.015em; text-wrap: balance; }
+.fn-card p { font-size: 14px; line-height: 1.75; color: var(--fn-ink-soft); }
+.fn-card a { display: inline-flex; align-items: center; gap: var(--fn-2); margin-top: auto; font-size: 13px; font-weight: 600; color: var(--fn-accent-text); text-decoration: none; }
+.fn-card a svg { transition: transform 220ms var(--fn-ease); }
+.fn-card:hover a svg, .fn-card a:hover svg { transform: translateX(4px); }
+
+/* Notebook ---------------------------------------------------------------- */
+.fn-reading { padding-top: var(--fn-6); margin-top: var(--fn-8); border-top: 1px solid var(--fn-rule); }
+.fn-reading h2 { font-size: 24px; font-weight: 400; letter-spacing: -.01em; }
+.fn-reading > p { max-width: 46ch; padding-top: var(--fn-2); font-size: 13px; line-height: 1.7; color: var(--fn-ink-faint); }
+/* The fade is how a person can tell there is more below without a scrollbar saying so. */
+.fn-scroll { max-height: 208px; margin-top: var(--fn-5); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--fn-rule) transparent; mask-image: linear-gradient(#000 calc(100% - 40px), transparent); counter-reset: fn-line; }
+.fn-scroll p { counter-increment: fn-line; display: grid; grid-template-columns: 32px 1fr; gap: var(--fn-4); padding: var(--fn-4) 0; border-top: 1px solid var(--fn-rule-soft); font-size: 14px; line-height: 1.7; }
+.fn-scroll p:first-child { border-top: 0; padding-top: 0; }
+.fn-scroll p::before { content: counter(fn-line, decimal-leading-zero); font-size: 12px; letter-spacing: .06em; color: var(--fn-ink-faint); padding-top: 4px; }
+
+/* Colophon ---------------------------------------------------------------- */
+.fn-colophon { display: flex; align-items: baseline; justify-content: space-between; gap: var(--fn-5); margin-top: var(--fn-9); padding-top: var(--fn-5); border-top: 1px solid var(--fn-rule); font-size: 12px; color: var(--fn-ink-faint); }
+
+@media (max-width: 860px) {
+  .fn-hero { grid-template-columns: 1fr; gap: var(--fn-6); padding: var(--fn-7) 0 var(--fn-6); }
+  .fn-art { aspect-ratio: 5 / 4; border-radius: 240px 240px var(--fn-2) var(--fn-2); }
+  .fn-stories { grid-template-columns: 1fr; gap: var(--fn-4); }
+}
+@media (max-width: 640px) {
+  .fn-page { padding: 0 var(--fn-5) var(--fn-8); }
+  .fn-nav { gap: var(--fn-4); padding: var(--fn-4) 0; }
+  .fn-nav > a:not(.fn-brand) { display: none; }
+  .fn-section-head { flex-direction: column; gap: var(--fn-2); }
+  .fn-colophon { flex-direction: column; gap: var(--fn-2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; }
+}
+@media (prefers-contrast: more) {
+  :root { --fn-rule: color-mix(in oklab, var(--fn-ink) 40%, transparent); --fn-ink-soft: var(--fn-ink); --fn-ink-faint: color-mix(in oklab, var(--fn-ink) 78%, var(--fn-paper)); }
+}

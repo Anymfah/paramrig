@@ -92,16 +92,21 @@ export default run('web-select', async ({ page, check, log, shot }) => {
   await page.waitForTimeout(700)
   check('and a real click selects what is under it', await page.locator('.web-inspector-head strong').innerText() === 'Hero title')
 
-  // …and below the fold, which is where the mouse used to stop. The frame is scrolled first, so
-  // the point is computed from a rect that is already past that scroll.
-  await frame().evaluate(() => window.scrollTo(0, 400))
+  // …and below the fold, which is where the mouse used to stop. The frame is scrolled to its foot
+  // rather than by a fixed amount, so the point is computed from a rect past that scroll and the
+  // check does not depend on how tall the example page happens to be this month.
+  await frame().evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   await page.waitForTimeout(500)
   // Whichever instrumented element sits lowest in the frame: the point of the check is the region
   // a real click used to miss, which was everything past about 540 px down the page.
   const lowest = await frame().evaluate(() => [...document.querySelectorAll('[data-paramrig-id]')]
-    .map(el => ({ id: el.getAttribute('data-paramrig-id'), instance: el.getAttribute('data-paramrig-instance'), y: el.getBoundingClientRect().y, h: el.getBoundingClientRect().height }))
+    .map(el => ({ el, id: el.getAttribute('data-paramrig-id'), instance: el.getAttribute('data-paramrig-instance'), y: el.getBoundingClientRect().y, h: el.getBoundingClientRect().height }))
     .filter(item => item.h > 16 && item.y + item.h < innerHeight)
-    .sort((a, b) => b.y - a.y)[0])
+    // A rect is not a target: an element scrolled out of its own overflow container still reports
+    // one, and a click there lands on whatever is really painted at that point.
+    .filter(item => { const r = item.el.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return hit === item.el || item.el.contains(hit) })
+    .sort((a, b) => b.y - a.y)
+    .map(({ id, instance, y, h }) => ({ id, instance, y, h }))[0])
   const selector = lowest.instance ? `[data-paramrig-id="${lowest.id}"][data-paramrig-instance="${lowest.instance}"]` : `[data-paramrig-id="${lowest.id}"]`
   const low = await pointInFrame(page, selector)
   log(`NOTE the low click is on ${selector} at y ${Math.round(low.y)}, ${Math.round(low.y) < reach ? 'within' : 'beyond'} the reach`)
