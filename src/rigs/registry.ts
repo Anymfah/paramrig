@@ -6,7 +6,7 @@ import { typeSpecimenManifest } from '@/rigs/examples/type-specimen'
 import type { RigManifest } from '@/rigs/types'
 import { getSceneDocument, listSceneDocuments, sceneManifest } from '@/scene/document'
 import { getVectorDocument, listVectorDocuments, vectorManifest } from '@/vector/document'
-import { listWebProjects, webManifest } from '@/web/projects'
+import { listWebProjects, pendingWebManifest, webManifest } from '@/web/projects'
 
 export type LibraryFixture = 'ok' | 'empty' | 'error' | 'loading' | 'long'
 
@@ -55,7 +55,11 @@ export function getRig(id: string): RigManifest | undefined {
   const scene = getSceneDocument(id)
   if (scene) return sceneManifest(scene)
   const vector = getVectorDocument(id)
-  return vector ? vectorManifest(vector) : EXAMPLES.find((rig) => rig.id === id)
+  if (vector) return vectorManifest(vector)
+  // A web link opens even on a browser that has never seen the project: only the local service
+  // knows whether that identifier is the connected one, and the workspace is where it is asked.
+  // The library is untouched — `listRigs` still lists only the projects this browser has opened.
+  return EXAMPLES.find((rig) => rig.id === id) ?? pendingWebManifest(id)
 }
 
 export function parseFixture(search: string): LibraryFixture {

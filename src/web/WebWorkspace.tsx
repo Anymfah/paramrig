@@ -16,7 +16,8 @@ import { Button, IconButton } from '../ui/Button'
 import { Tooltip } from '../ui/Tooltip'
 import { StatusMessage } from '../ui/StatusMessage'
 import { envelope, isAnnouncement, isEnvelope, isEvent, WEB_PROTOCOL, type Capture, type FeedbackBatch, type HostCommand, type MarkTool, type SDKEvent, type WebContext, type WebProjectManifest, type WebTarget, type WebTicket } from './contracts'
-import { listWebProjects, webRigId } from './projects'
+import { listWebProjects, rememberWebProject, webProjectId, webRigId } from './projects'
+import { readWebState } from './client'
 import { helloQueue } from './handshake'
 import { useWebDocument } from './useWebDocument'
 import { ScreenCapture } from './ScreenCapture'
@@ -32,9 +33,27 @@ const statusNames = { draft: 'Draft', todo: 'To do', review: 'Ready for review',
 type Mode = 'browse' | 'select' | 'annotate'
 
 export function WebWorkspace({ rigId }: { rigId: string }) {
-  const manifest = listWebProjects().find(p => webRigId(p.id) === rigId)
-  if (!manifest) return <main className="web-connect"><h1>Connect this web project</h1><Link to="/web">Open connections</Link></main>
-  return <ConnectedWebWorkspace key={manifest.id} initialManifest={manifest} />
+  const [connected, setConnected] = useState<WebProjectManifest | null>(null)
+  const [missing, setMissing] = useState(false)
+  const remembered = listWebProjects().find(p => webRigId(p.id) === rigId)
+  const known = !!remembered
+  useEffect(() => {
+    if (known) return
+    let cancelled = false
+    // The link came from somewhere else, and this browser has never opened the project. The local
+    // service is the only thing that knows whether the identifier is the one it is connected to;
+    // remembering it here is what makes the same link work later without asking again.
+    void readWebState().then(state => {
+      if (cancelled) return
+      if (webRigId(state.manifest.id) !== rigId) { setMissing(true); return }
+      rememberWebProject(state.manifest); setConnected(state.manifest)
+    }).catch(() => { if (!cancelled) setMissing(true) })
+    return () => { cancelled = true }
+  }, [known, rigId])
+  const manifest = remembered ?? connected
+  if (manifest) return <ConnectedWebWorkspace key={manifest.id} initialManifest={manifest} />
+  if (missing) return <main className="web-connect"><h1>Connect this web project</h1><p>The local web service is not connected to <code>{webProjectId(rigId)}</code>. Point it at that project folder, then open it from the connections page.</p><Link to="/web">Open connections</Link></main>
+  return <main className="web-connect"><h1>Connect this web project</h1><StatusMessage>Asking the local web service about this project…</StatusMessage></main>
 }
 
 function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjectManifest }) {

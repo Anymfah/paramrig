@@ -37,6 +37,12 @@ can be reopened when its folder is connected to the service again.
 The public static demo does not run this file service. Local browser recovery
 belongs to the workbench origin; it is not a cloud backup.
 
+A link to `/r/web-<project>` opens on a browser that has never seen the project.
+The registry cannot describe it, so the workspace asks the local service: when
+the identifier is the connected project the workspace opens and remembers it,
+and otherwise the connections page is offered. The library still lists only the
+projects this browser has opened.
+
 ## Install the SDK
 
 Build the local package from ParamRig:
