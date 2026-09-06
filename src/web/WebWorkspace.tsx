@@ -23,7 +23,7 @@ import { listWebProjects, rememberWebProject, webProjectId, webRigId } from './p
 import { readWebState } from './client'
 import { helloQueue } from './handshake'
 import { AGENT_INSTRUCTION, batchPath } from './handoff'
-import { ticketNumber } from './session'
+import { reopen, ticketNumber } from './session'
 import { useWebDocument } from './useWebDocument'
 import { ScreenCapture } from './ScreenCapture'
 import { captureScreen } from './capture'
@@ -103,6 +103,8 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const [snapshotName, setSnapshotName] = useState('')
   const [responseNotes, setResponseNotes] = useState<string[]>([])
   const [pendingCapture, setPendingCapture] = useState(false)
+  const [capturesOpen, setCapturesOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
   const commentInput = useRef<HTMLTextAreaElement>(null)
   const focusComment = useRef(false)
   const [addingTargets, setAddingTargets] = useState(false)
@@ -131,7 +133,16 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     iframe.current?.contentWindow?.postMessage(envelope(sessionId.current, command), manifest.origin)
   }, [manifest.origin])
   const frameArrived = useCallback(() => { if (!frameReady.current) { frameReady.current = true; setFrameLoad(n => n + 1) } }, [])
-  const run = (fn: () => Promise<unknown>) => { void fn().catch(e => setError(e instanceof Error ? e.message : String(e))) }
+  /*
+   * Why an action's failure is not the sync error: that slot belongs to the project connection, and
+   * the next successful save clears it. A screen capture declined a moment before a background save
+   * landed had its explanation wiped before anyone could read it. This one stays until the person
+   * tries something else.
+   */
+  const run = (fn: () => Promise<unknown>) => {
+    setNotice(null)
+    void fn().catch(e => setNotice(e instanceof Error ? e.message : String(e)))
+  }
 
   const attachCapture = async (ticketId: string, capture: Capture) => {
     if (capture.dataUrl) {
@@ -171,12 +182,12 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           t.targets = [...t.targets.filter(old => old.key !== reattachKey), event.target]
           t.marks = t.marks.map(m => m.targetKey === reattachKey ? { ...m, targetKey: event.target.key, pageId: event.target.pageId } : m)
           if (previous?.pageId !== event.target.pageId && context) t.context = context
-          t.status = 'draft'; delete t.batchId
+          reopen(t)
         }, 'Reattach feedback')
         setReattachKey(null)
       }
       if (!reattachKey && !addingTargets) { setPanel('controls'); setActiveTicketId(null) }
-      if (addingTargets && ticket) session.editTicket(ticket.id, t => { t.targets = [...new Map([...t.targets, event.target].map(target => [target.key, target])).values()]; t.status = 'draft'; delete t.batchId }, 'Add feedback target')
+      if (addingTargets && ticket) session.editTicket(ticket.id, t => { t.targets = [...new Map([...t.targets, event.target].map(target => [target.key, target])).values()]; reopen(t) }, 'Add feedback target')
       setSelected(prev => event.additive ? [...new Map([...prev, event.target].map(t => [t.key, t])).values()] : [event.target])
     } else if (event.type === 'mark') {
       // A mark belongs to the comment it was drawn in. A gesture that reached another comment's
@@ -338,6 +349,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       </div>
       <div className="inspector__body web-inspector__body scroll-area" tabIndex={0} role="region" id={`web-panel-${panel}`} aria-label={batch ? 'Feedback review' : published ? 'Feedback approved' : screen ? 'Screen capture' : panel}>
         {sync.error && !sync.recovered ? <StatusMessage tone="error">{sync.error}</StatusMessage> : null}
+        {notice ? <StatusMessage tone="error">{notice}</StatusMessage> : null}
         {sync.recovered ? <WebRecovery browser={{ document: sync.recovered.document, savedAt: sync.recovered.savedAt }} project={{ document: sync.rival?.document ?? doc, savedAt: sync.rival?.savedAt }} onChoose={useBrowser => run(() => sync.chooseRecovery(useBrowser))} /> : null}
         {responseNotes.map(n => <StatusMessage key={n}>{n}</StatusMessage>)}
         {doc.conflicts.map(c => <section className="web-section" key={c.id}><h2>{manifest.parameters.find(p => p.id === c.id)?.label ?? c.id}</h2><p>{c.removed ? 'Control removed.' : 'This value changed in the project.'}</p><code>Your choice: {JSON.stringify(c.chosen)}</code>{!c.removed ? <><code>Source: {JSON.stringify(c.source)}</code><Button variant="ghost" onClick={() => session.resolveConflict(c.id, true)}>Keep my value</Button></> : null}<Button variant="quiet" onClick={() => session.resolveConflict(c.id, false)}>{c.removed ? 'Acknowledge removal' : 'Use source value'}</Button></section>)}
@@ -350,7 +362,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
           <code>{AGENT_INSTRUCTION}</code>
           <Button variant="ghost" onClick={() => { setPublished(null); setPanel('feedback'); setActiveTicketId(null) }}>Back to comments</Button>
         </section> : null}
-        {screen ? <ScreenCapture image={screen.image} onCancel={() => setScreen(null)} onSave={async image => { await attachCapture(screen.ticketId, { id: crypto.randomUUID(), kind: 'screen', createdAt: new Date().toISOString(), status: 'ready', dataUrl: image, note: 'Screen capture, cropped and approved by the user.' }); setScreen(null) }} /> : null}
+        {screen ? <ScreenCapture image={screen.image} onCancel={() => setScreen(null)} onSave={async image => { await attachCapture(screen.ticketId, { id: crypto.randomUUID(), kind: 'screen', createdAt: new Date().toISOString(), status: 'ready', dataUrl: image, note: 'Screen capture, cropped and approved by the user.' }); setCapturesOpen(true); setScreen(null) }} /> : null}
         {!batch && !screen && !published && panel === 'controls' ? <>
           {selection ? <section className="web-section web-selection">
             <nav className="web-ancestors" aria-label="Element hierarchy">
@@ -367,22 +379,22 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
         {!batch && !screen && !published && panel === 'feedback' ? <>
           <div className="web-actions">{ticket ? <Button size="sm" variant="quiet" onClick={() => { setActiveTicketId(null); setAddingTargets(false); setMode('select') }}><ChevronLeft size={14} />Comments</Button> : <Button variant="ghost" onClick={startNote} disabled={!context}><Plus size={14} />Comment on page</Button>}</div>
           {ticket || !doc.tickets.length ? null : <div className="web-ticket-list">{doc.tickets.map(t => <button type="button" aria-pressed={activeTicketId === t.id} key={t.id} onClick={() => openTicket(t)}><span><span className="web-list-number">{ticketNumber(doc.tickets, t)}</span>{t.comment || t.targets[0]?.label || 'Visual feedback'}</span><small>{statusNames[t.status]}</small></button>)}</div>}
-          {ticket ? <section className="web-section web-ticket-editor"><div className="web-section__head"><span className="web-scope">{statusNames[ticket.status]}</span><Tooltip content="Remove ticket"><IconButton label="Remove ticket" onClick={() => { session.change('Remove feedback', d => { d.tickets = d.tickets.filter(t => t.id !== ticket.id) }); setActiveTicketId(null) }}><Trash2 size={14} /></IconButton></Tooltip></div><label className="web-label"><span className="visually-hidden">Comment</span><textarea ref={commentInput} aria-label="Comment" value={ticket.comment} maxLength={20000} placeholder="What should change?" onFocus={() => session.begin('Edit comment')} onBlur={() => session.end()} onChange={e => session.editTicket(ticket.id, t => { t.comment = e.target.value; if (t.status !== 'draft') { t.status = 'draft'; delete t.batchId } })} /></label>
+          {ticket ? <section className="web-section web-ticket-editor"><div className="web-section__head"><span className="web-scope">{statusNames[ticket.status]}</span><Tooltip content="Remove ticket"><IconButton label="Remove ticket" onClick={() => { session.change('Remove feedback', d => { d.tickets = d.tickets.filter(t => t.id !== ticket.id) }); setActiveTicketId(null) }}><Trash2 size={14} /></IconButton></Tooltip></div><label className="web-label"><span className="visually-hidden">Comment</span><textarea ref={commentInput} aria-label="Comment" value={ticket.comment} maxLength={20000} placeholder="What should change?" onFocus={() => session.begin('Edit comment')} onBlur={() => session.end()} onChange={e => session.editTicket(ticket.id, t => { t.comment = e.target.value; if (t.status !== 'draft') reopen(t) })} /></label>
             <div className="web-actions">
               <Button variant="ghost" size="sm" aria-pressed={mode === 'annotate'} onClick={() => { setMode(mode === 'annotate' ? 'select' : 'annotate'); setTool('arrow'); setPageAnchor(false); setMobile('main'); setAddingTargets(false) }}><Pencil size={14} />Draw</Button>
               <Button variant="quiet" size="sm" aria-pressed={addingTargets} onClick={() => { setAddingTargets(!addingTargets); setMode('select'); setMobile('main') }}><Plus size={14} />{addingTargets ? 'Done selecting' : 'Add target'}</Button>
             </div>
             {ticket.targets.map(t => { const live = liveTargets.find(v => v.key === t.key) ?? t; return <div key={t.key} className="web-target-row"><button type="button" onClick={() => { setSelected([t]); send({ type: 'reveal-target', target: t }) }}>{t.label}<TargetStatus status={live.status} /></button>{needsReattach(live.status) ? <Button variant="quiet" size="sm" onClick={() => { setReattachKey(t.key); setMode('select') }}>Reattach</Button> : null}</div> })}
             {reattachKey ? <p className="status-msg" role="status">Click the replacement element in the page. <button type="button" className="web-inline" onClick={() => setReattachKey(null)}>Cancel</button></p> : null}
-            {ticket.marks.some(mark => mark.tool !== 'note') ? <details className="web-disclosure"><summary>Marks<span>{ticket.marks.filter(mark => mark.tool !== 'note').length}</span></summary>{ticket.marks.filter(mark => mark.tool !== 'note').map(mark => <div className="web-mark-row" key={mark.id}><span>{tools.find(tool => tool.id === mark.tool)?.label}</span><Button size="sm" variant="quiet" onClick={() => session.editTicket(ticket.id, t => { t.marks = t.marks.filter(item => item.id !== mark.id); t.status = 'draft'; delete t.batchId }, 'Remove annotation')}>Remove</Button></div>)}</details> : null}
+            {ticket.marks.some(mark => mark.tool !== 'note') ? <details className="web-disclosure"><summary>Marks<span>{ticket.marks.filter(mark => mark.tool !== 'note').length}</span></summary>{ticket.marks.filter(mark => mark.tool !== 'note').map(mark => <div className="web-mark-row" key={mark.id}><span>{tools.find(tool => tool.id === mark.tool)?.label}</span><Button size="sm" variant="quiet" onClick={() => session.editTicket(ticket.id, t => { t.marks = t.marks.filter(item => item.id !== mark.id); reopen(t) }, 'Remove annotation')}>Remove</Button></div>)}</details> : null}
             {ticket.status === 'review' && ticket.responseRevision !== doc.sourceRevision ? <StatusMessage>This correction belongs to an earlier source revision. Reopen it for a fresh review.</StatusMessage> : null}
             {ticket.response ? <blockquote className="web-response">{ticket.response}</blockquote> : null}
-            <details className="web-disclosure"><summary>Captures{ticket.captures.length ? <span> {ticket.captures.length}</span> : null}</summary>
-              <div className="web-actions"><Button variant="quiet" disabled={pendingCapture} onClick={() => captureDOM(ticket.id)}>Capture page</Button><Button variant="quiet" onClick={() => run(async () => { const image = await captureScreen(); setMode('browse'); setScreen({ image, ticketId: ticket.id }) })}>Capture screen</Button></div>
+            <details className="web-disclosure" open={capturesOpen} onToggle={event => setCapturesOpen(event.currentTarget.open)}><summary>Captures{ticket.captures.length ? <span> {ticket.captures.length}</span> : null}</summary>
+              <div className="web-actions"><Button variant="quiet" disabled={pendingCapture} onClick={() => { setCapturesOpen(true); captureDOM(ticket.id) }}>Capture page</Button><Button variant="quiet" onClick={() => run(async () => { const image = await captureScreen(); setMode('browse'); setScreen({ image, ticketId: ticket.id }) })}>Capture screen</Button></div>
               {pendingCapture ? <p role="status">Capturing…</p> : null}
               {ticket.captures.map(c => <figure className="web-capture" key={c.id}>{c.status === 'ready' && (c.file || c.dataUrl) ? <a href={c.dataUrl ?? `/api/web/${c.file}`} target="_blank" rel="noreferrer" aria-label="Open capture in a new tab"><img alt={c.kind === 'screen' ? 'Screen capture' : 'HTML reconstruction'} src={c.dataUrl ?? `/api/web/${c.file}`} /></a> : null}<figcaption>{c.status === 'ready' ? <Tooltip content={c.note}><span tabIndex={0}>{c.kind === 'screen' ? 'Screen capture' : 'HTML reconstruction'}</span></Tooltip> : c.note}</figcaption></figure>)}
             </details>
-            <div className="web-actions">{ticket.status === 'review' && previewMode !== 'source' ? <Button variant="ghost" onClick={() => setPreviewMode('source')}>View correction</Button> : ticket.status === 'review' ? <><Button disabled={previewMode !== 'source' || readyRevision !== doc.sourceRevision || ticket.responseRevision !== doc.sourceRevision} onClick={() => session.editTicket(ticket.id, t => { t.status = 'validated' }, 'Validate correction')}>Validate correction</Button></> : null}{ticket.status !== 'draft' ? <Button variant="quiet" onClick={() => session.editTicket(ticket.id, t => { t.status = 'draft'; delete t.batchId }, 'Reopen feedback')}>Reopen</Button> : null}</div>
+            <div className="web-actions">{ticket.status === 'review' && previewMode !== 'source' ? <Button variant="ghost" onClick={() => setPreviewMode('source')}>View correction</Button> : ticket.status === 'review' ? <><Button disabled={previewMode !== 'source' || readyRevision !== doc.sourceRevision || ticket.responseRevision !== doc.sourceRevision} onClick={() => session.editTicket(ticket.id, t => { t.status = 'validated' }, 'Validate correction')}>Validate correction</Button></> : null}{ticket.status !== 'draft' ? <Button variant="quiet" onClick={() => session.editTicket(ticket.id, reopen, 'Reopen feedback')}>Reopen</Button> : null}</div>
           <div className="web-ticket-navigation"><Button size="sm" variant="quiet" disabled={doc.tickets.indexOf(ticket) === 0} onClick={() => openTicket(doc.tickets[doc.tickets.indexOf(ticket) - 1]!)}><ChevronLeft size={14} />Previous</Button><Button size="sm" variant="quiet" disabled={doc.tickets.indexOf(ticket) === doc.tickets.length - 1} onClick={() => openTicket(doc.tickets[doc.tickets.indexOf(ticket) + 1]!)}>Next<ChevronRight size={14} /></Button></div>
           </section> : null}
         </> : null}

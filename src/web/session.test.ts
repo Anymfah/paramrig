@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import example from '../../examples/web/manifest.json'
 import { parseManifest, type AgentResponse, type WebContext, type Values } from './contracts'
-import { newDraft, reconcile, ticketNumber, WebSession } from './session'
+import { newDraft, reconcile, reopen, ticketNumber, WebSession } from './session'
 
 const manifest = parseManifest(example)
 const context: WebContext = { pageId: 'home', url: manifest.origin + manifest.pages[0]!.path, viewport: { width: 1440, height: 900, dpr: 1 }, scroll: { x: 0, y: 0 }, scrollers: [] }
@@ -37,6 +37,31 @@ describe('web decisions and source revisions', () => {
     // A draft written before numbers existed still reads in order.
     const legacy = structuredClone(s.document.tickets).map(t => { delete t.number; return t })
     expect(legacy.map(t => ticketNumber(legacy, t))).toEqual([1, 2, 3])
+  })
+  it('does not carry an answer into the batch that asks the question again', () => {
+    const s = new WebSession(manifest)
+    const id = s.addTicket(context)
+    s.editTicket(id, t => { t.comment = 'Raise the hero.' })
+    const batch = s.batch([id])
+    s.markPublished(batch)
+    const response: AgentResponse = { version: 1, id: 'r1', batchId: batch.id, projectId: manifest.id, sourceRevision: manifest.revision, resultRevision: manifest.revision, createdAt: new Date().toISOString(), summary: 'Done', tickets: [{ id, status: 'implemented', message: 'Added 24px.' }] }
+    expect(s.response(response, batch)).toBeNull()
+    expect(s.document.tickets[0]).toMatchObject({ status: 'review', response: 'Added 24px.', batchId: batch.id })
+
+    // Reopened: the agent has not answered what is about to be written, and the next batch must
+    // not tell it otherwise. The batch and the response on disk are a separate record.
+    s.editTicket(id, reopen, 'Reopen feedback')
+    const after = s.document.tickets[0]!
+    expect(after.status).toBe('draft')
+    expect(after.batchId).toBeUndefined()
+    expect(after.response).toBeUndefined()
+    expect(after.responseRevision).toBeUndefined()
+    expect(s.batch([id]).tickets[0]).not.toHaveProperty('response')
+
+    // …and a late answer to the batch it left does not reach it.
+    expect(s.response({ ...response, id: 'r2', tickets: [{ id, status: 'implemented', message: 'Again.' }] }, batch)).toBeNull()
+    expect(s.document.tickets[0]!.status).toBe('draft')
+    expect(s.document.tickets[0]!.response).toBeUndefined()
   })
   it('shares one undo sequence between controls and annotations', () => {
     const s = new WebSession(manifest); s.setValue('accent', '#223344')

@@ -9,6 +9,19 @@ function sameValue(manifest: WebProjectManifest, id: string, a: ParamValue | und
 }
 
 /**
+ * A comment being worked on again. It leaves the batch it was in and drops the answer that batch
+ * received: nobody has answered what is being written now, and an answer carried into the next
+ * batch would tell the agent it had already dealt with a request it has never seen. The batch and
+ * the response on disk are untouched — that record stands.
+ */
+export function reopen(ticket: WebTicket) {
+  ticket.status = 'draft'
+  delete ticket.batchId
+  delete ticket.response
+  delete ticket.responseRevision
+}
+
+/**
  * The number beside a comment, in the list, on its bubble and in its heading. It is stored rather
  * than counted, so removing one comment does not renumber the ones a person has already named in
  * conversation. A draft written before the number existed falls back to its position.
@@ -146,7 +159,7 @@ export class WebSession {
     this.emit()
   }
   addMark(id: string, mark: WebMark, target?: WebTarget) {
-    this.editTicket(id, t => { t.marks = [...t.marks.filter(m => m.id !== mark.id), mark]; if (target && !t.targets.some(v => v.key === target.key)) t.targets.push(target); if (t.batchId) { t.status = 'draft'; delete t.batchId } }, 'Draw annotation')
+    this.editTicket(id, t => { t.marks = [...t.marks.filter(m => m.id !== mark.id), mark]; if (target && !t.targets.some(v => v.key === target.key)) t.targets.push(target); if (t.batchId) reopen(t) }, 'Draw annotation')
   }
   batch(ticketIds: string[]): FeedbackBatch {
     const d = this.document

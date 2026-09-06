@@ -259,9 +259,14 @@ and atomically writes a new response file (temporary file, then rename):
 ```
 
 Use `needs-info` to request clarification. A response must name its batch, project,
-source revision, result revision and valid ticket IDs. Old responses are reported
-without silently applying their status to a newer revision. Only the user can
-validate a correction. Reopening prepares another draft; original batches remain.
+source revision, result revision and valid ticket IDs; one response answers each of
+its tickets its own way. A response that names another revision, a batch that does
+not exist, or a ticket outside its own batch is reported and not applied. Only the
+user can validate a correction. Reopening prepares another draft: the ticket leaves
+its batch and drops the answer that batch received, so the next batch never tells
+the agent it has already dealt with a request it has not seen. The batch and the
+response on disk are untouched, and a later response to the batch a ticket has left
+does not reach it.
 
 When source changes, already-applied choices stop being overrides. Pending choices
 survive an unchanged source value. Divergent values and removed controls stay
@@ -276,7 +281,10 @@ A failed capture preserves the ticket. Captures retain markup separately in the
 batch; the DOM image itself excludes the overlay.
 
 **Capture screen** uses the browser's display-sharing permission. The sharing
-stream stops after a frame is acquired. The user previews and crops that frame
+stream stops after a frame is acquired, and the kept image opens in the captures
+fold of its comment. A capture that is declined or fails says why, in a message
+that stays until the next action rather than in the project's connection status,
+which the next successful save would clear. The user previews and crops that frame
 before saving it: a rectangle on the image, dragged whole or by any of its eight
 grips, with arrow keys to nudge it and the exact percentages behind an **Exact
 crop** fold. The saved pixels are the same either way. Rejecting capture leaves existing feedback intact. The browser
