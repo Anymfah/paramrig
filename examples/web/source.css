@@ -132,13 +132,27 @@ nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-masthead, .fn-co
  * purpose: the workbench binds this card's border-radius, and a radius on an element with no edge
  * is a control that appears to do nothing.
  */
-.fn-card { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: var(--fn-5); min-height: 340px; padding: var(--fn-8) var(--fn-7) var(--fn-7); border: 1px solid var(--fn-rule); border-radius: var(--fn-1); background: var(--fn-raised); transition: border-color var(--fn-settle), transform var(--fn-settle), box-shadow var(--fn-settle); }
-.fn-card::before { content: ''; position: absolute; inset-inline: -1px; top: -1px; height: 2px; border-radius: inherit; background: var(--fn-accent); }
+.fn-card { position: relative; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--fn-rule); border-radius: var(--fn-1); background: var(--fn-raised); transition: border-color var(--fn-settle), transform var(--fn-settle), box-shadow var(--fn-settle); }
+.fn-card::before { content: ''; position: absolute; inset-inline: 0; top: 0; height: 2px; z-index: 1; background: var(--fn-accent); }
+/*
+ * The height along the walk. It is the card's picture and its subject at once, which is why the
+ * card no longer needs a minimum height to look filled: there is something in it.
+ */
+.fn-card__profile { position: relative; height: 132px; border-bottom: 1px solid var(--fn-rule); background: color-mix(in oklab, var(--fn-paper) 93%, var(--fn-ink)); }
+/* The ground line an elevation chart is read against. */
+.fn-card__profile::after { content: ''; position: absolute; inset-inline: 0; bottom: 5px; height: 1px; background: color-mix(in oklab, var(--fn-ink) 22%, transparent); }
+.fn-card__profile svg { display: block; width: 100%; height: 100%; }
+.fn-card__area { fill: color-mix(in oklab, var(--fn-accent) 22%, transparent); }
+.fn-card__line { fill: none; stroke: var(--fn-accent); stroke-width: 1.75; vector-effect: non-scaling-stroke; }
+.fn-card__body { display: flex; flex-direction: column; align-items: flex-start; gap: var(--fn-4); flex: 1; padding: var(--fn-6); }
+.fn-card__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--fn-4); width: 100%; margin-top: auto; padding-top: var(--fn-5); border-top: 1px solid var(--fn-rule); }
+.fn-card__figures { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--fn-ink-faint); }
+.fn-card__figures i { display: inline-block; width: 3px; height: 3px; margin-inline: var(--fn-2); border-radius: 50%; background: currentColor; vertical-align: middle; }
 .fn-card .fn-kicker { color: var(--fn-accent-on-light); }
 .fn-card:hover { transform: translateY(-3px); border-color: color-mix(in oklab, var(--fn-ink) 20%, transparent); box-shadow: 0 26px 44px -32px color-mix(in oklab, var(--fn-ink) 70%, transparent); }
 .fn-card h2 { font-size: clamp(1.6rem, 1.4vw + 1rem, 2.15rem); font-weight: 400; line-height: 1.18; letter-spacing: -.02em; text-wrap: balance; }
 .fn-card p { max-width: 40ch; font-size: 16px; line-height: 1.72; color: var(--fn-ink-soft); }
-.fn-card a { display: inline-flex; align-items: center; gap: var(--fn-2); margin-top: auto; font-size: 14px; font-weight: 600; color: var(--fn-accent-on-light); text-decoration: none; }
+.fn-card a { display: inline-flex; align-items: center; gap: var(--fn-2); font-size: 14px; font-weight: 600; color: var(--fn-accent-on-light); text-decoration: none; }
 .fn-card a svg { transition: transform 240ms var(--fn-ease); }
 .fn-card:hover a svg, .fn-card a:hover svg { transform: translateX(4px); }
 
@@ -187,7 +201,8 @@ nav, button, .fn-link, .fn-card a, .fn-kicker, .fn-eyebrow, .fn-masthead, .fn-co
   .fn-nav { gap: var(--fn-4); }
   .fn-nav > a:not(.fn-brand) { display: none; }
   .fn-hero__copy { padding-block: var(--fn-8); }
-  .fn-card { min-height: 0; padding: var(--fn-7) var(--fn-5) var(--fn-6); }
+  .fn-card__profile { height: 108px; }
+  .fn-card__body { padding: var(--fn-5); }
   .fn-facts { gap: var(--fn-5); }
   .fn-section-head { flex-direction: column; gap: var(--fn-2); }
   .fn-colophon .fn-inner { flex-direction: column; gap: var(--fn-2); }

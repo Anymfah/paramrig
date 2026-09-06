@@ -21,7 +21,7 @@ const measure = () => {
   const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((m, n) => n - m); return (hi + 0.05) / (lo + 0.05) }
   const paper = px(getComputedStyle(document.documentElement).getPropertyValue('--fn-paper'))
   const ground = (el) => { let node = el; while (node) { const back = getComputedStyle(node).backgroundColor; if (back && back !== 'transparent' && !back.endsWith(', 0)')) return px(back); node = node.parentElement } return paper }
-  return ['.fn-hero p', '.fn-card p', '.fn-kicker', '.fn-eyebrow', '.fn-caption', '.fn-scroll p', '.fn-colophon .fn-inner span', '.fn-nav a:not(.fn-brand)', '.fn-menu > button', '.fn-link', '.fn-card a', '.fn-masthead', '.fn-facts dt', '.fn-facts dd']
+  return ['.fn-hero p', '.fn-card p', '.fn-kicker', '.fn-eyebrow', '.fn-caption', '.fn-scroll p', '.fn-colophon .fn-inner span', '.fn-nav a:not(.fn-brand)', '.fn-menu > button', '.fn-link', '.fn-card a', '.fn-masthead', '.fn-facts dt', '.fn-facts dd', '.fn-card__figures']
     .map((selector) => {
       const el = document.querySelector(selector)
       if (!el) return { selector, missing: true }

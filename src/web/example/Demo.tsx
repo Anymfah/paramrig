@@ -39,6 +39,12 @@ const CONTOURS = [
 ]
 
 /* Trailhead at the foot, two switchbacks across the shoulder, then the ridge to the summit. */
+/* The height along each walk, so a card carries what the walk was rather than a coloured band. */
+const PROFILES: Record<string, { line: string; area: string }> = {
+  coast: { line: 'M0 90Q5 86 8 85Q10 84 13 83Q15 82 18 82Q20 81 23 80Q25 79 28 79Q30 78 33 77Q35 77 38 76Q40 76 43 75Q45 75 48 74Q50 74 53 73Q55 73 58 73Q60 73 63 73Q65 72 68 72Q70 72 73 71Q75 71 78 71Q80 70 83 69Q85 68 88 67Q90 66 93 65Q95 64 98 63Q100 62 103 62Q105 61 108 60Q110 60 113 59Q115 58 118 58Q120 58 123 58Q125 58 128 58Q130 58 133 58Q135 58 138 58Q140 59 143 59Q145 59 148 60Q150 60 153 59Q155 59 158 59Q160 58 163 57Q165 57 168 56Q170 55 173 55Q175 54 178 53Q180 52 183 52Q185 51 188 51Q190 51 193 50Q195 50 198 50Q200 50 203 51Q205 51 208 52Q210 52 213 52Q215 53 218 53Q220 53 223 53Q225 53 228 53Q230 53 233 53Q235 53 238 54Q240 55 243 55Q245 54 248 54Q250 54 253 54Q255 54 258 54Q260 54 263 55Q265 55 268 56Q270 56 273 57Q275 57 278 57Q280 58 283 58Q285 58 288 58Q290 58 293 58Q295 59 298 59Q300 60 303 60Q305 61 308 61Q310 62 313 63Q315 64 318 65Q320 66 323 67Q325 68 328 69Q330 70 333 71Q335 72 338 73Q340 74 343 74Q345 75 348 76Q350 77 353 78Q355 79 358 80Q360 81 363 82Q365 83 368 84Q370 86 373 87Q375 88 378 89Q380 90 383 90Q385 90 388 90Q390 90 393 90Q395 90 398 90L400 90', area: 'M0 90Q5 86 8 85Q10 84 13 83Q15 82 18 82Q20 81 23 80Q25 79 28 79Q30 78 33 77Q35 77 38 76Q40 76 43 75Q45 75 48 74Q50 74 53 73Q55 73 58 73Q60 73 63 73Q65 72 68 72Q70 72 73 71Q75 71 78 71Q80 70 83 69Q85 68 88 67Q90 66 93 65Q95 64 98 63Q100 62 103 62Q105 61 108 60Q110 60 113 59Q115 58 118 58Q120 58 123 58Q125 58 128 58Q130 58 133 58Q135 58 138 58Q140 59 143 59Q145 59 148 60Q150 60 153 59Q155 59 158 59Q160 58 163 57Q165 57 168 56Q170 55 173 55Q175 54 178 53Q180 52 183 52Q185 51 188 51Q190 51 193 50Q195 50 198 50Q200 50 203 51Q205 51 208 52Q210 52 213 52Q215 53 218 53Q220 53 223 53Q225 53 228 53Q230 53 233 53Q235 53 238 54Q240 55 243 55Q245 54 248 54Q250 54 253 54Q255 54 258 54Q260 54 263 55Q265 55 268 56Q270 56 273 57Q275 57 278 57Q280 58 283 58Q285 58 288 58Q290 58 293 58Q295 59 298 59Q300 60 303 60Q305 61 308 61Q310 62 313 63Q315 64 318 65Q320 66 323 67Q325 68 328 69Q330 70 333 71Q335 72 338 73Q340 74 343 74Q345 75 348 76Q350 77 353 78Q355 79 358 80Q360 81 363 82Q365 83 368 84Q370 86 373 87Q375 88 378 89Q380 90 383 90Q385 90 388 90Q390 90 393 90Q395 90 398 90L400 90L400 96L0 96Z' },
+  forest: { line: 'M0 90Q5 85 8 83Q10 81 13 79Q15 78 18 76Q20 75 23 74Q25 72 28 71Q30 70 33 68Q35 67 38 66Q40 65 43 64Q45 63 48 63Q50 62 53 61Q55 61 58 60Q60 59 63 58Q65 57 68 56Q70 55 73 54Q75 53 78 52Q80 52 83 51Q85 51 88 50Q90 50 93 50Q95 50 98 49Q100 49 103 49Q105 49 108 48Q110 48 113 48Q115 47 118 47Q120 46 123 46Q125 45 128 44Q130 44 133 43Q135 43 138 42Q140 42 143 41Q145 41 148 40Q150 40 153 40Q155 40 158 40Q160 40 163 40Q165 40 168 39Q170 39 173 39Q175 38 178 38Q180 37 183 36Q185 35 188 34Q190 33 193 33Q195 32 198 32Q200 32 203 32Q205 32 208 32Q210 32 213 32Q215 32 218 32Q220 32 223 32Q225 32 228 32Q230 33 233 33Q235 34 238 35Q240 35 243 36Q245 36 248 37Q250 38 253 38Q255 38 258 39Q260 39 263 39Q265 39 268 40Q270 40 273 40Q275 41 278 42Q280 43 283 44Q285 46 288 47Q290 48 293 49Q295 50 298 51Q300 52 303 53Q305 54 308 56Q310 57 313 59Q315 60 318 62Q320 64 323 65Q325 67 328 68Q330 70 333 70Q335 71 338 72Q340 73 343 74Q345 75 348 76Q350 77 353 77Q355 78 358 79Q360 80 363 81Q365 82 368 84Q370 85 373 86Q375 88 378 89Q380 90 383 90Q385 90 388 90Q390 90 393 90Q395 90 398 90L400 90', area: 'M0 90Q5 85 8 83Q10 81 13 79Q15 78 18 76Q20 75 23 74Q25 72 28 71Q30 70 33 68Q35 67 38 66Q40 65 43 64Q45 63 48 63Q50 62 53 61Q55 61 58 60Q60 59 63 58Q65 57 68 56Q70 55 73 54Q75 53 78 52Q80 52 83 51Q85 51 88 50Q90 50 93 50Q95 50 98 49Q100 49 103 49Q105 49 108 48Q110 48 113 48Q115 47 118 47Q120 46 123 46Q125 45 128 44Q130 44 133 43Q135 43 138 42Q140 42 143 41Q145 41 148 40Q150 40 153 40Q155 40 158 40Q160 40 163 40Q165 40 168 39Q170 39 173 39Q175 38 178 38Q180 37 183 36Q185 35 188 34Q190 33 193 33Q195 32 198 32Q200 32 203 32Q205 32 208 32Q210 32 213 32Q215 32 218 32Q220 32 223 32Q225 32 228 32Q230 33 233 33Q235 34 238 35Q240 35 243 36Q245 36 248 37Q250 38 253 38Q255 38 258 39Q260 39 263 39Q265 39 268 40Q270 40 273 40Q275 41 278 42Q280 43 283 44Q285 46 288 47Q290 48 293 49Q295 50 298 51Q300 52 303 53Q305 54 308 56Q310 57 313 59Q315 60 318 62Q320 64 323 65Q325 67 328 68Q330 70 333 70Q335 71 338 72Q340 73 343 74Q345 75 348 76Q350 77 353 77Q355 78 358 79Q360 80 363 81Q365 82 368 84Q370 85 373 86Q375 88 378 89Q380 90 383 90Q385 90 388 90Q390 90 393 90Q395 90 398 90L400 90L400 96L0 96Z' },
+}
+
 const ROUTE = 'M86 452C104 444 118 436 128 424C138 412 132 400 122 392C112 384 116 374 132 366C150 357 168 352 176 340C185 327 178 314 186 304C195 293 214 288 232 276'
 
 function Scene() {
@@ -109,7 +115,23 @@ export function Demo({ manifest }: { manifest: WebProjectManifest }) {
     <section className="fn-band fn-band--light">
       <div className="fn-inner">
         <div className="fn-section-head"><h2 style={{ fontFamily: font }}>From the journal</h2><span className="fn-eyebrow">Two stories</span></div>
-        <div className="fn-stories" aria-label="Stories">{[{ id: 'coast', title: 'Following the coastline', text: 'A walk with no destination, only the sound of water and a path that keeps unfolding.' }, { id: 'forest', title: 'The shape of a quiet morning', text: 'On familiar trails, the smallest details are often the ones worth coming back for.' }].map((story, i) => <article className="fn-card" key={story.id} data-paramrig-id="story-card" data-paramrig-instance={story.id}><span className="fn-kicker">0{i + 1} / Field notes</span><h2 data-paramrig-id="story-title" style={{ fontFamily: font }}>{story.title}</h2><p>{story.text}</p><a data-paramrig-id="story-link" href="/examples/web/journal.html">Read the story<Arrow /></a></article>)}</div>
+        <div className="fn-stories" aria-label="Stories">{[
+          { id: 'coast', title: 'Following the coastline', text: 'A walk with no destination, only the sound of water and a path that keeps unfolding.', place: 'Pembrokeshire', walk: '9.4 km', climb: '210 m' },
+          { id: 'forest', title: 'The shape of a quiet morning', text: 'On familiar trails, the smallest details are often the ones worth coming back for.', place: 'Cairngorms', walk: '14.2 km', climb: '940 m' },
+        ].map((story, i) => <article className="fn-card" key={story.id} data-paramrig-id="story-card" data-paramrig-instance={story.id}>
+          <div className="fn-card__profile" aria-hidden="true">
+            <svg viewBox="0 0 400 96" preserveAspectRatio="none"><path className="fn-card__area" d={PROFILES[story.id]!.area} /><path className="fn-card__line" d={PROFILES[story.id]!.line} /></svg>
+          </div>
+          <div className="fn-card__body">
+            <span className="fn-kicker">0{i + 1} / {story.place}</span>
+            <h2 data-paramrig-id="story-title" style={{ fontFamily: font }}>{story.title}</h2>
+            <p>{story.text}</p>
+            <div className="fn-card__foot">
+              <span className="fn-card__figures">{story.walk}<i /> {story.climb} climbed</span>
+              <a data-paramrig-id="story-link" href="/examples/web/journal.html">Read the story<Arrow /></a>
+            </div>
+          </div>
+        </article>)}</div>
       </div>
     </section>
 
