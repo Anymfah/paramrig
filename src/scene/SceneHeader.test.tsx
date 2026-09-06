@@ -30,7 +30,7 @@ function renderHeader(options: { mode?: EditorMode; view?: Partial<ViewState>; s
   const onMode = vi.fn()
   const onCommand = vi.fn()
   const rendered = render(headerElement({ view, context, onRunOperator, onView, onMode, onCommand }))
-  return { ...rendered, headerElement, onRunOperator, onView, onMode, onCommand, scene, view }
+  return { ...rendered, headerElement, context, onRunOperator, onView, onMode, onCommand, scene, view }
 }
 
 /** The header as an element, so a test can hand the same mounted one a different mode. */
@@ -272,10 +272,22 @@ describe('the scene editor header', () => {
    * and nineteen in edit mode, so there is no one width at which it stops fitting. jsdom lays
    * nothing out, so the two numbers the hook reads are the ones to fake.
    */
-  const measuring = (client: number, scroll: number | (() => number)) => {
+  const measuring = (
+    client: number | ((element: HTMLElement) => number),
+    scroll: number | ((element: HTMLElement) => number),
+  ) => {
+    const clientOf = typeof client === 'function' ? client : () => client
     const scrollOf = typeof scroll === 'function' ? scroll : () => scroll
-    Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => client })
-    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', { configurable: true, get: scrollOf })
+    /* `this` rather than a closed-over number, so a test can give the header and its row different
+     * widths — which is the whole narrow layout, where the header is as wide as its contents. */
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+      configurable: true,
+      get(this: HTMLElement) { return clientOf(this) },
+    })
+    Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+      configurable: true,
+      get(this: HTMLElement) { return scrollOf(this) },
+    })
     return () => {
       for (const name of ['clientWidth', 'scrollWidth']) {
         Object.defineProperty(HTMLElement.prototype, name, { configurable: true, get: () => 0 })
@@ -358,6 +370,35 @@ describe('the scene editor header', () => {
       }))
 
       expect(screen.queryByRole('button', { name: 'Editor' })).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  /**
+   * The narrow layout, where the header is as wide as its contents and the titlebar scrolls under
+   * it: the window can be dragged out by three hundred pixels without the header's own box moving.
+   * The fold heard about new room from an observer watching that box, so below 64em it heard
+   * nothing — folded once, folded for the session, at a width where everything fitted.
+   */
+  it('unfolds when the row gains room the header itself never feels', () => {
+    let row = 900
+    const folded = () => Number(document.querySelector('.scene-header')?.getAttribute('data-fold') ?? 0)
+    /* Content-sized: the header's client width IS its scroll width, so it can never overflow itself
+     * and only the row it sits in can say there is not enough room. */
+    const wanted = () => 1473 - folded() * 300
+    const isHeader = (element: HTMLElement) => element.classList.contains('scene-header')
+    const restore = measuring((element) => (isHeader(element) ? wanted() : row), wanted)
+    try {
+      const { rerender, headerElement: element, ...props } = renderHeader()
+      expect(folded()).toBe(2)
+      expect(screen.queryByRole('button', { name: 'Command palette' })).not.toBeInTheDocument()
+
+      row = 1200
+      rerender(element(props))
+
+      expect(folded()).toBe(1)
       expect(screen.getByRole('button', { name: 'Command palette' })).toBeInTheDocument()
     } finally {
       restore()

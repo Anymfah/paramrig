@@ -164,6 +164,9 @@ describe('what selection refuses to touch', () => {
   const hidden: Collection = { id: 'collection-hidden', name: 'Hidden', parentId: ROOT_COLLECTION_ID, hidden: true }
   const excluded: Collection = { id: 'collection-excluded', name: 'Excluded', parentId: ROOT_COLLECTION_ID, excluded: true }
   const locked: Collection = { id: 'collection-locked', name: 'Locked', parentId: ROOT_COLLECTION_ID, selectable: false }
+  /* Nested, and carrying no flag of their own: what is put away is put away with its contents. */
+  const underHidden: Collection = { id: 'collection-under-hidden', name: 'Under hidden', parentId: hidden.id }
+  const underLocked: Collection = { id: 'collection-under-locked', name: 'Under locked', parentId: locked.id }
 
   const document = scene(
     [
@@ -173,12 +176,25 @@ describe('what selection refuses to touch', () => {
       object('in-hidden', { collectionId: hidden.id }),
       object('in-excluded', { collectionId: excluded.id }),
       object('in-locked', { collectionId: locked.id }),
+      object('under-hidden', { collectionId: underHidden.id }),
+      object('under-locked', { collectionId: underLocked.id }),
     ],
-    [hidden, excluded, locked],
+    [hidden, excluded, locked, underHidden, underLocked],
   )
 
   it('leaves out the hidden, the unselectable and everything in a collection that is put away', () => {
     expect(selected(run('select.all', context(document)))).toEqual(['visible'])
+  })
+
+  /**
+   * Both flags are inherited, and the same walk answers for the renderer and for the viewport's
+   * pick. It was written out three times and agreed twice: hiding a parent left its children on
+   * the screen, and a collection put out of a click's reach was still picked by a click.
+   */
+  it('follows both flags down the tree, so a nested collection is put away with its parent', () => {
+    const all = selected(run('select.all', context(document)))
+    expect(all).not.toContain('under-hidden')
+    expect(all).not.toContain('under-locked')
   })
 
   it('leaves out everything the local view is not showing', () => {

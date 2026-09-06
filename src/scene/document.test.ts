@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   clearSceneDocumentCache,
   COMPACT_THRESHOLD_BYTES,
@@ -381,6 +381,32 @@ describe('a document too big for browser storage', () => {
       const meshId = (document.objects[0]!.data as { meshId: string }).meshId
       expect(saveSceneDocument(withMesh(document, meshId, boxMesh(2))).ok).toBe(true)
       expect(getSceneDocument(document.id)?.meshes[meshId]?.vertexIds).toHaveLength(8)
+    })
+
+    /**
+     * The refusal has to leave nothing behind, because the map it was nearly filed in is the
+     * module's own cache and not a copy of it. Filed and then refused, twenty-seven megabytes sat
+     * in the cache of a tab that had just declined to store them, and the next scene to save — a
+     * cube, four kilobytes — was written out with them: one `setItem` over quota, silently, and
+     * every edit of that scene lost on reload. This suite's own `beforeEach` describes the same
+     * leak from the inside, which is how long it had been arranged around rather than fixed.
+     */
+    it('leaves nothing of what it refused for the next scene to carry', () => {
+      const heavy = { ...tooBig(), id: 'scene-refused' }
+      expect(saveSceneDocument(heavy)).toEqual({ ok: false, reason: 'quota' })
+      // Its id and not the document: a failure here prints what it was given, and printing
+      // twenty-seven megabytes of vertices is how this assertion ends a test worker rather than a test.
+      expect(getSceneDocument(heavy.id)?.id ?? null).toBeNull()
+
+      const written = vi.spyOn(Storage.prototype, 'setItem')
+      try {
+        expect(saveSceneDocument(createSceneDocument('After')).ok).toBe(true)
+        const payload = written.mock.calls.at(-1)?.[1] ?? ''
+        expect(payload).not.toContain(heavy.id)
+        expect(payload.length).toBeLessThan(COMPACT_THRESHOLD_BYTES)
+      } finally {
+        written.mockRestore()
+      }
     })
 
     it('is forgotten with the rest when another tab writes', () => {

@@ -315,13 +315,38 @@ export function collectionAncestors(document: SceneDocument, id: string): string
   return chain
 }
 
-/** Whether anything above an object hides it: its collection, or a collection above that. */
-export function collectionHidden(document: SceneDocument, collectionId: string): boolean {
-  for (const id of [collectionId, ...collectionAncestors(document, collectionId)]) {
-    const collection = collectionById(document, id)
-    if (collection?.hidden || collection?.excluded) return true
+/**
+ * Whether a collection or anything above it answers to a flag.
+ *
+ * Walked rather than looked up because these flags are inherited — the outliner's eye on a parent
+ * covers everything nested under it, which is the whole reason a person groups a scene that way.
+ * The renderer and the pick call this per object, so it walks without allocating, and the depth
+ * bound is what makes a document with a cycle in its parentIds terminate rather than hang.
+ */
+function inherited(document: SceneDocument, collectionId: string, flagged: (collection: Collection) => boolean): boolean {
+  let current = collectionById(document, collectionId)
+  for (let depth = 0; current && depth <= document.collections.length; depth += 1) {
+    if (flagged(current)) return true
+    current = current.parentId ? collectionById(document, current.parentId) : null
   }
   return false
+}
+
+/** Whether anything above an object hides it: its collection, or a collection above that. */
+export function collectionHidden(document: SceneDocument, collectionId: string): boolean {
+  return inherited(document, collectionId, (collection) => !!collection.hidden || !!collection.excluded)
+}
+
+/**
+ * Whether a click can reach an object, which is a question about its collections and not about it.
+ *
+ * Inherited for the same reason hiding is: "leave a collection visible but out of reach" means the
+ * collection a person pointed at and everything they put inside it. The renderer's pick, the region
+ * operators and the opening selection all ask here, so a restriction cannot hold on one route and
+ * leak on another — it used to leak on the one it is named for, a click in the viewport.
+ */
+export function collectionSelectable(document: SceneDocument, collectionId: string): boolean {
+  return !inherited(document, collectionId, (collection) => collection.selectable === false)
 }
 
 export type SceneCounts = { objects: number; vertices: number; edges: number; faces: number; triangles: number }
@@ -1207,11 +1232,18 @@ export function saveSceneDocument(document: SceneDocument): StorageResult {
    */
   if (!documents[clean.id] && unchangedBundle(clean)) return { ok: true }
   const size = JSON.stringify(clean).length
-  documents[clean.id] = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
-  if (JSON.stringify(documents[clean.id]).length > MAX_STORED_BYTES) {
+  const entry = size > COMPACT_THRESHOLD_BYTES ? compactDocument(clean) : clean
+  /*
+   * Weighed before it is filed, because `documents` IS the cache — `readAll` hands back the module's
+   * own map, not a copy. Filing it first and returning on the refusal left twenty-seven megabytes in
+   * the cache of a tab that had refused to store them, and the next document to save, however small,
+   * was written out with them: one `setItem` over quota, silently, for the rest of the session.
+   */
+  if (JSON.stringify(entry).length > MAX_STORED_BYTES) {
     refused = { id: key, content: document }
     return { ok: false, reason: 'quota' }
   }
+  documents[clean.id] = entry
   // Only this document's: a small scene saving is no news about a heavy one, and throwing its
   // refusal away would make the next gesture on it pay the full sanitisation again.
   if (refused?.id === key) refused = null

@@ -70,10 +70,15 @@
   /*
    * How wide the T bar's column is: its button, the padding either side, and its border.
    *
-   * Named because two files need to agree on it — the column draws itself with it, and the Adjust
-   * Last Operation panel steps clear of it with it. They disagreed once: the panel was offset for a
-   * thirty-two pixel button while a coarse pointer draws a forty-four pixel one, and the panel came
-   * back down on the column it was moved to avoid.
+   * Named because the Adjust Last Operation panel has to step clear of it, and spelling the
+   * arithmetic out there got it wrong: it was offset for a thirty-two pixel button while a coarse
+   * pointer draws a forty-four pixel one, and came back down on the column it was moved to avoid.
+   *
+   * The column itself cannot read this, and the two sizes below are written out rather than shared:
+   * `--scene-tool-size` arrives as an inline custom property on `.scene-toolbar` (SceneToolbar.tsx,
+   * from `hit-target.ts`, so that the stylesheet and the hit testing cannot disagree), and a custom
+   * property inherits downwards — nothing above the toolbar can see what the toolbar was given. So
+   * these are the same two numbers, kept beside a note saying where the originals live.
    */
   --scene-toolbar-column: calc(var(--space-1) * 2 + var(--scene-tool-size, 32px) + 2px);
 

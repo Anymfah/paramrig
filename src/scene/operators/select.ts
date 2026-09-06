@@ -1,5 +1,5 @@
 import type { ParamValue, ParameterDef } from '@/rigs/types'
-import { descendantObjectIds } from '@/scene/document'
+import { collectionHidden, collectionSelectable, descendantObjectIds } from '@/scene/document'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, selectParam, switchParam, type OperatorContext } from '@/scene/operators/types'
 import type { SceneObject, SceneObjectKind, SceneSelection } from '@/scene/types'
@@ -25,9 +25,8 @@ function selectable(context: OperatorContext): SceneObject[] {
   return context.document.objects.filter((object) => {
     if (!object.selectable || !object.visible) return false
     if (local && local.length > 0 && !local.includes(object.id)) return false
-    const collection = context.document.collections.find((entry) => entry.id === object.collectionId)
-    if (collection?.hidden || collection?.excluded || collection?.selectable === false) return false
-    return true
+    if (collectionHidden(context.document, object.collectionId)) return false
+    return collectionSelectable(context.document, object.collectionId)
   })
 }
 

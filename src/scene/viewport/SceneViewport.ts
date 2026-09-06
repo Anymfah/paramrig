@@ -32,7 +32,7 @@ import { outlineFont } from '@/scene/curve/font'
 import { layoutText } from '@/scene/curve/text'
 import { caretSegment, selectionBoxes } from '@/scene/curve/textEdit'
 import { curveLinePositions } from '@/scene/curve/geometry'
-import { meshOf } from '@/scene/document'
+import { collectionHidden, collectionSelectable, meshOf } from '@/scene/document'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
 import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, ShadingMode, Vec3, ViewState } from '@/scene/types'
@@ -1315,11 +1315,12 @@ export class SceneViewport {
     view.root.matrix.copy(matrix)
     view.root.matrixWorldNeedsUpdate = true
     const visible = this.isVisible(object)
+    const pickable = visible && this.isPickable(object)
     view.root.visible = visible
     if (view.pickMesh) {
       view.pickMesh.matrix.copy(matrix)
       view.pickMesh.matrixWorldNeedsUpdate = true
-      view.pickMesh.visible = visible && object.selectable
+      view.pickMesh.visible = pickable
       if (view.glyphPick) {
         view.pickMesh.userData.world = matrix.clone()
         this.sizeGlyphPick(view)
@@ -1328,7 +1329,7 @@ export class SceneViewport {
     for (const proxy of view.instancePicks ?? []) {
       proxy.matrix.multiplyMatrices(matrix, proxy.userData.local as Matrix4)
       proxy.matrixWorldNeedsUpdate = true
-      proxy.visible = visible && object.selectable
+      proxy.visible = pickable
     }
     if (view.maskMesh) {
       view.maskMesh.matrix.copy(matrix)
@@ -1341,9 +1342,22 @@ export class SceneViewport {
     if (!object.visible) return false
     const local = this.view?.localObjectIds
     if (local && local.length > 0 && !local.includes(object.id)) return false
-    const collection = this.document?.collections.find((entry) => entry.id === object.collectionId)
-    if (collection?.hidden || collection?.excluded) return false
-    return true
+    // Inherited: the eye on a collection closes over everything nested inside it, which is what a
+    // person means by hiding a group. Read off the one collection, it hid a parent and drew the
+    // children anyway — and the operators that already inherited it then disagreed with the screen.
+    return !this.document || !collectionHidden(this.document, object.collectionId)
+  }
+
+  /**
+   * Visible, and within a click's reach.
+   *
+   * A collection can be left visible and out of reach — that is what the outliner's cursor toggle
+   * says it does. Every operator honoured it; the pick did not, so the one gesture the restriction
+   * is named for was the one that ignored it.
+   */
+  private isPickable(object: SceneObject): boolean {
+    if (!object.selectable) return false
+    return !this.document || collectionSelectable(this.document, object.collectionId)
   }
 
   private disposeObjectView(view: ObjectView): void {

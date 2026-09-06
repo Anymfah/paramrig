@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/editor/history'
-import { collectionById, collectionHidden, getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
+import { collectionHidden, collectionSelectable, getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
 import { cameraPlacement } from '@/scene/operators/view'
 import { runOperator as runRegisteredOperator } from '@/scene/operators/registry'
 import type { OperatorContext, OperatorParams } from '@/scene/operators/types'
@@ -46,7 +46,7 @@ function openingSelection(document: SceneDocument | null): SceneSelection {
   const first = document.objects.find((object) => {
     if (object.data.kind !== 'mesh' || !object.visible || !object.selectable) return false
     if (collectionHidden(document, object.collectionId)) return false
-    return collectionById(document, object.collectionId)?.selectable !== false
+    return collectionSelectable(document, object.collectionId)
   })
   return first ? { objectIds: [first.id], activeObjectId: first.id } : EMPTY_SELECTION
 }

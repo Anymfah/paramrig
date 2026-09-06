@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { createSceneDocument } from '@/scene/document'
+import { createSceneDocument, saveSceneDocument } from '@/scene/document'
+import type { SceneDocument } from '@/scene/types'
 import { useSceneDocument } from '@/scene/useSceneDocument'
 import '@/scene/operators'
 
@@ -122,5 +123,46 @@ describe('travelling through the history', () => {
 
     expect(result.current.document!.objects[0]!.visible).toBe(true)
     expect(result.current.document!.view.yaw).toBe(12)
+  })
+})
+
+/**
+ * Blender's startup file opens with its cube selected and active, and so does ours — but only when
+ * a person could actually reach it. An object in a hidden collection, or in one put out of a
+ * click's reach, would fill the properties panel with something that is not on the screen and arm
+ * Tab to edit it blind. Both flags are inherited, so a nested collection answers for its parent.
+ */
+describe('what a document opens with', () => {
+  const opened = (change: (document: SceneDocument) => SceneDocument) => {
+    const scene = change(createSceneDocument('Opening'))
+    saveSceneDocument(scene)
+    return renderHook(() => useSceneDocument(scene.id))
+  }
+
+  it('selects the first mesh, the way the startup file does', () => {
+    const { result } = opened((document) => document)
+    expect(result.current.selection.objectIds).toEqual([result.current.document!.objects[0]!.id])
+    expect(result.current.selection.activeObjectId).toBe(result.current.document!.objects[0]!.id)
+  })
+
+  it('selects nothing when the only mesh sits under a hidden collection', () => {
+    const { result } = opened((document) => {
+      const root = document.collections[0]!
+      const nested = { id: 'collection-nested', name: 'Nested', parentId: root.id }
+      return {
+        ...document,
+        collections: [{ ...root, hidden: true }, nested],
+        objects: document.objects.map((object) => ({ ...object, collectionId: nested.id })),
+      }
+    })
+    expect(result.current.selection.objectIds).toEqual([])
+  })
+
+  it('selects nothing when its collection is out of a click’s reach', () => {
+    const { result } = opened((document) => ({
+      ...document,
+      collections: [{ ...document.collections[0]!, selectable: false }],
+    }))
+    expect(result.current.selection.objectIds).toEqual([])
   })
 })

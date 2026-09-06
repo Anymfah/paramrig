@@ -135,8 +135,10 @@
  * column, where a click meant for Bevel went through to a field. Blender puts this panel beside
  * its toolbar for the same reason.
  *
- * The offset is the column's own width, which both files read from one token: a coarse pointer
- * draws a wider button, and an offset that spelled the narrow one out came back down on the column.
+ * The offset is the column's width, taken from `--scene-toolbar-column` rather than spelled out
+ * here: a coarse pointer draws a wider button, and the arithmetic written out at this end knew only
+ * the narrow one, so the panel came back down on the column. That token carries the note about why
+ * it is a second copy of the two sizes rather than the toolbar's own.
  */
 .scene-redo {
   position: absolute;

@@ -280,32 +280,65 @@ const GIZMOS: Array<{ key: keyof GizmoFlags; label: string }> = [
  */
 const FOLD_STAGES = 2
 
+/**
+ * The room the row leaves the header, measured on boxes that folding cannot move.
+ *
+ * On a desktop the header has its row to itself and fills it, so the row's width is the answer.
+ * Below 64em the titlebar scrolls sideways and the header is allowed to be as wide as its contents:
+ * it can never overflow itself, so the question has to be put to what holds it — less whatever
+ * shares the row, because the File menu is a sibling there and counting its two hundred pixels as
+ * the header's own room stops the fold a stage short with the tail of it off the screen.
+ *
+ * Nothing read here changes when the header folds, and that is the point rather than a nicety: this
+ * number is what tells the fold its knowledge has expired, and a number folding could move would
+ * expire it on every fold and set the two oscillating.
+ */
+function rowRoom(node: HTMLElement): number {
+  const parent = node.parentElement
+  if (!parent) return Infinity
+  let room = parent.clientWidth
+  for (const sibling of Array.from(parent.children)) {
+    if (sibling === node || !(sibling instanceof HTMLElement)) continue
+    // Only what shares the row: on a desktop the File menu is a row of its own and costs nothing.
+    const shares = sibling.offsetTop < node.offsetTop + node.offsetHeight
+      && node.offsetTop < sibling.offsetTop + sibling.offsetHeight
+    if (shares) room -= sibling.offsetWidth
+  }
+  return room
+}
+
 function useHeaderFold(element: RefObject<HTMLElement | null>, controls: string): number {
   const [stage, setStage] = useState(0)
   /*
    * The stage we have just learnt does not fit, so unfolding back into it does not start a loop.
    *
-   * It is knowledge about one row of controls at one width, and it is wrong the moment either
-   * changes: a resize clears it, and so does a change of mode, which swaps eight controls in and
-   * out. Remembering it across those was the bug — the width edit mode needed kept object mode
+   * It is knowledge about one row of controls in one amount of room, and it is wrong the moment
+   * either changes: new room clears it, and so does a change of mode, which swaps eight controls in
+   * and out. Remembering it across those was the bug — the width edit mode needed kept object mode
    * folded after Tab took it there and back, and four buttons stayed a click deep for the session.
    */
   const blocked = useRef<number | null>(null)
   const content = useRef('')
+  const room = useRef(-1)
   const measure = useRef(() => {})
   measure.current = () => {
     const node = element.current
     if (!node) return
+    const available = rowRoom(node)
     /*
-     * The tighter of the row and what holds it.
+     * Room the row has not been measured in makes every stage worth trying again.
      *
-     * On a desktop the header fills its row and the two agree. On a narrow screen the row scrolls
-     * sideways and the header is allowed to be as wide as its contents, so it never overflows
-     * itself and would never fold — it would just grow, and a person would scroll past twenty-three
-     * controls to reach the last. What is short there is the window, and the window is the parent.
+     * This is the invalidation, and it is here rather than on a resize event because a resize is
+     * not what the fold depends on: below 64em the header is content-sized, so the window can be
+     * dragged out by three hundred pixels without its own box moving, and an observer watching the
+     * header alone hears nothing. It stayed folded at a width where everything fitted.
      */
-    const available = Math.min(node.clientWidth, node.parentElement?.clientWidth ?? Infinity)
-    if (node.scrollWidth > available + 1) {
+    if (available !== room.current) {
+      room.current = available
+      blocked.current = null
+    }
+    // The tighter of the two, so a desktop header still folds on its own clipped overflow.
+    if (node.scrollWidth > Math.min(node.clientWidth, available) + 1) {
       blocked.current = stage
       if (stage < FOLD_STAGES) setStage(stage + 1)
       return
@@ -329,12 +362,11 @@ function useHeaderFold(element: RefObject<HTMLElement | null>, controls: string)
   useEffect(() => {
     const node = element.current
     if (!node || typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(() => {
-      // A width the row has not been measured at makes every stage worth trying again.
-      blocked.current = null
-      measure.current()
-    })
+    const observer = new ResizeObserver(() => measure.current())
     observer.observe(node)
+    // The row that holds it as well, because below 64em that is the only one the window moves. The
+    // callback only re-measures: what has actually changed is decided in one place, against `room`.
+    if (node.parentElement) observer.observe(node.parentElement)
     return () => observer.disconnect()
   }, [element])
   return stage
