@@ -18,9 +18,10 @@ nothing, and does nothing at all unless a workbench is framing the page.
 npm install --save-dev @paramrig/web
 ```
 
-The package is not published yet. Until it is, build it from the ParamRig
-repository with `docker compose run --rm app npm run build:web-sdk` and install
-the resulting `packages/web-sdk` directory as a local dependency.
+Releases are published from the ParamRig repository by its release workflow, on a
+`web-v<version>` tag, with provenance. To try an unreleased build, run
+`docker compose run --rm app npm run build:web-sdk` there and install the
+resulting `packages/web-sdk` directory as a local dependency.
 
 ## 1. Describe the controls
 
