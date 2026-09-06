@@ -36,6 +36,8 @@ type Props = {
   changeCount: number
   reviewDisabled: boolean
   onReview: () => void
+  /** The preview has answered. Until it has, the controls that speak to it are inert. */
+  ready: boolean
 }
 
 export function WebToolbar(p: Props) {
@@ -67,7 +69,7 @@ export function WebToolbar(p: Props) {
         <SelectField label="Zoom" presentation="menu" value={p.zoom} onChange={p.onZoom} options={[{ value: '1', label: '100%' }, { value: 'fit', label: 'Fit width' }, { value: '.75', label: '75%' }, { value: '.5', label: '50%' }]} />
       </Popover.Content></Popover.Portal>
     </Popover.Root>
-    <div className="web-mode" role="group" aria-label="Preview interaction">
+    <div className="web-mode" role="group" aria-label="Preview interaction" inert={!p.ready}>
       <Tooltip content={p.mode === 'browse' ? 'Select element' : 'Stop selecting (Esc)'}>
         <IconButton label="Select element" aria-pressed={p.mode !== 'browse'} onClick={() => p.onMode(p.mode === 'browse' ? 'select' : 'browse')}>
           <MousePointer2 size={16} aria-hidden="true" />

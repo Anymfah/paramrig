@@ -15,8 +15,9 @@ import { ColorField } from '../ui/ColorField'
 import { Button, IconButton } from '../ui/Button'
 import { Tooltip } from '../ui/Tooltip'
 import { StatusMessage } from '../ui/StatusMessage'
-import { envelope, isEnvelope, isEvent, WEB_PROTOCOL, type Capture, type FeedbackBatch, type HostCommand, type MarkTool, type SDKEvent, type WebContext, type WebProjectManifest, type WebTarget, type WebTicket } from './contracts'
+import { envelope, isAnnouncement, isEnvelope, isEvent, WEB_PROTOCOL, type Capture, type FeedbackBatch, type HostCommand, type MarkTool, type SDKEvent, type WebContext, type WebProjectManifest, type WebTarget, type WebTicket } from './contracts'
 import { listWebProjects, webRigId } from './projects'
+import { helloQueue } from './handshake'
 import { useWebDocument } from './useWebDocument'
 import { ScreenCapture } from './ScreenCapture'
 import { captureScreen } from './capture'
@@ -84,7 +85,19 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
   const ticket = doc.tickets.find(t => t.id === activeTicketId)
   const targetList = useMemo(() => [...new Map([...doc.tickets.flatMap(t => t.targets), ...selected].map(t => [t.key, t])).values()], [doc.tickets, selected])
   const marks = useMemo(() => doc.tickets.filter(t => t.status !== 'validated').flatMap(t => t.marks), [doc.tickets])
-  const send = useCallback((command: HostCommand) => iframe.current?.contentWindow?.postMessage(envelope(sessionId.current, command), manifest.origin), [manifest.origin])
+  const frameReady = useRef(false)
+  const [frameLoad, setFrameLoad] = useState(0)
+  /*
+   * Nothing is posted at a frame that has not proved where it is. Before its load event the iframe
+   * still holds about:blank, and a message addressed to the project origin is dropped there with a
+   * console warning. A frame that has spoken to us has proved it just as well as a load event has,
+   * which is why answering its announcement is safe.
+   */
+  const send = useCallback((command: HostCommand) => {
+    if (!frameReady.current) return
+    iframe.current?.contentWindow?.postMessage(envelope(sessionId.current, command), manifest.origin)
+  }, [manifest.origin])
+  const frameArrived = useCallback(() => { if (!frameReady.current) { frameReady.current = true; setFrameLoad(n => n + 1) } }, [])
   const run = (fn: () => Promise<unknown>) => { void fn().catch(e => setError(e instanceof Error ? e.message : String(e))) }
 
   const attachCapture = async (ticketId: string, capture: Capture) => {
@@ -152,23 +165,40 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
 
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== iframe.current?.contentWindow || event.origin !== manifest.origin || !isEnvelope(event.data) || event.data.sessionId !== sessionId.current) return
+      if (event.source !== iframe.current?.contentWindow || event.origin !== manifest.origin) return
+      // The SDK says it is listening before any session exists; the paired session is opened by the
+      // reply, and every message after it is checked against that session as before.
+      if (isAnnouncement(event.data)) {
+        if (event.data.projectId !== manifest.id) return
+        frameArrived(); send({ type: 'hello', projectId: manifest.id }); return
+      }
+      if (!isEnvelope(event.data) || event.data.sessionId !== sessionId.current) return
       if (event.data.version !== WEB_PROTOCOL) { setConnection('Incompatible preview protocol'); return }
+      frameArrived()
       if (isEvent(event.data.payload)) handler.current(event.data.payload as SDKEvent)
     }
     window.addEventListener('message', receive)
-    const hello = () => {
+    return () => window.removeEventListener('message', receive)
+  }, [manifest.id, manifest.origin, send, frameArrived])
+  // A frame pointed somewhere new has to prove itself again before anything is posted at it.
+  useEffect(() => { frameReady.current = false }, [iframeKey, pagePath])
+  useEffect(() => {
+    if (!frameLoad) return
+    const stop = helloQueue(() => {
       send({ type: 'hello', projectId: manifest.id })
       if (lastReady.current && Date.now() - lastReady.current > 6500) setConnection('Preview connection interrupted')
-    }
-    hello(); const interval = window.setInterval(hello, 2000)
+    }, () => !!lastReady.current)
     const timeout = window.setTimeout(() => { if (!lastReady.current) setConnection('Preview unavailable or SDK missing. Check the page URL and frame permissions.') }, 8000)
+    return () => { stop(); clearTimeout(timeout) }
+  }, [manifest.id, send, frameLoad])
+  useEffect(() => {
     const captures = requests.current
-    return () => { window.removeEventListener('message', receive); clearInterval(interval); clearTimeout(timeout); captures.forEach(r => clearTimeout(r.timer)); captures.clear() }
-  }, [manifest.id, manifest.origin, send, iframeKey])
+    // A reloaded preview will never answer the captures the previous one was asked for.
+    return () => { captures.forEach(r => clearTimeout(r.timer)); captures.clear(); setPendingCapture(false) }
+  }, [iframeKey])
 
-  useEffect(() => { send({ type: 'configure', mode, tool, color, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), displayScale: scale }) }, [send, mode, tool, color, targetList, marks, selected, connection, iframeKey, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
-  useEffect(() => { send({ type: 'values', values: previewMode === 'reference' ? doc.sourceValues : doc.values, source: previewMode === 'source' }) }, [send, doc.values, doc.sourceValues, previewMode, connection, iframeKey, readyRevision, previewEpoch])
+  useEffect(() => { send({ type: 'configure', mode, tool, color, targets: targetList, marks, activeTarget: pageAnchor ? undefined : selected[0]?.key ?? ticket?.targets[0]?.key, activeTargets: panel === 'feedback' && ticket ? ticket.targets.map(t => t.key) : selected.map(t => t.key), displayScale: scale }) }, [send, mode, tool, color, targetList, marks, selected, connection, frameLoad, readyRevision, previewEpoch, scale, panel, ticket, pageAnchor])
+  useEffect(() => { send({ type: 'values', values: previewMode === 'reference' ? doc.sourceValues : doc.values, source: previewMode === 'source' }) }, [send, doc.values, doc.sourceValues, previewMode, connection, frameLoad, readyRevision, previewEpoch])
   useEffect(() => {
     const observer = new ResizeObserver(entries => { const r = entries[0]?.contentRect; if (r) setAvailable({ width: r.width, height: r.height }) })
     if (stage.current) observer.observe(stage.current)
@@ -202,6 +232,9 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
     setResponseNotes([...new Set(notes)])
   }, [service, session, doc.sourceRevision])
 
+  // Until the preview answers, the tools that speak to it are inert rather than merely dim: a
+  // control that looks ready and does nothing is worse than one that is plainly not ready yet.
+  const previewReady = connection === 'Connected'
   const liveTargets = targetList.map(t => resolved.find(r => r.key === t.key) ?? t)
   const currentSelection = selected.filter(target => target.pageId === context?.pageId)
   const boundParams = selectionControls(manifest, currentSelection, context?.pageId)
@@ -265,7 +298,7 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
             </div>
             {mode !== 'select' ? <Button variant="ghost" size="sm" onClick={() => newTicket(currentSelection)}><MessageSquare size={14} />Comment</Button> : null}
           </section> : null}
-          <WebControls session={session} controls={boundParams} values={previewMode === 'current' ? doc.values : doc.sourceValues} disabled={previewMode !== 'current'} />
+          <WebControls session={session} controls={boundParams} values={previewMode === 'current' ? doc.values : doc.sourceValues} disabled={previewMode !== 'current' || !previewReady} />
           {!boundParams.length && !selection ? <StatusMessage>No controls on this page.</StatusMessage> : null}
         </> : null}
         {!batch && !screen && panel === 'feedback' ? <>
@@ -303,15 +336,16 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       onSnapshots={() => { updatePrefs({ inspectorCollapsed: false }); setPanel('snapshots'); setMobile('inspector') }}
       onReload={() => { lastReady.current = 0; setIframeKey(n => n + 1); sync.reconnect(); setConnection('Connecting to preview') }}
       status={connection === 'Connected' ? sync.syncStatus : connection} connected={connection === 'Connected' && sync.syncStatus === 'Saved to project'}
-      changeCount={changeCount} reviewDisabled={!context || pendingCapture || !hasFeedback || !!batch || !!screen} onReview={prepare} />
+      changeCount={changeCount} reviewDisabled={!previewReady || !context || pendingCapture || !hasFeedback || !!batch || !!screen} onReview={prepare} ready={previewReady} />
     <div className="web-preview-area">
       <div ref={stage} className="web-preview-stage" id="main" tabIndex={-1} data-mode={mode} data-fluid={!fixedViewport}>
         <div className="web-preview-size" style={{ width: viewport.width * scale, height: viewport.height * scale }}>
-          <iframe key={iframeKey} ref={iframe} title={`${manifest.name} live preview`} src={new URL(pagePath, manifest.origin).href} width={viewport.width} height={viewport.height} style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" onLoad={() => { lastReady.current = 0; send({ type: 'hello', projectId: manifest.id }) }} />
+          <iframe key={iframeKey} ref={iframe} title={`${manifest.name} live preview`} src={new URL(pagePath, manifest.origin).href} width={viewport.width} height={viewport.height} style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" onLoad={() => { lastReady.current = 0; frameArrived() }} />
           <WebAnnotations tickets={doc.tickets} targets={liveTargets} selected={selection} context={context} viewport={viewport} scale={scale} activeId={activeTicketId} canComment={mode === 'select' && panel === 'controls' && !batch} onComment={() => newTicket(currentSelection)} onOpen={ticket => openTicket(ticket, false)} />
         </div>
       </div>
-      {mode === 'annotate' ? <div className="web-markup-toolbar" role="group" aria-label="Markup tools">
+      {previewReady ? null : <div className="web-connection-veil"><p className="web-connection-notice" role="status">{connection}</p></div>}
+      {mode === 'annotate' ? <div className="web-markup-toolbar" role="group" aria-label="Markup tools" inert={!previewReady}>
         {tools.map(t => <Tooltip key={t.id} content={t.label}><IconButton label={t.label} aria-pressed={tool === t.id} onClick={() => setTool(t.id)}><t.icon size={16} /></IconButton></Tooltip>)}
         <Tooltip content="Draw on page"><IconButton label="Draw on page" aria-pressed={pageAnchor} onClick={() => setPageAnchor(!pageAnchor)}><Maximize size={16} /></IconButton></Tooltip>
         <ColorField label="Color" value={color} onChange={setColor} />
@@ -319,7 +353,6 @@ function ConnectedWebWorkspace({ initialManifest }: { initialManifest: WebProjec
       </div> : null}
       {addingTargets ? <div className="web-context-action"><Button variant="ghost" size="sm" onClick={() => { setAddingTargets(false); setMobile('inspector') }}>Done selecting</Button></div> : null}
       {previewMode !== 'current' ? <div className="web-context-action"><Button variant="ghost" size="sm" onClick={() => setPreviewMode('current')}>{previewMode === 'source' ? 'Source result' : 'Reference'}<X size={14} /><span className="visually-hidden">Resume editing</span></Button></div> : null}
-      {connection !== 'Connected' ? <div className="web-connection-notice" role="status">{connection}</div> : null}
     </div>
   </WorkspaceShell>
 }

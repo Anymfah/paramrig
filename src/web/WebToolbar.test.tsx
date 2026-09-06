@@ -7,14 +7,14 @@ import example from '../../examples/web/manifest.json'
 import { parseManifest } from './contracts'
 import { WebToolbar } from './WebToolbar'
 
-function Toolbar({ initialMode = 'browse' }: { initialMode?: 'browse' | 'select' | 'annotate' }) {
+function Toolbar({ initialMode = 'browse', ready = true }: { initialMode?: 'browse' | 'select' | 'annotate'; ready?: boolean }) {
   const [mode, setMode] = useState(initialMode)
   const noop = () => {}
   return <MemoryRouter><WebToolbar manifest={parseManifest(example)} pageId="home" onPage={noop}
     mode={mode} onMode={setMode} viewport={{ width: 1440, height: 900 }} fluid zoom="1"
     onViewport={noop} onZoom={noop} previewMode="current" onPreviewMode={noop}
     undoLabel={undefined} redoLabel={undefined} onUndo={noop} onRedo={noop}
-    onSnapshots={noop} onReload={noop} status="Saved to project" connected
+    onSnapshots={noop} onReload={noop} status="Saved to project" connected ready={ready}
     changeCount={0} reviewDisabled onReview={noop} /></MemoryRouter>
 }
 
@@ -35,6 +35,15 @@ describe('web selection toggle', () => {
     expect(select).toHaveAttribute('aria-pressed', 'true')
     await user.keyboard(' ')
     expect(select).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('is inert while the preview has not answered', () => {
+    // jsdom does not enforce inert, so what is checked here is the attribute the browser acts on.
+    // `web-connect.e2e.mjs` is where the click is proved to go nowhere.
+    render(<Toolbar ready={false} />)
+    expect(screen.getByRole('button', { name: 'Select element' }).closest('[inert]')).not.toBeNull()
+    render(<Toolbar />)
+    expect(screen.getAllByRole('button', { name: 'Select element' })[1]!.closest('[inert]')).toBeNull()
   })
 
   it('also returns to normal interaction from a drawing tool', () => {

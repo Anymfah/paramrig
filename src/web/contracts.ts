@@ -139,6 +139,12 @@ export type SDKEvent =
   | { type: 'error'; message: string }
   | { type: 'history'; direction: 'undo' | 'redo' }
 export type Envelope<T> = { channel: typeof WEB_CHANNEL; version: number; sessionId: string; payload: T }
+/**
+ * The frame the SDK sends the moment it starts listening, before any session exists.
+ * It carries no session ID, so it is deliberately not an envelope: the host answers it with
+ * `hello` and every later message is checked against the session that handshake opened.
+ */
+export type SDKAnnouncement = { channel: typeof WEB_CHANNEL; version: number; type: 'sdk-present'; projectId: string; instanceId: string }
 
 export function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -199,6 +205,8 @@ export function isResponse(v: unknown): v is AgentResponse {
   return record(v) && v.version === 1 && safeId(v.id) && safeId(v.batchId) && safeId(v.projectId) && text(v.sourceRevision) && text(v.resultRevision) && typeof v.summary === 'string' && text(v.createdAt) && Array.isArray(v.tickets) && v.tickets.every(t => record(t) && safeId(t.id) && ['implemented', 'needs-info'].includes(String(t.status)) && typeof t.message === 'string')
 }
 export function envelope<T>(sessionId: string, payload: T): Envelope<T> { return { channel: WEB_CHANNEL, version: WEB_PROTOCOL, sessionId, payload } }
+export function announcement(projectId: string, instanceId: string): SDKAnnouncement { return { channel: WEB_CHANNEL, version: WEB_PROTOCOL, type: 'sdk-present', projectId, instanceId } }
+export function isAnnouncement(v: unknown): v is SDKAnnouncement { return record(v) && v.channel === WEB_CHANNEL && v.type === 'sdk-present' && typeof v.version === 'number' && safeId(v.projectId) && safeId(v.instanceId) }
 export function isEnvelope(v: unknown): v is Envelope<Record<string, unknown>> { return record(v) && v.channel === WEB_CHANNEL && typeof v.version === 'number' && safeId(v.sessionId) && record(v.payload) && typeof v.payload.type === 'string' }
 export function isCommand(p: Record<string, unknown>): boolean {
   switch (p.type) {

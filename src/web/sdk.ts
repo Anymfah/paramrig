@@ -1,4 +1,4 @@
-import { envelope, isCommand, isEnvelope, parseManifest, WEB_PROTOCOL, type HostCommand, type SDKEvent, type Values, type WebBinding, type WebContext, type WebMark, type WebProjectManifest, type WebTarget, type TargetKey, type Point } from './contracts.ts'
+import { announcement, envelope, isCommand, isEnvelope, parseManifest, WEB_PROTOCOL, type HostCommand, type SDKEvent, type Values, type WebBinding, type WebContext, type WebMark, type WebProjectManifest, type WebTarget, type TargetKey, type Point } from './contracts.ts'
 import { markPoints, pathForMark, storedPoint } from './geometry.ts'
 import type { ParamValue } from '../rigs/types.ts'
 
@@ -333,6 +333,9 @@ export function connectWeb({ manifest: rawManifest, hostOrigin, adapters = {} }:
   window.addEventListener('scroll', schedule, true); window.addEventListener('resize', schedule)
   window.addEventListener('pointerdown', down, true); window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', end, true); window.addEventListener('pointercancel', cancel, true)
   window.addEventListener('click', click, true); window.addEventListener('keydown', key, true); window.addEventListener('blur', cancel)
+  // The host cannot know when the application finished booting, so the SDK says so itself. Until
+  // this frame arrives the host is guessing, and a guess costs a whole retry interval.
+  window.parent.postMessage(announcement(manifest.id, instanceId), hostOrigin)
   let previousPage = pageId()
   const heartbeat = setInterval(() => {
     if (!sessionId) return

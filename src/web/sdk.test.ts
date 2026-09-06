@@ -1,25 +1,46 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import example from '../../examples/web/manifest.json'
 import { connectWeb } from './sdk'
-import { envelope, parseManifest, type HostCommand, type SDKEvent } from './contracts'
+import { envelope, isAnnouncement, parseManifest, type HostCommand, type SDKAnnouncement, type SDKEvent } from './contracts'
 
 const hostOrigin = 'http://localhost:5174'
 let connection: ReturnType<typeof connectWeb> | null = null
 afterEach(() => { connection?.dispose(); connection = null; vi.restoreAllMocks(); document.body.replaceChildren(); document.documentElement.removeAttribute('style') })
-function setup() {
+function setup({ pair = true } = {}) {
   const manifest = parseManifest({ ...example, origin: location.origin, pages: [{ id: 'home', name: 'Home', path: location.pathname }] })
   document.body.innerHTML = '<main><h1 data-paramrig-id="hero-title">Original</h1><article data-paramrig-id="story-card" data-paramrig-instance="coast"><button data-paramrig-id="action">Read coast</button></article><article data-paramrig-id="story-card" data-paramrig-instance="forest"><button data-paramrig-id="action">Read forest</button></article><button id="plain">Plain button</button></main>'
   const events: SDKEvent[] = []
-  vi.spyOn(window, 'postMessage').mockImplementation(message => { if (message?.payload) events.push(message.payload as SDKEvent) })
+  const posted: unknown[] = []
+  vi.spyOn(window, 'postMessage').mockImplementation(message => { posted.push(message); if (message?.payload) events.push(message.payload as SDKEvent) })
   if (!globalThis.CSS?.escape) vi.stubGlobal('CSS', { escape: (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, ch => `\\${ch}`) })
   connection = connectWeb({ manifest, hostOrigin })
   const send = (payload: HostCommand, origin = hostOrigin, sessionId = 'test-session') => window.dispatchEvent(new MessageEvent('message', { origin, source: window, data: envelope(sessionId, payload) }))
-  send({ type: 'hello', projectId: manifest.id })
-  return { manifest, events, send }
+  if (pair) send({ type: 'hello', projectId: manifest.id })
+  const announcements = () => posted.filter((m): m is SDKAnnouncement => isAnnouncement(m))
+  return { manifest, events, send, posted, announcements }
 }
 const configure = (mode: 'browse' | 'select' | 'annotate'): HostCommand => ({ type: 'configure', mode, tool: 'note', color: '#df7757', targets: [], marks: [] })
 
 describe('page-side web integration', () => {
+  it('announces itself the moment it listens, and does nothing else until the host answers', () => {
+    const { manifest, events, send, announcements } = setup({ pair: false })
+    expect(announcements().map(a => a.projectId)).toEqual([manifest.id])
+    expect(events).toEqual([])
+    // Announced is not paired: no overlay, no listener acting, nothing sent.
+    expect(document.querySelector('paramrig-overlay')).toBeNull()
+    const button = document.querySelector('#plain')!
+    const clicked = vi.fn(); button.addEventListener('click', clicked)
+    button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }))
+    expect(events).toEqual([])
+    expect(clicked).toHaveBeenCalledOnce()
+    send({ type: 'hello', projectId: manifest.id })
+    const ready = events.find(e => e.type === 'ready')
+    expect(ready?.type).toBe('ready')
+    if (ready?.type === 'ready') expect(ready.instanceId).toBe(announcements()[0]!.instanceId)
+    expect(announcements()).toHaveLength(1)
+  })
+
   it('accepts only the paired parent origin and session', () => {
     const { send } = setup()
     send({ type: 'values', values: { accent: '#123456' }, source: false }, 'https://untrusted.example')

@@ -73,6 +73,27 @@ Install the connection only in development. For React, create it in an effect an
 dispose it in the cleanup. The complete React example lives in
 `src/web/example/Demo.tsx`. The SDK itself does not depend on React.
 
+## Pairing
+
+`connectWeb` posts one announcement to the parent as soon as its listeners are
+installed: `{ channel: 'paramrig.web', version, type: 'sdk-present', projectId,
+instanceId }`. It carries no session ID and is deliberately not an envelope; the
+workspace answers it with `hello`, and that reply opens the session every later
+message is checked against. Until the reply arrives the SDK does nothing: no
+overlay, no selection, no event, and the application's own clicks pass through.
+
+The workspace also greets on its own, at 100, 200, 400 and 800 ms and then every
+two seconds, so an integration built before the announcement still pairs. It
+posts nothing at the frame before the frame has loaded or spoken, which is what
+`postMessage` needs to stop warning about a recipient origin. `WEB_PROTOCOL` is
+unchanged: an SDK that never announces itself is greeted by the same `hello` it
+always was.
+
+While the preview has not answered, the selection tool, the drawing palette and
+the controls are `inert` rather than merely dim, **Review changes** is refused,
+and a veil over the preview carries the status. Reconnecting resends the current
+mode, targets and values, so a preview that reloads comes back where it was.
+
 `examples/web/manifest.json` is a complete manifest template. Keep its `id` stable,
 use the target application's exact HTTP origin, and list its page paths. Increment
 `revision` after applying feedback. Update the file-service manifest and the SDK's
