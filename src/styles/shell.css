@@ -17,6 +17,23 @@
 .shell[data-nav='off'] { --nav-w: 0px; }
 /* Framed, the page ends where its cards end: the gap below would read as a band of empty frame. */
 .shell[data-nav='off'] .control-catalog { margin-bottom: 0; }
+/*
+ * Framed, the wheel belongs to the page around the frame, not to this one.
+ *
+ * The workbench keeps a scroll inside its panels and stops it there on purpose:
+ * `overscroll-behavior: contain` is what prevents the library behind a panel from
+ * moving while a list is being read. Inside a frame that same rule turns the wheel
+ * into nothing at all — the frame swallows the event and refuses to pass it on, so
+ * the page underneath sits still while the cursor is anywhere over the frame.
+ *
+ * There is nothing to scroll here anyway: the six cards are chosen to fit, and
+ * `tests/website.spec.ts` fails if they ever stop fitting.
+ */
+.shell[data-nav='off'] .scroll-area {
+  overflow: hidden;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+}
 .shell[data-inspector='collapsed'] { --inspector-w: 0px; }
 .shell[data-inspector='collapsed'] .inspector { visibility: hidden; }
 .shell[data-timeline='off'] {
