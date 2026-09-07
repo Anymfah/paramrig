@@ -46,7 +46,7 @@ what is now true, not labels.
 
 `@paramrig/web` is published by `.github/workflows/release-web.yml` when the maintainer pushes a
 `web-v<version>` tag that matches `packages/web-sdk/package.json`. Nothing else in the repository
-is published as a package; the workbench is deployed as a static site from `npm run build:demo`.
+is published as a package; the workbench is deployed as a static site from `npm run build:app`.
 
 ## Security
 

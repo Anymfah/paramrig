@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 /*
- * The demo is a static site behind Apache: a route only the router knows about answers with
+ * The app is a static site behind Apache: a route only the router knows about answers with
  * Apache's own 404 on a reload or a shared link, and nothing in the build says so. Reading both
  * files and comparing them is the only thing that notices.
  *
@@ -19,7 +19,7 @@ const rule = /RewriteRule\s+\^\((.+)\)\$\s+index\.html/.exec(htaccess)
 /** A concrete path for a route: the parameters a person's URL would actually carry. */
 const sample = (route: string) => route.replace(/:rigId/, 'web-fieldnotes').replace(/^\//, '')
 
-describe('the demo answers every route it declares', () => {
+describe('the app answers every route it declares', () => {
   it('reads both files', () => {
     expect(routes.length).toBeGreaterThan(4)
     expect(rule).not.toBeNull()

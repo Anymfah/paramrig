@@ -175,9 +175,9 @@ export function LibraryPage() {
             </Tooltip>
           </div>
         </div>
-        {import.meta.env.MODE === 'demo' && (
+        {import.meta.env.MODE === 'app' && (
           <p className="status-msg" role="note">
-            Public demo. Drafts and snapshots stay in this browser, with no cloud backup.{' '}
+            Everything you make here stays in this browser. There is no account and no cloud backup yet.{' '}
             <a href="https://paramrig.com/docs/persistence/">About local data</a>
           </p>
         )}

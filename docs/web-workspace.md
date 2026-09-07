@@ -55,7 +55,7 @@ does. What to do with `manifest.json`, `batches/` and `responses/` is the projec
 own call — they are its record of a conversation with its agent — and
 `packages/web-sdk/README.md` sets out the trade-off rather than deciding it.
 
-The public static demo does not run this file service. Local browser recovery
+The hosted app does not run this file service. Local browser recovery
 belongs to the workbench origin; it is not a cloud backup.
 
 A link to `/r/web-<project>` opens on a browser that has never seen the project.

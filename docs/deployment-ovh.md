@@ -1,66 +1,77 @@
-# Public demo deployment
+# Deploying the application
 
-The product and marketing website are separate builds and repositories. The
-website lives in the private `Anymfah/paramrig-website` repository; its public
-documentation is intended for <https://paramrig.com/docs/>.
+ParamRig runs at `app.paramrig.com`. It is the application itself, not a
+reduced demonstration of it: every editor, every controller and every bundled
+example is the code this repository builds. What it does not have yet is an
+account and a server, so a person's work stays in their own browser.
+
+The marketing and documentation website is a separate build in a separate
+repository, `Anymfah/paramrig-website`, served from `paramrig.com`.
 
 ## Build
 
-Run this from the public product repository:
+From this repository:
 
 ```sh
-docker compose run --rm app npm run build:demo
+docker compose run --rm app npm run build:app
 ```
 
-The `demo` build mode displays a browser-storage notice in the library. It adds
-no authentication, telemetry, uploads, or cloud synchronization.
+The `app` mode adds one notice to the library, saying that work is held in the
+browser and that there is no cloud backup. It adds no authentication, no
+telemetry, no upload and no synchronisation. The output is `dist/`, static
+files only.
 
 ## OVH setup
 
-Associate `demo.paramrig.com` with its own document root in OVH Multisite.
-Enable HTTPS and verify the exact destination before transferring files. Use
-SFTP or another encrypted transfer method supported by the subscribed offer.
-Never commit host credentials or put them in a public workflow.
+Give `app.paramrig.com` its own document root in OVH Multisite. Turn HTTPS on
+and confirm the destination before transferring anything. Transfer over SFTP or
+another encrypted method the subscribed offer supports. Host credentials never
+go into the repository or into a public workflow.
 
-Upload the contents of `dist/`, including the hidden `.htaccess`. The rewrite
-rules cover every route the router declares, so a direct visit or a reload
-answers with the application rather than with Apache's 404: `/r/<any rig>`,
-`/web`, `/docs`, `/docs/controls`, `/docs/vector-rigs` and `/docs/scene-rigs`.
-Missing static assets are not rewritten to HTML. `src/App.routes.test.ts` reads
-both `src/App.tsx` and `public/.htaccess` and fails when a route is added without
-its rewrite. The demo is marked `noindex`; discovery pages belong on the public
-website.
+Upload the whole of `dist/`, including the hidden `.htaccess`. Its rewrite
+covers every route the router declares, so a direct visit or a reload answers
+with the application instead of Apache's 404: `/r/<any rig>`, `/web`, `/docs`,
+`/docs/controls`, `/docs/vector-rigs` and `/docs/scene-rigs`. Missing static
+assets are not rewritten to HTML. `src/App.routes.test.ts` reads both
+`src/App.tsx` and `public/.htaccess`, and fails when a route is added without
+its rewrite.
 
-Download or rename the current deployed directory before replacement. Keep it
-until the new version passes its smoke checks; restore it to roll back.
+The application sends `X-Robots-Tag: noindex, nofollow`. That is deliberate and
+it stays: every route here renders on the client, so a crawler would index empty
+shells, and the pages meant to be found are the website's.
 
-## Before any of this
+Rename or download the deployed directory before replacing it. Keep the copy
+until the new upload passes the checks below; restoring it is the rollback.
 
-Two things outside this repository are not ready, and the deployment waits on
-them. Measured on 6 September 2026:
+## What the deployment waits on
 
-- `paramrig.com` has an A record but refuses HTTPS: `curl -sI https://paramrig.com/`
-  returns nothing, and `http://` redirects to `www.paramrig.com`. The library
+Two things outside this repository. Measured on 7 September 2026:
+
+- `paramrig.com` and `www.paramrig.com` both resolve to `213.186.33.5` and
+  refuse HTTPS: `curl -sI https://paramrig.com/` returns nothing. The library
   links to `https://paramrig.com/docs/persistence/` from
-  `src/library/LibraryPage.tsx`; that link is deliberately unchanged, because the
-  address is right and it is the site that is missing.
-- `demo.paramrig.com` has no DNS record at all.
+  `src/library/LibraryPage.tsx`. That link is deliberately unchanged: the
+  address is right, it is the site behind it that is missing.
+- `app.paramrig.com` has no DNS record at all.
 
-The public site is not in this repository, so neither is fixed here.
+Neither is fixed here, because neither lives here.
 
 ## Acceptance
 
 - Open and reload every route directly over HTTPS: a rig, `/web`, `/docs`,
   `/docs/controls`, `/docs/vector-rigs` and `/docs/scene-rigs`.
-- Open and reload both rig URLs directly over HTTPS.
-- Change a parameter, reload and verify that its local draft is restored.
-- Copy and download the JSON export; confirm that no source files are changed.
+- Change a parameter, reload, and verify the local draft comes back.
+- Copy and download the JSON export; confirm no source file changed.
 - Check keyboard navigation and the inspector on a narrow viewport.
-- Check the SVG example when WebGL is unavailable and the explicit error
-  message for the 3D renderer.
-- Verify that the library explains browser-only storage and links to the
-  public data documentation.
+- Check the SVG example with WebGL unavailable, and the explicit error the 3D
+  renderer gives in that case.
+- Verify the library states that storage is browser-only and links to the
+  public documentation on it.
 
-The cloud application is not part of this deployment. Local demo data is
-specific to the demo origin and is not promised to migrate into future cloud
-accounts.
+## About the cloud
+
+Accounts and server-side storage are not part of this deployment, and nothing
+here assumes them. When they arrive they arrive at this same origin, so what a
+person opens does not move. Local data written before then belongs to the
+browser and this origin; migrating it into an account is a decision to make
+when the account exists, not a promise this deployment makes.
