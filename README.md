@@ -123,7 +123,7 @@ parameter and the document becomes tunable without leaving it.
 
 | Vector documents | 3D scenes |
 | --- | --- |
-| <img src="assets/readme/vector.webp" alt="The vector editor with an element selected and the document's own controllers on the right"> | <img src="assets/readme/scene.webp" alt="The 3D scene editor with an outliner, viewport gizmos and object properties"> |
+| <img src="assets/readme/vector.webp" alt="The vector editor on a poster document, one shape selected, and the poster's own controllers on the right"> | <img src="assets/readme/scene.webp" alt="The 3D scene editor on the desk study, with its bindings and the scene's own controllers on the right"> |
 | Paths, networks and planar regions, text, frames, guides, boolean operations, export presets. Fills, strokes, effects and node positions can all be bound to a controller. | Objects, modifiers, lights, cameras, materials and world settings, with the same binding vocabulary. Edit and Tune share one WebGL context. |
 
 ### Timeline, snapshots, history
@@ -141,7 +141,7 @@ ruler have context menus of their own.
 ## Examples
 
 <p align="center">
-  <img src="assets/readme/library.webp" alt="The ParamRig library with seven bundled examples" width="960">
+  <img src="assets/readme/library.webp" alt="The ParamRig library with nine bundled examples" width="960">
 </p>
 
 | Example | Renderer | What it shows |
@@ -151,8 +151,10 @@ ruler have context menus of their own.
 | Surface studies | HTML / CSS | Material and light |
 | Type specimen | HTML / CSS | Rhythm and hierarchy |
 | Controller lab | HTML / CSS | Every controller family at once |
+| Desk study | Scene | A lamp and two props, arranged, with six controls |
 | Paper lantern | Scene | A 3D document that carries its own rig |
 | Aperture mark | Vector | A drawing that carries its own rig |
+| Aperture poster | Vector | A poster laid out with guides, bound to eight controls |
 
 Examples come from [`src/rigs/registry.ts`](src/rigs/registry.ts).
 [`docs/ADDING-A-RIG.md`](docs/ADDING-A-RIG.md) shows how to add a study without editing the
