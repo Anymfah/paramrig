@@ -1,6 +1,6 @@
 # Controller contracts
 
-The catalog at `/docs/controls` contains 66 interactive examples across ten
+The catalog at `/docs/controls` contains 66 interactive examples across eleven
 families. `/r/controller-lab` opens the same manifest in the full workspace.
 Both use `src/ui/ParameterField.tsx`; catalog controls are not separate demos.
 Individual examples expose their current JSON value and complete declaration
@@ -17,6 +17,7 @@ from the code icon in the card header, which opens a full-height inspector.
 | Text & typography | Single/multiline text, font choice, typography group, variable font axes |
 | Curves & profiles | Cubic Bézier, ordered ramp/falloff profile, editable 2D path, overlapping radial profiles |
 | Resources | Previewable image/texture/SVG, binary font/model/environment asset, parameter preset |
+| Scene instruments | 2D and 3D transform gizmos, texture frame, camera rig |
 | Actions | Apply values, trigger counter, restricted randomization (including seeds), reset selected parameters |
 | Collections | Value list, repeatable layers, linked box values and stroke |
 | Value sources & animation | Duration/playhead, local, parameter, expression, timeline, macro, modulation and blend value sources |

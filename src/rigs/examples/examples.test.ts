@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { listExampleRigs } from '@/rigs/registry'
 import { apertureMarkDocument } from '@/rigs/examples/aperture-mark'
+import { aperturePosterDocument } from '@/rigs/examples/aperture-poster'
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { vectorManifest } from '@/vector/document'
 import { sceneManifest } from '@/scene/document'
@@ -19,6 +20,7 @@ import type { RigManifest } from '@/rigs/types'
 const shipped = (): RigManifest[] => [
   ...listExampleRigs(),
   vectorManifest(apertureMarkDocument),
+  vectorManifest(aperturePosterDocument),
   sceneManifest(paperLantern()),
 ]
 

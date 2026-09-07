@@ -46,6 +46,16 @@
   background: var(--fn-deep);
   font-family: 'Public Sans', system-ui, sans-serif;
   font-synthesis-weight: none;
+
+  /*
+   * The page's own ground is the deep band, so the browser's light default scrollbar cut a white
+   * strip down the right edge, in the page and again inside the workbench preview. The document
+   * scrollbar gets the same discreet treatment as the notebook's own, one step firmer because it
+   * carries the whole page.
+   */
+  color-scheme: dark;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--fn-paper) 24%, transparent) transparent;
 }
 
 * { box-sizing: border-box; }

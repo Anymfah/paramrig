@@ -1,41 +1,55 @@
-# ParamRig
+<p align="center">
+  <img src="assets/readme/hero.webp" alt="ParamRig" width="960">
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@paramrig/web"><img alt="npm" src="https://img.shields.io/npm/v/%40paramrig%2Fweb?style=flat-square&label=%40paramrig%2Fweb&labelColor=0f1212&color=3f6f61"></a>
+  <a href="https://github.com/Anymfah/paramrig/actions/workflows/verify.yml"><img alt="verify" src="https://img.shields.io/github/actions/workflow/status/Anymfah/paramrig/verify.yml?branch=main&style=flat-square&label=verify&labelColor=0f1212&color=3f6f61"></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-3f6f61?style=flat-square&labelColor=0f1212"></a>
+  <img alt="Node 22.6+" src="https://img.shields.io/badge/node-22.6%2B-3f6f61?style=flat-square&labelColor=0f1212">
+</p>
 
 ParamRig is an open-source workbench for human-tuning AI-built visual systems.
 
-Instead of asking AI to own the finished creative result, ParamRig asks it to build the tools. The AI creates a purpose-built rig around a component, design system, SVG, animation, 3D scene, or procedural world. A human shapes the result in a live preview, then the AI applies the validated choices back to the product.
+Coding agents are good at building something that renders. The last mile is where they slow down.
+A value is right or wrong because of how it looks, and turning that into prose costs several rounds
+and still lands near the intention. So instead of asking AI to own the finished creative result,
+ParamRig asks it to build the **tool**: a rig around a component, a design system, an SVG, an
+animation, a 3D scene or a running page. You take the controls, find the values with your eyes, and
+hand back numbers the agent can apply.
 
-ParamRig also supports rapid proofs of concept: uncertain ideas become manipulable prototypes whose approved parameters can be carried into production.
+Uncertain ideas work the same way. A rough prototype becomes something you can manipulate, and the
+parameters you approve go into the product.
 
-> Let AI build the tools. Keep creation human.
+## How it works
 
-Official website: [paramrig.com](https://paramrig.com) — planned, not yet launched.
+**1. The agent builds the rig.** It names the parameters that matter, with their ranges and their
+kinds: numbers, colors, curves, choices, resources, collections. In this repository that is a rig
+manifest. In a project you are building it is `.paramrig/manifest.json` and the
+[`@paramrig/web`](packages/web-sdk) SDK.
 
-## Status
+**2. You tune it.** The controls open beside a live preview. Compare against a reference, keep
+snapshots, animate a value on the timeline, undo anything.
 
-A local frontend is available for the library and SVG, HTML and 3D editors,
-with editable animation tracks, snapshots and action history. Discovery notes still apply to product strategy; they are not
-the application itself.
+**3. The agent reads what you kept.** An export from the workbench, or a reviewed batch written into
+the connected project for its own agent to pick up on the next run.
 
-## Run locally
+<p align="center">
+  <img src="assets/readme/workbench.webp" alt="The ParamRig workbench: a 3D preview, the inspector on the right, and the timeline with two keyframed tracks" width="960">
+  <br><sub>A rig open in the workbench: preview, inspector, and a timeline with grouped tracks and keyframes.</sub>
+</p>
 
-The workbench runs as the Docker Compose project `paramrig`. Do not start
-Vite on the host.
+## Run it
+
+The workbench runs as the Docker Compose project `paramrig`, from the repository root. Nothing
+needs a Node installation on the host.
 
 ```bash
 docker compose up -d
 ```
 
-Then open [http://localhost:5174/](http://localhost:5174/).
-
-See [`docs/local-docker-development.md`](docs/local-docker-development.md)
-for stop/start, rebuilds, and one-off commands.
-
-- Library: `/`
-- Example rig: `/r/contour-bloom`, `/r/tidal-planet`
-- Docs: `/docs`
-- Controllers: `/docs/controls`
-- Full controller lab: `/r/controller-lab`
-- QA fixtures: `/?fixture=empty`, `/?fixture=error`, `/?fixture=loading` (holds the skeleton), `/?fixture=long`
+Open **http://localhost:5174/**. [`docs/local-docker-development.md`](docs/local-docker-development.md)
+covers stop and start, rebuilds, and one-off commands.
 
 ```bash
 docker compose run --rm app npm test
@@ -43,97 +57,149 @@ docker compose run --rm app npm run lint
 docker compose run --rm app npm run build
 ```
 
-Example rigs come from `src/rigs/registry.ts`. See
-[`docs/ADDING-A-RIG.md`](docs/ADDING-A-RIG.md) to add another study without
-editing the workspace shell.
+| Route | What is there |
+| --- | --- |
+| `/` | The library |
+| `/r/contour-bloom`, `/r/tidal-planet` | Example rigs |
+| `/r/controller-lab` | Every controller family in one rig |
+| `/docs` | Documentation inside the app |
+| `/docs/controls` | The controller catalog |
+| `/web` | Connected web projects |
+| `/?fixture=empty`, `/?fixture=error`, `/?fixture=loading`, `/?fixture=long` | Library states for QA |
 
-QA captures from the implementation pass live in
-[`workproduct/ui-implementation/qa/`](workproduct/ui-implementation/qa/).
+## Tune a project you are building
 
-## Workspace UI
+The Web workspace opens a page from your own development server beside the controls its agent
+exposed. You change values, select DOM elements, draw on what you see, and approve a batch. The
+batch is written into the project, where the agent that maintains it can read the note, the element
+it points at, and the values you settled on.
 
-Shared controls live in `src/ui/`: `Button`, `NumberField`, `SliderField`,
-`ColorField`, `CurveField`, `GradientField`, `SelectField`, `SwitchField`,
-`Tooltip`. The workspace shell (`Inspector`, `Timeline`, `ExportAction`,
-`RigPreview`) binds them through `RigSession` — do not branch on a rig name
-in the chrome.
+In the project you are tuning:
 
-`ParameterField` is the shared manifest-to-control renderer. The searchable
-catalog now contains 62 focused examples in 10 families: numbers, spatial controls,
-appearance, choices, typography, curves, resources, actions, collections and
-value sources. The same definitions run in the full Controller lab with
-the inspector, history, snapshots, export and timeline. See
-[`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) for contracts and limits.
+```bash
+npm install --save-dev @paramrig/web
+```
 
-The timeline supports grouped tracks, zoom, keyframe selection and dragging,
-copy/paste/delete, precise time/value/easing controls, and a playback range.
-Undo/redo records a complete drag as one action. The History tab keeps the
-last 100 actions for the current session. Snapshots can be named, restored
-(including the active reference), and removed; these actions are undoable too.
-Reference and Current sample animated values at the same playhead position.
+Then, from this repository, point the optional `web` profile at it:
 
-Right-click a control to reset it or add numeric animation. Shift+F10 opens
-the same actions from the keyboard; small screens expose an actions button.
-Timeline keys, track labels, track backgrounds, group headers and the ruler
-also have context menus. Right-clicking an already selected key keeps the
-multi-selection. Drag the grip above the timeline to resize it, or use Expand
-timeline. The grip supports arrow keys, End to expand, Home to collapse and
-Escape to cancel a drag. Its height is saved and bounded by the viewport.
-Drafts and snapshots use browser storage. History, selection, track visibility
-and the keyframe clipboard are session state, not permanent project data.
+```bash
+PARAMRIG_PROJECT_DIR=/absolute/path/to/project docker compose --profile web up -d
+```
 
-The key/track context panel uses the parameter's numeric instrument (including
-knobs, logarithmic sliders and discrete stops). Curve editor switches to an
-editable graph of the selected track, with real keys and their interpolation.
+Open `/web` and pick the project. Without `PARAMRIG_PROJECT_DIR`, the profile starts with the
+bundled Fieldnotes example instead.
 
-Known limits of this build: bundled examples only (no disk watch), export
-does not write back to source, 3D is a bounded study, and there is no auth,
-AI chat, or telemetry. The current UI includes intentional departures from
-[`assets/ui-mockups/`](assets/ui-mockups/); those mockups are not a pixel-perfect
-acceptance target.
+<p align="center">
+  <img src="assets/readme/web.webp" alt="A running development page on the left, its exposed project controls on the right" width="960">
+  <br><sub>A running page beside the controls its own agent exposed.</sub>
+</p>
 
-## Connected web projects
+The service only writes inside the project's `.paramrig` directory. It does not start the
+application, install anything in it, or touch its source. [`docs/web-workspace.md`](docs/web-workspace.md)
+covers the setup and the file handoff. [`packages/web-sdk/README.md`](packages/web-sdk/README.md)
+is the integration guide, with the manifest fields, the binding kinds, the `data-paramrig-*`
+attributes and JSON Schema for the manifest, the batch and the response.
 
-The local Web workspace opens a running project through a development SDK. It
-supports exposed controls, DOM selection, visual markup, snapshots, approved
-feedback batches and agent responses saved in the connected project. Start the
-optional Compose `web` profile and open `/web`. See
-[`docs/web-workspace.md`](docs/web-workspace.md) for setup, the React example,
-the SDK build, source revisions and the file handoff contract.
+## Inside the workbench
 
-## Initial audience
+### 66 controllers, 11 families
 
-The working hypothesis is creative developers, vibecoders, and technical artists who use coding agents to build complex visual systems and lose time translating perceptual feedback into precise code changes. This hypothesis has not yet been validated as the final target segment.
+One value contract, several instruments. A number can be a field, a stepper, a bar, a logarithmic
+scale, a stepped scale, a knob, an angle dial or a seed. The same definitions drive the catalog at
+`/docs/controls`, the inspector, the vector and scene editors, and the Controller lab.
 
-## Language policy
+<p align="center">
+  <img src="assets/readme/controllers.webp" alt="The controller catalog: color palettes, gradient geometry, HDR color, material presets, opacity ramps and choice controls" width="960">
+</p>
 
-English is the canonical language for the application, APIs, rig definitions, documentation, and error messages. Future translations must derive from the English source rather than introducing parallel product terminology.
+Numbers, position and dimensions, color and appearance, choices, text and typography, curves and
+profiles, resources, scene instruments, actions, collections, value sources and animation.
+[`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) has the contracts and the limits.
 
-## Product framing
+### Two editors that carry their own controls
 
-Internal product-discovery sessions are kept locally and are not published.
-The local UI uses Vite, React, and TypeScript. See `package.json`.
+A document can be a drawing, or a drawing that carries a rig. Bind an element's property to a
+parameter and the document becomes tunable without leaving it.
 
-## Brand
+| Vector documents | 3D scenes |
+| --- | --- |
+| <img src="assets/readme/vector.webp" alt="The vector editor with an element selected and the document's own controllers on the right"> | <img src="assets/readme/scene.webp" alt="The 3D scene editor with an outliner, viewport gizmos and object properties"> |
+| Paths, networks and planar regions, text, frames, guides, boolean operations, export presets. Fills, strokes, effects and node positions can all be bound to a controller. | Objects, modifiers, lights, cameras, materials and world settings, with the same binding vocabulary. Edit and Tune share one WebGL context. |
 
-The approved Coform logo and the current branding study are available in
-[`assets/brand/`](assets/brand/). The application self-hosts Public Sans
-(WOFF2) from `public/fonts/`. The custom wordmark is vector geometry, not a
-font.
+### Timeline, snapshots, history
 
-## Contributions
+Grouped tracks with zoom, keyframe selection and dragging, copy, paste and delete, precise time,
+value and easing controls, and a playback range. A whole drag records as one action. The History tab
+keeps the last 100 actions of the session. Snapshots can be named, restored with their reference,
+and removed, and those actions undo too. Reference and Current sample animated values at the same
+playhead position.
 
-How to run the checks, open a pull request and where things live is in
-[`CONTRIBUTING.md`](CONTRIBUTING.md); repository conventions, including the
-prohibition on AI signatures in commit messages, are in [`AGENTS.md`](AGENTS.md).
-To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
+Right-click a control to reset it or animate it. Shift+F10 opens the same menu from the keyboard,
+and small screens get an actions button. Keys, track labels, backgrounds, group headers and the
+ruler have context menus of their own.
+
+## Examples
+
+<p align="center">
+  <img src="assets/readme/library.webp" alt="The ParamRig library with seven bundled examples" width="960">
+</p>
+
+| Example | Renderer | What it shows |
+| --- | --- | --- |
+| Contour bloom | SVG | Shape, relief and motion from a handful of numbers |
+| Tidal planet | 3D | A procedural planet, with two animated tracks |
+| Surface studies | HTML / CSS | Material and light |
+| Type specimen | HTML / CSS | Rhythm and hierarchy |
+| Controller lab | HTML / CSS | Every controller family at once |
+| Paper lantern | Scene | A 3D document that carries its own rig |
+| Aperture mark | Vector | A drawing that carries its own rig |
+
+Examples come from [`src/rigs/registry.ts`](src/rigs/registry.ts).
+[`docs/ADDING-A-RIG.md`](docs/ADDING-A-RIG.md) shows how to add a study without editing the
+workspace shell.
+
+## Documentation
+
+| Document | What it covers |
+| --- | --- |
+| [`docs/local-docker-development.md`](docs/local-docker-development.md) | Commands, routes, rebuilds |
+| [`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) | Controller contracts and limits |
+| [`docs/ADDING-A-RIG.md`](docs/ADDING-A-RIG.md) | Adding a rig |
+| [`docs/web-workspace.md`](docs/web-workspace.md) | The connected web workspace |
+| [`packages/web-sdk/README.md`](packages/web-sdk/README.md) | The `@paramrig/web` integration guide |
+| [`docs/scene-editor-keymap.md`](docs/scene-editor-keymap.md) | Scene editor keys |
+
+## Status and limits
+
+Bundled examples only, with no disk watch. Export does not write back to source. The 3D editor is a
+bounded study. There is no account, no AI chat and no telemetry. Drafts and snapshots live in
+browser storage. History, selection, track visibility and the keyframe clipboard are session state
+rather than project data. The current UI departs from [`assets/ui-mockups/`](assets/ui-mockups/) in
+places, and those mockups are not a pixel-perfect acceptance target. QA captures from the
+implementation pass are in [`workproduct/ui-implementation/qa/`](workproduct/ui-implementation/qa/).
+
+The working hypothesis is that this is for creative developers, vibecoders and technical artists who
+build visual systems with coding agents and lose time turning what they see into precise code
+changes. That has not been validated as the final audience yet. The site at paramrig.com is planned
+and not live yet.
+
+## Contributing
+
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the checks to run and how a pull request lands.
+[`AGENTS.md`](AGENTS.md) has the repository conventions, including the rule against AI signatures in
+commit messages. English is the canonical language for the application, APIs, rig definitions,
+documentation and error messages, and translations derive from that source. To report a
+vulnerability, see [`SECURITY.md`](SECURITY.md).
+
+The approved Coform logo and the branding study are in [`assets/brand/`](assets/brand/). The
+application self-hosts Public Sans from `public/fonts/`, and the wordmark is vector geometry rather
+than a font.
 
 ## Licensing
 
-ParamRig is MIT licensed. The terms are in `LICENSE`, and both `package.json`
-files declare it. `packages/web-sdk` carries its own copy so the published
-package travels with it.
+ParamRig is MIT licensed. The terms are in [`LICENSE`](LICENSE), and both `package.json` files
+declare it. `packages/web-sdk` carries its own copy so the published package travels with it.
 
-That covers ParamRig's own code. Runtime dependencies keep their own licences,
-listed in `package.json`, and the bundled Public Sans keeps the SIL Open Font
-License that ships beside it in `public/fonts/PublicSans-OFL.txt`.
+That covers ParamRig's own code. Runtime dependencies keep their own licences, listed in
+`package.json`, and the bundled Public Sans keeps the SIL Open Font License that ships beside it in
+`public/fonts/PublicSans-OFL.txt`.
