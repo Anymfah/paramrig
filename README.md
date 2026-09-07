@@ -7,29 +7,33 @@
   <a href="https://github.com/Anymfah/paramrig/actions/workflows/verify.yml"><img alt="verify" src="https://img.shields.io/github/actions/workflow/status/Anymfah/paramrig/verify.yml?branch=main&style=flat-square&label=verify&labelColor=0f1212&color=3f6f61"></a>
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-3f6f61?style=flat-square&labelColor=0f1212"></a>
   <img alt="Node 22.6+" src="https://img.shields.io/badge/node-22.6%2B-3f6f61?style=flat-square&labelColor=0f1212">
+  <a href="https://paramrig.com"><img alt="paramrig.com" src="https://img.shields.io/badge/website-paramrig.com-3f6f61?style=flat-square&labelColor=0f1212"></a>
 </p>
 
 ParamRig is an open-source workbench for human-tuning AI-built visual systems.
 
 Coding agents are good at building something that renders. The last mile is where they slow down.
 A value is right or wrong because of how it looks, and turning that into prose costs several rounds
-and still lands near the intention. So instead of asking AI to own the finished creative result,
-ParamRig asks it to build the **tool**: a rig around a component, a design system, an SVG, an
-animation, a 3D scene or a running page. You take the controls, find the values with your eyes, and
-hand back numbers the agent can apply.
+and rarely lands on it. So instead of asking AI to own the finished creative result, ParamRig asks
+it to build the **tool**: a rig around a component, a design system, an SVG, an animation, a 3D
+scene or a running page. You take the controls, find the values with your eyes, and hand back
+numbers the agent can apply.
 
 Uncertain ideas work the same way. A rough prototype becomes something you can manipulate, and the
 parameters you approve go into the product.
+
+It is for creative developers, vibecoders and technical artists who build visual systems with
+coding agents, and lose time turning what they can see into precise code changes.
 
 ## How it works
 
 **1. The agent builds the rig.** It names the parameters that matter, with their ranges and their
 kinds: numbers, colors, curves, choices, resources, collections. In this repository that is a rig
 manifest. In a project you are building it is `.paramrig/manifest.json` and the
-[`@paramrig/web`](packages/web-sdk) SDK.
+[`@paramrig/web`](https://www.npmjs.com/package/@paramrig/web) SDK.
 
 **2. You tune it.** The controls open beside a live preview. Compare against a reference, keep
-snapshots, animate a value on the timeline, undo anything.
+snapshots, animate a value on the timeline, and step back through the session's history.
 
 **3. The agent reads what you kept.** An export from the workbench, or a reviewed batch written into
 the connected project for its own agent to pick up on the next run.
@@ -171,19 +175,12 @@ workspace shell.
 | [`packages/web-sdk/README.md`](packages/web-sdk/README.md) | The `@paramrig/web` integration guide |
 | [`docs/scene-editor-keymap.md`](docs/scene-editor-keymap.md) | Scene editor keys |
 
-## Status and limits
+## What it does not do yet
 
-Bundled examples only, with no disk watch. Export does not write back to source. The 3D editor is a
-bounded study. There is no account, no AI chat and no telemetry. Drafts and snapshots live in
-browser storage. History, selection, track visibility and the keyframe clipboard are session state
-rather than project data. The current UI departs from [`assets/ui-mockups/`](assets/ui-mockups/) in
-places, and those mockups are not a pixel-perfect acceptance target. QA captures from the
-implementation pass are in [`workproduct/ui-implementation/qa/`](workproduct/ui-implementation/qa/).
-
-The working hypothesis is that this is for creative developers, vibecoders and technical artists who
-build visual systems with coding agents and lose time turning what they see into precise code
-changes. That has not been validated as the final audience yet. The site at paramrig.com is planned
-and not live yet.
+Examples are bundled, and the workbench does not watch a folder on disk. An export is a file the
+agent reads, not a patch applied to your source. Undo reaches back a hundred actions and no
+further. Drafts and snapshots live in browser storage, and selection, track visibility and the
+keyframe clipboard are gone after a reload. There is no account, no AI chat and no telemetry.
 
 ## Contributing
 
