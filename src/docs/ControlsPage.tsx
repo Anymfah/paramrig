@@ -13,6 +13,19 @@ import { SelectField } from '@/ui/SelectField'
 import { Tooltip } from '@/ui/Tooltip'
 import { IconClose, IconCode } from '@/ui/icons'
 
+/*
+ * paramrig.com frames this page so a reader can work a real controller without
+ * leaving it. The catalogue itself does not fit a frame: the shortest family is
+ * nine hundred pixels tall and the longest is nearly two thousand, and a frame
+ * that scrolls inside a page that scrolls is a trap for the wheel. These six,
+ * taken across the families, fit — and they carry the sentence the page makes in
+ * words: one value contract, several instruments. A curve, a pad, a knob, a bar,
+ * a field and a colour. The order is not the order they read in: the cards fill
+ * the columns one after another, so it pairs each tall card with a short one and
+ * the three columns end within fifty pixels of each other instead of two hundred.
+ */
+const EMBED_TOUR = ['bezier', 'position', 'knob', 'amount', 'exact', 'ink']
+
 export function ControlsPage() {
   // The catalog exercises each controller on its own: the lab keeps the timeline, so no card here is secretly animated.
   const [session]=useState(()=>{
@@ -44,8 +57,12 @@ export function ControlsPage() {
     const unsubscribe=session.subscribe(save)
     return ()=>{unsubscribe();session.setPlaying(false);save()}
   },[session])
-  const filtered=controllerExamples.filter(p=>(category==='all'||p.group===category)&&`${p.label} ${p.kind} ${p.group}`.toLowerCase().includes(query.toLowerCase()))
+  const embedded=params.get('embed')==='1'
+  const filtered=embedded
+    ?EMBED_TOUR.map(id=>controllerExamples.find(p=>p.id===id)).filter((p):p is ParameterDef=>Boolean(p))
+    :controllerExamples.filter(p=>(category==='all'||p.group===category)&&`${p.label} ${p.kind} ${p.group}`.toLowerCase().includes(query.toLowerCase()))
   return <DocsChrome>
+    {!embedded && <>
     <h1>Controllers</h1>
     <p className="lede">One value contract, several instruments. Try every controller with undo, saved local state and the same fields used in the inspector.</p>
     <p className="field__hint">This page tests each controller independently. For a composed preview, history and timeline, <Link className="text-link" to="/r/controller-lab">open the full Controller lab</Link>.</p>
@@ -54,6 +71,7 @@ export function ControlsPage() {
       <SelectField label="Family" value={category} options={[{value:'all',label:'All controllers'},...controllerCategories.map(c=>({value:c.id,label:c.label}))]} onChange={next=>setCategory(next)}/>
       <div className="controller-actions"><Button size="sm" variant="quiet" disabled={!session.canUndo()} onClick={()=>session.undo()}>Undo</Button><Button size="sm" variant="quiet" disabled={!session.canRedo()} onClick={()=>session.redo()}>Redo</Button><Button size="sm" variant="quiet" onClick={()=>session.resetAll()}>Reset examples</Button></div>
     </div>
+    </>}
     <ContextMenuRoot><div className="control-catalog">{filtered.map(param=><CatalogSlot key={param.id}><ContextTarget touchActions={false} label={`${param.label} actions`} items={[]} controller={param.kind==='number'&&!param.readOnly&&!param.role?<ValueSourceController label={param.label} target={param.id} value={session.sourceFor(param.id)??{mode:'local'}} sources={controllerDefinitions.filter(candidate=>candidate.kind==='number'&&!candidate.readOnly&&!candidate.role).map(candidate=>({id:candidate.id,label:candidate.label}))} animated={Boolean(session.trackFor(param.id))} min={param.min} max={param.max} onChange={source=>session.setValueSource(param.id,source)} forceExpanded/>:undefined}><article className="control-sample" aria-label={param.label}>
         <header className="control-sample__head">
           <div className="control-sample__titles">
@@ -76,7 +94,7 @@ export function ControlsPage() {
         {errors[param.id]?<p className="field__error" role="alert">{errors[param.id]}</p>:null}
       </article></ContextTarget></CatalogSlot>)}</div></ContextMenuRoot>
     {!filtered.length?<p>No controllers match this search. Try another name or family.</p>:null}
-    <p><Link className="text-link" to="/docs">How to add a rig</Link></p>
+    {!embedded && <p><Link className="text-link" to="/docs">How to add a rig</Link></p>}
     <ManifestDrawer
       open={Boolean(inspecting)}
       param={inspecting}

@@ -15,6 +15,8 @@
 }
 .shell[data-nav='collapsed'] .nav-rail { visibility: hidden; }
 .shell[data-nav='off'] { --nav-w: 0px; }
+/* Framed, the page ends where its cards end: the gap below would read as a band of empty frame. */
+.shell[data-nav='off'] .control-catalog { margin-bottom: 0; }
 .shell[data-inspector='collapsed'] { --inspector-w: 0px; }
 .shell[data-inspector='collapsed'] .inspector { visibility: hidden; }
 .shell[data-timeline='off'] {

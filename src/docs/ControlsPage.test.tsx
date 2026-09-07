@@ -60,7 +60,13 @@ describe('the controller catalogue reads its filter from the URL', () => {
     )
     expect(container.querySelector('.nav-rail')).toBeNull()
     expect(container.querySelector('.shell')?.getAttribute('data-nav')).toBe('off')
-    expect(screen.getAllByRole('article').length).toBe(controllerExamples.length)
+    // Six that fit the frame, not the catalogue: the whole of it is taller than any
+    // frame the page can give it, and a frame that scrolls inside a scrolling page
+    // catches the wheel. Adding a seventh here is what makes the frame scroll again.
+    expect(screen.getAllByRole('article').length).toBe(6)
+    // The site puts its own heading and search around the frame.
+    expect(container.querySelector('h1')).toBeNull()
+    expect(container.querySelector('.catalog-toolbar')).toBeNull()
   })
 
   it('names every family the site can link to', () => {
