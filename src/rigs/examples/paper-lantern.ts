@@ -1,4 +1,5 @@
 import { DEFAULT_UNITS, DEFAULT_VIEW, ROOT_COLLECTION_ID, ROOT_COLLECTION_NAME } from '@/scene/document'
+import { deskStudy } from '@/rigs/examples/desk-study'
 import { boxMesh } from '@/scene/mesh/primitives'
 import type { SceneDocument } from '@/scene/types'
 
@@ -147,4 +148,4 @@ export function paperLantern(): SceneDocument {
 }
 
 /** The scenes the app ships with. A stored document of the same id wins: it is the edited one. */
-export const BUNDLED_SCENES: Array<() => SceneDocument> = [paperLantern]
+export const BUNDLED_SCENES: Array<() => SceneDocument> = [paperLantern, deskStudy]

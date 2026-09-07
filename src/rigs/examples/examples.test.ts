@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import { listExampleRigs } from '@/rigs/registry'
 import { apertureMarkDocument } from '@/rigs/examples/aperture-mark'
 import { aperturePosterDocument } from '@/rigs/examples/aperture-poster'
+import { deskStudy } from '@/rigs/examples/desk-study'
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { vectorManifest } from '@/vector/document'
 import { sceneManifest } from '@/scene/document'
@@ -22,6 +23,7 @@ const shipped = (): RigManifest[] => [
   vectorManifest(apertureMarkDocument),
   vectorManifest(aperturePosterDocument),
   sceneManifest(paperLantern()),
+  sceneManifest(deskStudy()),
 ]
 
 describe('the examples that ship with the app', () => {
