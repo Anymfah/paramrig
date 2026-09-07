@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import {Link, useSearchParams} from 'react-router-dom'
 import { DocsChrome } from '@/docs/DocsChrome'
 import { controllerDefinitions, controllerExamples, controllerCategories, controllerManifest } from '@/rigs/controller-catalog'
 import type { ParameterDef } from '@/rigs/types'
@@ -20,7 +20,21 @@ export function ControlsPage() {
     return new RigSession({...controllerManifest,id:'controller-catalog',animation:controllerManifest.animation&&{...controllerManifest.animation,tracks:[]}},draft&&{...draft,tracks:[]})
   })
   useSyncExternalStore(session.subscribe,()=>session.getRevision())
-  const [query,setQuery]=useState(''),[category,setCategory]=useState('numbers')
+  /*
+   * The family and the search live in the URL as well as in state, so a link to
+   * one family can be sent, bookmarked, or framed by a page that wants to show
+   * that family and no other. `all` is a real value here, not the absence of one.
+   */
+  const [params,setParams]=useSearchParams()
+  const category=(()=>{const asked=params.get('family');return asked&&(asked==='all'||controllerCategories.some(c=>c.id===asked))?asked:'numbers'})()
+  const query=params.get('q')??''
+  const setSearch=(next:{family?:string;q?:string})=>setParams(current=>{
+    const draft=new URLSearchParams(current)
+    for(const [key,value] of Object.entries(next)){if(value)draft.set(key,value);else draft.delete(key)}
+    return draft
+  },{replace:true})
+  const setQuery=(value:string)=>setSearch({q:value,family:value?'all':category})
+  const setCategory=(value:string)=>setSearch({family:value,q:''})
   const [inspectingId,setInspectingId]=useState<string|null>(null)
   const state=session.getSnapshot()
   const errors=session.driverErrors()
@@ -36,8 +50,8 @@ export function ControlsPage() {
     <p className="lede">One value contract, several instruments. Try every controller with undo, saved local state and the same fields used in the inspector.</p>
     <p className="field__hint">This page tests each controller independently. For a composed preview, history and timeline, <Link className="text-link" to="/r/controller-lab">open the full Controller lab</Link>.</p>
     <div className="catalog-toolbar">
-      <label className="text-field catalog-search"><span className="text-field__label">Find a controller</span><input className="text-field__input" type="search" placeholder="Name or type…" autoComplete="off" spellCheck={false} value={query} onChange={e=>{setQuery(e.target.value);if(e.target.value)setCategory('all')}}/></label>
-      <SelectField label="Family" value={category} options={[{value:'all',label:'All controllers'},...controllerCategories.map(c=>({value:c.id,label:c.label}))]} onChange={next=>{setCategory(next);setQuery('')}}/>
+      <label className="text-field catalog-search"><span className="text-field__label">Find a controller</span><input className="text-field__input" type="search" placeholder="Name or type…" autoComplete="off" spellCheck={false} value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <SelectField label="Family" value={category} options={[{value:'all',label:'All controllers'},...controllerCategories.map(c=>({value:c.id,label:c.label}))]} onChange={next=>setCategory(next)}/>
       <div className="controller-actions"><Button size="sm" variant="quiet" disabled={!session.canUndo()} onClick={()=>session.undo()}>Undo</Button><Button size="sm" variant="quiet" disabled={!session.canRedo()} onClick={()=>session.redo()}>Redo</Button><Button size="sm" variant="quiet" onClick={()=>session.resetAll()}>Reset examples</Button></div>
     </div>
     <ContextMenuRoot><div className="control-catalog">{filtered.map(param=><CatalogSlot key={param.id}><ContextTarget touchActions={false} label={`${param.label} actions`} items={[]} controller={param.kind==='number'&&!param.readOnly&&!param.role?<ValueSourceController label={param.label} target={param.id} value={session.sourceFor(param.id)??{mode:'local'}} sources={controllerDefinitions.filter(candidate=>candidate.kind==='number'&&!candidate.readOnly&&!candidate.role).map(candidate=>({id:candidate.id,label:candidate.label}))} animated={Boolean(session.trackFor(param.id))} min={param.min} max={param.max} onChange={source=>session.setValueSource(param.id,source)} forceExpanded/>:undefined}><article className="control-sample" aria-label={param.label}>
