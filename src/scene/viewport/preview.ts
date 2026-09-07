@@ -1,20 +1,21 @@
 import {
   ACESFilmicToneMapping,
-  Box3,
+  Camera,
   Mesh,
+  OrthographicCamera,
   PerspectiveCamera,
   PMREMGenerator,
   Scene,
   SphereGeometry,
   SRGBColorSpace,
-  Vector3,
   WebGLRenderer,
   type Texture,
 } from 'three'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { buildScene } from '@/scene/io/gltf'
 import { createMaterialLibrary, materialSignature, type MaterialLibrary } from '@/scene/viewport/materials'
-import type { Material, SceneDocument } from '@/scene/types'
+import { cameraBasis, cameraPosition, fovFromFocalLength, orthoHeight } from '@/scene/viewport/view'
+import type { Material, SceneDocument, ViewState } from '@/scene/types'
 
 /**
  * The little sphere beside a material's name.
@@ -119,8 +120,8 @@ export function materialPreview(material: Material): string | null {
  *
  * The same renderer as the swatches, for the same reason: a card list would otherwise ask for a
  * WebGL context per card and a browser gives out about sixteen in all. The scene is built the way
- * an export builds it — no grid, no glyphs, no outlines — lit by the same studio, and framed by its
- * own bounds so that a scene of one cube and a scene of a hundred both fill the card.
+ * an export builds it — no grid, no glyphs, no outlines — lit by the same studio, and taken from
+ * the camera the document was left with.
  *
  * The answer is null wherever nothing can be rendered, and the caller draws the isometric boxes
  * instead: a card without a picture would be worse than a card with a diagram.
@@ -130,8 +131,7 @@ export function renderDocumentThumbnail(document: SceneDocument, size = 256): st
   if (!built) return null
   const scene = buildScene(document, { applyModifiers: true })
   scene.environment = built.environment
-  const camera = new PerspectiveCamera(35, 1, 0.01, 1000)
-  frameScene(scene, camera)
+  const camera = documentCamera(document.view)
   try {
     built.renderer.setSize(size, size, false)
     built.renderer.render(scene, camera)
@@ -149,25 +149,34 @@ export function renderDocumentThumbnail(document: SceneDocument, size = 256): st
   }
 }
 
-/** Blender's own three-quarter view, pulled back until the whole scene is inside the frame. */
-function frameScene(scene: Scene, camera: PerspectiveCamera): void {
-  const box = new Box3().setFromObject(scene)
-  if (box.isEmpty()) {
-    camera.position.set(4, -4, 3)
-    camera.up.set(0, 0, 1)
-    camera.lookAt(0, 0, 0)
-    return
-  }
-  const centre = box.getCenter(new Vector3())
-  const radius = Math.max(0.001, box.getSize(new Vector3()).length() / 2)
-  const distance = (radius / Math.sin((camera.fov * Math.PI) / 360)) * 1.15
-  const direction = new Vector3(0.6, -0.75, 0.5).normalize()
-  camera.up.set(0, 0, 1)
-  camera.position.copy(centre).addScaledVector(direction, distance)
-  camera.lookAt(centre)
-  camera.near = Math.max(0.01, distance - radius * 4)
-  camera.far = distance + radius * 8
+/**
+ * The camera the document was left with, placed from the same four numbers the viewport uses.
+ *
+ * Fitting the whole scene into the card sounds right until a scene has a floor: a fourteen-metre
+ * ground plane is the largest thing in the bounds, so the study standing on it was drawn at the
+ * size of a coin. The saved view is a framing somebody chose, and following it means the card and
+ * the editor agree about what the scene looks like. A card is square where the viewport is wide,
+ * so what it shows is that view's full height with the sides cropped in.
+ */
+function documentCamera(view: ViewState): Camera {
+  const position = cameraPosition(view)
+  const basis = cameraBasis(view.yaw, view.pitch)
+  const fov = fovFromFocalLength(view.focalLength)
+  const camera = view.projection === 'orthographic'
+    ? orthographicCamera(view, fov)
+    : new PerspectiveCamera(fov, 1, view.clipStart, view.clipEnd)
+  camera.position.set(position[0], position[1], position[2])
+  camera.up.set(basis.up[0], basis.up[1], basis.up[2])
+  camera.lookAt(view.target[0], view.target[1], view.target[2])
   camera.updateProjectionMatrix()
+  return camera
+}
+
+/** The same box the viewport draws an orthographic view in, at the card's square aspect. */
+function orthographicCamera(view: ViewState, fov: number): OrthographicCamera {
+  const height = orthoHeight(view.distance, fov)
+  const depth = Math.max(view.clipEnd, view.distance * 4)
+  return new OrthographicCamera(-height, height, height, -height, -depth, depth)
 }
 
 /** Only for tests and for the editor closing: gives the context and the cache back. */
