@@ -51,11 +51,12 @@
    * The page's own ground is the deep band, so the browser's light default scrollbar cut a white
    * strip down the right edge, in the page and again inside the workbench preview. The document
    * scrollbar gets the same discreet treatment as the notebook's own, one step firmer because it
-   * carries the whole page.
+   * carries the whole page. The track is painted rather than left transparent: a transparent one
+   * shows whatever is behind the frame, which is white while the preview waits for a page.
    */
   color-scheme: dark;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--fn-paper) 24%, transparent) transparent;
+  scrollbar-color: color-mix(in oklab, var(--fn-paper) 26%, var(--fn-deep)) var(--fn-deep);
 }
 
 * { box-sizing: border-box; }
