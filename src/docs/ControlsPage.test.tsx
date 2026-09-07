@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ControlsPage } from '@/docs/ControlsPage'
+import { DocsChrome } from '@/docs/DocsChrome'
 import { controllerCategories, controllerDefinitions, controllerExamples } from '@/rigs/controller-catalog'
 
 /*
@@ -47,6 +48,19 @@ describe('the controller catalogue reads its filter from the URL', () => {
     const numbers = controllerExamples.filter((entry) => entry.group === 'numbers').length
     open('?family=bogus')
     expect(cards()).toBe(numbers)
+  })
+
+  it('drops the workbench shell when the site embeds the page', () => {
+    // The site frames this page; its own header and navigation are already around
+    // the frame. A rail inside it repeats them and eats a quarter of the width.
+    const { container } = render(
+      <MemoryRouter initialEntries={['/docs/controls?family=all&embed=1']}>
+        <DocsChrome><ControlsPage /></DocsChrome>
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('.nav-rail')).toBeNull()
+    expect(container.querySelector('.shell')?.getAttribute('data-nav')).toBe('off')
+    expect(screen.getAllByRole('article').length).toBe(controllerExamples.length)
   })
 
   it('names every family the site can link to', () => {

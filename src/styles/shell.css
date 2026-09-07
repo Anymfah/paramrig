@@ -14,6 +14,7 @@
   background: var(--surface);
 }
 .shell[data-nav='collapsed'] .nav-rail { visibility: hidden; }
+.shell[data-nav='off'] { --nav-w: 0px; }
 .shell[data-inspector='collapsed'] { --inspector-w: 0px; }
 .shell[data-inspector='collapsed'] .inspector { visibility: hidden; }
 .shell[data-timeline='off'] {
