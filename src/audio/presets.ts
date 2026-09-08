@@ -87,7 +87,7 @@ export function uiClick(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 1900, resonance: 0.15 },
       amp: { attack: 0.0004, hold: 0, decay: 0.028, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { tone: 0.3 })
+  ], { tone: 0.3 }, { gain: 1.35 })
 }
 
 /** Rising, and a step up near the end so it reads as an arrival rather than a ramp. */
@@ -111,7 +111,7 @@ export function whoosh(): AudioPatch {
       filter: { kind: 'bandpass', cutoff: 400, resonance: 0.55, envAmount: 3.2, envCurve: LINEAR },
       amp: { attack: 0.3, hold: 0.02, decay: 0.35, sustain: 0.2, release: 0.22, curve: 1.6 },
     }),
-  ], { flangerMix: 0.35, flangerRate: 0.7, flangerDepth: 0.6, reverbMix: 0.15, tone: -0.1 })
+  ], { flangerMix: 0.35, flangerRate: 0.7, flangerDepth: 0.6, reverbMix: 0.15, tone: -0.1 }, { gain: 1.5 })
 }
 
 /** Short, blunt, and low enough to feel like contact. */
@@ -169,7 +169,7 @@ export function hologram(): AudioPatch {
       pitch: { start: 1180, slide: -2, vibratoRate: 6.5, vibratoDepth: 0.35, jitter: 14 },
       amp: { attack: 0.06, hold: 0.02, decay: 0.25, sustain: 0.3, release: 0.32, curve: 1.6 },
     }),
-  ], { flangerMix: 0.42, flangerRate: 0.9, flangerDepth: 0.75, reverbMix: 0.3, reverbSize: 0.75, reverbDamping: 0.35, tone: 0.4 })
+  ], { flangerMix: 0.42, flangerRate: 0.9, flangerDepth: 0.75, reverbMix: 0.3, reverbSize: 0.75, reverbDamping: 0.35, tone: 0.4 }, { gain: 1.45 })
 }
 
 /** Everything falls at once and the room keeps it. The drop is the whole gesture. */
@@ -207,7 +207,7 @@ export function interfaceConfirm(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 3000, resonance: 0.2 },
       amp: { attack: 0.001, hold: 0, decay: 0.05, sustain: 0, release: 0.03, curve: 3 },
     }),
-  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, tone: 0.45 })
+  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, tone: 0.45 }, { gain: 1.5 })
 }
 
 /** Something filling up. The filter opens with the pitch, which is what makes it read as building. */
@@ -226,7 +226,7 @@ export function charge(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 1400, resonance: 0.3, envAmount: 2.2, envCurve: EASE_IN },
       amp: { attack: 0.25, hold: 0, decay: 0.4, sustain: 0.3, release: 0.2, curve: 1.4 },
     }),
-  ], { flangerMix: 0.2, flangerRate: 0.35, flangerDepth: 0.6, reverbMix: 0.18, tone: 0.2 })
+  ], { flangerMix: 0.2, flangerRate: 0.35, flangerDepth: 0.6, reverbMix: 0.18, tone: 0.2 }, { gain: 1.4 })
 }
 
 /** A beam passing over you: one narrow band walked across the spectrum and back through a flanger. */
@@ -245,21 +245,188 @@ export function scan(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 2200, resonance: 0.25 },
       amp: { attack: 0.2, hold: 0, decay: 0.35, sustain: 0.2, release: 0.25, curve: 1.6 },
     }),
-  ], { flangerMix: 0.45, flangerRate: 1.6, flangerDepth: 0.85, reverbMix: 0.24, reverbSize: 0.7, tone: 0.3 })
+  ], { flangerMix: 0.45, flangerRate: 1.6, flangerDepth: 0.85, reverbMix: 0.24, reverbSize: 0.7, tone: 0.3 }, { gain: 1.45 })
 }
 
-export const PRESETS: { id: string; label: string; build: () => AudioPatch }[] = [
-  { id: 'coin', label: 'Coin', build: coin },
-  { id: 'laser', label: 'Laser', build: laser },
-  { id: 'explosion', label: 'Explosion', build: explosion },
-  { id: 'ui-click', label: 'UI click', build: uiClick },
-  { id: 'powerup', label: 'Powerup', build: powerup },
-  { id: 'whoosh', label: 'Whoosh', build: whoosh },
-  { id: 'hit', label: 'Hit', build: hit },
-  { id: 'jump', label: 'Jump', build: jump },
-  { id: 'interface', label: 'Interface', build: interfaceConfirm },
-  { id: 'hologram', label: 'Hologram', build: hologram },
-  { id: 'scan', label: 'Scan', build: scan },
-  { id: 'charge', label: 'Charge', build: charge },
-  { id: 'warp', label: 'Warp', build: warp },
+
+/**
+ * Seven built the way a shipped effect is built rather than the way a synthesiser patch is:
+ * layers on different time scales — a crack you hear, a body you feel, a tail that places it —
+ * and one of them always short enough to define the moment the sound starts. A single voice with
+ * a good envelope is a bleep; three voices half a frame apart is an event.
+ */
+
+/** The full stack: snap, body, weight. Nothing here is loud on its own. */
+export function impact(): AudioPatch {
+  return patch(1.6, [
+    makeLayer({
+      gain: 0.75,
+      source: { kind: 'tone', wave: 'sine' },
+      pitch: { start: 88, slide: -22, slideCurve: EASE_OUT },
+      shaper: { drive: 0.22, bitDepth: 16, crush: 0 },
+      amp: { attack: 0.002, hold: 0.02, decay: 0.5, sustain: 0, release: 0.35, curve: 2.1 },
+    }),
+    makeLayer({
+      gain: 0.5,
+      source: { kind: 'noise', colour: 'pink' },
+      filter: { kind: 'lowpass', cutoff: 3200, resonance: 0.18, envAmount: -3.6, envCurve: EASE_OUT },
+      shaper: { drive: 0.3, bitDepth: 16, crush: 0 },
+      amp: { attack: 0.001, hold: 0.02, decay: 0.28, sustain: 0.06, release: 0.3, curve: 2.3 },
+    }),
+    makeLayer({
+      gain: 0.3,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 5200, jitter: 18 },
+      filter: { kind: 'highpass', cutoff: 3200, resonance: 0.12 },
+      amp: { attack: 0.0004, hold: 0, decay: 0.03, sustain: 0, release: 0.015, curve: 3.2 },
+    }),
+  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.82, limiter: 0.85 })
+}
+
+/** Falls further the longer it goes, which is the difference between a drop and a slide. */
+export function subDrop(): AudioPatch {
+  return patch(1.5, [
+    makeLayer({
+      gain: 0.8,
+      source: { kind: 'tone', wave: 'sine' },
+      pitch: { start: 135, slide: -30, slideCurve: EASE_IN },
+      shaper: { drive: 0.32, bitDepth: 16, crush: 0 },
+      amp: { attack: 0.006, hold: 0.05, decay: 0.7, sustain: 0.12, release: 0.5, curve: 1.8 },
+    }),
+    makeLayer({
+      gain: 0.22,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 2400, resonance: 0.2 },
+      amp: { attack: 0.001, hold: 0, decay: 0.05, sustain: 0, release: 0.03, curve: 3 },
+    }),
+  ], { reverbMix: 0.14, reverbSize: 0.6, tone: -0.45 }, { gain: 0.85, limiter: 0.9 })
+}
+
+/** Machine noise: quantised to four bits and repeated by a delay short enough to be a texture. */
+export function dataBurst(): AudioPatch {
+  return patch(0.55, [
+    makeLayer({
+      gain: 0.42,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 3300, slide: -6, slideCurve: LINEAR, arpeggioRatio: 1.6, arpeggioAt: 0.4, jitter: 30 },
+      filter: { kind: 'bandpass', cutoff: 2800, resonance: 0.4, envAmount: -1.4, envCurve: EASE_OUT },
+      shaper: { drive: 0.2, bitDepth: 4, crush: 0.3 },
+      amp: { attack: 0.001, hold: 0.01, decay: 0.09, sustain: 0.15, release: 0.12, curve: 2.6 },
+    }),
+    makeLayer({
+      gain: 0.2,
+      source: { kind: 'tone', wave: 'square', pulseWidth: 0.12 },
+      pitch: { start: 1900, slide: 5, jitter: 35 },
+      shaper: { drive: 0, bitDepth: 5, crush: 0.2 },
+      amp: { attack: 0.0008, hold: 0, decay: 0.04, sustain: 0, release: 0.03, curve: 3 },
+    }),
+  ], { delayMix: 0.35, delayTime: 0.055, delayFeedback: 0.52, reverbMix: 0.12, tone: 0.25 }, { gain: 1.35 })
+}
+
+/** Everything closing at once — pitch, filter and level — which is what "off" sounds like. */
+export function powerDown(): AudioPatch {
+  return patch(1.7, [
+    makeLayer({
+      gain: 0.5,
+      source: { kind: 'tone', wave: 'saw' },
+      pitch: { start: 720, slide: -32, slideCurve: EASE_IN, vibratoRate: 3.5, vibratoDepth: 0.4 },
+      filter: { kind: 'lowpass', cutoff: 4200, resonance: 0.42, envAmount: -4, envCurve: EASE_IN },
+      amp: { attack: 0.01, hold: 0.06, decay: 0.8, sustain: 0.2, release: 0.6, curve: 1.7 },
+    }),
+    makeLayer({
+      gain: 0.24,
+      source: { kind: 'noise', colour: 'pink' },
+      filter: { kind: 'bandpass', cutoff: 1600, resonance: 0.5, envAmount: -3.4, envCurve: EASE_IN },
+      amp: { attack: 0.02, hold: 0.04, decay: 0.7, sustain: 0.12, release: 0.55, curve: 1.8 },
+    }),
+  ], { reverbMix: 0.26, reverbSize: 0.78, reverbDamping: 0.5, tone: -0.3 }, { gain: 1.25 })
+}
+
+/** Three of the same blip, spaced by a delay rather than played, which is why it locks. */
+export function lockOn(): AudioPatch {
+  return patch(0.95, [
+    makeLayer({
+      gain: 0.34,
+      source: { kind: 'tone', wave: 'sine' },
+      pitch: { start: 2550, slide: 3, slideCurve: EASE_OUT, jitter: 10 },
+      amp: { attack: 0.0015, hold: 0.008, decay: 0.05, sustain: 0, release: 0.04, curve: 2.8 },
+    }),
+    makeLayer({
+      gain: 0.16,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 6200, jitter: 22 },
+      filter: { kind: 'highpass', cutoff: 3600, resonance: 0.18 },
+      amp: { attack: 0.0005, hold: 0, decay: 0.025, sustain: 0, release: 0.02, curve: 3 },
+    }),
+  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, tone: 0.35 }, { gain: 1.7 })
+}
+
+/** Held rather than struck. The flanger does the shimmering; the vibrato keeps it from sitting still. */
+export function shield(): AudioPatch {
+  return patch(1.4, [
+    makeLayer({
+      gain: 0.44,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 1750, slide: 3, slideCurve: EASE_OUT, vibratoRate: 7.5, vibratoDepth: 0.45, jitter: 18 },
+      filter: { kind: 'bandpass', cutoff: 1500, resonance: 0.52, envAmount: 1.6, envCurve: EASE_OUT },
+      amp: { attack: 0.05, hold: 0.08, decay: 0.4, sustain: 0.45, release: 0.55, curve: 1.5 },
+    }),
+    makeLayer({
+      gain: 0.26,
+      source: { kind: 'tone', wave: 'triangle' },
+      pitch: { start: 440, slide: 2, vibratoRate: 4.5, vibratoDepth: 0.3, jitter: 12 },
+      amp: { attack: 0.08, hold: 0.05, decay: 0.35, sustain: 0.5, release: 0.5, curve: 1.4 },
+    }),
+  ], { flangerMix: 0.5, flangerRate: 0.55, flangerDepth: 0.8, reverbMix: 0.34, reverbSize: 0.8, reverbDamping: 0.35, tone: 0.25 }, { gain: 1.4 })
+}
+
+/** Two notes down and a little dirt on them. Down is what a refusal sounds like in every language. */
+export function alert(): AudioPatch {
+  return patch(0.65, [
+    makeLayer({
+      gain: 0.4,
+      source: { kind: 'tone', wave: 'square', pulseWidth: 0.42 },
+      pitch: { start: 620, arpeggioRatio: 0.72, arpeggioAt: 0.38, jitter: 8 },
+      shaper: { drive: 0.22, bitDepth: 16, crush: 0 },
+      amp: { attack: 0.003, hold: 0.05, decay: 0.22, sustain: 0.3, release: 0.16, curve: 2 },
+    }),
+    makeLayer({
+      gain: 0.14,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 3800, jitter: 20 },
+      filter: { kind: 'highpass', cutoff: 2600, resonance: 0.15 },
+      amp: { attack: 0.0005, hold: 0, decay: 0.03, sustain: 0, release: 0.02, curve: 3 },
+    }),
+  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, tone: -0.05 })
+}
+
+/** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */
+export type PresetGroup = 'Arcade' | 'Interface' | 'Impact' | 'Motion'
+
+export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
+  { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
+  { id: 'laser', label: 'Laser', group: 'Arcade', build: laser },
+  { id: 'powerup', label: 'Powerup', group: 'Arcade', build: powerup },
+  { id: 'jump', label: 'Jump', group: 'Arcade', build: jump },
+  { id: 'hit', label: 'Hit', group: 'Arcade', build: hit },
+
+  { id: 'ui-click', label: 'UI click', group: 'Interface', build: uiClick },
+  { id: 'interface', label: 'Confirm', group: 'Interface', build: interfaceConfirm },
+  { id: 'alert', label: 'Alert', group: 'Interface', build: alert },
+  { id: 'lock-on', label: 'Lock on', group: 'Interface', build: lockOn },
+  { id: 'data-burst', label: 'Data burst', group: 'Interface', build: dataBurst },
+
+  { id: 'impact', label: 'Impact', group: 'Impact', build: impact },
+  { id: 'explosion', label: 'Explosion', group: 'Impact', build: explosion },
+  { id: 'sub-drop', label: 'Sub drop', group: 'Impact', build: subDrop },
+  { id: 'power-down', label: 'Power down', group: 'Impact', build: powerDown },
+
+  { id: 'whoosh', label: 'Whoosh', group: 'Motion', build: whoosh },
+  { id: 'scan', label: 'Scan', group: 'Motion', build: scan },
+  { id: 'charge', label: 'Charge', group: 'Motion', build: charge },
+  { id: 'warp', label: 'Warp', group: 'Motion', build: warp },
+  { id: 'hologram', label: 'Hologram', group: 'Motion', build: hologram },
+  { id: 'shield', label: 'Shield', group: 'Motion', build: shield },
 ]
+
+export const PRESET_GROUPS: PresetGroup[] = ['Arcade', 'Interface', 'Impact', 'Motion']

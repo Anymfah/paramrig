@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { IconChevron, IconTrash } from '@/ui/icons'
-import { PRESETS } from '@/audio/presets'
+import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
@@ -35,16 +35,22 @@ export function AudioSoundMenu({ current, snapshots, touched, onPatch, onRemove 
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu audio-sounds__menu" align="end" sideOffset={6} collisionPadding={8}>
-          <DropdownMenu.Label className="menu__label">Presets</DropdownMenu.Label>
-          {PRESETS.map((preset) => (
-            <DropdownMenu.Item
-              key={preset.id}
-              className="menu__item"
-              aria-current={preset.id === current ? 'page' : undefined}
-              onSelect={() => onPatch(preset.build(), preset.id)}
-            >
-              {preset.label}
-            </DropdownMenu.Item>
+          {/* Grouped by what a sound is for, which is how anyone looks for one. Twenty in a flat
+              list is a wall you read from the top every time. */}
+          {PRESET_GROUPS.map((group) => (
+            <DropdownMenu.Group key={group}>
+              <DropdownMenu.Label className="menu__label">{group}</DropdownMenu.Label>
+              {PRESETS.filter((preset) => preset.group === group).map((preset) => (
+                <DropdownMenu.Item
+                  key={preset.id}
+                  className="menu__item"
+                  aria-current={preset.id === current ? 'page' : undefined}
+                  onSelect={() => onPatch(preset.build(), preset.id)}
+                >
+                  {preset.label}
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Group>
           ))}
           <DropdownMenu.Separator className="menu__sep" />
           <DropdownMenu.Label className="menu__label">Saved</DropdownMenu.Label>
