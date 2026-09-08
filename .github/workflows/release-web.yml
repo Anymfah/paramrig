@@ -38,3 +38,39 @@ jobs:
       - run: npm install -g npm@11
       - run: npm publish
         working-directory: packages/web-sdk
+
+  # The tag is what publishes; this only writes down what it carried, so the Releases tab reads as
+  # the history of the package rather than a list of numbers. It waits for `publish` on purpose: a
+  # release naming a version the registry refused would be a lie the repository tells about itself.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history, because the notes are the commits since the previous web-v tag.
+          fetch-depth: 0
+      - name: The release says what changed since the previous tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#web-v}"
+          page="https://www.npmjs.com/package/@paramrig/web/v/$version"
+          repository="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          previous=$(git tag --list 'web-v*' --sort=-v:refname |
+            awk -v tag="$GITHUB_REF_NAME" 'tag == $0 { seen = 1; next } seen { print; exit }')
+          {
+            printf '[`@paramrig/web@%s` on npm](%s), published from this tag with\n' "$version" "$page"
+            printf 'provenance; `npm audit signatures` checks it wherever it is installed.\n'
+            if [ -n "$previous" ]; then
+              changes=$(git log --format='- %s' "$previous..$GITHUB_REF_NAME" \
+                -- packages/web-sdk src/web)
+              if [ -n "$changes" ]; then printf '\n## In the package\n\n%s\n' "$changes"; fi
+              printf '\n[Everything else in the repository since %s](%s/compare/%s...%s)\n' \
+                "$previous" "$repository" "$previous" "$GITHUB_REF_NAME"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" \
+            --title "@paramrig/web $version"

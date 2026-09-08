@@ -14,13 +14,25 @@ updates:
         patterns: ['*']
         update-types: [minor, patch]
     open-pull-requests-limit: 5
-    # eslint-plugin-react-refresh 0.5 is a major in everything but its version number: it reports 86
-    # `only-export-components` errors against code that has not changed. Held below it, so a monthly
-    # group of harmless updates is not red because of one that is a refactor. Lift this with the
-    # ESLint 10 and react-hooks 7 upgrade, which is the same piece of work.
+    # Five packages are held on purpose, because between them they are one piece of work and not
+    # five updates. ESLint 10 requires eslint-plugin-react-hooks 7, whose React Compiler rules
+    # report 307 errors against code that has not changed; eslint-plugin-react-refresh 0.5 is a
+    # major in everything but its version number and reports 86 `only-export-components` errors of
+    # its own; TypeScript 7 has no typescript-eslint that accepts it, the peer range stopping
+    # below 6.1.
+    # Offered one at a time they arrive every month, red, and are closed every month. Lift the five
+    # together, deliberately, in a branch that is about the refactor.
     ignore:
+      - dependency-name: eslint
+        versions: ['>=10.0.0']
+      - dependency-name: '@eslint/js'
+        versions: ['>=10.0.0']
+      - dependency-name: eslint-plugin-react-hooks
+        versions: ['>=6.0.0']
       - dependency-name: eslint-plugin-react-refresh
         versions: ['>=0.5.0']
+      - dependency-name: typescript
+        versions: ['>=7.0.0']
 
   - package-ecosystem: github-actions
     directory: /

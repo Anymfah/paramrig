@@ -1,0 +1,14 @@
+# Every issue arrives as one of the two forms beside this file. Anything that is not yet shaped
+# like a bug or a request has a better home in Discussions, where it can stay a conversation.
+blank_issues_enabled: false
+contact_links:
+  - name: Question, idea in progress, or a rig you built
+    url: https://github.com/Anymfah/paramrig/discussions
+    about: >-
+      How do I, is this supposed to, look at this — Discussions hold all of it, and nothing
+      there has to be a defect first.
+  - name: Security vulnerability
+    url: https://github.com/Anymfah/paramrig/security/advisories/new
+    about: >-
+      Report it privately, never as an issue. SECURITY.md says what to include and what is in
+      scope.

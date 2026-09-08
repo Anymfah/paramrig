@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in the workbench, the service or @paramrig/web does not do what it says.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things carry a report further than anything else: what you saw instead of what you
+        expected, and the shortest way for someone else to see it too.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to see it happen
+      description: >
+        From a fresh `docker compose up -d` where you can. If it needs a document, a rig or a
+        connected project, say which — a small `.paramrig` file or an exported document attached
+        here is worth several paragraphs.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - The workbench — library, editors, controls
+        - The connected web workspace
+        - The @paramrig/web package
+        - The local service
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The commit on `main` you are running, or the `@paramrig/web` version, or both.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and system
+      placeholder: Chrome 141, macOS 15
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: >
+        A screenshot or a short recording for anything visual, console output for anything that
+        throws. Drop files straight into this field.

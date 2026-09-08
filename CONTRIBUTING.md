@@ -21,6 +21,14 @@ docker compose run --rm app npm run build:web-sdk     # the @paramrig/web packag
 That list, in that order, is what `.github/workflows/verify.yml` runs on every push and pull
 request. A change is ready when it passes locally; the workflow is there to say so in public.
 
+## Issues and discussions
+
+Issues arrive through two forms, a bug report and an idea, and both ask where in the repository the
+thing lives: the workbench, the local service and `@paramrig/web` fail in different ways and a
+report that names one saves a round trip. Anything not yet shaped like a defect or a request — how
+do I, is this supposed to, look at the rig I built — belongs in
+[Discussions](https://github.com/Anymfah/paramrig/discussions), where it can stay a conversation.
+
 ## Pull requests
 
 `main` is protected. A pull request needs the `verify` check to pass and is merged by the
@@ -45,8 +53,10 @@ what is now true, not labels.
 ## Releases
 
 `@paramrig/web` is published by `.github/workflows/release-web.yml` when the maintainer pushes a
-`web-v<version>` tag that matches `packages/web-sdk/package.json`. Nothing else in the repository
-is published as a package; the workbench is deployed as a static site from `npm run build:app`.
+`web-v<version>` tag that matches `packages/web-sdk/package.json`. The same workflow writes the
+GitHub release afterwards, from the commits that touched the package since the previous tag.
+Nothing else in the repository is published as a package; the workbench is deployed as a static
+site from `npm run build:app`.
 
 ## Security
 

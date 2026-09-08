@@ -1,0 +1,45 @@
+name: Idea or request
+description: A control, an editor behaviour, or a change to how the parts fit together.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ParamRig is about finding values with your eyes, so the useful thing to describe first is
+        what you were trying to tune and where it stopped being possible. The control that would
+        fix it often changes shape once that is on the page.
+  - type: textarea
+    id: situation
+    attributes:
+      label: What you are trying to do
+      description: >-
+        The visual system, the parameter, the moment you reach for something that is not there.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: What you do instead today
+      description: The workaround, or the point where you leave the workbench and edit code by hand.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: >-
+        Optional. A sketch, a control you have seen elsewhere, or the shape of the API you
+        expected.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where it belongs
+      options:
+        - The workbench — library, editors, controls
+        - The connected web workspace
+        - The @paramrig/web package
+        - The local service
+        - Documentation
+        - Not sure
+    validations:
+      required: true
