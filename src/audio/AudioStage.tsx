@@ -4,6 +4,7 @@ import { IconPlay, IconStart } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { decibels, levels, waveformBands } from '@/audio/waveform'
 import { playSamples, stopPlayback } from '@/audio/playback'
+import { hasKeyboardFocus, playsOnSpace } from '@/audio/space-key'
 
 /**
  * What a sound looks like while you work on it: the waveform, a play button, and the two numbers
@@ -109,16 +110,15 @@ export function AudioStage({ samples, sampleRate, name }: {
     frameRef.current = requestAnimationFrame(step)
   }, [playing, samples, sampleRate, seconds, stop])
 
-  // Space plays, the way it does in every other tool that makes a sound. It lives here rather than
-  // in the page because this is where the buffer and the transport already are.
+  // Space plays, the way it does in every tool that makes a sound — and it keeps working after you
+  // have clicked a field, which is the only way it is any use in a workspace made of controls.
+  // `playsOnSpace` decides; see that file for what it leaves alone and why.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target
-      if (target instanceof HTMLElement) {
-        const tag = target.tagName
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || target.isContentEditable) return
-      }
+      const keyboard = target instanceof Element ? hasKeyboardFocus(target) : false
+      if (!playsOnSpace(target, keyboard)) return
       event.preventDefault()
       play()
     }
