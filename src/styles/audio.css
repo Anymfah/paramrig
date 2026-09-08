@@ -260,13 +260,26 @@
   background: var(--surface-preview);
 }
 
+/*
+ * In Tune the waveform does get the room, and the rule is the same one that took it away in Edit:
+ * it may have what nothing else needs. The board is not here — the four exposed controls are in
+ * the inspector — so the only thing left to look at is the sound, and a strip floating in the
+ * middle of an empty panel reads as a card someone forgot to finish.
+ */
 .audio-tune {
-  inline-size: min(100%, 44rem);
+  inline-size: min(100%, 52rem);
 }
 
 .audio-tune .audio-transport {
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
+}
+
+.audio-tune .audio-transport__wave {
+  flex-basis: 100%;
+  order: -1;
+  max-inline-size: none;
+  block-size: clamp(7rem, 32vh, 15rem);
 }
 
 .audio-name {
