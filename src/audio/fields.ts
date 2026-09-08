@@ -85,7 +85,17 @@ const PITCH_FIELDS: Record<string, FieldSpec> = {
 }
 
 const FILTER_FIELDS: Record<string, FieldSpec> = {
-  kind: { type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass'] },
+  kind: {
+    type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass'],
+    // Four words that all start differently and end the same, ellipsised to 'Lowp…' and
+    // 'Highp…' in a column this wide. The response curve is both shorter and clearer.
+    previews: {
+    off: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%206%20L23%206' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    lowpass: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%204%20L11%204%20Q16%204%2022%2011' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    highpass: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M2%2011%20Q8%204%2013%204%20L23%204' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    bandpass: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%2011%20Q6%2011%208%205%20Q12%201%2016%205%20Q18%2011%2023%2011' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    },
+  },
   cutoff: num('Cutoff', 20, 20000, 1, { unit: 'Hz', scale: 'log' }),
   resonance: num('Resonance', 0, 1),
   envAmount: num('Filter sweep', -6, 6, 0.1, { unit: 'oct' }),
