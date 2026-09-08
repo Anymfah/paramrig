@@ -58,11 +58,16 @@
   touch-action: manipulation;
 }
 
+/*
+ * Taller than a bare level strip, and still nothing like a canvas. It earned the extra twenty
+ * pixels by carrying the layer envelopes: three of them drawn into the top half of 44px is a
+ * smudge, and into the top half of 72px is the architecture of the sound.
+ */
 .audio-transport__wave {
-  flex: 1 1 10rem;
-  min-inline-size: 6rem;
-  max-inline-size: 22rem;
-  block-size: 2.75rem;
+  flex: 1 1 14rem;
+  min-inline-size: 8rem;
+  max-inline-size: 30rem;
+  block-size: 4.5rem;
 }
 
 .audio-transport__figures {
@@ -209,6 +214,23 @@
   flex-direction: column;
   gap: var(--space-4);
   min-inline-size: 0;
+}
+
+/*
+ * The mix stays put while the layers scroll. It is the one column that is about the whole sound
+ * rather than a part of it — the reverb and the master gain are as relevant while setting layer
+ * three's filter as they are at the top — and a layer column is twice its height, so it would
+ * otherwise spend most of the session scrolled away.
+ *
+ * `align-self: start` is what gives it room to stick: stretched to the row it has nowhere to go.
+ */
+.audio-column[data-pinned] {
+  position: sticky;
+  inset-block-start: 0;
+  align-self: start;
+  z-index: 1;
+  padding-block-end: var(--space-3);
+  background: var(--surface-preview);
 }
 
 .audio-column[data-off='true'] {
@@ -407,20 +429,13 @@
  * only; no text takes it, so nothing that has to be read depends on it.
  */
 
-.audio-board {
-  --hue-source: #e3c98f;
-  --hue-pitch: #93c8ea;
-  --hue-filter: #bda9e8;
-  --hue-shaper: #e8a58c;
-  --hue-amp: #9fd9bd;
-}
-
-.audio-group { --section: var(--accent); }
-.audio-group[data-section='source'] { --section: var(--hue-source); }
-.audio-group[data-section='pitch'] { --section: var(--hue-pitch); }
-.audio-group[data-section='filter'] { --section: var(--hue-filter); }
-.audio-group[data-section='shaper'] { --section: var(--hue-shaper); }
-.audio-group[data-section='amp'] { --section: var(--hue-amp); }
+/*
+ * Colour identifies the layer, not the stage. Stages repeat identically down every column and are
+ * found by position; layers are what the overlay above has to tell apart, so the hue is spent
+ * where it distinguishes something. The colours are set inline from `LAYER_COLOURS`, so the
+ * columns and the profiles drawn over the waveform read the same list.
+ */
+.audio-column { --section: var(--accent); }
 
 .audio-group__title {
   display: flex;
@@ -561,4 +576,43 @@
 /* The tick is decoration next to a selected cell that already reads as selected. */
 .audio-board .choice-controller--visual .choice-controller__mark {
   display: none;
+}
+
+
+/* ---- The layers, drawn over the sum -----------------------------------------------------------
+ *
+ * The one thing about a layered sound the columns could not show: that the transient ends before
+ * the body has risen, or that the tail is doing all the work after eighty milliseconds. Each
+ * layer's envelope is traced over the waveform in its own colour, through the same two path
+ * functions the workbench's multi-layer profile control draws with.
+ */
+
+.waveform__profiles {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
+  pointer-events: none;
+}
+
+.waveform__profile-fill {
+  fill: currentColor;
+  opacity: 0.1;
+}
+
+.waveform__profile-halo {
+  fill: none;
+  stroke: var(--surface-inset);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.75;
+}
+
+.waveform__profile-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }

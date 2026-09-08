@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RadialLayer } from '@/rigs/extended-types'
+import { radialFillPath, radialStrokePath } from '@/ui/radial-curve'
 import { waveformBands } from '@/audio/waveform'
+import { profileCeiling } from '@/audio/profiles'
 
 /**
  * The buffer, drawn. Named `WaveformView` rather than `Waveform` because `waveform.ts` beside it
@@ -9,11 +12,13 @@ import { waveformBands } from '@/audio/waveform'
  * the shape you meant — an attack that bites, a tail that ends — and then you listen. Sized by
  * whatever contains it, so the same component is a strip in the transport and a panel in Tune.
  */
-export function WaveformView({ samples, label, head }: {
+export function WaveformView({ samples, label, head, profiles = [] }: {
   samples: Float32Array
   label: string
   /** 0 to 1 while playing, null when stopped. */
   head?: number | null
+  /** The layers whose envelopes are drawn over the sum, in their own colours. */
+  profiles?: RadialLayer[]
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [size, setSize] = useState({ width: 160, height: 40 })
@@ -64,9 +69,33 @@ export function WaveformView({ samples, label, head }: {
     }
   }, [samples, size])
 
+  const ceiling = profileCeiling(profiles)
+  const shown = profiles.filter((profile) => profile.enabled)
+
   return (
     <div className="waveform">
       <canvas ref={canvasRef} aria-label={`${label} waveform`} role="img" />
+      {shown.length > 0 ? (
+        <svg className="waveform__profiles" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          {/* Scaled into the top half, so a layer's envelope traces the crest of the sum rather
+              than sitting beside it. The paths are the radial controller's own. */}
+          <g transform="scale(1, 0.5)">
+            {shown.map((profile) => {
+              const points = profile.points.map((point) => ({ x: point.x, y: point.y / ceiling }))
+              return (
+                <g key={profile.name} style={{ color: profile.color }}>
+                  <path className="waveform__profile-fill" d={radialFillPath(points)} />
+                  {/* A dark pass under the coloured one. Over dense material — a noise layer fills
+                      its own outline with white — a bare 1.5px line disappears into what it is
+                      describing. */}
+                  <path className="waveform__profile-halo" d={radialStrokePath(points)} />
+                  <path className="waveform__profile-line" d={radialStrokePath(points)} />
+                </g>
+              )
+            })}
+          </g>
+        </svg>
+      ) : null}
       {head === null || head === undefined ? null : <span className="waveform__head" style={{ left: `${head * 100}%` }} />}
     </div>
   )

@@ -38,7 +38,7 @@ export function AudioRigPreview({ documentId, values, name }: {
   }
   return (
     <div className="audio-tune">
-      <AudioTransport samples={samples} sampleRate={rate} name={name} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      <AudioTransport samples={samples} sampleRate={rate} name={name} patch={shown ?? undefined} autoPlay={autoPlay} onAutoPlay={setAuto} />
     </div>
   )
 }

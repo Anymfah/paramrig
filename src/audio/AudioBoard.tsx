@@ -1,7 +1,9 @@
+import type { CSSProperties } from 'react'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { ParameterField } from '@/ui/ParameterField'
 import { BOARD_CATEGORIES, boardGroups } from '@/audio/board'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
+import { LAYER_COLOURS } from '@/audio/profiles'
 
 /**
  * The whole synthesiser, at once.
@@ -30,7 +32,16 @@ export function AudioBoard({ parameters, values, duration, onChange, onGestureSt
         const enabled = layer === null || values[`layers[${layer}].enabled`] !== false
         const columnGroups = groups.filter((group) => group.tab === category.id)
         return (
-          <section className="audio-column" key={category.id} data-off={!enabled} aria-label={category.label}>
+          <section
+            className="audio-column"
+            key={category.id}
+            data-off={!enabled}
+            data-pinned={layer === null || undefined}
+            aria-label={category.label}
+            // Colour identifies the layer, here and in the overlay above, and the two read the
+            // same list so they cannot drift apart.
+            style={layer === null ? undefined : { '--section': LAYER_COLOURS[layer] } as CSSProperties}
+          >
             <h2 className="audio-column__title">{category.label}</h2>
             {columnGroups.map((group) => {
               const root = group.id.endsWith('.root')

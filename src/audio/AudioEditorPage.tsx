@@ -176,7 +176,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           </div>
         ) : null}
       </div>
-      <AudioTransport samples={samples} sampleRate={rate} name={loaded.name} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      <AudioTransport samples={samples} sampleRate={rate} name={loaded.name} patch={shown ?? patch} autoPlay={autoPlay} onAutoPlay={setAuto} />
       {/* Always in the tree so a screen reader keeps the live region, but no height until it has
           something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
       <p className="editor-notice" role="status" data-empty={notice.length === 0}>{notice}</p>
