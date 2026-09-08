@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { AudioEditorPage } from '@/audio/AudioEditorPage'
-import { createAudioDocument, getAudioDocument, saveAudioDocument } from '@/audio/document'
+import { createAudioDocument, getAudioDocument, isBundledAudioDocument, saveAudioDocument } from '@/audio/document'
 import { AudioRigPreview } from '@/renderers/audio/AudioRigPreview'
 import { arcadeCoin } from '@/rigs/examples/arcade-coin'
 
@@ -63,6 +63,18 @@ describe('AudioEditorPage', () => {
     await user.type(name, 'Door chime')
     await new Promise((resolve) => setTimeout(resolve, 500))
     expect(getAudioDocument(document.id)?.name).toBe('Door chime')
+  })
+
+  /**
+   * Found by opening the example in a browser and going back to the library, where it had moved
+   * from Examples to Projects. The page wrote on mount, which stamped a new updatedAt and defeated
+   * the guard that keeps a bundled patch bundled.
+   */
+  it('does not turn a bundled example into a project by being opened', async () => {
+    open(arcadeCoin().id)
+    await new Promise((resolve) => setTimeout(resolve, 600))
+    expect(isBundledAudioDocument(arcadeCoin().id)).toBe(true)
+    expect(localStorage.getItem('paramrig.audio-documents.v1')).toBeNull()
   })
 
   it('says so plainly when the patch is not in this browser', () => {

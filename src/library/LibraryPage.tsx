@@ -15,7 +15,8 @@ import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { WebProjectMark } from '@/renderers/html/WebProjectMark'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
-import { createAudioDocument } from '@/audio/document'
+import { AudioThumb } from '@/audio/AudioThumb'
+import { createAudioDocument, getAudioDocument } from '@/audio/document'
 import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
 import { importProject as importSceneProject } from '@/scene/project'
 import { SceneThumb } from '@/scene/SceneThumb'
@@ -363,6 +364,10 @@ function RigThumb({ rig }: { rig: RigManifest }) {
         dangerouslySetInnerHTML={{ __html: documentThumbnail(document) }}
       />
     )
+  }
+  if (rig.renderer === 'audio') {
+    const stored = getAudioDocument(id)
+    return stored ? <AudioThumb document={stored} /> : null
   }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
   if (id === 'tidal-planet') return <PlanetMark />

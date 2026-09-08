@@ -322,6 +322,11 @@ export function sanitizeAudioRig(value: unknown): AudioRig | undefined {
 
 export const DEFAULT_RIG_GROUP: ParamGroup = { id: 'main', label: 'Main' }
 
+/** The default value of every control the patch defines, which is how a rig rests. */
+export function audioRigDefaults(rig: AudioRig): Record<string, ParamValue> {
+  return Object.fromEntries(rig.parameters.map((parameter) => [parameter.id, structuredClone(parameter.defaultValue)]))
+}
+
 export function emptyAudioRig(): AudioRig {
   return { groups: [DEFAULT_RIG_GROUP], parameters: [], bindings: [] }
 }

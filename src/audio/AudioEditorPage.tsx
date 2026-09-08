@@ -38,6 +38,10 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [past, setPast] = useState<AudioPatch[]>([])
   const [future, setFuture] = useState<AudioPatch[]>([])
   const [notice, setNotice] = useState('')
+  // Nothing is written until something is changed. Without this the save below would fire on
+  // mount, stamp a new updatedAt, and quietly turn a bundled example into this browser's project
+  // for the crime of having been opened.
+  const [dirty, setDirty] = useState(false)
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
 
@@ -51,15 +55,16 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 
   // Written on a delay so a drag lands once, not on every frame of itself.
   useEffect(() => {
-    if (!loaded || !patch) return
+    if (!loaded || !patch || !dirty) return
     const timer = setTimeout(() => {
       const result = saveAudioDocument({ ...loaded, name, patch, updatedAt: new Date().toISOString() })
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
-  }, [loaded, name, patch])
+  }, [dirty, loaded, name, patch])
 
   const change = useCallback((property: string, value: ParamValue) => {
+    setDirty(true)
     setPatch((current) => {
       if (!current) return current
       // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
@@ -73,6 +78,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }, [])
 
   const undo = useCallback(() => {
+    setDirty(true)
     setPast((stack) => {
       const previous = stack[stack.length - 1]
       if (!previous) return stack
@@ -85,6 +91,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }, [])
 
   const redo = useCallback(() => {
+    setDirty(true)
     setFuture((stack) => {
       const next = stack[0]
       if (!next) return stack
@@ -144,7 +151,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             className="audio-name"
             aria-label="Patch name"
             value={name}
-            onChange={(event) => setName(event.target.value.slice(0, 120))}
+            onChange={(event) => { setDirty(true); setName(event.target.value.slice(0, 120)) }}
           />
         </div>
         <div className="workspace-toolbar__group">

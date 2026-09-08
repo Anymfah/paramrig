@@ -2,6 +2,7 @@ import { useNavColumn } from '@/shell/useLayout'
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRig, listRigs } from '@/rigs/registry'
+import type { RendererKind } from '@/rigs/types'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
@@ -180,7 +181,7 @@ export function WorkspacePage() {
           <ExportAction session={session} />
         </div>
       </div>
-      <div className={`preview-stage${manifest.renderer === 'three' || manifest.renderer === 'scene' ? ' preview-stage--scene' : ''}`} id="main" tabIndex={-1}>
+      <div className={`preview-stage${stageModifier(manifest.renderer)}`} id="main" tabIndex={-1}>
         <RigPreview
           rigId={manifest.id}
           renderer={manifest.renderer}
@@ -229,6 +230,17 @@ export function WorkspacePage() {
       </div>
     </WorkspaceShell>
   )
+}
+
+/**
+ * Which stage a renderer sits on. Three of them do not draw on paper: a scene, a three.js rig and
+ * a patch all want the dark surface, and a patch wants it in Tune as much as in Edit — the light
+ * canvas left its transport at about 1.6:1 against its own background.
+ */
+function stageModifier(renderer: RendererKind): string {
+  if (renderer === 'three' || renderer === 'scene') return ' preview-stage--scene'
+  if (renderer === 'audio') return ' preview-stage--audio'
+  return ''
 }
 
 function UnknownRig() {

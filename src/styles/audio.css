@@ -3,10 +3,16 @@
  * is the thing being looked at, not a decoration beside it, and gets the room a canvas would.
  */
 
+/*
+ * A sound has no paper, so it does not get the light canvas a drawing sits on. Inheriting it left
+ * the transport — the one control the whole tool exists for — at about 1.6:1 against its own
+ * background, which is to say invisible.
+ */
 .preview-stage--audio {
   display: grid;
   place-items: center;
   padding: var(--space-5);
+  background: var(--surface-preview);
 }
 
 .audio-stage {
@@ -85,4 +91,21 @@
   .audio-stage__head {
     transition: none;
   }
+}
+
+.audio-thumb {
+  width: 100%;
+  height: 100%;
+  padding: var(--space-4);
+  background: var(--surface-inset);
+}
+
+.audio-thumb line {
+  stroke: var(--border-default);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.audio-thumb path {
+  fill: var(--accent);
 }
