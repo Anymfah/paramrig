@@ -52,20 +52,20 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 
-  it('offers a preset menu with a step either side, and the two generators', () => {
+  it('offers a sound menu with a step either side, and the three generators', () => {
     open(arcadeCoin().id)
-    expect(screen.getByText('Preset')).toBeInTheDocument()
-    for (const label of ['Previous preset', 'Next preset', 'Randomize', 'Mutate']) {
+    for (const label of ['Previous sound', 'Next sound', 'Keep this sound', 'Randomize', 'Mutate']) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
+    expect(screen.getByRole('button', { name: /^Sound:/ })).toBeInTheDocument()
   })
 
-  /** Stepping is how these get used: you rarely know which preset you want, only that not this one. */
-  it('steps through the presets, one undoable step each', async () => {
+  /** Stepping is how these get used: you rarely know which sound you want, only that not this one. */
+  it('steps through the sounds, one undoable step each', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     expect(screen.getByText('450 ms')).toBeInTheDocument()
-    const next = screen.getByRole('button', { name: 'Next preset' })
+    const next = screen.getByRole('button', { name: 'Next sound' })
     await user.click(next)
     expect(screen.getByText('450 ms')).toBeInTheDocument()
     await user.click(next)
@@ -77,15 +77,37 @@ describe('AudioEditorPage', () => {
   it('steps backwards too, wrapping round the end of the list', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
-    await user.click(screen.getByRole('button', { name: 'Previous preset' }))
-    // Nothing was loaded yet, so stepping back lands on the last of them — read from the list
-    // rather than written down, so adding a preset does not silently make this assert the wrong one.
+    await user.click(screen.getByRole('button', { name: 'Previous sound' }))
+    // Read from the list rather than written down, so adding a preset does not silently make this
+    // assert the wrong one.
     const last = PRESETS[PRESETS.length - 1]!.build()
     const shown = last.duration < 1 ? `${Math.round(last.duration * 1000)} ms` : `${last.duration.toFixed(2)} s`
     expect(screen.getByText(shown)).toBeInTheDocument()
   })
 
-  /** Six numeric fields describe the envelope and none of them shows it, so a shape does instead. */
+  /** The whole point of keeping one: getting back to somewhere you had already reached. */
+  it('keeps a sound, finds it again, and lets it go', async () => {
+    const user = userEvent.setup()
+    const document = createAudioDocument()
+    open(document.id)
+    await user.click(screen.getByRole('button', { name: 'Keep this sound' }))
+    await user.click(screen.getByRole('button', { name: /^Sound:/ }))
+    const saved = await screen.findByRole('menuitem', { name: /Sound 1/ })
+    await user.click(within(saved).getByRole('button', { name: 'Remove Sound 1' }))
+    expect(screen.queryByRole('menuitem', { name: /Sound 1/ })).toBeNull()
+  })
+
+  it('writes what it kept back to the document, so it survives a reload', async () => {
+    const user = userEvent.setup()
+    const document = createAudioDocument()
+    open(document.id)
+    await user.click(screen.getByRole('button', { name: 'Keep this sound' }))
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    const stored = getAudioDocument(document.id)
+    expect(stored?.snapshots).toHaveLength(1)
+    expect(stored?.snapshots?.[0]?.patch.duration).toBe(document.patch.duration)
+  })
+
   it('draws the envelope rather than listing its five times', () => {
     open(arcadeCoin().id)
     const layer = screen.getByRole('region', { name: 'Layer 1' })

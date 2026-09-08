@@ -8,13 +8,14 @@ import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioBoard } from '@/audio/AudioBoard'
-import { AudioPresetPicker } from '@/audio/AudioPresetPicker'
+import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioTransport } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
-import { getAudioDocument, saveAudioDocument, storageMessage, type AudioDocument } from '@/audio/document'
+import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
 import { renderPatch } from '@/audio/dsp/render'
 import { disposePlayback, playbackRate } from '@/audio/playback'
 import { readAudioPrefs, withAutoPlay, writeAudioPrefs, type AudioMode } from '@/audio/prefs'
+import { PRESETS } from '@/audio/presets'
 import { mutatePatch, randomPatch } from '@/audio/shuffle'
 import type { AudioPatch } from '@/audio/types'
 
@@ -48,6 +49,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
   const [preset, setPreset] = useState('')
+  const [snapshots, setSnapshots] = useState<AudioSnapshot[]>(() => loaded?.snapshots ?? [])
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
 
@@ -63,11 +65,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!loaded || !patch || !dirty) return
     // Written on a delay so a drag lands once, not on every frame of itself.
     const timer = setTimeout(() => {
-      const result = saveAudioDocument({ ...loaded, name, patch, updatedAt: new Date().toISOString() })
+      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, updatedAt: new Date().toISOString() })
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
-  }, [dirty, loaded, name, patch])
+  }, [dirty, loaded, name, patch, snapshots])
 
   /** One whole new patch, as one step. */
   const commit = useCallback((next: AudioPatch) => {
@@ -81,6 +83,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 
   const change = useCallback((property: string, value: ParamValue) => {
     setDirty(true)
+    // Turning a knob means this is no longer the preset it came from, and the menu says so.
+    setPreset('')
     setPatch((current) => {
       if (!current) return current
       // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
@@ -132,6 +136,26 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [undo, redo])
+
+  /** The sound you are on, kept aside under whatever it is currently called. */
+  const keep = useCallback(() => {
+    if (!patch) return
+    setDirty(true)
+    setSnapshots((kept) => {
+      const from = PRESETS.find((entry) => entry.id === preset)?.label
+      const name = from ? `${from} ${kept.filter((entry) => entry.name.startsWith(from)).length + 1}` : `Sound ${kept.length + 1}`
+      const snapshot: AudioSnapshot = { id: `snap-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString(), patch }
+      // You are on the thing you just kept, so the menu should say so.
+      setPreset(snapshot.id)
+      // The oldest gives way rather than the list growing past the point of being readable.
+      return [...kept, snapshot].slice(-MAX_SNAPSHOTS)
+    })
+  }, [patch, preset])
+
+  const forget = useCallback((id: string) => {
+    setDirty(true)
+    setSnapshots((kept) => kept.filter((entry) => entry.id !== id))
+  }, [])
 
   const setAuto = useCallback((next: boolean) => {
     setAutoPlay(next)
@@ -185,9 +209,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         autoPlay={autoPlay}
         onAutoPlay={setAuto}
         tools={
-          <AudioPresetPicker
+          <AudioSoundBar
             current={preset}
+            snapshots={snapshots}
             onPatch={(next, id) => { setPreset(id); commit({ ...next, seed: patch.seed }) }}
+            onRemove={forget}
+            onSnapshot={keep}
             onRandom={() => { setPreset(''); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
             onMutate={() => commit(mutatePatch(patch, Math.floor(Math.random() * 100000)))}
           />

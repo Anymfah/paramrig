@@ -10,12 +10,28 @@ export { STORAGE_BLOCKED_MESSAGE, STORAGE_FULL_MESSAGE, storageMessage, type Sto
 
 const STORAGE_KEY = 'paramrig.audio-documents.v1'
 
+/**
+ * A sound kept aside. Sound design is comparison — you get somewhere, you try something else, and
+ * you need the somewhere back. These live on the document rather than in the browser's draft store
+ * so that they travel with the patch when it is exported.
+ */
+export type AudioSnapshot = {
+  id: string
+  name: string
+  createdAt: string
+  patch: AudioPatch
+}
+
+/** Past this many the list stops being findable, and the oldest gives way. */
+export const MAX_SNAPSHOTS = 24
+
 /** A patch, its name, and the controls it chooses to expose. A patch with a rig is a rig. */
 export type AudioDocument = {
   version: 1
   id: string
   name: string
   patch: AudioPatch
+  snapshots?: AudioSnapshot[]
   /** A patch with one is an instrument someone else can use without seeing the seventy fields. */
   rig?: AudioRig
   createdAt: string
@@ -52,11 +68,26 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
   if (!id) return null
   const now = new Date(0).toISOString()
   const rig = sanitizeAudioRig(source.rig)
+  const snapshots = (Array.isArray(source.snapshots) ? source.snapshots : [])
+    .slice(0, MAX_SNAPSHOTS)
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+      const row = entry as Record<string, unknown>
+      const snapshotId = text(row.id, 80)
+      if (!snapshotId) return []
+      return [{
+        id: snapshotId,
+        name: text(row.name, 80) ?? 'Sound',
+        createdAt: text(row.createdAt, 40) ?? new Date(0).toISOString(),
+        patch: sanitizeAudioPatch(row.patch),
+      }]
+    })
   return {
     version: 1,
     id,
     name: text(source.name, 120) ?? 'Untitled',
     patch: sanitizeAudioPatch(source.patch),
+    ...(snapshots.length ? { snapshots } : {}),
     ...(rig ? { rig } : {}),
     createdAt: text(source.createdAt, 40) ?? now,
     updatedAt: text(source.updatedAt, 40) ?? now,

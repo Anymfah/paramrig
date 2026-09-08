@@ -102,11 +102,11 @@
  * the middle of the band. The presets take the space when they are there; Auto takes it in Tune,
  * where they are not.
  */
-.audio-presets {
+.audio-sounds {
   margin-inline-start: auto;
 }
 
-.audio-transport:not(:has(.audio-presets)) .tt__anchor:has(.audio-transport__auto) {
+.audio-transport:not(:has(.audio-sounds)) .tt__anchor:has(.audio-transport__auto) {
   margin-inline-start: auto;
 }
 
@@ -137,9 +137,9 @@
 }
 
 /*
- * The presets moved into the band the transport already had spare, where they cost nothing. As a
- * column they took a fifth of the board to list eight names — and stepping is how they are
- * actually used: you rarely know which one you want, you want to hear the next one.
+ * Everything to do with *which* sound, in the band the transport already had spare. As a column it
+ * took a fifth of the board to list eight names — and stepping is how it is actually used: you
+ * rarely know which sound you want, only that it is not this one.
  */
 .audio-group__title,
 .audio-column__title {
@@ -151,30 +151,106 @@
   text-transform: uppercase;
 }
 
-.audio-presets {
+.audio-sounds {
   display: flex;
   align-items: center;
   gap: var(--space-1);
   user-select: none;
 }
 
-.audio-presets .control {
-  min-inline-size: 8.5rem;
-  margin: 0;
+.audio-sounds__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-inline-size: 9rem;
+  min-block-size: var(--hit-target);
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color var(--duration-instant) var(--ease-out), background var(--duration-instant) var(--ease-out);
 }
 
-.audio-presets .control__label {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  margin: -1px;
-  padding: 0;
+.audio-sounds__trigger:hover {
+  background: var(--surface-overlay);
+  border-color: var(--border-strong);
+}
+
+.audio-sounds__trigger:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.audio-sounds__menu {
+  min-inline-size: 13rem;
+  max-block-size: min(60vh, 26rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.audio-sounds__menu .menu__label {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.audio-sounds__menu .menu__empty {
+  margin: 0;
+  padding: var(--space-1) var(--space-3) var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.audio-sounds__saved {
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.audio-sounds__name {
+  min-inline-size: 0;
   overflow: hidden;
-  clip-path: inset(50%);
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.audio-presets__back {
+/* Shown on hover and on focus, so it is reachable without a pointer and quiet until wanted. */
+.audio-sounds__remove {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+
+.audio-sounds__saved:hover .audio-sounds__remove,
+.audio-sounds__saved[data-highlighted] .audio-sounds__remove,
+.audio-sounds__remove:focus-visible {
+  opacity: 1;
+}
+
+.audio-sounds__remove:hover {
+  color: var(--danger);
+}
+
+.audio-sounds__remove:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.audio-sounds__back {
   display: inline-flex;
   rotate: 180deg;
 }
