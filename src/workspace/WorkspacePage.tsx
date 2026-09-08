@@ -15,6 +15,7 @@ import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
 import { modeOf, readInspectorPrefs, withMode, writeInspectorPrefs, type VectorMode } from '@/vector/inspectorPrefs'
 import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, writeScenePrefs } from '@/scene/prefs'
+import { modeOf as audioModeOf, readAudioPrefs, withMode as withAudioMode, writeAudioPrefs } from '@/audio/prefs'
 
 /*
  * Both editors are deferred, and for the same reason: a workspace opens one document, so the other
@@ -25,23 +26,30 @@ import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, write
 const VectorEditorPage = lazy(async () => ({ default: (await import('@/vector/VectorEditorPage')).VectorEditorPage }))
 const SceneEditorPage = lazy(() => import('@/scene/SceneEditorPage').then((mod) => ({ default: mod.SceneEditorPage })))
 const WebWorkspace = lazy(() => import('@/web/WebWorkspace').then(mod => ({ default: mod.WebWorkspace })))
+const AudioEditorPage = lazy(() => import('@/audio/AudioEditorPage').then((mod) => ({ default: mod.AudioEditorPage })))
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
   const manifest = getRig(rigId)
   const { session, snapshot } = useSession(manifest?.renderer === 'web' ? undefined : manifest?.id)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
-  // A scene remembers Edit or Tune in its own store, a vector document in the inspector's.
-  const isScene = manifest?.renderer === 'scene'
-  const [mode, setModeState] = useState<VectorMode>(() => (isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId)))
+  // Each document editor remembers Edit or Tune in its own store, under its own storage key.
+  const kind = manifest?.renderer
+  const readMode = useCallback((): VectorMode => {
+    if (kind === 'scene') return sceneModeOf(readScenePrefs(), rigId)
+    if (kind === 'audio') return audioModeOf(readAudioPrefs(), rigId)
+    return modeOf(readInspectorPrefs(), rigId)
+  }, [kind, rigId])
+  const [mode, setModeState] = useState<VectorMode>(readMode)
   useEffect(() => {
-    setModeState(isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId))
-  }, [isScene, rigId])
+    setModeState(readMode())
+  }, [readMode])
   const setMode = useCallback((next: VectorMode) => {
     setModeState(next)
-    if (isScene) writeScenePrefs(withSceneMode(readScenePrefs(), rigId, next))
+    if (kind === 'scene') writeScenePrefs(withSceneMode(readScenePrefs(), rigId, next))
+    else if (kind === 'audio') writeAudioPrefs(withAudioMode(readAudioPrefs(), rigId, next))
     else writeInspectorPrefs(withMode(readInspectorPrefs(), rigId, next))
-  }, [isScene, rigId])
+  }, [kind, rigId])
   useEffect(() => { setMobilePanel('main') }, [rigId])
 
   useEffect(() => {
@@ -62,7 +70,7 @@ export function WorkspacePage() {
   // before a lazily-loaded editor's, so without this guard it would answer first and swallow the
   // key on its way to the editor that actually owns the document.
   const editing = !!manifest
-    && (manifest.renderer === 'vector' || manifest.renderer === 'scene')
+    && (manifest.renderer === 'vector' || manifest.renderer === 'scene' || manifest.renderer === 'audio')
     && (mode === 'edit' || manifest.parameters.length === 0)
 
   useEffect(() => {
@@ -107,6 +115,15 @@ export function WorkspacePage() {
     )
   }
 
+  // And the same rule again for a patch: no controls, or last left on Edit, and it opens on the board.
+  if (manifest.renderer === 'audio' && (mode === 'edit' || manifest.parameters.length === 0)) {
+    return (
+      <Suspense fallback={<p className="status-msg">Opening the sound editor</p>}>
+        <AudioEditorPage documentId={manifest.id} mode={mode} onMode={setMode} />
+      </Suspense>
+    )
+  }
+
   if (!session || !snapshot) return null
 
   const values = snapshot.values
@@ -134,7 +151,7 @@ export function WorkspacePage() {
     >
       <h1 className="visually-hidden">{manifest.name}</h1>
       <div className="workspace-toolbar">
-        {manifest.renderer === 'vector' || manifest.renderer === 'scene' ? (
+        {manifest.renderer === 'vector' || manifest.renderer === 'scene' || manifest.renderer === 'audio' ? (
           <div className="workspace-toolbar__group">
             <Button variant="quiet" size="sm" onClick={() => setMode('edit')}>Edit</Button>
           </div>

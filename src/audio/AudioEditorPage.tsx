@@ -1,0 +1,174 @@
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import type { ParamValue } from '@/rigs/types'
+import { listRigs } from '@/rigs/registry'
+import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { Button, IconButton } from '@/ui/Button'
+import { IconRedo, IconUndo } from '@/ui/icons'
+import { StatusMessage } from '@/ui/StatusMessage'
+import { Tooltip } from '@/ui/Tooltip'
+import { AudioBoard } from '@/audio/AudioBoard'
+import { AudioStage } from '@/audio/AudioStage'
+import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
+import { getAudioDocument, saveAudioDocument, storageMessage, type AudioDocument } from '@/audio/document'
+import { renderPatch } from '@/audio/dsp/render'
+import { disposePlayback, playbackRate } from '@/audio/playback'
+import type { AudioPatch } from '@/audio/types'
+import type { AudioMode } from '@/audio/prefs'
+
+const HISTORY_LIMIT = 100
+
+/**
+ * Edit mode: the whole synthesiser, and the sound it makes.
+ *
+ * The buffer is deferred rather than rendered on every keystroke of a drag. Turning a knob has to
+ * feel like turning a knob, and re-synthesising a second and a half of audio sixty times a second
+ * makes it feel like turning a knob through treacle. React renders the controls immediately and
+ * the waveform catches up, which is the right way round: the ear is not listening mid-drag.
+ */
+export function AudioEditorPage({ documentId, mode, onMode }: {
+  documentId: string
+  mode: AudioMode
+  onMode: (mode: AudioMode) => void
+}) {
+  const navigate = useNavigate()
+  const [loaded] = useState<AudioDocument | null>(() => getAudioDocument(documentId))
+  const [patch, setPatch] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
+  const [name, setName] = useState(loaded?.name ?? '')
+  const [past, setPast] = useState<AudioPatch[]>([])
+  const [future, setFuture] = useState<AudioPatch[]>([])
+  const [notice, setNotice] = useState('')
+  const gestureRef = useRef(false)
+  const capturedRef = useRef(false)
+
+  const parameters = useMemo(() => boardParameters(), [])
+  const values = useMemo(() => (patch ? boardValues(patch) : {}), [patch])
+  const rate = useMemo(() => playbackRate(), [])
+  const shown = useDeferredValue(patch)
+  const samples = useMemo(() => (shown ? renderPatch(shown, rate) : new Float32Array(0)), [shown, rate])
+
+  useEffect(() => () => disposePlayback(), [])
+
+  // Written on a delay so a drag lands once, not on every frame of itself.
+  useEffect(() => {
+    if (!loaded || !patch) return
+    const timer = setTimeout(() => {
+      const result = saveAudioDocument({ ...loaded, name, patch, updatedAt: new Date().toISOString() })
+      setNotice(storageMessage(result) ?? '')
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [loaded, name, patch])
+
+  const change = useCallback((property: string, value: ParamValue) => {
+    setPatch((current) => {
+      if (!current) return current
+      // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
+      if (!gestureRef.current || !capturedRef.current) {
+        capturedRef.current = true
+        setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+        setFuture([])
+      }
+      return setBoardValue(current, property, value)
+    })
+  }, [])
+
+  const undo = useCallback(() => {
+    setPast((stack) => {
+      const previous = stack[stack.length - 1]
+      if (!previous) return stack
+      setPatch((current) => {
+        if (current) setFuture((ahead) => [current, ...ahead].slice(0, HISTORY_LIMIT))
+        return previous
+      })
+      return stack.slice(0, -1)
+    })
+  }, [])
+
+  const redo = useCallback(() => {
+    setFuture((stack) => {
+      const next = stack[0]
+      if (!next) return stack
+      setPatch((current) => {
+        if (current) setPast((behind) => [...behind, current].slice(-HISTORY_LIMIT))
+        return next
+      })
+      return stack.slice(1)
+    })
+  }, [])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const meta = event.metaKey || event.ctrlKey
+      if (event.defaultPrevented || !meta || !['z', 'y'].includes(event.key.toLowerCase())) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      event.preventDefault()
+      if (event.shiftKey || event.key.toLowerCase() === 'y') redo()
+      else undo()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [undo, redo])
+
+  if (!loaded || !patch) {
+    return (
+      <WorkspaceShell rigs={listRigs()} hideInspector>
+        <div className="preview-stage" id="main" tabIndex={-1}>
+          <StatusMessage>That patch is not in this browser. Open its project file to bring it back.</StatusMessage>
+          <Button onClick={() => navigate('/')}>Back to library</Button>
+        </div>
+      </WorkspaceShell>
+    )
+  }
+
+  const tunable = (loaded.rig?.parameters.length ?? 0) > 0
+
+  return (
+    <WorkspaceShell
+      rigs={listRigs()}
+      activeId={documentId}
+      inspector={
+        <AudioBoard
+          parameters={parameters}
+          values={values}
+          onChange={change}
+          onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
+          onGestureEnd={() => { gestureRef.current = false; capturedRef.current = false }}
+        />
+      }
+    >
+      <h1 className="visually-hidden">{loaded.name}</h1>
+      <div className="workspace-toolbar">
+        <div className="workspace-toolbar__group">
+          <input
+            className="audio-name"
+            aria-label="Patch name"
+            value={name}
+            onChange={(event) => setName(event.target.value.slice(0, 120))}
+          />
+        </div>
+        <div className="workspace-toolbar__group">
+          <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
+            <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
+          </Tooltip>
+          <Tooltip content={future.length ? 'Redo (⌘⇧Z / Ctrl+Shift+Z)' : 'Nothing to redo'}>
+            <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
+          </Tooltip>
+        </div>
+        {tunable ? (
+          <div className="workspace-toolbar__group">
+            <Button variant="quiet" size="sm" onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>Tune</Button>
+          </div>
+        ) : null}
+      </div>
+      <div className="preview-stage preview-stage--audio" id="main" tabIndex={-1}>
+        <AudioStage samples={samples} sampleRate={rate} name={loaded.name} />
+      </div>
+      <div className="workspace-status">
+        <span className="workspace-status__baseline">{parameters.length} fields</span>
+        <span className="workspace-status__changes">{tunable ? `${loaded.rig?.parameters.length} exposed` : 'No controls exposed'}</span>
+        <span className="workspace-status__notice" role="status">{notice}</span>
+      </div>
+    </WorkspaceShell>
+  )
+}

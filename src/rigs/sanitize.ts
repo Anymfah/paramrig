@@ -1,4 +1,4 @@
-import type { InspectorCategory, ParameterDef, ParamGroup } from '@/rigs/types'
+import type { BezierCurve, InspectorCategory, ParameterDef, ParamGroup, Vec2 } from '@/rigs/types'
 
 /**
  * Reading a rig back from a file that could say anything.
@@ -28,6 +28,45 @@ function hex(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^#[0-9a-f]{3,8}$/i.test(value) ? value : fallback
 }
 
+/** A display unit a number can be read in. The stored value stays in the base unit regardless. */
+function unitList(value: unknown): Array<{ value: string; label: string; factor: number; step?: number }> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return []
+    const entry = item as { value?: unknown; label?: unknown; factor?: unknown; step?: unknown }
+    const id = text(entry.value, 12)
+    const factor = entry.factor
+    if (!id || typeof factor !== 'number' || !Number.isFinite(factor) || factor <= 0) return []
+    const step = entry.step
+    return [{
+      value: id,
+      label: text(entry.label, 40) ?? id,
+      factor,
+      ...(typeof step === 'number' && Number.isFinite(step) && step > 0 ? { step } : {}),
+    }]
+  })
+}
+
+function point(value: unknown): Vec2 | null {
+  if (!Array.isArray(value) || value.length < 2) return null
+  const [x, y] = value
+  const ok = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+  return ok(x) && ok(y) ? [x, y] : null
+}
+
+function bezier(value: unknown): BezierCurve | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  if (source.type !== 'cubic-bezier') return null
+  const p0 = point(source.p0)
+  const p1 = point(source.p1)
+  const p2 = point(source.p2)
+  const p3 = point(source.p3)
+  return p0 && p1 && p2 && p3 ? { type: 'cubic-bezier', p0, p1, p2, p3 } : null
+}
+
+const LINEAR_CURVE: BezierCurve = { type: 'cubic-bezier', p0: [0, 0], p1: [0.33, 0.33], p2: [0.67, 0.67], p3: [1, 1] }
+
 function options(value: unknown): Array<{ value: string; label: string }> {
   if (!Array.isArray(value)) return []
   return value.flatMap((item) => {
@@ -56,6 +95,8 @@ export function sanitizeParameter(value: unknown, groupIds: Set<string>, allow: 
     const min = finite(source.min, 0)
     const max = finite(source.max, min + 1)
     const view = text(source.view, 20)
+    const scale = text(source.scale, 8)
+    const units = unitList(source.units)
     return {
       ...base,
       kind: 'number',
@@ -65,6 +106,10 @@ export function sanitizeParameter(value: unknown, groupIds: Set<string>, allow: 
       defaultValue: finite(source.defaultValue, min),
       ...(text(source.unit, 12) ? { unit: text(source.unit, 12)! } : {}),
       ...(view && NUMBER_VIEWS.includes(view) ? { view: view as 'bar' } : {}),
+      // A frequency read on a linear slider is not the same control. The scale and the display
+      // units are part of what the field is, not decoration, so they survive the round trip.
+      ...(scale === 'log' || scale === 'linear' ? { scale } : {}),
+      ...(units.length ? { units } : {}),
     }
   }
   if (kind === 'color') return { ...base, kind: 'color', defaultValue: hex(source.defaultValue, '#D4E7E1'), ...(source.alpha === true ? { alpha: true } : {}) }
@@ -88,6 +133,11 @@ export function sanitizeParameter(value: unknown, groupIds: Set<string>, allow: 
       })
       : []
     return { ...base, kind: 'gradient', defaultValue: stops.length > 1 ? stops : [{ t: 0, color: '#1C1D1E' }, { t: 1, color: '#D4E7E1' }] }
+  }
+  if (kind === 'curve') {
+    // Repaired rather than dropped, on the gradient's precedent above: a curve control that opens
+    // on a straight line is still the control the rig asked for.
+    return { ...base, kind: 'curve', defaultValue: bezier(source.defaultValue) ?? LINEAR_CURVE }
   }
   if (allow.extended === true && (kind === 'gizmo3d' || kind === 'camera')) {
     // Both carry an object rather than a number, and their shape is the controller's business;

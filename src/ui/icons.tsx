@@ -1,6 +1,7 @@
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import {
   Activity,
+  AudioWaveform,
   ArrowRight,
   Dices,
   GripVertical,
@@ -80,6 +81,7 @@ export const IconPipette = glyph(Pipette)
 export const IconGrid = glyph(LayoutGrid)
 export const IconDiamond = glyph(Diamond)
 export const IconCube = glyph(Box)
+export const IconWave = glyph(AudioWaveform)
 export const IconSliders = glyph(SlidersHorizontal)
 export const IconCode = glyph(Code)
 export const IconSearch = glyph(Search)

@@ -6,7 +6,7 @@ import { ShellNavResize } from '@/shell/ResizeHandle'
 import { listRigs, loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
-import { IconCube, IconPlus, IconSearch } from '@/ui/icons'
+import { IconCube, IconPlus, IconSearch, IconWave } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
@@ -15,6 +15,7 @@ import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
 import { WebProjectMark } from '@/renderers/html/WebProjectMark'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
+import { createAudioDocument } from '@/audio/document'
 import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
 import { importProject as importSceneProject } from '@/scene/project'
 import { SceneThumb } from '@/scene/SceneThumb'
@@ -147,6 +148,19 @@ export function LibraryPage() {
           <h1>Your rigs</h1>
           <div className="library-titlebar__actions">
             <Link className="btn btn--ghost" to="/web">Web</Link>
+            <Tooltip content="New sound">
+              <button
+                type="button"
+                className="icon-btn library-create"
+                aria-label="New sound"
+                onClick={() => {
+                  const document = createAudioDocument()
+                  navigate(`/r/${document.id}`)
+                }}
+              >
+                <IconWave />
+              </button>
+            </Tooltip>
             <Tooltip content="New scene">
               <button
                 type="button"

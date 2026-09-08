@@ -1,0 +1,88 @@
+/*
+ * The audio workspace. A sound has no picture, so the waveform stands in for one — which means it
+ * is the thing being looked at, not a decoration beside it, and gets the room a canvas would.
+ */
+
+.preview-stage--audio {
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+}
+
+.audio-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(100%, 56rem);
+}
+
+.audio-stage__wave {
+  position: relative;
+  height: clamp(9rem, 34vh, 18rem);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md, 0.5rem);
+  overflow: hidden;
+}
+
+.audio-stage__wave canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Driven from the clock, so it does not need a transition to look smooth. */
+.audio-stage__head {
+  position: absolute;
+  inset-block: 0;
+  width: 1px;
+  background: var(--focus-ring);
+  pointer-events: none;
+}
+
+.audio-stage__transport {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.audio-stage__figure {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-stage__figure--end {
+  margin-inline-start: auto;
+}
+
+.audio-stage__notice {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.audio-name {
+  min-width: 12rem;
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm, 0.375rem);
+  font: inherit;
+}
+
+.audio-name:hover {
+  border-color: var(--border-default);
+}
+
+.audio-name:focus-visible {
+  border-color: var(--focus-ring);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-stage__head {
+    transition: none;
+  }
+}

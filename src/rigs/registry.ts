@@ -4,6 +4,7 @@ import { surfaceStudiesManifest } from '@/rigs/examples/surface-studies'
 import { tidalPlanetManifest } from '@/rigs/examples/tidal-planet'
 import { typeSpecimenManifest } from '@/rigs/examples/type-specimen'
 import type { RigManifest } from '@/rigs/types'
+import { audioManifest, getAudioDocument, listAudioDocuments } from '@/audio/document'
 import { getSceneDocument, listSceneDocuments, sceneManifest } from '@/scene/document'
 import { getVectorDocument, listVectorDocuments, vectorManifest } from '@/vector/document'
 import { listWebProjects, pendingWebManifest, webManifest } from '@/web/projects'
@@ -42,6 +43,7 @@ export function listExampleRigs(): RigManifest[] {
 export function listRigs(): RigManifest[] {
   return [
     ...listWebProjects().map(webManifest),
+    ...listAudioDocuments().map(audioManifest),
     ...listSceneDocuments().map(sceneManifest),
     ...listVectorDocuments().map(vectorManifest),
     ...EXAMPLES,
@@ -52,6 +54,8 @@ export function getRig(id: string): RigManifest | undefined {
   if (id === 'long-name-study') return longNameStudy()
   const web = listWebProjects().map(webManifest).find(p => p.id === id)
   if (web) return web
+  const audio = getAudioDocument(id)
+  if (audio) return audioManifest(audio)
   const scene = getSceneDocument(id)
   if (scene) return sceneManifest(scene)
   const vector = getVectorDocument(id)
@@ -89,7 +93,7 @@ export async function loadLibrary(fixture: LibraryFixture = 'ok'): Promise<Libra
       note: 'This empty state is a local fixture. Example rigs are bundled with the app, not discovered from disk.',
     }
   }
-  const local = listVectorDocuments().length + listSceneDocuments().length
+  const local = listVectorDocuments().length + listSceneDocuments().length + listAudioDocuments().length
   return {
     rigs: listRigs(),
     source: local ? 'mixed' : 'examples',

@@ -1,5 +1,8 @@
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, MasterSettings, PitchSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AudioPatch, FxSettings, Layer, MasterSettings } from './types.ts'
 import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
+import { makeLayer, makePatch } from './patch.ts'
+
+export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
 /**
  * The starting points. A generator with seventy parameters and no presets is a synthesiser, and a
@@ -8,53 +11,8 @@ import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
  * gesture after loading one is to change it.
  */
 
-type LayerInput = {
-  enabled?: boolean
-  gain?: number
-  offset?: number
-  source?: Partial<SourceSettings>
-  pitch?: Partial<PitchSettings>
-  filter?: Partial<FilterSettings>
-  shaper?: Partial<ShaperSettings>
-  amp?: Partial<AmpSettings>
-}
-
-export function makeLayer(input: LayerInput = {}): Layer {
-  return {
-    enabled: input.enabled ?? true,
-    gain: input.gain ?? 0.8,
-    offset: input.offset ?? 0,
-    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, colour: 'white', ...input.source },
-    pitch: {
-      start: 440, slide: 0, slideCurve: LINEAR, vibratoRate: 0, vibratoDepth: 0,
-      arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
-    },
-    filter: { kind: 'off', cutoff: 8000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filter },
-    shaper: { drive: 0, bitDepth: 16, crush: 0, ...input.shaper },
-    amp: { attack: 0.004, hold: 0, decay: 0.12, sustain: 0, release: 0.05, curve: 2, ...input.amp },
-  }
-}
-
-export function silentLayer(): Layer {
-  return makeLayer({ enabled: false })
-}
-
-export function makeFx(input: Partial<FxSettings> = {}): FxSettings {
-  return {
-    delayTime: 0.12, delayFeedback: 0.3, delayMix: 0,
-    reverbSize: 0.5, reverbDamping: 0.4, reverbMix: 0,
-    flangerRate: 0.5, flangerDepth: 0.5, flangerMix: 0,
-    tone: 0, ...input,
-  }
-}
-
-export function makeMaster(input: Partial<MasterSettings> = {}): MasterSettings {
-  return { gain: 0.9, limiter: 0.6, fadeOut: 0.01, ...input }
-}
-
 function patch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}): AudioPatch {
-  const three = [layers[0] ?? silentLayer(), layers[1] ?? silentLayer(), layers[2] ?? silentLayer()]
-  return { version: 1, duration, seed: 1, layers: three, fx: makeFx(fx), master: makeMaster(master) }
+  return makePatch(duration, layers, fx, master)
 }
 
 /** Square, and a jump to a fifth part-way through. The arpeggio is the whole trick. */

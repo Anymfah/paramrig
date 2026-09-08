@@ -8,6 +8,7 @@ import '@/styles/shell.css'
 import '@/styles/editor.css'
 import '@/styles/vector.css'
 import '@/styles/scene.css'
+import '@/styles/audio.css'
 
 initTheme()
 

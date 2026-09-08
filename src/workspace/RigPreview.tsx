@@ -22,6 +22,11 @@ const SceneRigPreview = lazy(() =>
   import('@/renderers/scene/SceneRigPreview').then((mod) => ({ default: mod.SceneRigPreview })),
 )
 
+/** The audio preview carries the synthesiser, which nothing else on the page needs. */
+const AudioRigPreview = lazy(() =>
+  import('@/renderers/audio/AudioRigPreview').then((mod) => ({ default: mod.AudioRigPreview })),
+)
+
 type PreviewProps = { values: Record<string, ParamValue> }
 
 type ScenePreviewProps = { session: RigSession; values: Record<string, ParamValue> }
@@ -63,7 +68,11 @@ export function RigPreview({ rigId, renderer, values, name, session }: RigPrevie
         </div>
       }
     >
-      {renderer === 'vector' ? (
+      {renderer === 'audio' ? (
+        <Suspense fallback={<p className="status-msg">Starting the synthesiser</p>}>
+          <AudioRigPreview documentId={rigId} values={session?.previewValues() ?? values} name={name} />
+        </Suspense>
+      ) : renderer === 'vector' ? (
         <VectorRigPreview documentId={rigId} values={session?.previewValues() ?? values} name={name} />
       ) : renderer === 'scene' ? (
         <Suspense fallback={<p className="status-msg">Starting the 3D view</p>}>
