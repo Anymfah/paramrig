@@ -51,24 +51,34 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 
-  it('offers a starting point for every preset, plus the two generators', () => {
+  it('offers a preset menu with a step either side, and the two generators', () => {
     open(arcadeCoin().id)
-    const rail = screen.getByRole('navigation', { name: 'Starting points' })
-    for (const label of ['Coin', 'Laser', 'Explosion', 'UI click', 'Powerup', 'Whoosh', 'Hit', 'Jump']) {
-      expect(within(rail).getByRole('button', { name: label })).toBeInTheDocument()
+    expect(screen.getByText('Preset')).toBeInTheDocument()
+    for (const label of ['Previous preset', 'Next preset', 'Randomize', 'Mutate']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
     }
-    expect(within(rail).getByRole('button', { name: /Randomize/ })).toBeInTheDocument()
-    expect(within(rail).getByRole('button', { name: /Mutate/ })).toBeInTheDocument()
   })
 
-  it('loads a preset as one undoable step', async () => {
+  /** Stepping is how these get used: you rarely know which preset you want, only that not this one. */
+  it('steps through the presets, one undoable step each', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     expect(screen.getByText('450 ms')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Laser' }))
+    const next = screen.getByRole('button', { name: 'Next preset' })
+    await user.click(next)
+    expect(screen.getByText('450 ms')).toBeInTheDocument()
+    await user.click(next)
     expect(screen.getByText('350 ms')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(screen.getByText('450 ms')).toBeInTheDocument()
+  })
+
+  it('steps backwards too, wrapping round the end of the list', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    await user.click(screen.getByRole('button', { name: 'Previous preset' }))
+    // Nothing was loaded yet, so stepping back lands on the last of them.
+    expect(screen.getByText('300 ms')).toBeInTheDocument()
   })
 
   /** Six numeric fields describe the envelope and none of them shows it, so a shape does instead. */

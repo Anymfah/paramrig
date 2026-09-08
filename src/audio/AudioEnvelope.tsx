@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ParamValue } from '@/rigs/types'
 import { envelopeAt, fitEnvelope } from '@/audio/dsp/envelope'
 import type { AmpSettings } from '@/audio/types'
@@ -44,18 +44,22 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
   const height = 88
   const dragRef = useRef<Handle | null>(null)
 
-  const read = (field: string, fallback: number) => {
-    const value = values[`layers[${layer}].amp.${field}`]
-    return typeof value === 'number' ? value : fallback
-  }
   const offsetValue = values[`layers[${layer}].offset`]
   const offset = typeof offsetValue === 'number' ? offsetValue : 0
   const life = Math.max(0.02, duration - offset)
 
-  const amp: AmpSettings = {
-    attack: read('attack', 0), hold: read('hold', 0), decay: read('decay', 0.1),
-    sustain: read('sustain', 0), release: read('release', 0.05), curve: read('curve', 2),
-  }
+  // Memoised because `write` depends on it, and a fresh object every render would rebuild that
+  // callback on every render too.
+  const amp = useMemo<AmpSettings>(() => {
+    const read = (field: string, fallback: number) => {
+      const value = values[`layers[${layer}].amp.${field}`]
+      return typeof value === 'number' ? value : fallback
+    }
+    return {
+      attack: read('attack', 0), hold: read('hold', 0), decay: read('decay', 0.1),
+      sustain: read('sustain', 0), release: read('release', 0.05), curve: read('curve', 2),
+    }
+  }, [layer, values])
   const fitted = fitEnvelope(amp, life)
 
   useEffect(() => {
@@ -87,20 +91,52 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
     release: { cx: x(life - fitted.release), cy: y(amp.sustain), text: ms(amp.release) },
   }
 
-  /** Stages never overrun the life, so a handle stops at its neighbour instead of folding under it. */
+  /**
+   * The stage being dragged wins, and only its neighbours give way — in order, and only as far as
+   * they have to.
+   *
+   * Two earlier attempts were wrong in opposite directions. Capping each stage at whatever the
+   * other three left over meant every handle travelled a few pixels and then stopped dead on top
+   * of its neighbour, which reads as the point vanishing rather than as a limit. Shrinking all the
+   * others proportionally freed the handle but flattened the rest of the envelope with it: one
+   * pull of the decay and the attack, hold and release were gone.
+   *
+   * So a drag takes only from the side it is moving into, nearest first, and stops when that side
+   * is used up. Pulling the decay out shortens the release and leaves the attack alone; pulling
+   * the release in — it grows leftwards — eats the decay before the hold.
+   */
   const write = useCallback((handle: Handle, seconds: number, level: number | null) => {
-    const room = (...others: number[]) => Math.max(0, life - others.reduce((sum, value) => sum + value, 0))
-    if (handle === 'attack') {
-      onChange(`layers[${layer}].amp.attack`, Math.min(room(amp.hold, amp.decay, amp.release), Math.max(0, seconds)))
-    } else if (handle === 'hold') {
-      onChange(`layers[${layer}].amp.hold`, Math.min(room(amp.attack, amp.decay, amp.release), Math.max(0, seconds - amp.attack)))
-    } else if (handle === 'decay') {
-      onChange(`layers[${layer}].amp.decay`, Math.min(room(amp.attack, amp.hold, amp.release), Math.max(0, seconds - amp.attack - amp.hold)))
-      if (level !== null) onChange(`layers[${layer}].amp.sustain`, Math.min(1, Math.max(0, level)))
-    } else {
-      onChange(`layers[${layer}].amp.release`, Math.min(room(amp.attack, amp.hold, amp.decay), Math.max(0, life - seconds)))
+    const order: Handle[] = ['attack', 'hold', 'decay', 'release']
+    const stages: Record<Handle, number> = {
+      attack: amp.attack, hold: amp.hold, decay: amp.decay, release: amp.release,
     }
-  }, [amp.attack, amp.decay, amp.hold, amp.release, layer, life, onChange])
+    const at = order.indexOf(handle)
+    // Release is measured from the end, so it grows into what precedes it; the rest grow forwards.
+    const gives = handle === 'release' ? order.slice(0, at).reverse() : order.slice(at + 1)
+    const fixed = order.filter((id) => id !== handle && !gives.includes(id))
+      .reduce((sum, id) => sum + stages[id], 0)
+
+    const wanted = handle === 'attack' ? seconds
+      : handle === 'hold' ? seconds - amp.attack
+      : handle === 'decay' ? seconds - amp.attack - amp.hold
+      : life - seconds
+    stages[handle] = Math.min(Math.max(0, life - fixed), Math.max(0, wanted))
+
+    let excess = order.reduce((sum, id) => sum + stages[id], 0) - life
+    for (const id of gives) {
+      if (excess <= 0) break
+      const taken = Math.min(stages[id], excess)
+      stages[id] -= taken
+      excess -= taken
+    }
+
+    for (const id of order) {
+      if (stages[id] !== amp[id]) onChange(`layers[${layer}].amp.${id}`, stages[id])
+    }
+    if (handle === 'decay' && level !== null) {
+      onChange(`layers[${layer}].amp.sustain`, Math.min(1, Math.max(0, level)))
+    }
+  }, [amp, layer, life, onChange])
 
   const fromPointer = (event: React.PointerEvent<SVGSVGElement>, handle: Handle) => {
     const rect = event.currentTarget.getBoundingClientRect()

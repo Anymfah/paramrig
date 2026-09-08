@@ -119,22 +119,15 @@
   flex: 1;
   min-block-size: 0;
   display: grid;
-  grid-template-columns: 9.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   background: var(--surface-preview);
 }
 
-.audio-rail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-3);
-  border-inline-end: 1px solid var(--rule);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  user-select: none;
-}
-
-.audio-rail__title,
+/*
+ * The presets moved into the band the transport already had spare, where they cost nothing. As a
+ * column they took a fifth of the board to list eight names — and stepping is how they are
+ * actually used: you rarely know which one you want, you want to hear the next one.
+ */
 .audio-group__title,
 .audio-column__title {
   margin: 0;
@@ -145,56 +138,32 @@
   text-transform: uppercase;
 }
 
-.audio-rail__list {
+.audio-presets {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-1);
+  user-select: none;
+}
+
+.audio-presets .control {
+  min-inline-size: 8.5rem;
   margin: 0;
+}
+
+.audio-presets .control__label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
   padding: 0;
-  list-style: none;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.audio-rail__item {
-  inline-size: 100%;
-  min-block-size: var(--hit-target);
-  padding: var(--space-2) var(--space-3);
-  color: var(--text-secondary);
-  text-align: start;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font: inherit;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: background var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
-}
-
-.audio-rail__item:hover {
-  color: var(--text-primary);
-  background: var(--surface-overlay);
-}
-
-.audio-rail__item:active {
-  background: var(--surface-inset);
-}
-
-.audio-rail__item:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: -2px;
-}
-
-.audio-rail__actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin-block-start: auto;
-  padding-block-start: var(--space-3);
-  border-block-start: 1px solid var(--border-hairline);
-}
-
-.audio-rail__actions .btn {
-  justify-content: flex-start;
-  inline-size: 100%;
+.audio-presets__back {
+  display: inline-flex;
+  rotate: 180deg;
 }
 
 /* ---- The board ---------------------------------------------------------------------------- */
@@ -341,54 +310,6 @@
 
 .audio-thumb path {
   fill: var(--accent);
-}
-
-/* The rail is a row above the board once there is no room beside it. */
-@media (max-width: 52rem) {
-  .audio-body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .audio-rail {
-    flex-direction: row;
-    align-items: center;
-    gap: var(--space-2);
-    border-inline-end: 0;
-    border-block-end: 1px solid var(--rule);
-    overflow-x: auto;
-    overflow-y: hidden;
-  }
-
-  .audio-rail__title {
-    display: none;
-  }
-
-  .audio-rail__list {
-    flex-direction: row;
-  }
-
-  .audio-rail__item {
-    inline-size: auto;
-    white-space: nowrap;
-  }
-
-  /* First in the row, not last: Randomize and Mutate are the quickest way to a sound, and a
-     horizontal scroll is where a control goes to be forgotten. */
-  .audio-rail__actions {
-    order: -1;
-    flex-direction: row;
-    margin-block-start: 0;
-    padding-block-start: 0;
-    border-block-start: 0;
-    border-inline-end: 1px solid var(--border-hairline);
-    padding-inline-end: var(--space-2);
-  }
-
-  .audio-rail__actions .btn {
-    inline-size: auto;
-    white-space: nowrap;
-  }
 }
 
 @media (prefers-contrast: more) {

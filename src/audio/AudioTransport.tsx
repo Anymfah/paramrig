@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import { IconPlay, IconStart } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { WaveformView } from '@/audio/WaveformView'
@@ -15,7 +15,7 @@ import type { AudioPatch } from '@/audio/types'
  * ends — and a strip answers that as well as a panel does. The room it used to take belongs to the
  * parameters, which are the thing you actually look at while working.
  */
-export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onAutoPlay }: {
+export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onAutoPlay, tools }: {
   samples: Float32Array
   sampleRate: number
   name: string
@@ -23,6 +23,8 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
   patch?: AudioPatch
   autoPlay: boolean
   onAutoPlay: (next: boolean) => void
+  /** Whatever else belongs on the band: the preset menu and the two generators, in Edit. */
+  tools?: ReactNode
 }) {
   const { playing, head, silent, play, stop } = useTransport(samples, sampleRate)
   const seconds = samples.length / Math.max(1, sampleRate)
@@ -66,6 +68,7 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
         <div><dt>RMS</dt><dd>{decibels(rms)}</dd></div>
         <div><dt>Rate</dt><dd>{Math.round(sampleRate / 1000)} kHz</dd></div>
       </dl>
+      {tools}
       <Tooltip content={autoPlay ? 'Every change plays itself' : 'Changes are silent until you press play'}>
         <button
           type="button"

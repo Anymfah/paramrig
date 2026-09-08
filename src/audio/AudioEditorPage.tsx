@@ -8,7 +8,7 @@ import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioBoard } from '@/audio/AudioBoard'
-import { AudioPresetRail } from '@/audio/AudioPresetRail'
+import { AudioPresetPicker } from '@/audio/AudioPresetPicker'
 import { AudioTransport } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { getAudioDocument, saveAudioDocument, storageMessage, type AudioDocument } from '@/audio/document'
@@ -47,6 +47,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   // Nothing is written until something is changed, or opening a bundled example would stamp a new
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
+  const [preset, setPreset] = useState('')
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
 
@@ -176,16 +177,26 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           </div>
         ) : null}
       </div>
-      <AudioTransport samples={samples} sampleRate={rate} name={loaded.name} patch={shown ?? patch} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      <AudioTransport
+        samples={samples}
+        sampleRate={rate}
+        name={loaded.name}
+        patch={shown ?? patch}
+        autoPlay={autoPlay}
+        onAutoPlay={setAuto}
+        tools={
+          <AudioPresetPicker
+            current={preset}
+            onPatch={(next, id) => { setPreset(id); commit({ ...next, seed: patch.seed }) }}
+            onRandom={() => { setPreset(''); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
+            onMutate={() => commit(mutatePatch(patch, Math.floor(Math.random() * 100000)))}
+          />
+        }
+      />
       {/* Always in the tree so a screen reader keeps the live region, but no height until it has
           something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
       <p className="editor-notice" role="status" data-empty={notice.length === 0}>{notice}</p>
       <div className="audio-body" id="main" tabIndex={-1}>
-        <AudioPresetRail
-          onPatch={(next) => commit({ ...next, seed: patch.seed })}
-          onRandom={() => commit(randomPatch(Math.floor(Math.random() * 100000)))}
-          onMutate={() => commit(mutatePatch(patch, Math.floor(Math.random() * 100000)))}
-        />
         <AudioBoard
           parameters={parameters}
           values={values}
