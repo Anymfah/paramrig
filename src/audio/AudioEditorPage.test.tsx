@@ -71,16 +71,31 @@ describe('AudioEditorPage', () => {
     expect(screen.getByText('450 ms')).toBeInTheDocument()
   })
 
-  it('says how many fields there are and that nothing is exposed yet', () => {
-    const document = createAudioDocument()
-    open(document.id)
-    expect(screen.getByText(/\d+ fields/)).toBeInTheDocument()
-    expect(screen.getByText('No controls exposed')).toBeInTheDocument()
+  /** Six numeric fields describe the envelope and none of them shows it, so a shape does instead. */
+  it('draws the envelope rather than listing its five times', () => {
+    open(arcadeCoin().id)
+    const layer = screen.getByRole('region', { name: 'Layer 1' })
+    for (const handle of ['Attack, layer 1', 'Hold, layer 1', 'Decay and sustain, layer 1', 'Release, layer 1']) {
+      expect(within(layer).getByRole('slider', { name: handle })).toBeInTheDocument()
+    }
+    expect(within(layer).queryByLabelText('Attack')).toBeNull()
+    expect(within(layer).getByLabelText('Envelope curve')).toBeInTheDocument()
   })
 
-  it('counts the controls a patch exposes', () => {
+  it('reads the envelope out in numbers beside the shape', () => {
     open(arcadeCoin().id)
-    expect(screen.getByText('4 exposed')).toBeInTheDocument()
+    const layer = screen.getByRole('region', { name: 'Layer 1' })
+    expect(within(layer).getByText('D 260 ms')).toBeInTheDocument()
+    expect(within(layer).getByText('S 0.00')).toBeInTheDocument()
+  })
+
+  /**
+   * There used to be a permanent band across the foot of the window whose usual content was a
+   * report that nothing had gone wrong. The live region stays, and takes no room until it does.
+   */
+  it('keeps no permanent band across the foot of the window', () => {
+    open(arcadeCoin().id)
+    expect(screen.getByRole('status')).toHaveAttribute('data-empty', 'true')
   })
 
   // The buttons carry aria-disabled rather than the attribute, so they stay focusable and a

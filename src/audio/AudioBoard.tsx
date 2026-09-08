@@ -1,6 +1,7 @@
 import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { ParameterField } from '@/ui/ParameterField'
 import { BOARD_CATEGORIES, boardGroups } from '@/audio/board'
+import { AudioEnvelope } from '@/audio/AudioEnvelope'
 
 /**
  * The whole synthesiser, at once.
@@ -13,9 +14,10 @@ import { BOARD_CATEGORIES, boardGroups } from '@/audio/board'
  * A layer that is switched off collapses to its own switch. Three columns of settings that make no
  * sound are three columns of noise.
  */
-export function AudioBoard({ parameters, values, onChange, onGestureStart, onGestureEnd }: {
+export function AudioBoard({ parameters, values, duration, onChange, onGestureStart, onGestureEnd }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
+  duration: number
   onChange: (property: string, value: ParamValue) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -35,10 +37,25 @@ export function AudioBoard({ parameters, values, onChange, onGestureStart, onGes
               if (!enabled && !root) return null
               const fields = parameters.filter((parameter) => parameter.group === group.id)
               if (fields.length === 0) return null
+              const section = group.id.split('.')[1] ?? ''
+              // The envelope draws itself; the five times and levels behind it are the shape, and
+              // the shape is what a person is actually setting. Only the curve stays a field.
+              const drawn = section === 'amp' && layer !== null
+              const shown = drawn ? fields.filter((parameter) => parameter.id.endsWith('.curve')) : fields
               return (
-                <div className="audio-group" key={group.id}>
+                <div className="audio-group" data-section={section} key={group.id}>
                   {root ? null : <h3 className="audio-group__title">{group.label}</h3>}
-                  {fields.map((parameter) => (
+                  {drawn ? (
+                    <AudioEnvelope
+                      layer={layer}
+                      values={values}
+                      duration={duration}
+                      onChange={onChange}
+                      onGestureStart={onGestureStart}
+                      onGestureEnd={onGestureEnd}
+                    />
+                  ) : null}
+                  {shown.map((parameter) => (
                     <ParameterField
                       key={parameter.id}
                       param={parameter}

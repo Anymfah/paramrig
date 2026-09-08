@@ -170,6 +170,18 @@ export function WorkspacePage() {
           </Tooltip>
         </div>
         <div className="workspace-toolbar__group">
+          {/* The baseline's name and the count were a line of prose across the foot of the window.
+              They belong to this control, so they are what it says when you ask it. */}
+          <Tooltip content={`Compare against ${session.baselineName()} · ${session.changedSinceBaseline().length || 'no'} changed`}>
+            <div className="compare-toggle" role="group" aria-label={`Compare against ${session.baselineName()}`}>
+              <button type="button" aria-pressed={snapshot.compare === 'original'} onClick={() => session.setCompare('original')}>
+                Reference
+              </button>
+              <button type="button" aria-pressed={snapshot.compare === 'current'} onClick={() => session.setCompare('current')}>
+                Current
+              </button>
+            </div>
+          </Tooltip>
           <Tooltip content="Snapshot">
             <IconButton
               label="Snapshot"
@@ -215,19 +227,7 @@ export function WorkspacePage() {
         ) : null}
 
       </div>
-      <div className="workspace-status">
-        <div className="compare-toggle" role="group" aria-label={`Compare against ${session.baselineName()}`}>
-          <button type="button" aria-pressed={snapshot.compare === 'original'} onClick={() => session.setCompare('original')}>
-            Reference
-          </button>
-          <button type="button" aria-pressed={snapshot.compare === 'current'} onClick={() => session.setCompare('current')}>
-            Current
-          </button>
-        </div>
-        <span className="workspace-status__baseline">Reference: {session.baselineName()}</span>
-        <span className="workspace-status__changes">{session.changedSinceBaseline().length ? `${session.changedSinceBaseline().length} changed` : 'Matches reference'}</span>
-        <span className="workspace-status__notice" role="status">{snapshot.notice}</span>
-      </div>
+      <p className="editor-notice" role="status" data-empty={snapshot.notice.length === 0}>{snapshot.notice}</p>
     </WorkspaceShell>
   )
 }

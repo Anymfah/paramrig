@@ -19,6 +19,8 @@ export type AudioPropertyType = 'number' | 'boolean' | 'option' | 'curve'
 export type FieldSpec = {
   type: AudioPropertyType
   label: string
+  /** A CSS background per option, so a wave is chosen by its shape rather than by its name. */
+  previews?: Record<string, string>
   min?: number
   max?: number
   step?: number
@@ -51,9 +53,24 @@ const LAYER_FIELDS: Record<string, FieldSpec> = {
 
 const SOURCE_FIELDS: Record<string, FieldSpec> = {
   kind: { type: 'option', label: 'Source', options: ['tone', 'noise'] },
-  wave: { type: 'option', label: 'Wave', options: ['sine', 'triangle', 'saw', 'square'] },
+  wave: {
+    type: 'option', label: 'Wave', options: ['sine', 'triangle', 'saw', 'square'],
+    previews: {
+    sine: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%206%20q2.75%20-4.5%205.5%200%20t5.5%200%20t5.5%200%20t5.5%200' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    triangle: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%209%20L5%203%20L9%209%20L13%203%20L17%209%20L21%203%20L23%206' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    saw: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%209%20L7%203%20L7%209%20L13%203%20L13%209%20L19%203%20L19%209' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    square: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M1%209%20L1%203%20L7%203%20L7%209%20L13%209%20L13%203%20L19%203%20L19%209%20L23%209' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    },
+  },
   pulseWidth: num('Pulse width', 0.05, 0.95),
-  colour: { type: 'option', label: 'Noise colour', options: ['white', 'pink', 'metallic'] },
+  colour: {
+    type: 'option', label: 'Noise colour', options: ['white', 'pink', 'metallic'],
+    previews: {
+    white: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M2%206%20L2%202%20M5%206%20L5%209%20M8%206%20L8%201%20M11%206%20L11%2010%20M14%206%20L14%203%20M17%206%20L17%208%20M20%206%20L20%202%20M23%206%20L23%209' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    pink: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M2%206%20L2%201%20M6%206%20L6%2010%20M10%206%20L10%203%20M14%206%20L14%209%20M18%206%20L18%205%20M22%206%20L22%207' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    metallic: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 12'%3E%3Cpath d='M3%2011%20L3%201%20M9%2011%20L9%204%20M15%2011%20L15%202%20M21%2011%20L21%206' fill='none' stroke='%23d4e7e1' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat`,
+    },
+  },
 }
 
 const PITCH_FIELDS: Record<string, FieldSpec> = {

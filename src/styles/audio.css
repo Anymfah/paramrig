@@ -384,3 +384,168 @@
 .audio-board .curve-field__exact {
   font-size: var(--text-xs);
 }
+
+/* ---- Colour as wayfinding ------------------------------------------------------------------
+ *
+ * A hundred and two fields is too many to navigate by reading, so each stage of the chain carries
+ * a hue and you find the filter by looking for violet. The family is deliberately narrow — five
+ * pale, low-chroma colours at one lightness on a very dark field, the house mint among them — so
+ * it reads as a set rather than a rainbow. The colour is on the section marks and the value fills
+ * only; no text takes it, so nothing that has to be read depends on it.
+ */
+
+.audio-board {
+  --hue-source: #e3c98f;
+  --hue-pitch: #93c8ea;
+  --hue-filter: #bda9e8;
+  --hue-shaper: #e8a58c;
+  --hue-amp: #9fd9bd;
+}
+
+.audio-group { --section: var(--accent); }
+.audio-group[data-section='source'] { --section: var(--hue-source); }
+.audio-group[data-section='pitch'] { --section: var(--hue-pitch); }
+.audio-group[data-section='filter'] { --section: var(--hue-filter); }
+.audio-group[data-section='shaper'] { --section: var(--hue-shaper); }
+.audio-group[data-section='amp'] { --section: var(--hue-amp); }
+
+.audio-group__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.audio-group__title::before {
+  content: '';
+  inline-size: 3px;
+  block-size: 0.75rem;
+  border-radius: 2px;
+  background: var(--section);
+}
+
+/* The filled part of a value, in the section's own colour. Hover and focus still take it to full
+   white, so the interaction feedback stays louder than the coding. */
+.audio-group .number-value[data-bar]::after {
+  background: color-mix(in srgb, var(--section) 72%, transparent);
+}
+
+.audio-group .choice-controller__preview {
+  inline-size: 26px;
+  block-size: 13px;
+  border: 0;
+  border-radius: 0;
+}
+
+/* ---- The envelope ---------------------------------------------------------------------------- */
+
+.envelope {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.envelope__plot {
+  display: block;
+  inline-size: 100%;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  touch-action: none;
+  user-select: none;
+}
+
+.envelope__floor {
+  stroke: var(--border-default);
+  stroke-width: 1;
+}
+
+.envelope__fill {
+  fill: color-mix(in srgb, var(--section) 15%, transparent);
+  stroke: none;
+}
+
+.envelope__line {
+  fill: none;
+  stroke: var(--section);
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+}
+
+.envelope__handle {
+  cursor: grab;
+  outline: none;
+}
+
+.envelope__grab {
+  fill: transparent;
+}
+
+.envelope__dot {
+  fill: var(--surface-inset);
+  stroke: var(--section);
+  stroke-width: 2;
+  transition: r var(--duration-instant) var(--ease-out);
+}
+
+.envelope__handle:hover .envelope__dot,
+.envelope__handle:focus-visible .envelope__dot {
+  fill: var(--section);
+}
+
+.envelope__handle:focus-visible .envelope__dot {
+  stroke: var(--focus-ring);
+  stroke-width: 3;
+}
+
+.envelope__handle:active {
+  cursor: grabbing;
+}
+
+.envelope__read {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .envelope__dot { transition: none; }
+}
+
+/*
+ * The wave picker, as a synthesiser draws it: one row of shapes.
+ *
+ * The shared visual choice lays its options out in a wrapping grid of tall cells, which is right
+ * for picking a material from twelve swatches and wrong for picking one of four waves — it cost
+ * four rows where the text version cost one, and pushed the envelope of its own layer off screen.
+ */
+.audio-board .choice-controller--visual {
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  grid-auto-columns: minmax(0, 1fr);
+  max-block-size: none;
+}
+
+.audio-board .choice-controller--visual .choice-controller__option {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-block-size: 2.5rem;
+  padding: var(--space-1) 2px;
+}
+
+.audio-board .choice-controller--visual .choice-controller__text {
+  font-size: 0.625rem;
+  letter-spacing: 0.02em;
+}
+
+/* The tick is decoration next to a selected cell that already reads as selected. */
+.audio-board .choice-controller--visual .choice-controller__mark {
+  display: none;
+}

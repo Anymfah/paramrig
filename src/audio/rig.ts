@@ -235,8 +235,14 @@ export function parameterForAudioProperty(options: {
     return {
       ...base,
       kind: 'select',
-      options: choices.map((choice) => ({ value: choice, label: choice.charAt(0).toUpperCase() + choice.slice(1) })),
+      options: choices.map((choice) => ({
+        value: choice,
+        label: choice.charAt(0).toUpperCase() + choice.slice(1),
+        ...(spec.previews?.[choice] ? { preview: spec.previews[choice] } : {}),
+      })),
       defaultValue: typeof value === 'string' && choices.includes(value) ? value : (choices[0] ?? ''),
+      // A shape is recognised faster than the word for it, and these are shapes.
+      ...(spec.previews ? { view: 'visual' as const } : {}),
     }
   }
   if (spec.type === 'curve') {

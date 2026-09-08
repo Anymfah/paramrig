@@ -177,6 +177,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         ) : null}
       </div>
       <AudioTransport samples={samples} sampleRate={rate} name={loaded.name} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      {/* Always in the tree so a screen reader keeps the live region, but no height until it has
+          something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
+      <p className="editor-notice" role="status" data-empty={notice.length === 0}>{notice}</p>
       <div className="audio-body" id="main" tabIndex={-1}>
         <AudioPresetRail
           onPatch={(next) => commit({ ...next, seed: patch.seed })}
@@ -186,15 +189,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         <AudioBoard
           parameters={parameters}
           values={values}
+          duration={patch.duration}
           onChange={change}
           onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
           onGestureEnd={() => { gestureRef.current = false; capturedRef.current = false }}
         />
-      </div>
-      <div className="workspace-status">
-        <span className="workspace-status__baseline">{parameters.length} fields</span>
-        <span className="workspace-status__changes">{exposed > 0 ? `${exposed} exposed` : 'No controls exposed'}</span>
-        <span className="workspace-status__notice" role="status">{notice}</span>
       </div>
     </WorkspaceShell>
   )
