@@ -12,17 +12,20 @@ import type { AudioPatch } from '@/audio/types'
  * The saved ones can be thrown away from the row they sit on; a list you cannot prune stops being
  * a list you look at.
  */
-export function AudioSoundMenu({ current, snapshots, onPatch, onRemove }: {
+export function AudioSoundMenu({ current, snapshots, touched, onPatch, onRemove }: {
   current: string
   snapshots: AudioSnapshot[]
+  touched: boolean
   onPatch: (patch: AudioPatch, id: string) => void
   onRemove: (id: string) => void
 }) {
   // Nothing matches once a knob has been turned, and saying so is the useful thing: it is the
   // difference between a sound you can get back to and one you are about to lose.
-  const label = PRESETS.find((preset) => preset.id === current)?.label
+  const name = PRESETS.find((preset) => preset.id === current)?.label
     ?? snapshots.find((snapshot) => snapshot.id === current)?.name
-    ?? 'Unsaved'
+  // Nothing selected, or selected and since moved: either way this sound is not one you can get
+  // back to, and that is the useful thing to say.
+  const label = !name ? 'Unsaved' : touched ? `${name} · edited` : name
 
   return (
     <DropdownMenu.Root>

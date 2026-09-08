@@ -97,6 +97,29 @@ describe('AudioEditorPage', () => {
     expect(screen.queryByRole('menuitem', { name: /Sound 1/ })).toBeNull()
   })
 
+  /** Without it, every experiment on a saved sound leaves a near-identical copy behind. */
+  it('replaces a saved sound instead of leaving a copy beside it', async () => {
+    const user = userEvent.setup()
+    const document = createAudioDocument()
+    open(document.id)
+    await user.click(screen.getByRole('button', { name: 'Keep this sound' }))
+
+    const replace = screen.getByRole('button', { name: 'Replace the saved sound' })
+    // Nothing has moved yet, so there is nothing to replace.
+    expect(replace).toHaveAttribute('aria-disabled', 'true')
+
+    await user.click(screen.getByRole('button', { name: 'Mutate' }))
+    expect(screen.getByRole('button', { name: /^Sound: Sound 1 · edited/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Replace the saved sound' })).not.toHaveAttribute('aria-disabled')
+
+    await user.click(screen.getByRole('button', { name: 'Replace the saved sound' }))
+    await new Promise((resolve) => setTimeout(resolve, 550))
+    const stored = getAudioDocument(document.id)
+    expect(stored?.snapshots).toHaveLength(1)
+    expect(stored?.snapshots?.[0]?.patch).toEqual(stored?.patch)
+    expect(screen.getByRole('button', { name: /^Sound: Sound 1$/ })).toBeInTheDocument()
+  })
+
   it('writes what it kept back to the document, so it survives a reload', async () => {
     const user = userEvent.setup()
     const document = createAudioDocument()

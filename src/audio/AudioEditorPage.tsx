@@ -1,4 +1,4 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ParamValue } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
@@ -50,14 +50,26 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [dirty, setDirty] = useState(false)
   const [preset, setPreset] = useState('')
   const [snapshots, setSnapshots] = useState<AudioSnapshot[]>(() => loaded?.snapshots ?? [])
+  const [touched, setTouched] = useState(false)
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
+  /** The patch as of the last write, so the end of a drag can hand it to the ear. */
+  const latest = useRef<AudioPatch | null>(null)
 
   const parameters = useMemo(() => boardParameters(), [])
   const values = useMemo(() => (patch ? boardValues(patch) : {}), [patch])
   const rate = useMemo(() => playbackRate(), [])
-  const shown = useDeferredValue(patch)
-  const samples = useMemo(() => (shown ? renderPatch(shown, rate) : new Float32Array(0)), [shown, rate])
+  /**
+   * The patch the ear is on. It follows the board immediately for anything discrete — a sound
+   * loaded, a dice, a typed value — and holds still through a drag, because re-synthesising a
+   * second and a half of audio sixty times a second is what makes a knob feel like treacle.
+   *
+   * This used to be a `useDeferredValue`, which deferred the wrong thing: it made the audio wait
+   * on a re-render of a hundred and two fields, so changing sound took a visible moment to be
+   * heard. Only the drag needs holding back, and a drag is something we already know about.
+   */
+  const [heard, setHeard] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
+  const samples = useMemo(() => (heard ? renderPatch(heard, rate) : new Float32Array(0)), [heard, rate])
 
   useEffect(() => () => disposePlayback(), [])
 
@@ -71,57 +83,71 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     return () => clearTimeout(timer)
   }, [dirty, loaded, name, patch, snapshots])
 
-  /** One whole new patch, as one step. */
+  /**
+   * Every one of these writes state from the callback rather than from inside another updater.
+   *
+   * Updaters have to be pure: React invokes them twice under StrictMode to catch exactly this, and
+   * a `setPreset` nested in a `setSnapshots` updater ran twice with a fresh uuid each time, so the
+   * id that was remembered belonged to a snapshot that was never kept and the menu read Unsaved
+   * straight after saving. The same shape was in undo and redo, where it pushed the redo stack
+   * twice. `latest` carries the newest patch so a drag — many writes before one render — still has
+   * something current to build on without reaching for an updater.
+   */
   const commit = useCallback((next: AudioPatch) => {
+    const current = latest.current ?? patch
+    if (!current) return
     setDirty(true)
-    setPatch((current) => {
-      if (current) setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
-      setFuture([])
-      return next
-    })
-  }, [])
+    setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+    setFuture([])
+    latest.current = next
+    setPatch(next)
+    setHeard(next)
+  }, [patch])
 
   const change = useCallback((property: string, value: ParamValue) => {
+    const current = latest.current ?? patch
+    if (!current) return
     setDirty(true)
-    // Turning a knob means this is no longer the preset it came from, and the menu says so.
-    setPreset('')
-    setPatch((current) => {
-      if (!current) return current
-      // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
-      if (!gestureRef.current || !capturedRef.current) {
-        capturedRef.current = true
-        setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
-        setFuture([])
-      }
-      return setBoardValue(current, property, value)
-    })
-  }, [])
+    // The selection survives the edit — it is what an overwrite would write to — and `touched`
+    // is what says the sound on screen is no longer the one under that name.
+    setTouched(true)
+    // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
+    if (!gestureRef.current || !capturedRef.current) {
+      capturedRef.current = true
+      setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+      setFuture([])
+    }
+    const next = setBoardValue(current, property, value)
+    latest.current = next
+    setPatch(next)
+    // Held back only while a pointer is down on a control; a typed value or an arrow key is
+    // discrete and should be heard as soon as it lands.
+    if (!gestureRef.current) setHeard(next)
+  }, [patch])
 
   const undo = useCallback(() => {
+    const previous = past[past.length - 1]
+    const current = latest.current ?? patch
+    if (!previous || !current) return
     setDirty(true)
-    setPast((stack) => {
-      const previous = stack[stack.length - 1]
-      if (!previous) return stack
-      setPatch((current) => {
-        if (current) setFuture((ahead) => [current, ...ahead].slice(0, HISTORY_LIMIT))
-        return previous
-      })
-      return stack.slice(0, -1)
-    })
-  }, [])
+    setPast((stack) => stack.slice(0, -1))
+    setFuture((ahead) => [current, ...ahead].slice(0, HISTORY_LIMIT))
+    latest.current = previous
+    setPatch(previous)
+    setHeard(previous)
+  }, [past, patch])
 
   const redo = useCallback(() => {
+    const next = future[0]
+    const current = latest.current ?? patch
+    if (!next || !current) return
     setDirty(true)
-    setFuture((stack) => {
-      const next = stack[0]
-      if (!next) return stack
-      setPatch((current) => {
-        if (current) setPast((behind) => [...behind, current].slice(-HISTORY_LIMIT))
-        return next
-      })
-      return stack.slice(1)
-    })
-  }, [])
+    setFuture((ahead) => ahead.slice(1))
+    setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+    latest.current = next
+    setPatch(next)
+    setHeard(next)
+  }, [future, patch])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -139,23 +165,39 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 
   /** The sound you are on, kept aside under whatever it is currently called. */
   const keep = useCallback(() => {
-    if (!patch) return
+    const current = latest.current ?? patch
+    if (!current) return
+    const from = PRESETS.find((entry) => entry.id === preset)?.label
+    const name = from
+      ? `${from} ${snapshots.filter((entry) => entry.name.startsWith(from)).length + 1}`
+      : `Sound ${snapshots.length + 1}`
+    const snapshot: AudioSnapshot = { id: `snap-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString(), patch: current }
     setDirty(true)
-    setSnapshots((kept) => {
-      const from = PRESETS.find((entry) => entry.id === preset)?.label
-      const name = from ? `${from} ${kept.filter((entry) => entry.name.startsWith(from)).length + 1}` : `Sound ${kept.length + 1}`
-      const snapshot: AudioSnapshot = { id: `snap-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString(), patch }
-      // You are on the thing you just kept, so the menu should say so.
-      setPreset(snapshot.id)
-      // The oldest gives way rather than the list growing past the point of being readable.
-      return [...kept, snapshot].slice(-MAX_SNAPSHOTS)
-    })
-  }, [patch, preset])
+    // The oldest gives way rather than the list growing past the point of being readable.
+    setSnapshots((kept) => [...kept, snapshot].slice(-MAX_SNAPSHOTS))
+    // You are on the thing you just kept, so the menu should say so.
+    setPreset(snapshot.id)
+    setTouched(false)
+  }, [patch, preset, snapshots])
 
   const forget = useCallback((id: string) => {
     setDirty(true)
     setSnapshots((kept) => kept.filter((entry) => entry.id !== id))
   }, [])
+
+  /**
+   * The same sound kept again under the name it already has. Without it every experiment on a
+   * saved sound leaves a copy behind, and a list of near-identical sounds is a list nobody reads.
+   */
+  const overwrite = useCallback(() => {
+    const current = latest.current ?? patch
+    if (!current) return
+    setDirty(true)
+    setTouched(false)
+    setSnapshots((kept) => kept.map((entry) => (
+      entry.id === preset ? { ...entry, patch: current, createdAt: new Date().toISOString() } : entry
+    )))
+  }, [patch, preset])
 
   const setAuto = useCallback((next: boolean) => {
     setAutoPlay(next)
@@ -205,18 +247,20 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         samples={samples}
         sampleRate={rate}
         name={loaded.name}
-        patch={shown ?? patch}
+        patch={heard ?? patch}
         autoPlay={autoPlay}
         onAutoPlay={setAuto}
         tools={
           <AudioSoundBar
             current={preset}
             snapshots={snapshots}
-            onPatch={(next, id) => { setPreset(id); commit({ ...next, seed: patch.seed }) }}
+            touched={touched}
+            onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
             onRemove={forget}
             onSnapshot={keep}
-            onRandom={() => { setPreset(''); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
-            onMutate={() => commit(mutatePatch(patch, Math.floor(Math.random() * 100000)))}
+            onOverwrite={overwrite}
+            onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
+            onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000))) }}
           />
         }
       />
@@ -230,7 +274,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           duration={patch.duration}
           onChange={change}
           onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
-          onGestureEnd={() => { gestureRef.current = false; capturedRef.current = false }}
+          onGestureEnd={() => {
+            gestureRef.current = false
+            capturedRef.current = false
+            if (latest.current) setHeard(latest.current)
+          }}
         />
       </div>
     </WorkspaceShell>
