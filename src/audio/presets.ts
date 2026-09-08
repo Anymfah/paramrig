@@ -683,11 +683,23 @@ export function siren(): AudioPatch {
  * one kilohertz sounds like a telephone; the same click at nine sounds like a interface.
  */
 
-/** The one a menu makes: a strike of five milliseconds into a bright body, and a tick over it. */
+/**
+ * The one a menu makes, and the shape of it is Soheil's rather than mine.
+ *
+ * My version was one strike and a tick over it, which is a click and not much else. What makes
+ * this read as designed is that the second layer is not a second strike: it is a sustained,
+ * quantised wash arriving thirty-five milliseconds late, chopped at nearly eight hertz by a square
+ * modulator on its own gain, with a resonant body ringing between the chops. So the event has two
+ * parts — the hit, and then a flutter underneath it that decays over half a second.
+ *
+ * The lesson generalises, and Toggle and Dismiss below are built the same way: a strike is an
+ * instant, and what turns an instant into a sound someone made on purpose is what happens just
+ * after it.
+ */
 export function select(): AudioPatch {
-  return patch(0.2, [
+  return patch(0.58, [
     makeLayer({
-      gain: 0.3,
+      gain: 0.6,
       spread: 0.45,
       source: { kind: 'noise', colour: 'white' },
       filter: { kind: 'highpass', cutoff: 2200, resonance: 0.12 },
@@ -695,63 +707,92 @@ export function select(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
     }),
     makeLayer({
-      gain: 0.85,
+      gain: 0.34,
       spread: 0.7,
+      offset: 0.035,
       source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 2600, resonance: 0.25 },
-      resonator: { amount: 0.95, frequency: 3300, spread: 0.4, decay: 0.085, partials: 3 },
-      amp: { attack: 0.0004, hold: 0.0015, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.4 },
+      filter: { kind: 'bandpass', cutoff: 1750, resonance: 0.35 },
+      shaper: { drive: 0, bitDepth: 10, crush: 0 },
+      resonator: { amount: 0.95, frequency: 6600, spread: 0.72, decay: 0.085, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.015, decay: 0.058, sustain: 0.48, release: 0.3, curve: 2.95 },
     }),
     makeLayer({
-      gain: 0.12,
+      gain: 0.2,
       spread: 0.9,
       source: { kind: 'noise', colour: 'metallic' },
       pitch: { start: 9800, jitter: 25 },
       filter: { kind: 'highpass', cutoff: 8000, resonance: 0.1 },
       amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
     }),
-  ], { reverbMix: 0.14, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.42 }, { gain: 0.527 }, [])
+  ], { reverbMix: 0.14, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.42 },
+     { gain: 0.277 }, [{ enabled: true, shape: 'square', rate: 7.8, depth: 1, phase: 0.61, target: 'layers[1].gain' }])
 }
 
-/** The same mechanism committing to something: a lower body, a longer ring, and weight under it. */
+/**
+ * The same mechanism committing to something, built the way Select is: a bright strike, then a
+ * body that flutters under it.
+ *
+ * What separates it from Select is where the weight sits. The strike is a shade lower, the gated
+ * layer rings on a 4.6 kHz body instead of a 6.6 kHz one, the gate is slower — five and a half
+ * hertz reads as deliberate where eight reads as nervous — and there is a note underneath, sliding
+ * down a minor sixth. A toggle is a decision, so it lands and stays landed.
+ */
 export function toggle(): AudioPatch {
-  return patch(0.3, [
+  return patch(0.46, [
     makeLayer({
-      gain: 0.75,
+      gain: 0.62,
       spread: 0.4,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 1500, resonance: 0.15 },
-      resonator: { amount: 1, frequency: 4600, spread: 0.38, decay: 0.12, partials: 4 },
-      amp: { attack: 0.0004, hold: 0.002, decay: 0.005, sustain: 0, release: 0.002, curve: 2.4 },
+      filter: { kind: 'highpass', cutoff: 2600, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 8200, spread: 0.3, decay: 0.05, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.0035, sustain: 0, release: 0.0012, curve: 2.6 },
     }),
     makeLayer({
-      gain: 0.14,
-      spread: 0.65,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 9000, jitter: 20 },
-      filter: { kind: 'highpass', cutoff: 6000, resonance: 0.1 },
-      amp: { attack: 0.0002, hold: 0, decay: 0.01, sustain: 0, release: 0.005, curve: 3 },
+      gain: 0.3,
+      spread: 0.72,
+      offset: 0.04,
+      source: { kind: 'noise', colour: 'pink' },
+      filter: { kind: 'bandpass', cutoff: 1300, resonance: 0.38 },
+      shaper: { drive: 0, bitDepth: 10, crush: 0 },
+      resonator: { amount: 0.95, frequency: 4600, spread: 0.66, decay: 0.11, partials: 4 },
+      amp: { attack: 0.0004, hold: 0.018, decay: 0.07, sustain: 0.44, release: 0.24, curve: 2.9 },
     }),
     makeLayer({
       gain: 0.3,
       offset: 0.005,
       source: { kind: 'tone', wave: 'sine' },
       pitch: { start: 165, slide: -9, slideCurve: EASE_OUT },
-      amp: { attack: 0.001, hold: 0.004, decay: 0.05, sustain: 0, release: 0.03, curve: 2.5 },
+      amp: { attack: 0.001, hold: 0.004, decay: 0.06, sustain: 0, release: 0.04, curve: 2.5 },
     }),
-  ], { reverbMix: 0.13, reverbSize: 0.24, reverbDamping: 0.75, width: 0.8, tone: 0.2 }, { gain: 0.262 }, [])
+  ], { reverbMix: 0.13, reverbSize: 0.24, reverbDamping: 0.75, width: 0.8, tone: 0.2 },
+     { gain: 0.268 }, [{ enabled: true, shape: 'square', rate: 5.6, depth: 1, phase: 0.42, target: 'layers[1].gain' }])
 }
 
-/** Going back. The body is the same size; what falls is the note underneath it. */
+/**
+ * Going back, and everything in it descends. The strike is the brightest thing here and it is over
+ * in four milliseconds; the gated layer sweeps its band down two octaves as it flutters, which is
+ * the sound receding rather than merely stopping; the note under it falls too. The gate runs at
+ * nine hertz — quicker than Toggle's, because leaving is not a decision you dwell on.
+ */
 export function dismiss(): AudioPatch {
-  return patch(0.26, [
+  return patch(0.42, [
     makeLayer({
-      gain: 0.9,
+      gain: 0.72,
       spread: 0.45,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'bandpass', cutoff: 3400, resonance: 0.2 },
-      resonator: { amount: 1, frequency: 7400, spread: 0.34, decay: 0.075, partials: 3 },
-      amp: { attack: 0.0004, hold: 0.0015, decay: 0.0035, sustain: 0, release: 0.0015, curve: 2.5 },
+      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 7400, spread: 0.34, decay: 0.045, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
+    }),
+    makeLayer({
+      gain: 0.26,
+      spread: 0.7,
+      offset: 0.03,
+      source: { kind: 'noise', colour: 'pink' },
+      filter: { kind: 'bandpass', cutoff: 2400, resonance: 0.36, envAmount: -2, envCurve: EASE_OUT },
+      shaper: { drive: 0, bitDepth: 11, crush: 0 },
+      resonator: { amount: 0.9, frequency: 5200, spread: 0.7, decay: 0.08, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.012, decay: 0.05, sustain: 0.4, release: 0.22, curve: 2.95 },
     }),
     makeLayer({
       gain: 0.1,
@@ -760,15 +801,8 @@ export function dismiss(): AudioPatch {
       pitch: { start: 940, slide: -8, slideCurve: EASE_OUT, jitter: 10 },
       amp: { attack: 0.001, hold: 0.004, decay: 0.07, sustain: 0, release: 0.05, curve: 2.4 },
     }),
-    makeLayer({
-      gain: 0.16,
-      spread: 0.85,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 8600, jitter: 22 },
-      filter: { kind: 'highpass', cutoff: 6500, resonance: 0.1 },
-      amp: { attack: 0.0002, hold: 0, decay: 0.006, sustain: 0, release: 0.003, curve: 3.2 },
-    }),
-  ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 }, { gain: 1.427 }, [])
+  ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 },
+     { gain: 0.483 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
 }
 
 /** Glass. A body near the top of hearing, its partials almost in tune, allowed to ring right out. */
