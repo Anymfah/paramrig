@@ -16,10 +16,17 @@ export type AudioTab = 'sound' | 'controls'
 
 export const AUDIO_TABS: AudioTab[] = ['sound', 'controls']
 
-const store = inspectorPrefsStore<AudioTab>({
+/** Whether a change plays itself. Set once and kept, because it is a way of working. */
+type AudioExtra = { autoPlay: boolean }
+
+const store = inspectorPrefsStore<AudioTab, AudioExtra>({
   key: 'paramrig.audio-inspector.v1',
   tabs: AUDIO_TABS,
   defaultTab: 'sound',
+  extra: {
+    empty: { autoPlay: true },
+    parse: (value) => ({ autoPlay: value.autoPlay !== false }),
+  },
 })
 
 export type AudioPrefs = ReturnType<typeof store.read>
@@ -52,4 +59,8 @@ export function withSection(prefs: AudioPrefs, sectionId: string, open: boolean)
 
 export function isOpen(prefs: AudioPrefs, sectionId: string, defaultOpen = true): boolean {
   return isSectionOpen(prefs, sectionId, defaultOpen)
+}
+
+export function withAutoPlay(prefs: AudioPrefs, autoPlay: boolean): AudioPrefs {
+  return { ...prefs, autoPlay }
 }

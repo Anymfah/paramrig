@@ -1,81 +1,283 @@
 /*
- * The audio workspace. A sound has no picture, so the waveform stands in for one — which means it
- * is the thing being looked at, not a decoration beside it, and gets the room a canvas would.
+ * The sound workspace.
+ *
+ * The layout follows from what a sound is. A drawing earns the big canvas because looking at it is
+ * the work; a sound does not, because the work is listening. So the parameters take the room and
+ * the waveform takes a strip — it is a gauge, answering "did the shape come out the way I meant",
+ * and a strip answers that as well as a panel did.
  */
 
-/*
- * A sound has no paper, so it does not get the light canvas a drawing sits on. Inheriting it left
- * the transport — the one control the whole tool exists for — at about 1.6:1 against its own
- * background, which is to say invisible.
- */
-.preview-stage--audio {
-  display: grid;
-  place-items: center;
-  padding: var(--space-5);
-  background: var(--surface-preview);
-}
+/* ---- The waveform, wherever it appears -------------------------------------------------- */
 
-.audio-stage {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  width: min(100%, 56rem);
-}
-
-.audio-stage__wave {
+.waveform {
   position: relative;
-  height: clamp(9rem, 34vh, 18rem);
+  block-size: 100%;
+  inline-size: 100%;
   background: var(--surface-inset);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md, 0.5rem);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-.audio-stage__wave canvas {
+.waveform canvas {
   display: block;
-  width: 100%;
-  height: 100%;
+  inline-size: 100%;
+  block-size: 100%;
 }
 
-/* Driven from the clock, so it does not need a transition to look smooth. */
-.audio-stage__head {
+/* Driven from the clock, so it needs no transition to look smooth. */
+.waveform__head {
   position: absolute;
   inset-block: 0;
-  width: 1px;
+  inline-size: 1px;
   background: var(--focus-ring);
   pointer-events: none;
 }
 
-.audio-stage__transport {
+/* ---- Transport ---------------------------------------------------------------------------- */
+
+.audio-transport {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-raised);
+  border-block-end: 1px solid var(--rule);
+  user-select: none;
 }
 
-.audio-stage__figure {
-  color: var(--text-muted);
-  font-size: 0.8125rem;
+.audio-transport__play {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  inline-size: var(--hit-target);
+  block-size: var(--hit-target);
+  padding: 0;
+  border-radius: var(--radius-full);
+  touch-action: manipulation;
+}
+
+.audio-transport__wave {
+  flex: 1 1 10rem;
+  min-inline-size: 6rem;
+  max-inline-size: 22rem;
+  block-size: 2.75rem;
+}
+
+.audio-transport__figures {
+  display: flex;
+  gap: var(--space-4);
+  margin: 0;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
-.audio-stage__figure--end {
-  margin-inline-start: auto;
+.audio-transport__figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.audio-stage__notice {
+.audio-transport__figures dt {
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.audio-transport__figures dd {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 0.8125rem;
+}
+
+.audio-transport__auto {
+  margin-inline-start: auto;
+  touch-action: manipulation;
+}
+
+.audio-transport__auto[aria-pressed='true'] {
+  color: var(--text-on-accent);
+  background: var(--accent);
+}
+
+.audio-transport__notice {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* ---- Body: the rail and the board --------------------------------------------------------- */
+
+.audio-body {
+  flex: 1;
+  min-block-size: 0;
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  background: var(--surface-preview);
+}
+
+.audio-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-3);
+  border-inline-end: 1px solid var(--rule);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  user-select: none;
+}
+
+.audio-rail__title,
+.audio-group__title,
+.audio-column__title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.audio-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audio-rail__item {
+  inline-size: 100%;
+  min-block-size: var(--hit-target);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-secondary);
+  text-align: start;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+
+.audio-rail__item:hover {
+  color: var(--text-primary);
+  background: var(--surface-overlay);
+}
+
+.audio-rail__item:active {
+  background: var(--surface-inset);
+}
+
+.audio-rail__item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.audio-rail__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-start: auto;
+  padding-block-start: var(--space-3);
+  border-block-start: 1px solid var(--border-hairline);
+}
+
+.audio-rail__actions .btn {
+  justify-content: flex-start;
+  inline-size: 100%;
+}
+
+/* ---- The board ---------------------------------------------------------------------------- */
+
+.audio-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  align-content: start;
+  gap: var(--space-5) var(--space-4);
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.audio-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-inline-size: 0;
+}
+
+.audio-column[data-off='true'] {
+  opacity: 0.72;
+}
+
+.audio-column__title {
+  padding-block-end: var(--space-2);
+  border-block-end: 1px solid var(--border-default);
+}
+
+.audio-column__off {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.audio-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-inline-size: 0;
+}
+
+.audio-group__title {
+  margin-block-end: var(--space-1);
+}
+
+/* Chrome does not get selected; what a person may need to read or copy still does. */
+.audio-board,
+.audio-column__title,
+.audio-group__title {
+  user-select: none;
+}
+
+.audio-board input,
+.audio-board textarea,
+.audio-board [contenteditable] {
+  user-select: text;
+}
+
+/* ---- Tune, and the fallbacks -------------------------------------------------------------- */
+
+.preview-stage--audio {
+  display: grid;
+  place-items: center;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  background: var(--surface-preview);
+}
+
+.audio-tune {
+  inline-size: min(100%, 44rem);
+}
+
+.audio-tune .audio-transport {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
 }
 
 .audio-name {
-  min-width: 12rem;
+  min-inline-size: 12rem;
   padding: var(--space-1) var(--space-2);
   color: var(--text-primary);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm, 0.375rem);
+  border-radius: var(--radius-sm);
   font: inherit;
+  transition: border-color var(--duration-instant) var(--ease-out);
 }
 
 .audio-name:hover {
@@ -87,15 +289,11 @@
   outline: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .audio-stage__head {
-    transition: none;
-  }
-}
+/* ---- The library card --------------------------------------------------------------------- */
 
 .audio-thumb {
-  width: 100%;
-  height: 100%;
+  inline-size: 100%;
+  block-size: 100%;
   padding: var(--space-4);
   background: var(--surface-inset);
 }
@@ -108,4 +306,81 @@
 
 .audio-thumb path {
   fill: var(--accent);
+}
+
+/* The rail is a row above the board once there is no room beside it. */
+@media (max-width: 52rem) {
+  .audio-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .audio-rail {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-2);
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--rule);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .audio-rail__title {
+    display: none;
+  }
+
+  .audio-rail__list {
+    flex-direction: row;
+  }
+
+  .audio-rail__item {
+    inline-size: auto;
+    white-space: nowrap;
+  }
+
+  /* First in the row, not last: Randomize and Mutate are the quickest way to a sound, and a
+     horizontal scroll is where a control goes to be forgotten. */
+  .audio-rail__actions {
+    order: -1;
+    flex-direction: row;
+    margin-block-start: 0;
+    padding-block-start: 0;
+    border-block-start: 0;
+    border-inline-end: 1px solid var(--border-hairline);
+    padding-inline-end: var(--space-2);
+  }
+
+  .audio-rail__actions .btn {
+    inline-size: auto;
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .waveform,
+  .audio-column__title {
+    border-color: var(--border-strong);
+  }
+}
+
+/*
+ * A curve in the board is a shape control, not a graph to study. At full size it pushed the
+ * filter, the shaper and the envelope of its own layer off the screen — one secondary parameter
+ * costing three sections their visibility.
+ */
+.audio-board .curve-field {
+  block-size: 4.5rem;
+}
+
+.audio-board .curve-presets {
+  gap: 2px;
+}
+
+.audio-board .curve-preset {
+  padding-inline: var(--space-1);
+  font-size: 0.6875rem;
+}
+
+.audio-board .curve-field__exact {
+  font-size: var(--text-xs);
 }

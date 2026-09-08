@@ -21,8 +21,10 @@ export function AudioThumb({ document }: { document: AudioDocument }) {
     // A rigged patch is shown the way its controls rest, which is what it sounds like new.
     const patch = document.rig ? resolveAudioValues(document, audioRigDefaults(document.rig)) : document.patch
     const bands = waveformBands(renderPatch(patch, THUMB_RATE), COLUMNS)
+    // Out along the peaks, back along the troughs, and closed: one filled shape rather than a
+    // stroke, which stays legible at a card's size where a 1px line would break up.
     const top = bands.map((band, index) => `${index === 0 ? 'M' : 'L'}${index},${(1 - band.max) * 50}`).join('')
-    const bottom = bands.map((band, index) => `L${bands.length - 1 - index},${(1 - (bands[bands.length - 1 - index]?.min ?? 0)) * 50}`).join('')
+    const bottom = [...bands].reverse().map((band, index) => `L${bands.length - 1 - index},${(1 - band.min) * 50}`).join('')
     return `${top}${bottom}Z`
   }, [document])
 

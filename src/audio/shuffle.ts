@@ -1,0 +1,163 @@
+import { AUDIO_FIELDS, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { makeLayer, makePatch, silentLayer } from './patch.ts'
+import { mulberry32 } from './dsp/rng.ts'
+import { EASE_OUT, LINEAR } from './dsp/curve.ts'
+import type { AudioPatch, Layer, NoiseColour, WaveShape } from './types.ts'
+
+/**
+ * Two ways to arrive at a sound without setting a hundred fields.
+ *
+ * A uniform draw across every field is not one of them. Every parameter has a range in which it
+ * does something musical and a much larger range in which it does not, and rolling all of them at
+ * once lands outside all the small ranges at the same time — which is why a naive randomiser
+ * produces noise nine times out of ten and gets used once. What follows draws from the ranges that
+ * make sounds, and lets the layers decide what kind of sound it is.
+ */
+
+const pick = <T,>(random: () => number, choices: readonly T[]): T =>
+  choices[Math.min(choices.length - 1, Math.floor(random() * choices.length))] as T
+
+const between = (random: () => number, low: number, high: number) => low + random() * (high - low)
+
+/** Frequencies and times are heard logarithmically, so they are drawn that way. */
+const logBetween = (random: () => number, low: number, high: number) =>
+  Math.exp(between(random, Math.log(low), Math.log(high)))
+
+const chance = (random: () => number, odds: number) => random() < odds
+
+const WAVES: WaveShape[] = ['sine', 'triangle', 'saw', 'square']
+const COLOURS: NoiseColour[] = ['white', 'pink', 'metallic']
+
+/** The voice that carries the sound: a tone that moves, or a body of noise. */
+function leadLayer(random: () => number): Layer {
+  const tone = chance(random, 0.65)
+  return makeLayer({
+    gain: between(random, 0.45, 0.8),
+    source: {
+      kind: tone ? 'tone' : 'noise',
+      wave: pick(random, WAVES),
+      pulseWidth: between(random, 0.15, 0.85),
+      colour: pick(random, COLOURS),
+    },
+    pitch: {
+      start: logBetween(random, 90, 2600),
+      slide: between(random, -26, 16),
+      slideCurve: chance(random, 0.6) ? EASE_OUT : LINEAR,
+      vibratoRate: chance(random, 0.25) ? between(random, 3, 24) : 0,
+      vibratoDepth: chance(random, 0.25) ? between(random, 0.2, 2.5) : 0,
+      arpeggioRatio: chance(random, 0.3) ? between(random, 0.5, 2.2) : 1,
+      arpeggioAt: between(random, 0.2, 0.7),
+      jitter: between(random, 0, 25),
+    },
+    filter: {
+      kind: pick(random, ['lowpass', 'lowpass', 'lowpass', 'off', 'highpass', 'bandpass'] as const),
+      cutoff: logBetween(random, 400, 14000),
+      resonance: between(random, 0, 0.55),
+      envAmount: between(random, -3.2, 1.8),
+      envCurve: EASE_OUT,
+    },
+    shaper: {
+      drive: chance(random, 0.35) ? between(random, 0.1, 0.6) : 0,
+      bitDepth: chance(random, 0.15) ? Math.round(between(random, 3, 10)) : 16,
+      crush: chance(random, 0.15) ? between(random, 0.1, 0.5) : 0,
+    },
+    amp: {
+      attack: between(random, 0, 0.03),
+      hold: between(random, 0, 0.05),
+      decay: between(random, 0.04, 0.45),
+      sustain: chance(random, 0.3) ? between(random, 0.05, 0.35) : 0,
+      release: between(random, 0.02, 0.3),
+      curve: between(random, 1.4, 3.4),
+    },
+  })
+}
+
+/** The click at the front. Short, bright, and the reason an effect reads as contact. */
+function transientLayer(random: () => number): Layer {
+  return makeLayer({
+    gain: between(random, 0.12, 0.4),
+    source: { kind: 'noise', colour: pick(random, COLOURS) },
+    pitch: { start: logBetween(random, 1200, 6000) },
+    filter: { kind: 'highpass', cutoff: logBetween(random, 900, 4000), resonance: between(random, 0, 0.3) },
+    amp: { attack: 0.0005, hold: 0, decay: between(random, 0.01, 0.06), sustain: 0, release: 0.015, curve: 3 },
+  })
+}
+
+/** The weight underneath. A low sine costs nothing and is most of what "big" means. */
+function bodyLayer(random: () => number): Layer {
+  return makeLayer({
+    gain: between(random, 0.25, 0.55),
+    source: { kind: 'tone', wave: 'sine' },
+    pitch: { start: logBetween(random, 55, 220), slide: between(random, -18, -2), slideCurve: EASE_OUT },
+    amp: { attack: 0.002, hold: 0.01, decay: between(random, 0.1, 0.5), sustain: 0, release: between(random, 0.05, 0.25), curve: 2.2 },
+  })
+}
+
+export function randomPatch(seed: number): AudioPatch {
+  const random = mulberry32(seed)
+  const duration = logBetween(random, 0.09, 1.1)
+  return makePatch(
+    duration,
+    [
+      leadLayer(random),
+      chance(random, 0.45) ? transientLayer(random) : silentLayer(),
+      chance(random, 0.3) ? bodyLayer(random) : silentLayer(),
+    ],
+    {
+      delayMix: chance(random, 0.2) ? between(random, 0.05, 0.25) : 0,
+      delayTime: between(random, 0.03, 0.2),
+      delayFeedback: between(random, 0.1, 0.5),
+      reverbMix: chance(random, 0.3) ? between(random, 0.05, 0.3) : 0,
+      reverbSize: between(random, 0.2, 0.9),
+      reverbDamping: between(random, 0.2, 0.8),
+      flangerMix: chance(random, 0.12) ? between(random, 0.1, 0.35) : 0,
+      flangerRate: between(random, 0.2, 3),
+      flangerDepth: between(random, 0.3, 0.9),
+      tone: between(random, -0.45, 0.45),
+    },
+    { gain: 0.85, limiter: 0.75, fadeOut: 0.01 },
+    Math.floor(random() * 9999),
+  )
+}
+
+type Branch = { table: Record<string, FieldSpec>; source: Record<string, unknown> }
+
+/** Every field of the patch, paired with the object holding it, so a walk can write in place. */
+function branches(patch: AudioPatch): Branch[] {
+  const layers = patch.layers.flatMap((layer) =>
+    (Object.keys(LAYER_SECTIONS) as LayerSection[]).map((section) => ({
+      table: LAYER_SECTIONS[section],
+      source: (section === 'root' ? layer : layer[section]) as unknown as Record<string, unknown>,
+    })),
+  )
+  return [
+    { table: AUDIO_FIELDS.patch, source: patch as unknown as Record<string, unknown> },
+    ...layers,
+    { table: AUDIO_FIELDS.fx, source: patch.fx as unknown as Record<string, unknown> },
+    { table: AUDIO_FIELDS.master, source: patch.master as unknown as Record<string, unknown> },
+  ]
+}
+
+/**
+ * The same sound, moved. Every number is nudged by a fraction of its own range, so a cutoff
+ * travels in hertz and an attack in milliseconds without either being told what it is. Switches
+ * and options are left alone: flipping a layer off or a filter to another kind is not a variation
+ * of a sound, it is a different sound, and that is what Randomize is for.
+ */
+export function mutatePatch(patch: AudioPatch, seed: number, amount = 0.12): AudioPatch {
+  const random = mulberry32(seed)
+  const next = structuredClone(patch)
+  for (const { table, source } of branches(next)) {
+    for (const [field, spec] of Object.entries(table)) {
+      if (spec.type !== 'number') continue
+      const current = source[field]
+      if (typeof current !== 'number') continue
+      const min = spec.min ?? 0
+      const max = spec.max ?? 1
+      const drift = (random() * 2 - 1) * amount * (max - min)
+      const moved = Math.min(max, Math.max(min, current + drift))
+      source[field] = spec.step && spec.step >= 1 ? Math.round(moved) : moved
+    }
+  }
+  return next
+}

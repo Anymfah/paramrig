@@ -8,23 +8,28 @@ import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioBoard } from '@/audio/AudioBoard'
-import { AudioStage } from '@/audio/AudioStage'
+import { AudioPresetRail } from '@/audio/AudioPresetRail'
+import { AudioTransport } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { getAudioDocument, saveAudioDocument, storageMessage, type AudioDocument } from '@/audio/document'
 import { renderPatch } from '@/audio/dsp/render'
 import { disposePlayback, playbackRate } from '@/audio/playback'
+import { readAudioPrefs, withAutoPlay, writeAudioPrefs, type AudioMode } from '@/audio/prefs'
+import { mutatePatch, randomPatch } from '@/audio/shuffle'
 import type { AudioPatch } from '@/audio/types'
-import type { AudioMode } from '@/audio/prefs'
 
 const HISTORY_LIMIT = 100
 
 /**
- * Edit mode: the whole synthesiser, and the sound it makes.
+ * Edit mode: the instrument.
  *
- * The buffer is deferred rather than rendered on every keystroke of a drag. Turning a knob has to
- * feel like turning a knob, and re-synthesising a second and a half of audio sixty times a second
- * makes it feel like turning a knob through treacle. React renders the controls immediately and
- * the waveform catches up, which is the right way round: the ear is not listening mid-drag.
+ * The layout follows from what a sound is. A drawing earns the big canvas because looking at it is
+ * the work; a sound does not, because the work is listening. So the parameters take the room and
+ * the waveform takes a strip, and the loop the whole screen is arranged around — reach for a
+ * control, hear the result — never has to go and find anything.
+ *
+ * The buffer is deferred rather than re-synthesised on every frame of a drag. Turning a knob has
+ * to feel like turning a knob, and the ear is not listening mid-drag anyway.
  */
 export function AudioEditorPage({ documentId, mode, onMode }: {
   documentId: string
@@ -38,9 +43,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [past, setPast] = useState<AudioPatch[]>([])
   const [future, setFuture] = useState<AudioPatch[]>([])
   const [notice, setNotice] = useState('')
-  // Nothing is written until something is changed. Without this the save below would fire on
-  // mount, stamp a new updatedAt, and quietly turn a bundled example into this browser's project
-  // for the crime of having been opened.
+  const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
+  // Nothing is written until something is changed, or opening a bundled example would stamp a new
+  // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
@@ -53,15 +58,25 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 
   useEffect(() => () => disposePlayback(), [])
 
-  // Written on a delay so a drag lands once, not on every frame of itself.
   useEffect(() => {
     if (!loaded || !patch || !dirty) return
+    // Written on a delay so a drag lands once, not on every frame of itself.
     const timer = setTimeout(() => {
       const result = saveAudioDocument({ ...loaded, name, patch, updatedAt: new Date().toISOString() })
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
   }, [dirty, loaded, name, patch])
+
+  /** One whole new patch, as one step. */
+  const commit = useCallback((next: AudioPatch) => {
+    setDirty(true)
+    setPatch((current) => {
+      if (current) setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+      setFuture([])
+      return next
+    })
+  }, [])
 
   const change = useCallback((property: string, value: ParamValue) => {
     setDirty(true)
@@ -117,10 +132,15 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     return () => window.removeEventListener('keydown', onKey)
   }, [undo, redo])
 
+  const setAuto = useCallback((next: boolean) => {
+    setAutoPlay(next)
+    writeAudioPrefs(withAutoPlay(readAudioPrefs(), next))
+  }, [])
+
   if (!loaded || !patch) {
     return (
       <WorkspaceShell rigs={listRigs()} hideInspector>
-        <div className="preview-stage" id="main" tabIndex={-1}>
+        <div className="preview-stage preview-stage--audio" id="main" tabIndex={-1}>
           <StatusMessage>That patch is not in this browser. Open its project file to bring it back.</StatusMessage>
           <Button onClick={() => navigate('/')}>Back to library</Button>
         </div>
@@ -128,22 +148,10 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     )
   }
 
-  const tunable = (loaded.rig?.parameters.length ?? 0) > 0
+  const exposed = loaded.rig?.parameters.length ?? 0
 
   return (
-    <WorkspaceShell
-      rigs={listRigs()}
-      activeId={documentId}
-      inspector={
-        <AudioBoard
-          parameters={parameters}
-          values={values}
-          onChange={change}
-          onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
-          onGestureEnd={() => { gestureRef.current = false; capturedRef.current = false }}
-        />
-      }
-    >
+    <WorkspaceShell rigs={listRigs()} activeId={documentId} hideInspector mainLabel="Sound">
       <h1 className="visually-hidden">{loaded.name}</h1>
       <div className="workspace-toolbar">
         <div className="workspace-toolbar__group">
@@ -162,18 +170,30 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
           </Tooltip>
         </div>
-        {tunable ? (
+        {exposed > 0 ? (
           <div className="workspace-toolbar__group">
             <Button variant="quiet" size="sm" onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>Tune</Button>
           </div>
         ) : null}
       </div>
-      <div className="preview-stage preview-stage--audio" id="main" tabIndex={-1}>
-        <AudioStage samples={samples} sampleRate={rate} name={loaded.name} />
+      <AudioTransport samples={samples} sampleRate={rate} name={loaded.name} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      <div className="audio-body" id="main" tabIndex={-1}>
+        <AudioPresetRail
+          onPatch={(next) => commit({ ...next, seed: patch.seed })}
+          onRandom={() => commit(randomPatch(Math.floor(Math.random() * 100000)))}
+          onMutate={() => commit(mutatePatch(patch, Math.floor(Math.random() * 100000)))}
+        />
+        <AudioBoard
+          parameters={parameters}
+          values={values}
+          onChange={change}
+          onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
+          onGestureEnd={() => { gestureRef.current = false; capturedRef.current = false }}
+        />
       </div>
       <div className="workspace-status">
         <span className="workspace-status__baseline">{parameters.length} fields</span>
-        <span className="workspace-status__changes">{tunable ? `${loaded.rig?.parameters.length} exposed` : 'No controls exposed'}</span>
+        <span className="workspace-status__changes">{exposed > 0 ? `${exposed} exposed` : 'No controls exposed'}</span>
         <span className="workspace-status__notice" role="status">{notice}</span>
       </div>
     </WorkspaceShell>

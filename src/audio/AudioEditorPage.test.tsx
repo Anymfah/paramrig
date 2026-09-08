@@ -8,9 +8,9 @@ import { AudioRigPreview } from '@/renderers/audio/AudioRigPreview'
 import { arcadeCoin } from '@/rigs/examples/arcade-coin'
 
 /**
- * The page in a browser that has no audio device — which jsdom is, and which some real browsers
- * are too. Everything except the sound itself has to keep working there: the board, the waveform,
- * the history, the writing back to storage.
+ * The page in a browser with no audio device — which jsdom is, and which some real browsers are.
+ * Everything except the sound itself has to keep working: the board, the transport, the rail, the
+ * history, the writing back to storage.
  */
 
 beforeEach(() => {
@@ -24,13 +24,51 @@ const open = (id: string) => render(
 )
 
 describe('AudioEditorPage', () => {
-  it('opens on the first layer with the board beside the waveform', () => {
-    const document = createAudioDocument()
-    open(document.id)
+  /** The whole argument of the layout: nothing is behind a tab, so nothing has to be found. */
+  it('shows every layer and the mix at once', () => {
+    open(arcadeCoin().id)
+    const board = screen.getByRole('group', { name: 'Sound board' })
+    for (const column of ['Layer 1', 'Layer 2', 'Layer 3', 'Mix']) {
+      expect(within(board).getByRole('region', { name: column })).toBeInTheDocument()
+    }
+    expect(within(board).queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('collapses a layer that is switched off to its own switch', () => {
+    open(arcadeCoin().id)
+    const off = screen.getByRole('region', { name: 'Layer 2' })
+    expect(within(off).getByText(/switched off/i)).toBeInTheDocument()
+    expect(within(off).queryByText('Cutoff')).toBeNull()
+    const on = screen.getByRole('region', { name: 'Layer 1' })
+    expect(within(on).getByText('Cutoff')).toBeInTheDocument()
+  })
+
+  it('puts the waveform in the transport with the numbers that describe it', () => {
+    open(arcadeCoin().id)
     expect(screen.getByRole('img', { name: /waveform/i })).toBeInTheDocument()
-    const board = screen.getByRole('complementary', { name: 'Sound board' })
-    expect(within(board).getByRole('tab', { name: 'Layer 1', selected: true })).toBeInTheDocument()
-    expect(within(board).getByRole('tab', { name: 'Mix' })).toBeInTheDocument()
+    expect(screen.getByText('Length')).toBeInTheDocument()
+    expect(screen.getByText('450 ms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+  })
+
+  it('offers a starting point for every preset, plus the two generators', () => {
+    open(arcadeCoin().id)
+    const rail = screen.getByRole('navigation', { name: 'Starting points' })
+    for (const label of ['Coin', 'Laser', 'Explosion', 'UI click', 'Powerup', 'Whoosh', 'Hit', 'Jump']) {
+      expect(within(rail).getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    expect(within(rail).getByRole('button', { name: /Randomize/ })).toBeInTheDocument()
+    expect(within(rail).getByRole('button', { name: /Mutate/ })).toBeInTheDocument()
+  })
+
+  it('loads a preset as one undoable step', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    expect(screen.getByText('450 ms')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Laser' }))
+    expect(screen.getByText('350 ms')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(screen.getByText('450 ms')).toBeInTheDocument()
   })
 
   it('says how many fields there are and that nothing is exposed yet', () => {
@@ -93,10 +131,11 @@ describe('AudioEditorPage', () => {
 })
 
 describe('AudioRigPreview', () => {
-  it('draws the patch a rig resolves to', () => {
+  it('gives Tune the transport and nothing it does not need', () => {
     render(<AudioRigPreview documentId={arcadeCoin().id} values={{ pitch: 1200, length: 0.3, sparkle: 1.5, tone: 0 }} name="Arcade coin" />)
     expect(screen.getByRole('img', { name: 'Arcade coin waveform' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Sound board' })).toBeNull()
   })
 
   it('says so plainly when the patch has gone', () => {
