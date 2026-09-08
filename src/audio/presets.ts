@@ -2,6 +2,7 @@ import type { AudioPatch, FxSettings, Layer, Lfo, MasterSettings } from './types
 import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
 import { makeLayer, makePatch } from './patch.ts'
 import * as ui from './presets-interface.ts'
+import * as fx from './presets-series.ts'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -174,7 +175,6 @@ export function jump(): AudioPatch {
   ], { tone: 0.15 }, { gain: 2.7 })
 }
 
-
 /**
  * Five that lean the other way from the arcade set: cleaner, colder, longer in the tail. What
  * reads as "future" in a sound effect is mostly three things — inharmonic metal instead of a
@@ -310,7 +310,6 @@ export function scan(): AudioPatch {
     }),
   ], { flangerMix: 0.45, flangerRate: 1.6, flangerDepth: 0.85, reverbMix: 0.24, reverbSize: 0.7, tone: 0.3 }, { gain: 2.348 })
 }
-
 
 /**
  * Seven built the way a shipped effect is built rather than the way a synthesiser patch is:
@@ -486,40 +485,6 @@ export function shield(): AudioPatch {
       amp: { attack: 0.06, hold: 0.06, decay: 0.35, sustain: 0.4, release: 0.5, curve: 1.4 },
     }),
   ], { flangerMix: 0.5, flangerRate: 0.55, flangerDepth: 0.8, reverbMix: 0.34, reverbSize: 0.8, reverbDamping: 0.35, tone: 0.25 }, { gain: 2.417 })
-}
-
-/**
- * Two notes down and a little dirt on them. Down is what a refusal sounds like in every language,
- * and the tick that opens it now sits above eight kilohertz — a warning is allowed to be sharp.
- */
-export function alert(): AudioPatch {
-  return patch(0.65, [
-    makeLayer({
-      gain: 0.34,
-      spread: 0.55,
-      source: { kind: 'tone', wave: 'square', pulseWidth: 0.42, voices: 2, detune: 10 },
-      pitch: { start: 620, arpeggioRatio: 0.72, arpeggioAt: 0.38, jitter: 8 },
-      offset: 0.003,
-      shaper: { drive: 0.22, bitDepth: 16, crush: 0 },
-      amp: { attack: 0.003, hold: 0.05, decay: 0.22, sustain: 0.3, release: 0.16, curve: 2 },
-    }),
-    makeLayer({
-      gain: 0.44,
-      spread: 0.5,
-      source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 3400, resonance: 0.12 },
-      resonator: { amount: 1, frequency: 8600, spread: 0.32, decay: 0.04, partials: 3 },
-      amp: { attack: 0.0003, hold: 0.001, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
-    }),
-    makeLayer({
-      gain: 0.13,
-      spread: 0.8,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 9500, jitter: 20 },
-      filter: { kind: 'highpass', cutoff: 7500, resonance: 0.12 },
-      amp: { attack: 0.0004, hold: 0, decay: 0.02, sustain: 0, release: 0.012, curve: 3 },
-    }),
-  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.7608 })
 }
 
 /**
@@ -894,7 +859,6 @@ export function siren(): AudioPatch {
      { gain: 2.668 }, [{ enabled: true, shape: 'sine', rate: 1.1, depth: 0.45, target: 'layers[0].pitch' }])
 }
 
-
 /**
  * Four small mechanisms.
  *
@@ -909,128 +873,6 @@ export function siren(): AudioPatch {
  * the top, with something in the low mids underneath it for weight. A click built around a body at
  * one kilohertz sounds like a telephone; the same click at nine sounds like a interface.
  */
-
-/**
- * The one a menu makes, and the shape of it is Soheil's rather than mine.
- *
- * My version was one strike and a tick over it, which is a click and not much else. What makes
- * this read as designed is that the second layer is not a second strike: it is a sustained,
- * quantised wash arriving thirty-five milliseconds late, chopped at nearly eight hertz by a square
- * modulator on its own gain, with a resonant body ringing between the chops. So the event has two
- * parts — the hit, and then a flutter underneath it that decays over half a second.
- *
- * The lesson generalises, and Toggle and Dismiss below are built the same way: a strike is an
- * instant, and what turns an instant into a sound someone made on purpose is what happens just
- * after it.
- */
-export function select(): AudioPatch {
-  return patch(0.58, [
-    makeLayer({
-      gain: 0.6,
-      spread: 0.45,
-      source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 2200, resonance: 0.12 },
-      resonator: { amount: 1, frequency: 9400, spread: 0.26, decay: 0.055, partials: 3 },
-      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
-    }),
-    makeLayer({
-      gain: 0.34,
-      spread: 0.7,
-      offset: 0.035,
-      source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 1750, resonance: 0.35 },
-      shaper: { drive: 0, bitDepth: 10, crush: 0 },
-      resonator: { amount: 0.95, frequency: 6600, spread: 0.72, decay: 0.085, partials: 3 },
-      amp: { attack: 0.0004, hold: 0.015, decay: 0.058, sustain: 0.48, release: 0.3, curve: 2.95 },
-    }),
-    makeLayer({
-      gain: 0.2,
-      spread: 0.9,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 9800, jitter: 25 },
-      filter: { kind: 'highpass', cutoff: 8000, resonance: 0.1 },
-      amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
-    }),
-  ], { reverbMix: 0.14, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.42 },
-     { gain: 0.4592 }, [{ enabled: true, shape: 'square', rate: 7.8, depth: 1, phase: 0.61, target: 'layers[1].gain' }])
-}
-
-/**
- * The same mechanism committing to something, built the way Select is: a bright strike, then a
- * body that flutters under it.
- *
- * What separates it from Select is where the weight sits. The strike is a shade lower, the gated
- * layer rings on a 4.6 kHz body instead of a 6.6 kHz one, the gate is slower — five and a half
- * hertz reads as deliberate where eight reads as nervous — and there is a note underneath, sliding
- * down a minor sixth. A toggle is a decision, so it lands and stays landed.
- */
-export function toggle(): AudioPatch {
-  return patch(0.46, [
-    makeLayer({
-      gain: 0.62,
-      spread: 0.4,
-      source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 2600, resonance: 0.12 },
-      resonator: { amount: 1, frequency: 8200, spread: 0.3, decay: 0.05, partials: 3 },
-      amp: { attack: 0.0003, hold: 0.001, decay: 0.0035, sustain: 0, release: 0.0012, curve: 2.6 },
-    }),
-    makeLayer({
-      gain: 0.3,
-      spread: 0.72,
-      offset: 0.04,
-      source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 1300, resonance: 0.38 },
-      shaper: { drive: 0, bitDepth: 10, crush: 0 },
-      resonator: { amount: 0.95, frequency: 4600, spread: 0.66, decay: 0.11, partials: 4 },
-      amp: { attack: 0.0004, hold: 0.018, decay: 0.07, sustain: 0.44, release: 0.24, curve: 2.9 },
-    }),
-    makeLayer({
-      gain: 0.3,
-      offset: 0.005,
-      source: { kind: 'tone', wave: 'sine' },
-      pitch: { start: 165, slide: -9, slideCurve: EASE_OUT },
-      amp: { attack: 0.001, hold: 0.004, decay: 0.06, sustain: 0, release: 0.04, curve: 2.5 },
-    }),
-  ], { reverbMix: 0.13, reverbSize: 0.24, reverbDamping: 0.75, width: 0.8, tone: 0.2 },
-     { gain: 0.3984 }, [{ enabled: true, shape: 'square', rate: 5.6, depth: 1, phase: 0.42, target: 'layers[1].gain' }])
-}
-
-/**
- * Going back, and everything in it descends. The strike is the brightest thing here and it is over
- * in four milliseconds; the gated layer sweeps its band down two octaves as it flutters, which is
- * the sound receding rather than merely stopping; the note under it falls too. The gate runs at
- * nine hertz — quicker than Toggle's, because leaving is not a decision you dwell on.
- */
-export function dismiss(): AudioPatch {
-  return patch(0.42, [
-    makeLayer({
-      gain: 0.72,
-      spread: 0.45,
-      source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.14 },
-      resonator: { amount: 1, frequency: 7400, spread: 0.34, decay: 0.045, partials: 3 },
-      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
-    }),
-    makeLayer({
-      gain: 0.26,
-      spread: 0.7,
-      offset: 0.03,
-      source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 2400, resonance: 0.36, envAmount: -2, envCurve: EASE_OUT },
-      shaper: { drive: 0, bitDepth: 11, crush: 0 },
-      resonator: { amount: 0.9, frequency: 5200, spread: 0.7, decay: 0.08, partials: 3 },
-      amp: { attack: 0.0004, hold: 0.012, decay: 0.05, sustain: 0.4, release: 0.22, curve: 2.95 },
-    }),
-    makeLayer({
-      gain: 0.1,
-      spread: 0.6,
-      source: { kind: 'tone', wave: 'sine', voices: 2, detune: 8 },
-      pitch: { start: 940, slide: -8, slideCurve: EASE_OUT, jitter: 10 },
-      amp: { attack: 0.001, hold: 0.004, decay: 0.07, sustain: 0, release: 0.05, curve: 2.4 },
-    }),
-  ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 },
-     { gain: 0.558 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
-}
 
 /** Glass. A body near the top of hearing, its partials almost in tune, allowed to ring right out. */
 export function crystal(): AudioPatch {
@@ -1057,7 +899,8 @@ export function crystal(): AudioPatch {
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */
 export type PresetGroup =
   | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
-  | 'Touch' | 'Response' | 'Surfaces' | 'Signals'
+  | 'Touch' | 'Surfaces' | 'Signals'
+  | 'Element' | 'Weapon'
 
 export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
   { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
@@ -1102,9 +945,6 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'transmission', label: 'Transmission', group: 'Inharmonic', build: transmission },
   { id: 'siren', label: 'Siren', group: 'Inharmonic', build: siren },
 
-  { id: 'nav-step', label: 'Step', group: 'Touch', build: ui.navStep },
-  { id: 'nav-traverse', label: 'Traverse', group: 'Touch', build: ui.navTraverse },
-  { id: 'nav-jump', label: 'Page jump', group: 'Touch', build: ui.navJump },
   { id: 'focus-hover', label: 'Hover', group: 'Touch', build: ui.focusHover },
   { id: 'focus-arm', label: 'Arm', group: 'Touch', build: ui.focusArm },
   { id: 'focus-ring', label: 'Focus ring', group: 'Touch', build: ui.focusRing },
@@ -1112,14 +952,6 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'input-accept', label: 'Field accept', group: 'Touch', build: ui.inputAccept },
   { id: 'input-validate', label: 'Validate', group: 'Touch', build: ui.inputValidate },
 
-  { id: 'apply-detent', label: 'Apply', group: 'Response', build: ui.applyDetent },
-  { id: 'commit-latch', label: 'Commit', group: 'Response', build: ui.commitLatch },
-  { id: 'deny-nudge', label: 'Nudge', group: 'Response', build: ui.denyNudge },
-  { id: 'deny-block', label: 'Blocked', group: 'Response', build: ui.denyBlock },
-  { id: 'deny-fault', label: 'Fault', group: 'Response', build: ui.denyFault },
-  { id: 'switch-on', label: 'Switch on', group: 'Response', build: ui.switchOn },
-  { id: 'switch-off', label: 'Switch off', group: 'Response', build: ui.switchOff },
-  { id: 'checkbox-tick', label: 'Tick', group: 'Response', build: ui.checkboxTick },
 
   { id: 'disclose-row', label: 'Disclose', group: 'Surfaces', build: ui.discloseRow },
   { id: 'panel-slide', label: 'Panel out', group: 'Surfaces', build: ui.panelSlide },
@@ -1128,9 +960,6 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'drawer-retract', label: 'Retract', group: 'Surfaces', build: ui.drawerRetract },
   { id: 'sheet-collapse', label: 'Collapse', group: 'Surfaces', build: ui.sheetCollapse },
 
-  { id: 'notify-badge', label: 'Badge', group: 'Signals', build: ui.notifyBadge },
-  { id: 'notify-message', label: 'Message', group: 'Signals', build: ui.notifyMessage },
-  { id: 'notify-urgent', label: 'Urgent', group: 'Signals', build: ui.notifyUrgent },
   { id: 'progress-start', label: 'Start', group: 'Signals', build: ui.progressStart },
   { id: 'progress-tick', label: 'Tick over', group: 'Signals', build: ui.progressTick },
   { id: 'progress-complete', label: 'Complete', group: 'Signals', build: ui.progressComplete },
@@ -1140,9 +969,51 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'delete-item', label: 'Delete', group: 'Signals', build: ui.deleteItem },
   { id: 'discard-draft', label: 'Discard', group: 'Signals', build: ui.discardDraft },
   { id: 'wipe-all', label: 'Wipe', group: 'Signals', build: ui.wipeAll },
+
+  { id: 'select-tap', label: 'Select Tap', group: 'Interface', build: fx.selectTap },
+  { id: 'select-confirm', label: 'Select Confirm', group: 'Interface', build: fx.selectConfirm },
+  { id: 'select-commit', label: 'Select Commit', group: 'Interface', build: fx.selectCommit },
+  { id: 'step-advance', label: 'Step Advance', group: 'Interface', build: fx.stepAdvance },
+  { id: 'lever-engage', label: 'Lever Engage', group: 'Interface', build: fx.leverEngage },
+  { id: 'lever-release', label: 'Lever Release', group: 'Interface', build: fx.leverRelease },
+  { id: 'check-mark', label: 'Check Mark', group: 'Interface', build: fx.checkMark },
+  { id: 'deny-deflect', label: 'Deny Deflect', group: 'Interface', build: fx.denyDeflect },
+  { id: 'deny-lockout', label: 'Deny Lockout', group: 'Interface', build: fx.denyLockout },
+  { id: 'warn-notice', label: 'Warn Notice', group: 'Interface', build: fx.warnNotice },
+  { id: 'warn-caution', label: 'Warn Caution', group: 'Interface', build: fx.warnCaution },
+  { id: 'warn-critical', label: 'Warn Critical', group: 'Interface', build: fx.warnCritical },
+
+  { id: 'fragment-spray', label: 'Fragment Spray', group: 'Element', build: fx.fragmentSpray },
+  { id: 'fragment-tumble', label: 'Fragment Tumble', group: 'Element', build: fx.fragmentTumble },
+  { id: 'fragment-settle', label: 'Fragment Settle', group: 'Element', build: fx.fragmentSettle },
+  { id: 'packet-stream', label: 'Packet Stream', group: 'Element', build: fx.packetStream },
+  { id: 'raster-scan', label: 'Raster Scan', group: 'Element', build: fx.rasterScan },
+  { id: 'handshake', label: 'Handshake', group: 'Element', build: fx.handshake },
+  { id: 'ambient-drift', label: 'Ambient Drift', group: 'Element', build: fx.ambientDrift },
+  { id: 'containment-field', label: 'Containment Field', group: 'Element', build: fx.containmentField },
+  { id: 'pressure-swell', label: 'Pressure Swell', group: 'Element', build: fx.pressureSwell },
+
+  { id: 'charge-prime', label: 'Charge Prime', group: 'Weapon', build: fx.chargePrime },
+  { id: 'charge-cycle', label: 'Charge Cycle', group: 'Weapon', build: fx.chargeCycle },
+  { id: 'charge-overload', label: 'Charge Overload', group: 'Weapon', build: fx.chargeOverload },
+  { id: 'plasma-bolt', label: 'Plasma Bolt', group: 'Weapon', build: fx.plasmaBolt },
+  { id: 'plasma-lance', label: 'Plasma Lance', group: 'Weapon', build: fx.plasmaLance },
+  { id: 'plasma-cannon', label: 'Plasma Cannon', group: 'Weapon', build: fx.plasmaCannon },
+  { id: 'pulse-rifle', label: 'Pulse Rifle', group: 'Weapon', build: fx.pulseRifle },
+  { id: 'pulse-cannon', label: 'Pulse Cannon', group: 'Weapon', build: fx.pulseCannon },
+  { id: 'pulse-repeater', label: 'Pulse Repeater', group: 'Weapon', build: fx.pulseRepeater },
+  { id: 'reload-clip', label: 'Reload Clip', group: 'Weapon', build: fx.reloadClip },
+  { id: 'reload-cycle', label: 'Reload Cycle', group: 'Weapon', build: fx.reloadCycle },
+  { id: 'reload-breech', label: 'Reload Breech', group: 'Weapon', build: fx.reloadBreech },
+  { id: 'morph-robotic', label: 'Morph Robotic', group: 'Weapon', build: fx.morphRobotic },
+  { id: 'morph-metal', label: 'Morph Metal', group: 'Weapon', build: fx.morphMetal },
+  { id: 'impact-snap', label: 'Impact Snap', group: 'Weapon', build: fx.impactSnap },
+  { id: 'impact-strike', label: 'Impact Strike', group: 'Weapon', build: fx.impactStrike },
+  { id: 'impact-slam', label: 'Impact Slam', group: 'Weapon', build: fx.impactSlam },
 ]
 
 export const PRESET_GROUPS: PresetGroup[] = [
-  'Touch', 'Response', 'Surfaces', 'Signals',
-  'Interface', 'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
+  'Interface', 'Element', 'Weapon',
+  'Touch', 'Surfaces', 'Signals',
+  'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
 ]

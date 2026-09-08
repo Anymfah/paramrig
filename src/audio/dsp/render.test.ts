@@ -35,13 +35,19 @@ describe('renderPatch', () => {
     expect(render(patch, 48000)).toHaveLength(Math.round(0.25 * 48000))
   })
 
+  /*
+   * The three sweeps below render every preset in the library, so their cost grows with it — they
+   * went past the default five seconds when the library reached ninety-four. The timeout is
+   * explicit rather than global because these are the only tests that scale with the catalogue,
+   * and a sweep quietly taking a minute should still be a failure.
+   */
   it('opens and closes on silence, so nothing clicks at either end', () => {
     for (const preset of PRESETS) {
       const samples = render(preset.build(), SCAN_RATE)
       expect(Math.abs(samples[0] ?? 1)).toBe(0)
       expect(Math.abs(samples[samples.length - 1] ?? 1)).toBe(0)
     }
-  })
+  }, 30_000)
 
   /**
    * Scanned in a plain loop and asserted once a preset. Written with an `expect` a sample it made
@@ -60,13 +66,13 @@ describe('renderPatch', () => {
       expect(broken, `${preset.id} has non-finite samples`).toBe(0)
       expect(loudest, `${preset.id} goes past full scale`).toBeLessThanOrEqual(1)
     }
-  })
+  }, 30_000)
 
   it('makes a sound for every preset', () => {
     for (const preset of PRESETS) {
       expect(peak(render(preset.build(), SCAN_RATE))).toBeGreaterThan(0.05)
     }
-  })
+  }, 30_000)
 
   it('renders silence when every layer is off', () => {
     const patch = { ...coin(), layers: [silentLayer(), silentLayer(), silentLayer()] }
