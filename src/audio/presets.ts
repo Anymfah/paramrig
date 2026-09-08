@@ -1,6 +1,7 @@
 import type { AudioPatch, FxSettings, Layer, Lfo, MasterSettings } from './types.ts'
 import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
 import { makeLayer, makePatch } from './patch.ts'
+import * as ui from './presets-interface.ts'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -70,7 +71,7 @@ export function explosion(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 5500, resonance: 0.12 },
       amp: { attack: 0.0004, hold: 0.003, decay: 0.045, sustain: 0, release: 0.03, curve: 3 },
     }),
-  ], { reverbMix: 0.22, reverbSize: 0.7, reverbDamping: 0.5, tone: -0.25 }, { gain: 0.982, limiter: 0.9 })
+  ], { reverbMix: 0.22, reverbSize: 0.7, reverbDamping: 0.5, tone: -0.25 }, { gain: 0.9819, limiter: 0.9 })
 }
 
 /**
@@ -344,7 +345,7 @@ export function impact(): AudioPatch {
       resonator: { amount: 0.7, frequency: 11500, spread: 0.4, decay: 0.03, partials: 3 },
       amp: { attack: 0.0003, hold: 0.002, decay: 0.014, sustain: 0, release: 0.01, curve: 3.2 },
     }),
-  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.951, limiter: 0.85 })
+  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.9506, limiter: 0.85 })
 }
 
 /** Falls further the longer it goes, which is the difference between a drop and a slide. */
@@ -457,7 +458,7 @@ export function lockOn(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 8500, resonance: 0.12 },
       amp: { attack: 0.0004, hold: 0, decay: 0.018, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, width: 0.75, tone: 0.35 }, { gain: 0.855 })
+  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, width: 0.75, tone: 0.35 }, { gain: 0.8551 })
 }
 /** Held rather than struck. The flanger does the shimmering; the vibrato keeps it from sitting still. */
 export function shield(): AudioPatch {
@@ -518,7 +519,7 @@ export function alert(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 7500, resonance: 0.12 },
       amp: { attack: 0.0004, hold: 0, decay: 0.02, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.411 })
+  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.4105 })
 }
 
 /**
@@ -796,7 +797,7 @@ export function pulse(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 2.8 },
     }),
   ], { delayMix: 0.22, delayTime: 0.105, delayFeedback: 0.38, reverbMix: 0.24, reverbSize: 0.65, width: 0.85, tone: 0.3 },
-     { gain: 0.896 }, [
+     { gain: 0.8955 }, [
        { enabled: true, shape: 'square', rate: 9, depth: 1, target: 'layers[0].gain' },
        { enabled: true, shape: 'square', rate: 13.5, depth: 0.9, phase: 0.4, target: 'layers[1].gain' },
      ])
@@ -1028,7 +1029,7 @@ export function dismiss(): AudioPatch {
       amp: { attack: 0.001, hold: 0.004, decay: 0.07, sustain: 0, release: 0.05, curve: 2.4 },
     }),
   ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 },
-     { gain: 0.483 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
+     { gain: 0.4831 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
 }
 
 /** Glass. A body near the top of hearing, its partials almost in tune, allowed to ring right out. */
@@ -1050,11 +1051,13 @@ export function crystal(): AudioPatch {
       resonator: { amount: 1, frequency: 4100, spread: 0.2, decay: 0.65, partials: 3 },
       amp: { attack: 0.0004, hold: 0.0012, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.6 },
     }),
-  ], { reverbMix: 0.3, reverbSize: 0.55, reverbDamping: 0.4, width: 0.95, tone: 0.45 }, { gain: 0.318 }, [])
+  ], { reverbMix: 0.3, reverbSize: 0.55, reverbDamping: 0.4, width: 0.95, tone: 0.45 }, { gain: 0.3176 }, [])
 }
 
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */
-export type PresetGroup = 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
+export type PresetGroup =
+  | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
+  | 'Touch' | 'Response' | 'Surfaces' | 'Signals'
 
 export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
   { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
@@ -1098,6 +1101,48 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'growl', label: 'Growl', group: 'Inharmonic', build: growl },
   { id: 'transmission', label: 'Transmission', group: 'Inharmonic', build: transmission },
   { id: 'siren', label: 'Siren', group: 'Inharmonic', build: siren },
+
+  { id: 'nav-step', label: 'Step', group: 'Touch', build: ui.navStep },
+  { id: 'nav-traverse', label: 'Traverse', group: 'Touch', build: ui.navTraverse },
+  { id: 'nav-jump', label: 'Page jump', group: 'Touch', build: ui.navJump },
+  { id: 'focus-hover', label: 'Hover', group: 'Touch', build: ui.focusHover },
+  { id: 'focus-arm', label: 'Arm', group: 'Touch', build: ui.focusArm },
+  { id: 'focus-ring', label: 'Focus ring', group: 'Touch', build: ui.focusRing },
+  { id: 'input-key', label: 'Keystroke', group: 'Touch', build: ui.inputKey },
+  { id: 'input-accept', label: 'Field accept', group: 'Touch', build: ui.inputAccept },
+  { id: 'input-validate', label: 'Validate', group: 'Touch', build: ui.inputValidate },
+
+  { id: 'apply-detent', label: 'Apply', group: 'Response', build: ui.applyDetent },
+  { id: 'commit-latch', label: 'Commit', group: 'Response', build: ui.commitLatch },
+  { id: 'deny-nudge', label: 'Nudge', group: 'Response', build: ui.denyNudge },
+  { id: 'deny-block', label: 'Blocked', group: 'Response', build: ui.denyBlock },
+  { id: 'deny-fault', label: 'Fault', group: 'Response', build: ui.denyFault },
+  { id: 'switch-on', label: 'Switch on', group: 'Response', build: ui.switchOn },
+  { id: 'switch-off', label: 'Switch off', group: 'Response', build: ui.switchOff },
+  { id: 'checkbox-tick', label: 'Tick', group: 'Response', build: ui.checkboxTick },
+
+  { id: 'disclose-row', label: 'Disclose', group: 'Surfaces', build: ui.discloseRow },
+  { id: 'panel-slide', label: 'Panel out', group: 'Surfaces', build: ui.panelSlide },
+  { id: 'overlay-open', label: 'Overlay', group: 'Surfaces', build: ui.overlayOpen },
+  { id: 'panel-shut', label: 'Panel in', group: 'Surfaces', build: ui.panelShut },
+  { id: 'drawer-retract', label: 'Retract', group: 'Surfaces', build: ui.drawerRetract },
+  { id: 'sheet-collapse', label: 'Collapse', group: 'Surfaces', build: ui.sheetCollapse },
+
+  { id: 'notify-badge', label: 'Badge', group: 'Signals', build: ui.notifyBadge },
+  { id: 'notify-message', label: 'Message', group: 'Signals', build: ui.notifyMessage },
+  { id: 'notify-urgent', label: 'Urgent', group: 'Signals', build: ui.notifyUrgent },
+  { id: 'progress-start', label: 'Start', group: 'Signals', build: ui.progressStart },
+  { id: 'progress-tick', label: 'Tick over', group: 'Signals', build: ui.progressTick },
+  { id: 'progress-complete', label: 'Complete', group: 'Signals', build: ui.progressComplete },
+  { id: 'reward-credit', label: 'Credit', group: 'Signals', build: ui.rewardCredit },
+  { id: 'reward-unlock', label: 'Unlock', group: 'Signals', build: ui.rewardUnlock },
+  { id: 'reward-achievement', label: 'Achievement', group: 'Signals', build: ui.rewardAchievement },
+  { id: 'delete-item', label: 'Delete', group: 'Signals', build: ui.deleteItem },
+  { id: 'discard-draft', label: 'Discard', group: 'Signals', build: ui.discardDraft },
+  { id: 'wipe-all', label: 'Wipe', group: 'Signals', build: ui.wipeAll },
 ]
 
-export const PRESET_GROUPS: PresetGroup[] = ['Arcade', 'Interface', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic']
+export const PRESET_GROUPS: PresetGroup[] = [
+  'Touch', 'Response', 'Surfaces', 'Signals',
+  'Interface', 'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
+]
