@@ -269,7 +269,7 @@ export function interfaceConfirm(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 8000, resonance: 0.12 },
       amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
     }),
-  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, width: 0.7, tone: 0.45 }, { gain: 0.284 })
+  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, width: 0.7, tone: 0.45 }, { gain: 0.6313 })
 }
 /** Something filling up. The filter opens with the pitch, which is what makes it read as building. */
 export function charge(): AudioPatch {
@@ -345,7 +345,7 @@ export function impact(): AudioPatch {
       resonator: { amount: 0.7, frequency: 11500, spread: 0.4, decay: 0.03, partials: 3 },
       amp: { attack: 0.0003, hold: 0.002, decay: 0.014, sustain: 0, release: 0.01, curve: 3.2 },
     }),
-  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.9506, limiter: 0.85 })
+  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.9954, limiter: 0.85 })
 }
 
 /** Falls further the longer it goes, which is the difference between a drop and a slide. */
@@ -406,7 +406,7 @@ export function dataBurst(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 2.6 },
     }),
   ], { delayMix: 0.35, delayTime: 0.055, delayFeedback: 0.52, reverbMix: 0.12, width: 0.8, tone: 0.25 },
-     { gain: 1.292 }, [{ enabled: true, shape: 'square', rate: 27, depth: 0.85, phase: 0.3, target: 'layers[1].gain' }])
+     { gain: 1.349 }, [{ enabled: true, shape: 'square', rate: 27, depth: 0.85, phase: 0.3, target: 'layers[1].gain' }])
 }
 /** Everything closing at once — pitch, filter and level — which is what "off" sounds like. */
 export function powerDown(): AudioPatch {
@@ -458,7 +458,7 @@ export function lockOn(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 8500, resonance: 0.12 },
       amp: { attack: 0.0004, hold: 0, decay: 0.018, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, width: 0.75, tone: 0.35 }, { gain: 0.8551 })
+  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, width: 0.75, tone: 0.35 }, { gain: 0.8694 })
 }
 /** Held rather than struck. The flanger does the shimmering; the vibrato keeps it from sitting still. */
 export function shield(): AudioPatch {
@@ -519,7 +519,7 @@ export function alert(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 7500, resonance: 0.12 },
       amp: { attack: 0.0004, hold: 0, decay: 0.02, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.4105 })
+  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.7608 })
 }
 
 /**
@@ -606,7 +606,7 @@ export function glitch(): AudioPatch {
       amp: { attack: 0.0002, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 3 },
     }),
   ], { delayMix: 0.3, delayTime: 0.042, delayFeedback: 0.5, reverbMix: 0.14, width: 0.85, tone: 0.4 },
-     { gain: 1.145 }, [
+     { gain: 1.091 }, [
        { enabled: true, shape: 'square', rate: 23, depth: 0.55, target: 'layers[0].pitch' },
        { enabled: true, shape: 'square', rate: 31, depth: 0.9, target: 'layers[1].gain' },
      ])
@@ -719,7 +719,7 @@ export function beam(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
     }),
   ], { delayMix: 0.24, delayTime: 0.068, delayFeedback: 0.44, reverbMix: 0.22, width: 0.9, tone: 0.4 },
-     { gain: 1.766 }, [
+     { gain: 1.678 }, [
        { enabled: true, shape: 'sine', rate: 15, depth: 0.5, target: 'layers[0].cutoff' },
        { enabled: true, shape: 'sine', rate: 15, depth: 0.45, phase: 0.5, target: 'layers[1].cutoff' },
      ])
@@ -952,7 +952,7 @@ export function select(): AudioPatch {
       amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
     }),
   ], { reverbMix: 0.14, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.42 },
-     { gain: 0.277 }, [{ enabled: true, shape: 'square', rate: 7.8, depth: 1, phase: 0.61, target: 'layers[1].gain' }])
+     { gain: 0.4592 }, [{ enabled: true, shape: 'square', rate: 7.8, depth: 1, phase: 0.61, target: 'layers[1].gain' }])
 }
 
 /**
@@ -992,7 +992,7 @@ export function toggle(): AudioPatch {
       amp: { attack: 0.001, hold: 0.004, decay: 0.06, sustain: 0, release: 0.04, curve: 2.5 },
     }),
   ], { reverbMix: 0.13, reverbSize: 0.24, reverbDamping: 0.75, width: 0.8, tone: 0.2 },
-     { gain: 0.268 }, [{ enabled: true, shape: 'square', rate: 5.6, depth: 1, phase: 0.42, target: 'layers[1].gain' }])
+     { gain: 0.3984 }, [{ enabled: true, shape: 'square', rate: 5.6, depth: 1, phase: 0.42, target: 'layers[1].gain' }])
 }
 
 /**
@@ -1029,7 +1029,7 @@ export function dismiss(): AudioPatch {
       amp: { attack: 0.001, hold: 0.004, decay: 0.07, sustain: 0, release: 0.05, curve: 2.4 },
     }),
   ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 },
-     { gain: 0.4831 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
+     { gain: 0.558 }, [{ enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
 }
 
 /** Glass. A body near the top of hearing, its partials almost in tune, allowed to ring right out. */
@@ -1051,7 +1051,7 @@ export function crystal(): AudioPatch {
       resonator: { amount: 1, frequency: 4100, spread: 0.2, decay: 0.65, partials: 3 },
       amp: { attack: 0.0004, hold: 0.0012, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.6 },
     }),
-  ], { reverbMix: 0.3, reverbSize: 0.55, reverbDamping: 0.4, width: 0.95, tone: 0.45 }, { gain: 0.3176 }, [])
+  ], { reverbMix: 0.3, reverbSize: 0.55, reverbDamping: 0.4, width: 0.95, tone: 0.45 }, { gain: 0.3488 }, [])
 }
 
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */

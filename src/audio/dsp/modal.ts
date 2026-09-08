@@ -37,6 +37,21 @@ export function modalPartial(index: number, frequency: number, spread: number): 
  * One sample through the bank. `decay` is the time the fundamental takes to fall by sixty
  * decibels; the rest follow it down faster.
  */
+/**
+ * How loud a two-pole resonator is at its own resonance, which is not the same at every frequency.
+ * |H| = 1 / |1 - 2r·cos(w)·e^(-jw) + r²·e^(-2jw)|, evaluated on the unit circle at w.
+ */
+function peakGain(w: number, r: number): number {
+  const cw = Math.cos(w)
+  const sw = Math.sin(w)
+  const re = 1 - 2 * r * cw * cw + r * r * (cw * cw - sw * sw)
+  const im = r * (1 - r) * 2 * sw * cw
+  return 1 / Math.max(1e-12, Math.sqrt(re * re + im * im))
+}
+
+/** Eight kilohertz is the frequency whose level the normalisation leaves alone. */
+const REFERENCE_W = (2 * Math.PI * 8000) / 44100
+
 export function modalSample(
   states: ModalState[],
   input: number,
@@ -65,7 +80,22 @@ export function modalSample(
      * a hair under one, so that scaling took the sound to nothing. A sustained source into a long
      * ring does build up, as a bowed thing does; the master limiter is what catches that.
      */
-    const value = input + 2 * r * Math.cos(w) * state.y1 - r * r * state.y2
+    /*
+     * Normalised for frequency, which it was not.
+     *
+     * A two-pole resonator's peak gain depends on where it sits: measured across the band, one
+     * partial was up to twenty-five decibels louder than another purely because of its frequency —
+     * +10.7 dB at 2 kHz, flat around 10, and +14.5 dB by 20.8 kHz as the poles close on the real
+     * axis. So a body's own pitch silently set its loudness, and a partial that landed near
+     * Nyquist swamped the fundamental it was supposed to colour. Moving a body from 11.8 kHz to
+     * 13.2 kHz put ninety per cent of the layer's energy above 16 kHz, which is not a tuning
+     * decision anyone made.
+     *
+     * Dividing the input by |H| at the resonant frequency takes that back out, so `frequency`
+     * chooses pitch and `gain` chooses level, which is what both controls claim to do.
+     */
+    const value = input * (peakGain(REFERENCE_W, r) / peakGain(w, r))
+      + 2 * r * Math.cos(w) * state.y1 - r * r * state.y2
     state.y2 = state.y1
     state.y1 = value
     sum += value
