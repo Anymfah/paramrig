@@ -14,6 +14,8 @@ import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, M
 export type LayerInput = {
   enabled?: boolean
   gain?: number
+  pan?: number
+  spread?: number
   offset?: number
   source?: Partial<SourceSettings>
   pitch?: Partial<PitchSettings>
@@ -26,6 +28,8 @@ export function makeLayer(input: LayerInput = {}): Layer {
   return {
     enabled: input.enabled ?? true,
     gain: input.gain ?? 0.8,
+    pan: input.pan ?? 0,
+    spread: input.spread ?? 0.5,
     offset: input.offset ?? 0,
     source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, colour: 'white', voices: 1, detune: 12, ...input.source },
     pitch: {
@@ -47,7 +51,7 @@ export function makeFx(input: Partial<FxSettings> = {}): FxSettings {
     delayTime: 0.12, delayFeedback: 0.3, delayMix: 0,
     reverbSize: 0.5, reverbDamping: 0.4, reverbMix: 0,
     flangerRate: 0.5, flangerDepth: 0.5, flangerMix: 0,
-    tone: 0, ...input,
+    tone: 0, width: 0.6, ...input,
   }
 }
 

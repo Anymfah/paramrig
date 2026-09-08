@@ -1,33 +1,41 @@
 import { describe, expect, it } from 'vitest'
-import { renderPatch } from '@/audio/dsp/render'
-import { PRESETS, coin, makeLayer, silentLayer, uiClick } from '@/audio/presets'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
+import { PRESETS, coin, makeLayer, makePatch, silentLayer, uiClick } from '@/audio/presets'
 
 const SAMPLE_RATE = 44100
+/**
+ * The sweeps over every sample of every preset are about shape, not fidelity, and they cost twice
+ * what they did before two channels and a delay network. A third of the rate says the same thing
+ * in a third of the time.
+ */
+const SCAN_RATE = 16000
 
+/** The engine renders two channels; what is measured here is what the room hears. */
+const render = (patch: Parameters<typeof renderPatch>[0], rate = SAMPLE_RATE) => monoSum(renderPatch(patch, rate))
 const peak = (samples: Float32Array) => samples.reduce((most, value) => Math.max(most, Math.abs(value)), 0)
 
 describe('renderPatch', () => {
   it('gives back the same buffer for the same patch, every time', () => {
-    const first = renderPatch(uiClick(), SAMPLE_RATE)
-    const second = renderPatch(uiClick(), SAMPLE_RATE)
+    const first = render(uiClick())
+    const second = render(uiClick())
     expect(Array.from(first)).toEqual(Array.from(second))
   })
 
   it('moves when the seed moves, which is the point of the seed', () => {
-    const one = renderPatch({ ...uiClick(), seed: 1 }, SAMPLE_RATE)
-    const two = renderPatch({ ...uiClick(), seed: 2 }, SAMPLE_RATE)
+    const one = render({ ...uiClick(), seed: 1 })
+    const two = render({ ...uiClick(), seed: 2 })
     expect(Array.from(one)).not.toEqual(Array.from(two))
   })
 
   it('is exactly as long as the patch says', () => {
     const patch = { ...coin(), duration: 0.25 }
-    expect(renderPatch(patch, SAMPLE_RATE)).toHaveLength(Math.round(0.25 * SAMPLE_RATE))
-    expect(renderPatch(patch, 48000)).toHaveLength(Math.round(0.25 * 48000))
+    expect(render(patch)).toHaveLength(Math.round(0.25 * SAMPLE_RATE))
+    expect(render(patch, 48000)).toHaveLength(Math.round(0.25 * 48000))
   })
 
   it('opens and closes on silence, so nothing clicks at either end', () => {
     for (const preset of PRESETS) {
-      const samples = renderPatch(preset.build(), SAMPLE_RATE)
+      const samples = render(preset.build(), SCAN_RATE)
       expect(Math.abs(samples[0] ?? 1)).toBe(0)
       expect(Math.abs(samples[samples.length - 1] ?? 1)).toBe(0)
     }
@@ -35,7 +43,7 @@ describe('renderPatch', () => {
 
   it('never leaves full scale and never goes non-finite', () => {
     for (const preset of PRESETS) {
-      const samples = renderPatch(preset.build(), SAMPLE_RATE)
+      const samples = render(preset.build(), SCAN_RATE)
       for (let i = 0; i < samples.length; i += 1) {
         const value = samples[i] ?? 0
         expect(Number.isFinite(value)).toBe(true)
@@ -46,20 +54,72 @@ describe('renderPatch', () => {
 
   it('makes a sound for every preset', () => {
     for (const preset of PRESETS) {
-      expect(peak(renderPatch(preset.build(), SAMPLE_RATE))).toBeGreaterThan(0.05)
+      expect(peak(render(preset.build(), SCAN_RATE))).toBeGreaterThan(0.05)
     }
   })
 
   it('renders silence when every layer is off', () => {
     const patch = { ...coin(), layers: [silentLayer(), silentLayer(), silentLayer()] }
-    expect(peak(renderPatch(patch, SAMPLE_RATE))).toBe(0)
+    expect(peak(render(patch))).toBe(0)
   })
 
   it('ignores a layer whose offset lands past the end rather than failing', () => {
     const patch = { ...coin(), duration: 0.2, layers: [makeLayer({ offset: 5 }), silentLayer(), silentLayer()] }
-    const samples = renderPatch(patch, SAMPLE_RATE)
+    const samples = render(patch)
     expect(samples).toHaveLength(Math.round(0.2 * SAMPLE_RATE))
     expect(peak(samples)).toBe(0)
+  })
+
+  /** Two channels, and they have to be able to differ or none of the width means anything. */
+  describe('in two channels', () => {
+    const rms = (samples: Float32Array) => {
+      let sum = 0
+      for (let i = 0; i < samples.length; i += 1) sum += (samples[i] ?? 0) ** 2
+      return Math.sqrt(sum / Math.max(1, samples.length))
+    }
+    const held = (over = {}) => makePatch(0.3, [makeLayer({
+      gain: 0.7,
+      source: { kind: 'tone', wave: 'saw' },
+      pitch: { start: 300 },
+      amp: { attack: 0.004, hold: 0.24, decay: 0.02, sustain: 0.9, release: 0.03, curve: 1.5 },
+      ...over,
+    })], { reverbMix: 0, delayMix: 0, flangerMix: 0 }, { limiter: 0 })
+
+    it('gives both channels the same length', () => {
+      const stereo = renderPatch(coin(), SAMPLE_RATE)
+      expect(stereo.left).toHaveLength(stereo.right.length)
+      expect(stereo.left.length).toBe(Math.round(0.45 * SAMPLE_RATE))
+    })
+
+    it('is the same on both sides while nothing is panned or spread', () => {
+      const stereo = renderPatch(held({ pan: 0, spread: 0 }), SAMPLE_RATE)
+      expect(Array.from(stereo.left)).toEqual(Array.from(stereo.right))
+    })
+
+    it('moves a layer across the field', () => {
+      const stereo = renderPatch(held({ pan: -0.9, spread: 0 }), SAMPLE_RATE)
+      expect(rms(stereo.left)).toBeGreaterThan(rms(stereo.right) * 3)
+    })
+
+    /** Equal power: a sound in the middle is as loud as the same sound hard over. */
+    it('does not dip in the middle', () => {
+      const middle = renderPatch(held({ pan: 0, spread: 0 }), SAMPLE_RATE)
+      const side = renderPatch(held({ pan: -1, spread: 0 }), SAMPLE_RATE)
+      const power = (stereo: { left: Float32Array; right: Float32Array }) => rms(stereo.left) ** 2 + rms(stereo.right) ** 2
+      expect(power(middle)).toBeCloseTo(power(side), 2)
+    })
+
+    it('pulls the unison voices apart when they are given spread', () => {
+      const tight = renderPatch(held({ source: { kind: 'tone', wave: 'saw', voices: 3, detune: 20 }, spread: 0 }), SAMPLE_RATE)
+      const wide = renderPatch(held({ source: { kind: 'tone', wave: 'saw', voices: 3, detune: 20 }, spread: 1 }), SAMPLE_RATE)
+      expect(Array.from(tight.left)).toEqual(Array.from(tight.right))
+      expect(Array.from(wide.left)).not.toEqual(Array.from(wide.right))
+    })
+
+    it('decorrelates a noise layer rather than copying one side to the other', () => {
+      const wide = renderPatch(held({ source: { kind: 'noise', colour: 'white' }, spread: 1 }), SAMPLE_RATE)
+      expect(Array.from(wide.left)).not.toEqual(Array.from(wide.right))
+    })
   })
 
   it('survives a patch built out of nonsense', () => {
@@ -69,13 +129,13 @@ describe('renderPatch', () => {
       seed: -1,
       layers: [makeLayer({ gain: 1e6, pitch: { start: -50, slide: 900 }, amp: { attack: -1, decay: -1, release: -1 } })],
     }
-    const samples = renderPatch(patch, SAMPLE_RATE)
+    const samples = render(patch)
     for (let i = 0; i < samples.length; i += 1) expect(Number.isFinite(samples[i] ?? 0)).toBe(true)
   })
 
   it('holds its level when the rate changes, so a preset sounds the same at 48k', () => {
-    const at44 = peak(renderPatch(coin(), 44100))
-    const at48 = peak(renderPatch(coin(), 48000))
+    const at44 = peak(render(coin(), 44100))
+    const at48 = peak(render(coin(), 48000))
     expect(Math.abs(at44 - at48)).toBeLessThan(0.12)
   })
 })

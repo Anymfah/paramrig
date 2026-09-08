@@ -78,9 +78,20 @@ export type AmpSettings = {
   curve: number
 }
 
+/** Two channels of samples. Everything downstream of the engine takes this shape. */
+export type Stereo = { left: Float32Array; right: Float32Array }
+
 export type Layer = {
   enabled: boolean
   gain: number
+  /** −1 hard left, 0 centre, 1 hard right. */
+  pan: number
+  /**
+   * How far the unison voices are thrown across the stereo field, 0 to 1. This is where width
+   * actually comes from: detuned copies in the same place are a thicker mono sound, and the same
+   * copies pushed apart are a wide one.
+   */
+  spread: number
   /** Seconds of silence before this layer starts. A transient is a layer that starts on time and
    * ends quickly while the others are still arriving. */
   offset: number
@@ -104,6 +115,8 @@ export type FxSettings = {
   /** −1 dark, 0 flat, +1 bright. One control instead of a band curve, because this is a generator
    * of short sounds and nobody wants to sculpt an EQ to make a laser. */
   tone: number
+  /** How far apart the two channels of the reverb and the delay are held, 0 to 1. */
+  width: number
 }
 
 export type LfoShape = 'sine' | 'triangle' | 'square' | 'saw' | 'noise'

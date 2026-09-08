@@ -50,6 +50,8 @@ const PATCH_FIELDS: Record<string, FieldSpec> = {
 const LAYER_FIELDS: Record<string, FieldSpec> = {
   enabled: { type: 'boolean', label: 'Enabled' },
   gain: num('Gain', 0, 1.5),
+  pan: num('Pan', -1, 1),
+  spread: num('Stereo spread', 0, 1),
   offset: num('Start offset', 0, 1, 0.001, SECONDS),
 }
 
@@ -132,10 +134,13 @@ const FX_FIELDS: Record<string, FieldSpec> = {
   flangerDepth: num('Flanger depth', 0, 1),
   flangerMix: num('Flanger mix', 0, 1),
   tone: num('Tone', -1, 1),
+  width: num('Width', 0, 1),
 }
 
 const MASTER_FIELDS: Record<string, FieldSpec> = {
-  gain: num('Master gain', 0, 2),
+  // Make-up gain, and it needs the room: the network puts far more energy into a tail than
+  // the four-comb box it replaced, so the quiet patches need more than doubling to catch up.
+  gain: num('Master gain', 0, 3),
   limiter: num('Limiter', 0, 1),
   fadeOut: num('Fade out', 0.001, 0.5, 0.001, SECONDS),
 }

@@ -22,6 +22,9 @@ import type { AudioPatch } from '@/audio/types'
 
 const HISTORY_LIMIT = 100
 
+/** What there is to play before a patch has loaded. */
+const EMPTY = { left: new Float32Array(0), right: new Float32Array(0) }
+
 /**
  * Three ways of working on one sound, rather than three places to hunt in.
  *
@@ -85,7 +88,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
    * heard. Only the drag needs holding back, and a drag is something we already know about.
    */
   const [heard, setHeard] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
-  const samples = useMemo(() => (heard ? renderPatch(heard, rate) : new Float32Array(0)), [heard, rate])
+  const samples = useMemo(() => (heard ? renderPatch(heard, rate) : EMPTY), [heard, rate])
 
   useEffect(() => () => disposePlayback(), [])
 

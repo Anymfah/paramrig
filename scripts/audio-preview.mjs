@@ -11,6 +11,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { PRESETS } from '../src/audio/presets.ts'
 import { renderPatch } from '../src/audio/dsp/render.ts'
+import { stereoLevels } from '../src/audio/waveform.ts'
 import { encodeWav } from '../src/audio/dsp/wav.ts'
 
 const SAMPLE_RATE = 44100
@@ -36,11 +37,11 @@ async function main() {
   const rows = []
   for (const preset of PRESETS) {
     const patch = preset.build()
-    const samples = renderPatch(patch, SAMPLE_RATE)
+    const stereo = renderPatch(patch, SAMPLE_RATE)
     const file = path.join(out, `${preset.id}.wav`)
-    await fs.writeFile(file, encodeWav(samples, SAMPLE_RATE))
-    const { peak, rms } = measure(samples)
-    const clipped = Array.from(samples).filter((v) => Math.abs(v) >= 0.999).length
+    await fs.writeFile(file, encodeWav(stereo, SAMPLE_RATE))
+    const { peak, rms } = stereoLevels(stereo)
+    const clipped = [...stereo.left, ...stereo.right].filter((v) => Math.abs(v) >= 0.999).length
     rows.push({ id: preset.id, seconds: patch.duration, peak, rms, clipped, file })
   }
 

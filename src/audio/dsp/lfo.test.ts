@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget } from '@/audio/dsp/lfo'
 import { mulberry32 } from '@/audio/dsp/rng'
 import { makeLayer, makeLfo, makePatch } from '@/audio/patch'
-import { renderPatch } from '@/audio/dsp/render'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
+
+const render = (patch: Parameters<typeof renderPatch>[0], rate = 22050) => monoSum(renderPatch(patch, rate))
 
 const lfo = (over = {}) => makeLfo({ enabled: true, shape: 'sine', rate: 4, depth: 1, phase: 0, target: 'layers[0].gain', ...over })
 
@@ -78,28 +80,28 @@ describe('a modulated render', () => {
   }
 
   it('does nothing at all while every modulator is off', () => {
-    expect(Array.from(renderPatch(held(), 22050))).toEqual(Array.from(renderPatch(held({}, [makeLfo()]), 22050)))
+    expect(Array.from(render(held()))).toEqual(Array.from(render(held({}, [makeLfo()]))))
   })
 
   it('does nothing when it is enabled but pointed at nothing', () => {
     const idle = held({}, [{ ...makeLfo(), enabled: true, target: 'off' }])
-    expect(Array.from(renderPatch(idle, 22050))).toEqual(Array.from(renderPatch(held(), 22050)))
+    expect(Array.from(render(idle))).toEqual(Array.from(render(held())))
   })
 
   it('moves the level when it is pointed at a gain', () => {
-    const plain = wander(renderPatch(held(), 22050))
-    const shaken = wander(renderPatch(held({}, [lfo({ rate: 8, depth: 0.8 })]), 22050))
+    const plain = wander(render(held()))
+    const shaken = wander(render(held({}, [lfo({ rate: 8, depth: 0.8 })])))
     expect(shaken).toBeGreaterThan(plain * 1.5)
   })
 
   it('changes the sound when it is pointed at a cutoff', () => {
-    const plain = renderPatch(held(), 22050)
-    const swept = renderPatch(held({}, [lfo({ target: 'layers[0].cutoff', rate: 4, depth: 0.9 })]), 22050)
+    const plain = render(held())
+    const swept = render(held({}, [lfo({ target: 'layers[0].cutoff', rate: 4, depth: 0.9 })]))
     expect(Array.from(swept)).not.toEqual(Array.from(plain))
   })
 
   it('is reproducible, noise modulator included', () => {
-    const shaken = () => renderPatch(held({}, [lfo({ shape: 'noise', target: 'layers[0].pitch' })]), 22050)
+    const shaken = () => render(held({}, [lfo({ shape: 'noise', target: 'layers[0].pitch' })]))
     expect(Array.from(shaken())).toEqual(Array.from(shaken()))
   })
 })
@@ -113,7 +115,7 @@ describe('unison', () => {
   })], {}, { limiter: 0 })
 
   it('is a different sound with more of them', () => {
-    expect(Array.from(renderPatch(voiced(3), 22050))).not.toEqual(Array.from(renderPatch(voiced(1), 22050)))
+    expect(Array.from(render(voiced(3)))).not.toEqual(Array.from(render(voiced(1))))
   })
 
   /** Adding voices should thicken a sound, not quieten it: the sum is balanced by root-n. */
@@ -123,8 +125,8 @@ describe('unison', () => {
       for (let i = 0; i < samples.length; i += 1) sum += (samples[i] ?? 0) ** 2
       return Math.sqrt(sum / samples.length)
     }
-    const one = rms(renderPatch(voiced(1), 22050))
-    const five = rms(renderPatch(voiced(5), 22050))
+    const one = rms(render(voiced(1)))
+    const five = rms(render(voiced(5)))
     expect(five).toBeGreaterThan(one * 0.7)
     expect(five).toBeLessThan(one * 1.3)
   })

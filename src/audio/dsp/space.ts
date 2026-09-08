@@ -1,25 +1,37 @@
-import type { FxSettings } from '../types.ts'
+import type { FxSettings, Stereo } from '../types.ts'
 
 /**
- * The shared tail: flanger, delay, a small room, and one tilt control for the whole thing.
+ * The shared tail, in two channels.
  *
- * These are the effects a short sound actually wants. There is no EQ curve here on purpose — a
- * generator of interface clicks that asks you to sculpt bands has already lost the argument about
- * being easy. One knob leans dark or bright and that is the whole tone section.
+ * The reverb here used to be four comb filters and two allpasses — the cheapest arrangement there
+ * is, and it sounds like it: a short metallic ring with an obvious period, which is most of what
+ * makes a synthesised effect read as amateur. What replaces it is a feedback delay network. Four
+ * lines are mixed into each other every time round by a Householder matrix, so energy that enters
+ * any one of them is spread across all four within a couple of passes and the echo pattern stops
+ * being countable. Each line is damped on its way round, because a real room loses its top end
+ * before it loses its bottom.
+ *
+ * The line lengths are modulated by a few samples at rates under a hertz. That small movement is
+ * what removes the last of the metal: a fixed network still rings at the frequencies its lengths
+ * happen to share, and nudging them smears those into nothing.
  */
 
-/** Freeverb's comb and allpass lengths, given at its own rate and rescaled to ours. */
-const COMBS = [1116, 1188, 1277, 1356]
-const ALLPASSES = [556, 441]
 const REFERENCE_RATE = 44100
+
+/** Mutually prime-ish, so the network's echoes do not line up into a pattern. */
+const LINES = [0.0297, 0.0371, 0.0411, 0.0437]
+/** Slow, and all different, so no two lines wobble together. */
+const WOBBLE = [0.11, 0.17, 0.23, 0.29]
+/** Short allpasses that smear the input before it reaches the network. */
+const DIFFUSION = [0.0043, 0.0077, 0.0113, 0.0151]
 
 type Line = { buffer: Float32Array; index: number }
 
 function line(length: number): Line {
-  return { buffer: new Float32Array(Math.max(1, Math.round(length))), index: 0 }
+  return { buffer: new Float32Array(Math.max(2, Math.round(length))), index: 0 }
 }
 
-/** Reads `delay` samples back, interpolating, so a modulated delay glides instead of stepping. */
+/** Reads `delay` samples back, interpolating, so a modulated length glides instead of stepping. */
 function readAt(l: Line, delay: number): number {
   const size = l.buffer.length
   const want = Math.min(size - 1, Math.max(0, delay))
@@ -37,79 +49,110 @@ function write(l: Line, value: number): void {
   l.index = (l.index + 1) % l.buffer.length
 }
 
-/**
- * Applied to the whole mix at once rather than per layer, which is both cheaper and truer to how
- * these sounds are built: the layers are one voice, and one voice sits in one room.
- */
-export function applyFx(input: Float32Array, fx: FxSettings, sampleRate: number): Float32Array {
-  const out = new Float32Array(input.length)
-  const scale = sampleRate / REFERENCE_RATE
+/** One allpass: passes everything, delays it, and leaves the phase scrambled. */
+function allpass(l: Line, input: number, gain: number): number {
+  const delayed = readAt(l, l.buffer.length - 1)
+  const value = -input * gain + delayed
+  write(l, input + delayed * gain)
+  return value
+}
 
-  const flangerLine = line(Math.ceil(0.02 * sampleRate) + 4)
-  const flangerDepth = Math.min(1, Math.max(0, fx.flangerDepth))
-  const flangerMix = Math.min(1, Math.max(0, fx.flangerMix))
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+export function applyFx(input: Stereo, fx: FxSettings, sampleRate: number): Stereo {
+  const length = input.left.length
+  const outL = new Float32Array(length)
+  const outR = new Float32Array(length)
+  const width = clamp01(fx.width)
+
+  // --- flanger: the same delay on both sides, a quarter cycle apart, which is what widens it ---
+  const flangerMix = clamp01(fx.flangerMix)
+  const flangerDepth = clamp01(fx.flangerDepth)
+  const flangerLines = [line(0.02 * sampleRate + 4), line(0.02 * sampleRate + 4)]
   const flangerBase = 0.0005 * sampleRate
   const flangerSpan = 0.006 * sampleRate * flangerDepth
 
+  // --- delay: each side feeds the other, so a repeat crosses the room ---
   const delaySamples = Math.max(1, Math.round(Math.max(0.001, fx.delayTime) * sampleRate))
-  const delayLine = line(delaySamples + 2)
+  const delayLines = [line(delaySamples + 2), line(delaySamples + 2)]
   const delayFeedback = Math.min(0.95, Math.max(0, fx.delayFeedback))
-  const delayMix = Math.min(1, Math.max(0, fx.delayMix))
+  const delayMix = clamp01(fx.delayMix)
 
-  const combs = COMBS.map((n) => line(n * scale))
-  const combStores = COMBS.map(() => 0)
-  const allpasses = ALLPASSES.map((n) => line(n * scale))
-  const reverbMix = Math.min(1, Math.max(0, fx.reverbMix))
+  // --- the network ---
+  const reverbMix = clamp01(fx.reverbMix)
+  const size = clamp01(fx.reverbSize)
   const damping = Math.min(0.95, Math.max(0, fx.reverbDamping))
-  const feedback = 0.7 + Math.min(1, Math.max(0, fx.reverbSize)) * 0.28
+  const scale = (sampleRate / REFERENCE_RATE) * (0.55 + size * 1.1)
+  const net = LINES.map((seconds) => line(seconds * REFERENCE_RATE * scale + 8))
+  const held = [0, 0, 0, 0]
+  const diffusers = DIFFUSION.map((seconds) => line(seconds * sampleRate))
+  // Long enough to be a tail, short enough that a half-second effect is not still ringing.
+  const feedback = 0.72 + size * 0.26
+  const wobbleDepth = 2.5 * (sampleRate / REFERENCE_RATE)
 
-  const tone = Math.min(1, Math.max(-1, fx.tone))
+  // --- tone: one pole a side, tilting the balance rather than cutting a band ---
   const toneG = Math.exp((-2 * Math.PI * 700) / sampleRate)
+  const tone = Math.min(1, Math.max(-1, fx.tone))
   const lowGain = tone <= 0 ? 1 : 1 - tone * 0.7
   const highGain = tone >= 0 ? 1 : 1 + tone * 0.7
-  let toneLow = 0
+  let lowL = 0
+  let lowR = 0
 
-  for (let i = 0; i < input.length; i += 1) {
-    let value = input[i] ?? 0
+  for (let i = 0; i < length; i += 1) {
+    let left = input.left[i] ?? 0
+    let right = input.right[i] ?? 0
 
     if (flangerMix > 0 && flangerDepth > 0) {
-      const lfo = (Math.sin((2 * Math.PI * fx.flangerRate * i) / sampleRate) + 1) * 0.5
-      const wet = readAt(flangerLine, flangerBase + flangerSpan * lfo)
-      write(flangerLine, value + wet * 0.4)
-      value = value * (1 - flangerMix) + wet * flangerMix
+      const turn = (2 * Math.PI * fx.flangerRate * i) / sampleRate
+      const offset = width * 0.25 * Math.PI * 2
+      const wetL = readAt(flangerLines[0]!, flangerBase + flangerSpan * (Math.sin(turn) + 1) * 0.5)
+      const wetR = readAt(flangerLines[1]!, flangerBase + flangerSpan * (Math.sin(turn + offset) + 1) * 0.5)
+      write(flangerLines[0]!, left + wetL * 0.4)
+      write(flangerLines[1]!, right + wetR * 0.4)
+      left = left * (1 - flangerMix) + wetL * flangerMix
+      right = right * (1 - flangerMix) + wetR * flangerMix
     }
 
     if (delayMix > 0) {
-      const wet = readAt(delayLine, delaySamples)
-      write(delayLine, value + wet * delayFeedback)
-      value = value + wet * delayMix
+      const wetL = readAt(delayLines[0]!, delaySamples)
+      const wetR = readAt(delayLines[1]!, delaySamples)
+      // Crossed by the width: at zero it is two independent delays, at one a full ping-pong.
+      write(delayLines[0]!, left + (wetR * width + wetL * (1 - width)) * delayFeedback)
+      write(delayLines[1]!, right + (wetL * width + wetR * (1 - width)) * delayFeedback)
+      left += wetL * delayMix
+      right += wetR * delayMix
     }
 
     if (reverbMix > 0) {
-      let room = 0
-      for (let c = 0; c < combs.length; c += 1) {
-        const l = combs[c]
-        if (!l) continue
-        const read = readAt(l, l.buffer.length - 1)
-        const store = read * (1 - damping) + (combStores[c] ?? 0) * damping
-        combStores[c] = store
-        write(l, value + store * feedback)
-        room += read
+      let seed = (left + right) * 0.5
+      for (const diffuser of diffusers) seed = allpass(diffuser, seed, 0.62)
+
+      const taps = [0, 1, 2, 3].map((n) => {
+        const l = net[n]!
+        const wobble = Math.sin((2 * Math.PI * WOBBLE[n]! * i) / sampleRate) * wobbleDepth
+        return readAt(l, l.buffer.length - 8 + wobble)
+      })
+      // Householder: every line receives the sum of all four, less twice itself. Energy put into
+      // one of them is spread across all of them within two passes.
+      const sum = (taps[0]! + taps[1]! + taps[2]! + taps[3]!) * 0.5
+      for (let n = 0; n < 4; n += 1) {
+        const mixed = sum - taps[n]!
+        held[n] = mixed * (1 - damping) + held[n]! * damping
+        write(net[n]!, seed + held[n]! * feedback)
       }
-      room /= combs.length
-      for (const l of allpasses) {
-        const read = readAt(l, l.buffer.length - 1)
-        const next = -room + read
-        write(l, room + read * 0.5)
-        room = next
-      }
-      value = value * (1 - reverbMix) + room * reverbMix
+      // Opposite pairs to each side, so the two channels hear different rooms.
+      const roomL = (taps[0]! + taps[2]!) * 0.5
+      const roomR = (taps[1]! + taps[3]!) * 0.5
+      const mid = (roomL + roomR) * 0.5
+      left = left * (1 - reverbMix) + (mid + (roomL - mid) * width) * reverbMix
+      right = right * (1 - reverbMix) + (mid + (roomR - mid) * width) * reverbMix
     }
 
-    toneLow = value * (1 - toneG) + toneLow * toneG
-    const high = value - toneLow
-    out[i] = toneLow * lowGain + high * highGain
+    lowL = left * (1 - toneG) + lowL * toneG
+    lowR = right * (1 - toneG) + lowR * toneG
+    outL[i] = lowL * lowGain + (left - lowL) * highGain
+    outR[i] = lowR * lowGain + (right - lowR) * highGain
   }
 
-  return out
+  return { left: outL, right: outR }
 }

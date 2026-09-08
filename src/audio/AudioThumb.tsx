@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { renderPatch } from '@/audio/dsp/render'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
 import { waveformBands } from '@/audio/waveform'
 import type { AudioPatch } from '@/audio/types'
 
@@ -17,7 +17,7 @@ const COLUMNS = 96
 
 export function AudioThumb({ patch }: { patch: AudioPatch }) {
   const path = useMemo(() => {
-    const bands = waveformBands(renderPatch(patch, THUMB_RATE), COLUMNS)
+    const bands = waveformBands(monoSum(renderPatch(patch, THUMB_RATE)), COLUMNS)
     // Out along the peaks, back along the troughs, and closed: one filled shape rather than a
     // stroke, which stays legible at a card's size where a 1px line would break up.
     const top = bands.map((band, index) => `${index === 0 ? 'M' : 'L'}${index},${(1 - band.max) * 50}`).join('')

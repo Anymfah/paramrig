@@ -7,32 +7,39 @@
  * can listen to before any of the interface exists.
  */
 
+import type { Stereo } from '../types.ts'
+
 const HEADER_BYTES = 44
+const CHANNELS = 2
 
 function writeAscii(view: DataView, at: number, text: string): void {
   for (let i = 0; i < text.length; i += 1) view.setUint8(at + i, text.charCodeAt(i))
 }
 
-export function encodeWav(samples: Float32Array, sampleRate: number): Uint8Array {
-  const bytes = new ArrayBuffer(HEADER_BYTES + samples.length * 2)
+export function encodeWav(stereo: Stereo, sampleRate: number): Uint8Array {
+  const frames = stereo.left.length
+  const dataBytes = frames * CHANNELS * 2
+  const bytes = new ArrayBuffer(HEADER_BYTES + dataBytes)
   const view = new DataView(bytes)
+  const blockAlign = CHANNELS * 2
 
   writeAscii(view, 0, 'RIFF')
-  view.setUint32(4, 36 + samples.length * 2, true)
+  view.setUint32(4, 36 + dataBytes, true)
   writeAscii(view, 8, 'WAVE')
   writeAscii(view, 12, 'fmt ')
   view.setUint32(16, 16, true)
   view.setUint16(20, 1, true)
-  view.setUint16(22, 1, true)
+  view.setUint16(22, CHANNELS, true)
   view.setUint32(24, sampleRate, true)
-  view.setUint32(28, sampleRate * 2, true)
-  view.setUint16(32, 2, true)
+  view.setUint32(28, sampleRate * blockAlign, true)
+  view.setUint16(32, blockAlign, true)
   view.setUint16(34, 16, true)
   writeAscii(view, 36, 'data')
-  view.setUint32(40, samples.length * 2, true)
+  view.setUint32(40, dataBytes, true)
 
-  for (let i = 0; i < samples.length; i += 1) {
-    const sample = Math.min(1, Math.max(-1, samples[i] ?? 0))
+  for (let i = 0; i < frames * CHANNELS; i += 1) {
+    const channel = i % CHANNELS === 0 ? stereo.left : stereo.right
+    const sample = Math.min(1, Math.max(-1, channel[Math.floor(i / CHANNELS)] ?? 0))
     // Asymmetric on purpose: the negative side of two's complement reaches one step further, and
     // scaling both sides by 32767 would leave the loudest negative peak a step short of full scale.
     // Rounded, not truncated — setInt16 would truncate towards zero, which is a whole step of

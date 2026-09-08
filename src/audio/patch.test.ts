@@ -37,7 +37,7 @@ describe('sanitizeAudioPatch', () => {
     expect(patch.layers[0]?.filter.kind).toBe('off')
     expect(patch.fx.delayFeedback).toBe(0.95)
     expect(patch.fx.tone).toBe(-1)
-    expect(patch.master.gain).toBe(2)
+    expect(patch.master.gain).toBe(3)
   })
 
   it('keeps a curve that is one and replaces a curve that is not', () => {

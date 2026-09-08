@@ -27,6 +27,24 @@ export function waveformBands(samples: Float32Array, columns: number): WaveformB
   })
 }
 
+/**
+ * Peak and RMS of a stereo pair. The peak is the loudest sample in either channel, because that
+ * is what clips; the RMS is of the sum, because that is what the room hears. Measuring both on
+ * the sum would understate a peak by three decibels the moment anything is panned.
+ */
+export function stereoLevels(stereo: { left: Float32Array; right: Float32Array }): { peak: number; rms: number } {
+  let peak = 0
+  let sum = 0
+  for (let i = 0; i < stereo.left.length; i += 1) {
+    const left = stereo.left[i] ?? 0
+    const right = stereo.right[i] ?? 0
+    peak = Math.max(peak, Math.abs(left), Math.abs(right))
+    const middle = (left + right) * 0.5
+    sum += middle * middle
+  }
+  return { peak, rms: Math.sqrt(sum / Math.max(1, stereo.left.length)) }
+}
+
 /** Peak and RMS, the two numbers worth putting under a waveform. */
 export function levels(samples: Float32Array): { peak: number; rms: number } {
   let peak = 0

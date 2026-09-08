@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mutatePatch, randomPatch } from '@/audio/shuffle'
 import { LAYER_SECTIONS, AUDIO_FIELDS, type LayerSection } from '@/audio/fields'
-import { renderPatch } from '@/audio/dsp/render'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
 import { coin } from '@/audio/presets'
 
 const SAMPLE_RATE = 22050
@@ -52,7 +52,7 @@ describe('randomPatch', () => {
    */
   it('makes an audible, unclipped sound on every seed', () => {
     for (let seed = 0; seed < 40; seed += 1) {
-      const loudest = peak(renderPatch(randomPatch(seed), SAMPLE_RATE))
+      const loudest = peak(monoSum(renderPatch(randomPatch(seed), SAMPLE_RATE)))
       expect(loudest, `seed ${seed} is silent`).toBeGreaterThan(0.05)
       expect(loudest, `seed ${seed} clips`).toBeLessThanOrEqual(1)
     }

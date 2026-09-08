@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { playSamples, stopPlayback } from '@/audio/playback'
+import type { Stereo } from '@/audio/types'
 import { playsOnSpace } from '@/audio/space-key'
 
 /**
@@ -19,12 +20,12 @@ export type Transport = {
   stop: () => void
 }
 
-export function useTransport(samples: Float32Array, sampleRate: number): Transport {
+export function useTransport(samples: Stereo, sampleRate: number): Transport {
   const [playing, setPlaying] = useState(false)
   const [head, setHead] = useState<number | null>(null)
   const [silent, setSilent] = useState(false)
   const frameRef = useRef(0)
-  const seconds = samples.length / Math.max(1, sampleRate)
+  const seconds = samples.left.length / Math.max(1, sampleRate)
 
   const stop = useCallback(() => {
     cancelAnimationFrame(frameRef.current)

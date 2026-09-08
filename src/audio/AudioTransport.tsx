@@ -1,11 +1,12 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, type ReactNode } from 'react'
 import { IconPlay, IconStart } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 import { WaveformView } from '@/audio/WaveformView'
-import { decibels, levels } from '@/audio/waveform'
+import { decibels, stereoLevels } from '@/audio/waveform'
+import { monoSum } from '@/audio/dsp/render'
 import { usePlayKey, useTransport } from '@/audio/useTransport'
 import { layerProfiles } from '@/audio/profiles'
-import type { AudioPatch } from '@/audio/types'
+import type { AudioPatch, Stereo } from '@/audio/types'
 
 /**
  * The transport, and the one loud control on the page.
@@ -16,7 +17,7 @@ import type { AudioPatch } from '@/audio/types'
  * parameters, which are the thing you actually look at while working.
  */
 export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onAutoPlay, tools }: {
-  samples: Float32Array
+  samples: Stereo
   sampleRate: number
   name: string
   /** Drawn over the sum as coloured envelopes, so the architecture of the sound is visible. */
@@ -27,8 +28,10 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
   tools?: ReactNode
 }) {
   const { playing, head, silent, play, stop } = useTransport(samples, sampleRate)
-  const seconds = samples.length / Math.max(1, sampleRate)
-  const { peak, rms } = levels(samples)
+  const seconds = samples.left.length / Math.max(1, sampleRate)
+  // The picture and the numbers are of the sum: what is drawn is what the room hears, not one side.
+  const mono = useMemo(() => monoSum(samples), [samples])
+  const { peak, rms } = stereoLevels(samples)
   const first = useRef(true)
 
   // Space retriggers rather than toggling. These sounds are two hundred milliseconds long: nobody
@@ -60,7 +63,7 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
         </button>
       </Tooltip>
       <div className="audio-transport__wave">
-        <WaveformView samples={samples} label={name} head={head} profiles={patch ? layerProfiles(patch) : []} />
+        <WaveformView samples={mono} label={name} head={head} profiles={patch ? layerProfiles(patch) : []} />
       </div>
       <dl className="audio-transport__figures">
         <div><dt>Length</dt><dd>{seconds < 1 ? `${Math.round(seconds * 1000)} ms` : `${seconds.toFixed(2)} s`}</dd></div>

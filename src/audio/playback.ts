@@ -1,3 +1,5 @@
+import type { Stereo } from '@/audio/types'
+
 /**
  * The only Web Audio in the domain, and it does one thing: hand a finished buffer to the speakers.
  *
@@ -60,17 +62,18 @@ export function stopPlayback(): void {
  * The context is resumed here rather than on mount: browsers only allow that inside a gesture, and
  * every call site is a click or a key press.
  */
-export function playSamples(samples: Float32Array, sampleRate: number, onEnded?: () => void): boolean {
+export function playSamples(stereo: Stereo, sampleRate: number, onEnded?: () => void): boolean {
   const context = audioContext()
-  if (!context || samples.length === 0) return false
+  if (!context || stereo.left.length === 0) return false
   stopPlayback()
   void context.resume().catch(() => {
     /* A context that will not resume simply stays silent; nothing here can force it. */
   })
-  const buffer = context.createBuffer(1, samples.length, sampleRate)
+  const buffer = context.createBuffer(2, stereo.left.length, sampleRate)
   // set() rather than copyToChannel(): the latter is typed against a Float32Array backed by a plain
   // ArrayBuffer, and a renderer that simply says it returns a Float32Array does not promise that.
-  buffer.getChannelData(0).set(samples)
+  buffer.getChannelData(0).set(stereo.left)
+  buffer.getChannelData(1).set(stereo.right)
   const source = context.createBufferSource()
   source.buffer = buffer
   source.connect(context.destination)
