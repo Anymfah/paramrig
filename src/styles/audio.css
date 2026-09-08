@@ -96,8 +96,21 @@
   color: var(--text-secondary);
 }
 
-.audio-transport__auto {
+/*
+ * The push has to land on the tooltip's anchor, not on the button inside it: `Tooltip` wraps its
+ * child in a span, so an auto margin on the button pushes nothing and the whole group drifted to
+ * the middle of the band. The presets take the space when they are there; Auto takes it in Tune,
+ * where they are not.
+ */
+.audio-presets {
   margin-inline-start: auto;
+}
+
+.audio-transport:not(:has(.audio-presets)) .tt__anchor:has(.audio-transport__auto) {
+  margin-inline-start: auto;
+}
+
+.audio-transport__auto {
   touch-action: manipulation;
 }
 

@@ -6,6 +6,7 @@ import { AudioEditorPage } from '@/audio/AudioEditorPage'
 import { createAudioDocument, getAudioDocument, isBundledAudioDocument, saveAudioDocument } from '@/audio/document'
 import { AudioRigPreview } from '@/renderers/audio/AudioRigPreview'
 import { arcadeCoin } from '@/rigs/examples/arcade-coin'
+import { PRESETS } from '@/audio/presets'
 
 /**
  * The page in a browser with no audio device — which jsdom is, and which some real browsers are.
@@ -77,8 +78,11 @@ describe('AudioEditorPage', () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     await user.click(screen.getByRole('button', { name: 'Previous preset' }))
-    // Nothing was loaded yet, so stepping back lands on the last of them.
-    expect(screen.getByText('300 ms')).toBeInTheDocument()
+    // Nothing was loaded yet, so stepping back lands on the last of them — read from the list
+    // rather than written down, so adding a preset does not silently make this assert the wrong one.
+    const last = PRESETS[PRESETS.length - 1]!.build()
+    const shown = last.duration < 1 ? `${Math.round(last.duration * 1000)} ms` : `${last.duration.toFixed(2)} s`
+    expect(screen.getByText(shown)).toBeInTheDocument()
   })
 
   /** Six numeric fields describe the envelope and none of them shows it, so a shape does instead. */
