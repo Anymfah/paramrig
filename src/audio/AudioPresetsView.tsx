@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { AudioThumb } from '@/audio/AudioThumb'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
 import type { AudioSnapshot } from '@/audio/document'
@@ -17,13 +18,15 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
   onPatch: (patch: AudioPatch, id: string) => void
   onRemove: (id: string) => void
 }) {
+  const built = useMemo(() => PRESETS.map((preset) => ({ preset, patch: preset.build() })), [])
+
   return (
     <div className="sound-browser">
       {PRESET_GROUPS.map((group) => (
         <section className="sound-browser__group" key={group} aria-label={group}>
           <h2 className="sound-browser__title">{group}</h2>
           <ul className="sound-browser__grid">
-            {PRESETS.filter((preset) => preset.group === group).map((preset) => (
+            {built.filter(({ preset }) => preset.group === group).map(({ preset, patch }) => (
               <li key={preset.id}>
                 <button
                   type="button"
@@ -31,7 +34,7 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
                   aria-current={preset.id === current ? 'true' : undefined}
                   onClick={() => onPatch(preset.build(), preset.id)}
                 >
-                  <AudioThumb patch={preset.build()} />
+                  <AudioThumb patch={patch} />
                   <span className="sound-card__name">{preset.label}</span>
                 </button>
               </li>
