@@ -829,3 +829,308 @@
 @media (prefers-reduced-motion: reduce) {
   .sound-card:active { transform: none; }
 }
+
+/*
+ * The instrument as a signal path.
+ *
+ * The arrangement every hardware synthesiser uses and every plugin that copies them: the signal
+ * runs left to right across the window and each thing done to it stands upright in the path. Three
+ * layer panels, then the bus they feed. The modulators are a drawer beneath the whole thing rather
+ * than a tab beside it, so setting a rate and seeing the layer it moves are the same glance.
+ */
+.audio-instrument {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-block-size: 0;
+}
+
+.audio-rack {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  overflow: auto;
+  min-block-size: 0;
+}
+
+.audio-lane {
+  --section: var(--accent);
+  flex: 1 1 0;
+  min-inline-size: 15rem;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* The panel head carries the lane's identity, so the colour is a band rather than a wash. */
+.audio-lane__spine {
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in oklab, var(--section) 16%, transparent);
+  border-block-end: 1px solid var(--border-hairline);
+  user-select: none;
+}
+
+.audio-lane__name {
+  color: var(--section);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.audio-lane[data-bus] {
+  --section: var(--text-muted);
+  flex: 1.15 1 0;
+}
+
+.audio-lane[data-off] {
+  flex: 0 0 auto;
+  min-inline-size: 0;
+  opacity: 0.62;
+}
+
+.audio-lane__stages {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-block-size: 0;
+}
+
+/* One stage is one thing done to the signal, and the rules between them are the signal moving. */
+.audio-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-block-end: 1px solid var(--border-hairline);
+}
+
+.audio-stage:last-child {
+  border-block-end: 0;
+}
+
+.audio-stage__title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* Knobs sit in a grid, the way a panel of them does on a face-plate. */
+.audio-stage__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
+  gap: var(--space-2) var(--space-1);
+  align-items: start;
+}
+
+/*
+ * A knob on an instrument is a dial with its name under it, not a labelled row with a dial beneath.
+ * The shared controller stacks a full number field above the dial because in an inspector the
+ * value is the point; here the gesture is, so the order is reversed and the field shrinks to a
+ * readout. Scoped to these panels — the inspector everywhere else is unchanged.
+ */
+.audio-stage .controller-stack,
+.audio-mod .controller-stack {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.audio-stage .controller-stack .control--field,
+.audio-mod .controller-stack .control--field {
+  inline-size: 100%;
+}
+
+.audio-stage .dial-row,
+.audio-mod .dial-row {
+  justify-content: center;
+}
+
+/* Anything that is not a dial — a switch, a wave picker, a curve — spans the grid. */
+.audio-stage__fields > .control:not(.controller-stack),
+.audio-stage__fields > .controller-visual,
+.audio-stage__fields > .controller-curve {
+  grid-column: 1 / -1;
+}
+
+.audio-lane__off {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/*
+ * A knob's name belongs under the knob, small, and its value belongs in the knob's own readout.
+ * The shared number field is built for an inspector, where it is a labelled row with room to
+ * breathe; in a four-rem column that row is three things fighting for the same line. Scoped to
+ * these panels, so the inspector everywhere else keeps the field it was designed as.
+ */
+.audio-stage .number-value,
+.audio-mod .number-value {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  min-block-size: 0;
+}
+
+.audio-stage .number-value__label,
+.audio-mod .number-value__label {
+  order: 2;
+  max-inline-size: 100%;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.audio-stage .number-value__input,
+.audio-mod .number-value__input {
+  order: 1;
+  inline-size: 100% !important;
+  padding: 0;
+  color: var(--text-primary);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: none;
+  border: 0;
+}
+
+/* The reset is a repair, not a control: it appears when the knob is being used. */
+.audio-stage .field-reset,
+.audio-mod .field-reset {
+  order: 3;
+  opacity: 0;
+  transition: opacity var(--duration-instant) var(--ease-out);
+}
+
+.audio-stage .controller-stack:hover .field-reset,
+.audio-mod .controller-stack:hover .field-reset,
+.audio-stage .field-reset:focus-visible,
+.audio-mod .field-reset:focus-visible {
+  opacity: 1;
+}
+
+/* The drawer. Fixed to the foot of the instrument, never behind a tab. */
+.audio-drawer {
+  border-block-start: 1px solid var(--rule);
+  background: var(--surface-inset);
+}
+
+.audio-routing {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--border-hairline);
+  overflow-x: auto;
+  user-select: none;
+}
+
+.audio-route {
+  --section: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.25rem var(--space-3);
+  color: var(--text-secondary);
+  background: color-mix(in oklab, var(--section) 12%, transparent);
+  border: 1px solid color-mix(in oklab, var(--section) 40%, transparent);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  text-decoration: none;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition: background var(--duration-instant) var(--ease-out), border-color var(--duration-instant) var(--ease-out);
+}
+
+.audio-route:hover {
+  background: color-mix(in oklab, var(--section) 22%, transparent);
+}
+
+.audio-route:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.audio-route[data-layer='0'] { --section: #9fd9bd; }
+.audio-route[data-layer='1'] { --section: #93c8ea; }
+.audio-route[data-layer='2'] { --section: #e3c98f; }
+
+.audio-route[data-off] {
+  --section: var(--text-muted);
+  color: var(--text-muted);
+}
+
+.audio-route__slot {
+  color: var(--section);
+  font-weight: 600;
+}
+
+.audio-route__arrow {
+  color: var(--text-muted);
+}
+
+.audio-drawer__panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  max-block-size: 28vh;
+  overflow-y: auto;
+}
+
+.audio-mod {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.audio-mod[data-off] {
+  opacity: 0.6;
+}
+
+.audio-mod__title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.audio-mod__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .audio-rack {
+    flex-direction: column;
+  }
+
+  .audio-lane,
+  .audio-lane[data-off] {
+    flex: 0 0 auto;
+    min-inline-size: 0;
+  }
+
+  .audio-lane__off {
+    writing-mode: horizontal-tb;
+  }
+}

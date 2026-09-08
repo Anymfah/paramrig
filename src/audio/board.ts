@@ -90,6 +90,12 @@ export function boardParameters(): ParameterDef[] {
     const label = parseAudioProperty(property)?.spec.label ?? property
     const parameter = parameterForAudioProperty({ id: property, label, group, property, patch: blank })
     if (!parameter) return []
+    // Every number on the board turns, because this is an instrument rather than a form. The seed
+    // keeps its own view: it is a number you replace, not one you sweep, and a dial that has to
+    // travel a hundred thousand steps is a dial nobody can land on.
+    if (parameter.kind === 'number' && parameter.view !== 'seed') {
+      return [{ ...parameter, view: 'knob' as const }]
+    }
     return [parameter]
   })
 }

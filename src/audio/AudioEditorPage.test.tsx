@@ -26,46 +26,49 @@ const open = (id: string) => render(
 
 describe('AudioEditorPage', () => {
   /** The whole argument of the layout: nothing is behind a tab, so nothing has to be found. */
-  it('shows every layer and the mix at once', () => {
+  it('shows every layer and the bus at once, as lanes of a signal path', () => {
     open(arcadeCoin().id)
-    const board = screen.getByRole('group', { name: 'Sound board' })
-    for (const column of ['Layer 1', 'Layer 2', 'Layer 3', 'Mix']) {
-      expect(within(board).getByRole('region', { name: column })).toBeInTheDocument()
+    const rack = screen.getByRole('group', { name: 'Signal path' })
+    for (const lane of ['Layer 1', 'Layer 2', 'Layer 3', 'Mix']) {
+      expect(within(rack).getByRole('region', { name: lane })).toBeInTheDocument()
     }
-    expect(within(board).queryAllByRole('tab')).toHaveLength(0)
+    expect(within(rack).queryAllByRole('tab')).toHaveLength(0)
   })
 
   /**
    * The tabs separate what you are doing, not what you can see: nothing is hidden inside a view.
    * The layers show every field they have at once, and so do the modulators.
    */
-  it('offers three ways of working, opening on the layers', async () => {
+  it('keeps the modulators under the instrument rather than behind a tab', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     const tabs = screen.getByRole('tablist', { name: 'Views' })
-    expect(within(tabs).getByRole('tab', { name: 'Layers', selected: true })).toBeInTheDocument()
+    expect(within(tabs).getByRole('tab', { name: 'Instrument', selected: true })).toBeInTheDocument()
+    expect(within(tabs).queryByRole('tab', { name: 'Modulation' })).toBeNull()
 
-    await user.click(within(tabs).getByRole('tab', { name: 'Modulation' }))
-    expect(screen.getByRole('region', { name: 'LFO 1' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'LFO 2' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'Layer 1' })).toBeNull()
+    // The layer and the modulator that moves it are on screen together, which is the point.
+    expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Modulation' })).toBeInTheDocument()
 
     await user.click(within(tabs).getByRole('tab', { name: 'Sounds' }))
     expect(screen.getByRole('region', { name: 'Impact' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Sub drop/ })).toBeInTheDocument()
 
-    await user.click(within(tabs).getByRole('tab', { name: 'Layers' }))
+    await user.click(within(tabs).getByRole('tab', { name: 'Instrument' }))
     expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
   })
 
-  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
-    const user = userEvent.setup()
+  it('says what a modulator is doing, and that it is doing it to nothing yet', () => {
     open(arcadeCoin().id)
-    await user.click(screen.getByRole('tab', { name: 'Modulation' }))
-    const first = screen.getByRole('region', { name: 'LFO 1' })
-    expect(within(first).getByText('Not assigned')).toBeInTheDocument()
-    expect(within(first).getByText('Target')).toBeInTheDocument()
-    expect(within(first).getByText('Depth')).toBeInTheDocument()
+    const drawer = screen.getByRole('region', { name: 'Modulation' })
+    // Both modulators are on screen now rather than one at a time, so both say it.
+    expect(within(drawer).getAllByText('Not assigned')).toHaveLength(2)
+    expect(within(drawer).getAllByText('Target')).toHaveLength(2)
+    expect(within(drawer).getAllByText('Depth')).toHaveLength(2)
+    // The routing bar answers the across-the-room question without opening anything.
+    const routing = within(drawer).getByRole('list', { name: 'Routing' })
+    expect(within(routing).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(routing).getAllByText('not assigned')).toHaveLength(2)
   })
 
   it('picks a sound from the browser', async () => {

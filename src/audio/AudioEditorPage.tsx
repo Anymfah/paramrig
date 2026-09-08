@@ -7,10 +7,11 @@ import { Button, IconButton } from '@/ui/Button'
 import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
-import { AudioBoard } from '@/audio/AudioBoard'
+import { AudioRack } from '@/audio/AudioRack'
+import { AudioDrawer } from '@/audio/AudioDrawer'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioTransport } from '@/audio/AudioTransport'
-import { BOARD_CATEGORIES, MODULATION_CATEGORIES, boardParameters, boardValues, setBoardValue } from '@/audio/board'
+import { BOARD_CATEGORIES, boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
 import { renderPatch } from '@/audio/dsp/render'
@@ -26,16 +27,15 @@ const HISTORY_LIMIT = 100
 const EMPTY = { left: new Float32Array(0), right: new Float32Array(0) }
 
 /**
- * Three ways of working on one sound, rather than three places to hunt in.
+ * The instrument, or the library. Two places, not three.
  *
- * Nothing is hidden inside a view — the layers show every field they have at once, and so do the
- * modulators. What the tabs separate is what you are doing: shaping a voice, giving it movement,
- * or looking for a different sound entirely.
+ * Modulation used to be a view of its own, which put giving a sound movement and shaping the voice
+ * it moves in two places you could not occupy at once. It is a drawer under the instrument now, on
+ * screen while you work, the way every synthesiser worth copying arranges it.
  */
-type ViewId = 'layers' | 'modulation' | 'sounds'
+type ViewId = 'instrument' | 'sounds'
 const VIEWS: { id: ViewId; label: string }[] = [
-  { id: 'layers', label: 'Layers' },
-  { id: 'modulation', label: 'Modulation' },
+  { id: 'instrument', label: 'Instrument' },
   { id: 'sounds', label: 'Sounds' },
 ]
 
@@ -67,7 +67,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
   const [preset, setPreset] = useState('')
-  const [view, setView] = useState<ViewId>('layers')
+  const [view, setView] = useState<ViewId>('instrument')
   const [snapshots, setSnapshots] = useState<AudioSnapshot[]>(() => loaded?.snapshots ?? [])
   const [touched, setTouched] = useState(false)
   const gestureRef = useRef(false)
@@ -235,6 +235,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }
 
   const exposed = loaded.rig?.parameters.length ?? 0
+  const began = () => { gestureRef.current = true; capturedRef.current = false }
+  const ended = () => {
+    gestureRef.current = false
+    capturedRef.current = false
+    if (latest.current) setHeard(latest.current)
+  }
 
   return (
     <WorkspaceShell rigs={listRigs()} activeId={documentId} hideInspector mainLabel="Sound">
@@ -321,19 +327,25 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
               onRemove={forget}
             />
           ) : (
-            <AudioBoard
-              categories={view === 'layers' ? BOARD_CATEGORIES : MODULATION_CATEGORIES}
-              parameters={parameters}
-              values={values}
-              duration={patch.duration}
-              onChange={change}
-              onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
-              onGestureEnd={() => {
-                gestureRef.current = false
-                capturedRef.current = false
-                if (latest.current) setHeard(latest.current)
-              }}
-            />
+            <div className="audio-instrument">
+              <AudioRack
+                categories={BOARD_CATEGORIES}
+                parameters={parameters}
+                values={values}
+                duration={patch.duration}
+                onChange={change}
+                onGestureStart={began}
+                onGestureEnd={ended}
+              />
+              <AudioDrawer
+                parameters={parameters}
+                values={values}
+                duration={patch.duration}
+                onChange={change}
+                onGestureStart={began}
+                onGestureEnd={ended}
+              />
+            </div>
           )}
         </div>
       </div>
