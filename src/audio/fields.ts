@@ -69,6 +69,9 @@ const SOURCE_FIELDS: Record<string, FieldSpec> = {
   pulseWidth: num('Pulse width', 0.05, 0.95),
   voices: num('Voices', 1, 5, 1),
   detune: num('Detune', 0, 60, 1, { unit: 'cents' }),
+  fmRatio: num('FM ratio', 0.25, 12, 0.01),
+  fmIndex: num('FM depth', 0, 10, 0.01),
+  fmFall: num('FM fall', 0, 1),
   colour: {
     type: 'option', label: 'Noise colour', options: ['white', 'pink', 'metallic'],
     previews: {

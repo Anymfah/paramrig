@@ -122,6 +122,55 @@ describe('renderPatch', () => {
     })
   })
 
+  /**
+   * The thing subtractive synthesis cannot do. Everything else in the engine takes a harmonic wave
+   * and removes from it; this makes partials that are multiples of nothing.
+   */
+  describe('phase modulation', () => {
+    const tone = (over = {}) => makePatch(0.3, [makeLayer({
+      gain: 0.7,
+      source: { kind: 'tone', wave: 'sine', ...over },
+      pitch: { start: 400 },
+      amp: { attack: 0.004, hold: 0.24, decay: 0.02, sustain: 0.9, release: 0.03, curve: 1.5 },
+    })], { reverbMix: 0, delayMix: 0, flangerMix: 0 }, { limiter: 0 })
+
+    it('is a true bypass at no depth', () => {
+      const plain = monoSum(renderPatch(tone({ fmIndex: 0, fmRatio: 3.5 }), SAMPLE_RATE))
+      const other = monoSum(renderPatch(tone({ fmIndex: 0, fmRatio: 7 }), SAMPLE_RATE))
+      expect(Array.from(plain)).toEqual(Array.from(other))
+    })
+
+    it('changes the sound once it has depth', () => {
+      const plain = monoSum(renderPatch(tone({ fmIndex: 0 }), SAMPLE_RATE))
+      const bright = monoSum(renderPatch(tone({ fmIndex: 5, fmRatio: 3.5, fmFall: 0 }), SAMPLE_RATE))
+      expect(Array.from(bright)).not.toEqual(Array.from(plain))
+    })
+
+    /** A bell loses its clang: the start is not the end, which a static index cannot give. */
+    it('falls away across the layer when it is asked to', () => {
+      const samples = monoSum(renderPatch(tone({ fmIndex: 7, fmRatio: 5.4, fmFall: 1 }), SAMPLE_RATE))
+      const band = (from: number, to: number) => {
+        let crossings = 0
+        for (let i = from + 1; i < to; i += 1) {
+          if (((samples[i] ?? 0) >= 0) !== ((samples[i - 1] ?? 0) >= 0)) crossings += 1
+        }
+        return crossings
+      }
+      const early = band(500, 3000)
+      const late = band(samples.length - 3500, samples.length - 1000)
+      // Zero crossings stand in for brightness: a falling index means fewer of them by the end.
+      expect(early).toBeGreaterThan(late * 1.3)
+    })
+
+    it('stays finite at the deepest it goes', () => {
+      const samples = monoSum(renderPatch(tone({ fmIndex: 10, fmRatio: 12, fmFall: 0 }), SAMPLE_RATE))
+      for (let i = 0; i < samples.length; i += 1) {
+        expect(Number.isFinite(samples[i] ?? 0)).toBe(true)
+        expect(Math.abs(samples[i] ?? 0)).toBeLessThanOrEqual(1)
+      }
+    })
+  })
+
   it('survives a patch built out of nonsense', () => {
     const patch = {
       ...coin(),

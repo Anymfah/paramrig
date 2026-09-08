@@ -89,6 +89,18 @@ export function applyFx(input: Stereo, fx: FxSettings, sampleRate: number): Ster
   // Long enough to be a tail, short enough that a half-second effect is not still ringing.
   const feedback = 0.72 + size * 0.26
   const wobbleDepth = 2.5 * (sampleRate / REFERENCE_RATE)
+  /*
+   * Two normalisations, and without them the mix control lies.
+   *
+   * The input is divided across the four lines rather than handed to each of them whole, because
+   * feeding one signal into four places multiplies its energy by four before the network has done
+   * anything. And the output is scaled by the loop's own steady-state gain: a network with this
+   * much feedback is a room that takes two seconds to decay, and a sustained sound in such a room
+   * builds up about ninefold, which is physically right and means a "mix" of a quarter was in fact
+   * burying the dry signal under nine times its own level.
+   */
+  const inject = 1 / Math.sqrt(4)
+  const makeup = Math.sqrt(1 - feedback * feedback)
 
   // --- tone: one pole a side, tilting the balance rather than cutting a band ---
   const toneG = Math.exp((-2 * Math.PI * 700) / sampleRate)
@@ -138,11 +150,11 @@ export function applyFx(input: Stereo, fx: FxSettings, sampleRate: number): Ster
       for (let n = 0; n < 4; n += 1) {
         const mixed = sum - taps[n]!
         held[n] = mixed * (1 - damping) + held[n]! * damping
-        write(net[n]!, seed + held[n]! * feedback)
+        write(net[n]!, seed * inject + held[n]! * feedback)
       }
       // Opposite pairs to each side, so the two channels hear different rooms.
-      const roomL = (taps[0]! + taps[2]!) * 0.5
-      const roomR = (taps[1]! + taps[3]!) * 0.5
+      const roomL = (taps[0]! + taps[2]!) * 0.5 * makeup
+      const roomR = (taps[1]! + taps[3]!) * 0.5 * makeup
       const mid = (roomL + roomR) * 0.5
       left = left * (1 - reverbMix) + (mid + (roomL - mid) * width) * reverbMix
       right = right * (1 - reverbMix) + (mid + (roomR - mid) * width) * reverbMix

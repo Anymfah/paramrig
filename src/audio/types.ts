@@ -25,6 +25,20 @@ export type SourceSettings = {
   voices: number
   /** Cents between the outermost voices. Does nothing at one voice. */
   detune: number
+  /**
+   * A second oscillator, modulating this one's phase rather than being added to it.
+   *
+   * Subtractive synthesis takes a harmonic wave and removes from it, so everything it makes is
+   * some filtered version of a buzz. Phase modulation makes partials that are not multiples of
+   * anything — bells, struck metal, glass, the growl in an engine — and those are exactly the
+   * timbres a synthesised effect is usually missing when it sounds cheap. It is at its best on a
+   * sine carrier, as it is in every synthesiser that has it.
+   */
+  fmRatio: number
+  /** Depth, in radians of phase. Zero is a true bypass. */
+  fmIndex: number
+  /** How much of the depth is gone by the end of the layer, 0 to 1. A bell loses its clang. */
+  fmFall: number
 }
 
 export type PitchSettings = {

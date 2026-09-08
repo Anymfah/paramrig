@@ -115,7 +115,9 @@ export function randomPatch(seed: number): AudioPatch {
       flangerDepth: between(random, 0.3, 0.9),
       tone: between(random, -0.45, 0.45),
     },
-    { gain: 0.85, limiter: 0.75, fadeOut: 0.01 },
+    // Enough headroom that a sparse draw is still audible now the reverb no longer inflates
+    // everything it touches; the limiter keeps a dense one from going over.
+    { gain: 1.6, limiter: 0.8, fadeOut: 0.01 },
     Math.floor(random() * 9999),
   )
 }

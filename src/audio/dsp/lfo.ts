@@ -40,7 +40,7 @@ export const LFO_RANGE = {
   cutoff: 3,
   /** Absolute, added to the duty cycle. */
   pulseWidth: 0.45,
-  /** A fraction of the layer's own gain. */
+  /** How much of the layer's own gain it can take away. It only ever ducks, never boosts. */
   gain: 1,
 } as const
 

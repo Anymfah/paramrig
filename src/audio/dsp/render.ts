@@ -70,7 +70,10 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     sides.push(pan(Math.min(1, Math.max(-1, layer.pan + place * 2 * width))))
   }
   const phases = ratios.map(() => 0)
+  const fmPhases = ratios.map(() => 0)
   const balance = 1 / Math.sqrt(voices)
+  // Radians of phase deviation, expressed in cycles for the oscillator that reads it.
+  const fmDepth = layer.source.fmIndex / (Math.PI * 2)
   const still = pan(layer.pan)
 
   const find = (destination: LfoDestination) => modulators.find((entry) => entry.destination === destination)
@@ -106,11 +109,22 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
       rawR = (a * (1 - width) + b * width) * still.right
     } else {
       const duty = Math.min(0.95, Math.max(0.05, layer.source.pulseWidth + swing(widthLfo) * LFO_RANGE.pulseWidth))
+      // The depth falls across the layer's life, which is what a struck thing does: the clang is
+      // at the start and what is left afterwards is the note.
+      const depth = fmDepth * (1 - layer.source.fmFall * x)
       for (let voice = 0; voice < voices; voice += 1) {
         const step = dt * (ratios[voice] ?? 1)
         const at = ((phases[voice] ?? 0) + step) % 1
         phases[voice] = at
-        const value = waveAt(layer.source.wave, at, step, duty)
+        let read = at
+        if (depth > 0) {
+          const modStep = step * layer.source.fmRatio
+          const modAt = ((fmPhases[voice] ?? 0) + modStep) % 1
+          fmPhases[voice] = modAt
+          const shifted = (at + depth * Math.sin(modAt * Math.PI * 2)) % 1
+          read = shifted < 0 ? shifted + 1 : shifted
+        }
+        const value = waveAt(layer.source.wave, read, step, duty)
         const side = sides[voice] ?? still
         rawL += value * side.left
         rawR += value * side.right
@@ -125,7 +139,9 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     const right = shapeSample(shapers[1]!, layer.shaper, filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate))
 
     const amplitude = envelopeAt(layer.amp, fitted, t, life)
-    const tremolo = Math.max(0, 1 + swing(gainLfo) * LFO_RANGE.gain)
+    // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
+    // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
+    const tremolo = Math.max(0, 1 + ((swing(gainLfo) - 1) / 2) * LFO_RANGE.gain)
     const level = amplitude * layer.gain * tremolo
     out.left[i] = (out.left[i] ?? 0) + left * level
     out.right[i] = (out.right[i] ?? 0) + right * level
