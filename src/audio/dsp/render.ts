@@ -191,9 +191,29 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
   const fadeIn = Math.max(1, Math.round(FADE_IN_SECONDS * sampleRate))
   const fadeOut = Math.max(1, Math.round(Math.max(0, patch.master.fadeOut) * sampleRate))
 
+  /*
+   * Twelve hertz, one pole, and it is not a tone control.
+   *
+   * An asymmetric pulse carries a constant offset — a 28% duty square sits at -0.44 before
+   * anything else happens to it — and that offset is inaudible, survives the limiter, and occupies
+   * headroom the audible part of the sound is then denied. Measured across the preset library,
+   * Pulse was spending 47% of its peak on it and four others between 13% and 17%. Gating such a
+   * layer is worse: the gate modulates the offset, so a rhythm meant to be heard up at the pitch
+   * of the voice also arrives as a thump at the gate rate.
+   *
+   * It sits before the gain and the limiter so that both of them act on the signal rather than on
+   * a battery underneath it.
+   */
+  const dcPole = 1 - (2 * Math.PI * 12) / sampleRate
+
   for (const channel of [wet.left, wet.right]) {
+    let priorIn = 0
+    let priorOut = 0
     for (let i = 0; i < length; i += 1) {
-      let value = (channel[i] ?? 0) * patch.master.gain
+      const raw = channel[i] ?? 0
+      priorOut = raw - priorIn + dcPole * priorOut
+      priorIn = raw
+      let value = priorOut * patch.master.gain
       // tanh is the limiter here because its slope at zero is exactly one: quiet material passes
       // through untouched and only the peaks bend. A cubic clipper would lift the whole sound.
       if (limiter > 0) value = value * (1 - limiter) + Math.tanh(value) * limiter

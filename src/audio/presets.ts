@@ -24,7 +24,7 @@ export function coin(): AudioPatch {
       pitch: { start: 988, arpeggioRatio: 1.5, arpeggioAt: 0.26, jitter: 10 },
       amp: { attack: 0.004, hold: 0.03, decay: 0.26, sustain: 0, release: 0.09, curve: 2.2 },
     }),
-  ], { tone: 0.2 }, { gain: 2.684 })
+  ], { tone: 0.2 }, { gain: 2.639 })
 }
 
 /** A saw falling three octaves with the filter chasing it down, plus a breath of noise on the front. */
@@ -44,7 +44,7 @@ export function laser(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 2200, resonance: 0.2 },
       amp: { attack: 0.001, hold: 0, decay: 0.045, sustain: 0, release: 0.01, curve: 2.5 },
     }),
-  ], { tone: 0.1 }, { gain: 1.478 })
+  ], { tone: 0.1 }, { gain: 1.471 })
 }
 
 /** Three layers doing three jobs: the crack, the body, the roar. */
@@ -64,33 +64,47 @@ export function explosion(): AudioPatch {
       amp: { attack: 0.002, hold: 0.01, decay: 0.5, sustain: 0, release: 0.2, curve: 2.2 },
     }),
     makeLayer({
-      gain: 0.35,
+      gain: 0.58,
+      spread: 0.55,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 1800, resonance: 0.1 },
-      amp: { attack: 0.0005, hold: 0, decay: 0.06, sustain: 0, release: 0.02, curve: 3 },
+      filter: { kind: 'highpass', cutoff: 5500, resonance: 0.12 },
+      amp: { attack: 0.0004, hold: 0.003, decay: 0.045, sustain: 0, release: 0.03, curve: 3 },
     }),
-  ], { reverbMix: 0.22, reverbSize: 0.7, reverbDamping: 0.5, tone: -0.25 }, { gain: 1.09, limiter: 0.9 })
+  ], { reverbMix: 0.22, reverbSize: 0.7, reverbDamping: 0.5, tone: -0.25 }, { gain: 0.982, limiter: 0.9 })
 }
 
-/** Nine hundredths of a second. The jitter is what keeps it bearable the two-hundredth time. */
+/**
+ * The one that fires two hundred times a session, so it is the shortest thing here and the most
+ * carefully made. A body at seven kilohertz decaying in thirty-five milliseconds gives it a pitch
+ * without giving it a note, the tick above it is the part the ear reads as "crisp", and the jitter
+ * is still what keeps it bearable the two-hundredth time.
+ */
 export function uiClick(): AudioPatch {
-  return patch(0.09, [
+  return patch(0.11, [
     makeLayer({
-      gain: 0.633,
+      gain: 0.55,
+      spread: 0.35,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 2800, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 7200, spread: 0.28, decay: 0.035, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.0035, sustain: 0, release: 0.0015, curve: 2.6 },
+    }),
+    makeLayer({
+      gain: 0.22,
+      spread: 0.8,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 11000, jitter: 25 },
+      filter: { kind: 'highpass', cutoff: 8500, resonance: 0.1 },
+      amp: { attack: 0.0002, hold: 0, decay: 0.006, sustain: 0, release: 0.003, curve: 3.2 },
+    }),
+    makeLayer({
+      gain: 0.18,
       source: { kind: 'tone', wave: 'triangle' },
       pitch: { start: 2300, slide: -12, slideCurve: EASE_OUT, jitter: 20 },
-      amp: { attack: 0.0005, hold: 0, decay: 0.045, sustain: 0, release: 0.02, curve: 2.5 },
+      amp: { attack: 0.0005, hold: 0, decay: 0.03, sustain: 0, release: 0.015, curve: 2.6 },
     }),
-    makeLayer({
-      gain: 0.281,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 3400, jitter: 25 },
-      filter: { kind: 'highpass', cutoff: 1900, resonance: 0.15 },
-      amp: { attack: 0.0004, hold: 0, decay: 0.028, sustain: 0, release: 0.012, curve: 3 },
-    }),
-  ], { tone: 0.3 }, { gain: 2.654 })
+  ], { tone: 0.3, width: 0.6 }, { gain: 0.885 })
 }
-
 /** Rising, and a step up near the end so it reads as an arrival rather than a ramp. */
 export function powerup(): AudioPatch {
   return patch(0.6, [
@@ -101,19 +115,31 @@ export function powerup(): AudioPatch {
       pitch: { start: 523, slide: 19, slideCurve: EASE_IN, arpeggioRatio: 1.26, arpeggioAt: 0.62, jitter: 8 },
       amp: { attack: 0.006, hold: 0.02, decay: 0.4, sustain: 0.35, release: 0.14, curve: 1.8 },
     }),
-  ], { tone: 0.25, delayMix: 0.12, delayTime: 0.09, delayFeedback: 0.25 }, { gain: 2.202 })
+  ], { tone: 0.25, delayMix: 0.12, delayTime: 0.09, delayFeedback: 0.25 }, { gain: 1.853 })
 }
 
-/** Band-passed noise swept across the ear, with the flanger doing the movement. */
+/**
+ * Band-passed noise swept across the ear, with the flanger doing the movement. The band travels
+ * four and a half octaves now rather than three, which carries it to nine kilohertz by the end,
+ * and a second wash of white noise opens behind it: the thing being described is moving air, and
+ * it ought to contain some.
+ */
 export function whoosh(): AudioPatch {
   return patch(0.9, [
     makeLayer({
       gain: 1.5,
       source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 400, resonance: 0.55, envAmount: 3.2, envCurve: LINEAR },
+      filter: { kind: 'bandpass', cutoff: 400, resonance: 0.55, envAmount: 4.5, envCurve: LINEAR },
       amp: { attack: 0.3, hold: 0.02, decay: 0.35, sustain: 0.2, release: 0.22, curve: 1.6 },
     }),
-  ], { flangerMix: 0.35, flangerRate: 0.7, flangerDepth: 0.6, reverbMix: 0.15, tone: -0.1 }, { gain: 2.211 })
+    makeLayer({
+      gain: 0.34,
+      spread: 1,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.2, envAmount: 1.6, envCurve: LINEAR },
+      amp: { attack: 0.38, hold: 0.02, decay: 0.3, sustain: 0.18, release: 0.24, curve: 1.6 },
+    }),
+  ], { flangerMix: 0.35, flangerRate: 0.7, flangerDepth: 0.6, reverbMix: 0.15, width: 0.9, tone: 0.05 }, { gain: 2.201 })
 }
 
 /** Short, blunt, and low enough to feel like contact. */
@@ -132,7 +158,7 @@ export function hit(): AudioPatch {
       pitch: { start: 160, slide: -14, slideCurve: EASE_OUT },
       amp: { attack: 0.001, hold: 0, decay: 0.14, sustain: 0, release: 0.06, curve: 2.4 },
     }),
-  ], { tone: -0.15 }, { gain: 1.333 })
+  ], { tone: -0.15 }, { gain: 1.32 })
 }
 
 /** A square that climbs. The oldest sound in the medium. */
@@ -144,7 +170,7 @@ export function jump(): AudioPatch {
       pitch: { start: 320, slide: 15, slideCurve: EASE_OUT, jitter: 12 },
       amp: { attack: 0.004, hold: 0.02, decay: 0.18, sustain: 0, release: 0.06, curve: 2 },
     }),
-  ], { tone: 0.15 }, { gain: 2.958 })
+  ], { tone: 0.15 }, { gain: 2.7 })
 }
 
 
@@ -172,7 +198,15 @@ export function hologram(): AudioPatch {
       pitch: { start: 1180, slide: -2, vibratoRate: 6.5, vibratoDepth: 0.35, jitter: 14 },
       amp: { attack: 0.06, hold: 0.02, decay: 0.25, sustain: 0.3, release: 0.32, curve: 1.6 },
     }),
-  ], { flangerMix: 0.42, flangerRate: 0.9, flangerDepth: 0.75, reverbMix: 0.3, reverbSize: 0.75, reverbDamping: 0.35, tone: 0.4 }, { gain: 2.588 })
+    makeLayer({
+      gain: 0.3,
+      spread: 1,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9200, jitter: 30, vibratoRate: 9, vibratoDepth: 0.25 },
+      filter: { kind: 'bandpass', cutoff: 9500, resonance: 0.45 },
+      amp: { attack: 0.05, hold: 0.03, decay: 0.28, sustain: 0.28, release: 0.3, curve: 1.6 },
+    }),
+  ], { flangerMix: 0.42, flangerRate: 0.9, flangerDepth: 0.75, reverbMix: 0.3, reverbSize: 0.75, reverbDamping: 0.35, tone: 0.4 }, { gain: 2.599 })
 }
 
 /** Everything falls at once and the room keeps it. The drop is the whole gesture. */
@@ -192,29 +226,50 @@ export function warp(): AudioPatch {
       filter: { kind: 'bandpass', cutoff: 900, resonance: 0.5, envAmount: -2.2, envCurve: EASE_OUT },
       amp: { attack: 0.02, hold: 0, decay: 0.4, sustain: 0.08, release: 0.45, curve: 2 },
     }),
-  ], { reverbMix: 0.36, reverbSize: 0.85, reverbDamping: 0.4, delayMix: 0.14, delayTime: 0.16, delayFeedback: 0.35, tone: -0.15 }, { gain: 3 })
+    makeLayer({
+      gain: 0.3,
+      spread: 0.95,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 10500, slide: -30, slideCurve: EASE_OUT, jitter: 20 },
+      filter: { kind: 'highpass', cutoff: 5000, resonance: 0.2, envAmount: -1.8, envCurve: EASE_OUT },
+      amp: { attack: 0.004, hold: 0.02, decay: 0.35, sustain: 0.06, release: 0.3, curve: 2.2 },
+    }),
+  ], { reverbMix: 0.36, reverbSize: 0.85, reverbDamping: 0.4, delayMix: 0.14, delayTime: 0.16, delayFeedback: 0.35, tone: -0.15 }, { gain: 2.964 })
 }
 
-/** The sound a panel makes when it agrees with you. Two notes up, and a tail that is all room. */
+/**
+ * The sound a panel makes when it agrees with you. The two notes up are the message and they are
+ * unchanged; what was missing was the moment before them — three milliseconds of bright body, so
+ * the arpeggio arrives at something rather than fading in out of nothing.
+ */
 export function interfaceConfirm(): AudioPatch {
   return patch(0.5, [
     makeLayer({
+      gain: 0.42,
+      spread: 0.4,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3200, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 9000, spread: 0.3, decay: 0.045, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
+    }),
+    makeLayer({
       gain: 0.54,
       spread: 0.5,
+      offset: 0.006,
       source: { kind: 'tone', wave: 'sine', voices: 2, detune: 7 },
       pitch: { start: 1320, arpeggioRatio: 1.5, arpeggioAt: 0.22, jitter: 16 },
       amp: { attack: 0.002, hold: 0.02, decay: 0.14, sustain: 0, release: 0.1, curve: 2.4 },
     }),
     makeLayer({
-      gain: 0.189,
+      gain: 0.17,
+      spread: 0.85,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 4200, jitter: 25 },
-      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.2 },
-      amp: { attack: 0.001, hold: 0, decay: 0.05, sustain: 0, release: 0.03, curve: 3 },
+      pitch: { start: 10500, jitter: 25 },
+      filter: { kind: 'highpass', cutoff: 8000, resonance: 0.12 },
+      amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
     }),
-  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, tone: 0.45 }, { gain: 2.679 })
+  ], { delayMix: 0.22, delayTime: 0.085, delayFeedback: 0.4, reverbMix: 0.22, reverbSize: 0.6, width: 0.7, tone: 0.45 }, { gain: 0.284 })
 }
-
 /** Something filling up. The filter opens with the pitch, which is what makes it read as building. */
 export function charge(): AudioPatch {
   return patch(1.1, [
@@ -227,12 +282,13 @@ export function charge(): AudioPatch {
       amp: { attack: 0.12, hold: 0.02, decay: 0.3, sustain: 0.55, release: 0.18, curve: 1.5 },
     }),
     makeLayer({
-      gain: 0.211,
+      gain: 0.26,
+      spread: 0.7,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 1400, resonance: 0.3, envAmount: 2.2, envCurve: EASE_IN },
+      filter: { kind: 'highpass', cutoff: 1400, resonance: 0.3, envAmount: 3.2, envCurve: EASE_IN },
       amp: { attack: 0.25, hold: 0, decay: 0.4, sustain: 0.3, release: 0.2, curve: 1.4 },
     }),
-  ], { flangerMix: 0.2, flangerRate: 0.35, flangerDepth: 0.6, reverbMix: 0.18, tone: 0.2 }, { gain: 2.813 })
+  ], { flangerMix: 0.2, flangerRate: 0.35, flangerDepth: 0.6, reverbMix: 0.18, tone: 0.2 }, { gain: 2.58 })
 }
 
 /** A beam passing over you: one narrow band walked across the spectrum and back through a flanger. */
@@ -251,7 +307,7 @@ export function scan(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 2200, resonance: 0.25 },
       amp: { attack: 0.2, hold: 0, decay: 0.35, sustain: 0.2, release: 0.25, curve: 1.6 },
     }),
-  ], { flangerMix: 0.45, flangerRate: 1.6, flangerDepth: 0.85, reverbMix: 0.24, reverbSize: 0.7, tone: 0.3 }, { gain: 2.35 })
+  ], { flangerMix: 0.45, flangerRate: 1.6, flangerDepth: 0.85, reverbMix: 0.24, reverbSize: 0.7, tone: 0.3 }, { gain: 2.348 })
 }
 
 
@@ -280,13 +336,15 @@ export function impact(): AudioPatch {
       amp: { attack: 0.001, hold: 0.02, decay: 0.28, sustain: 0.06, release: 0.3, curve: 2.3 },
     }),
     makeLayer({
-      gain: 0.3,
+      gain: 0.52,
+      spread: 0.5,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 5200, jitter: 18 },
-      filter: { kind: 'highpass', cutoff: 3200, resonance: 0.12 },
-      amp: { attack: 0.0004, hold: 0, decay: 0.03, sustain: 0, release: 0.015, curve: 3.2 },
+      pitch: { start: 9500, jitter: 18 },
+      filter: { kind: 'highpass', cutoff: 7000, resonance: 0.12 },
+      resonator: { amount: 0.7, frequency: 11500, spread: 0.4, decay: 0.03, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.002, decay: 0.014, sustain: 0, release: 0.01, curve: 3.2 },
     }),
-  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 1.042, limiter: 0.85 })
+  ], { reverbMix: 0.2, reverbSize: 0.72, reverbDamping: 0.55, tone: -0.2 }, { gain: 0.951, limiter: 0.85 })
 }
 
 /** Falls further the longer it goes, which is the difference between a drop and a slide. */
@@ -305,30 +363,50 @@ export function subDrop(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 2400, resonance: 0.2 },
       amp: { attack: 0.001, hold: 0, decay: 0.05, sustain: 0, release: 0.03, curve: 3 },
     }),
-  ], { reverbMix: 0.14, reverbSize: 0.6, tone: -0.45 }, { gain: 1.432, limiter: 0.9 })
+  ], { reverbMix: 0.14, reverbSize: 0.6, tone: -0.45 }, { gain: 1.392, limiter: 0.9 })
 }
 
-/** Machine noise: quantised to four bits and repeated by a delay short enough to be a texture. */
+/**
+ * Machine noise: quantised to four bits and repeated by a delay short enough to be a texture. The
+ * band it runs in moved up an octave and a half — data moving is a high sound, not a mid one —
+ * and a gate on the second layer breaks the stream into packets rather than a tone.
+ *
+ * The crush came down from 0.3 to almost nothing, and that is not a taste decision. Crush is a
+ * sample-and-hold: at 0.3 it repeats every sample twenty times, so the layer is running at an
+ * effective 2.2 kHz and its own Nyquist sits at 1.1 kHz. Everything above that folds down. It is
+ * the most aggressively dark control in the instrument, and it was cancelling the sources it sat
+ * on top of — raising them made this preset quieter up high, not brighter.
+ */
 export function dataBurst(): AudioPatch {
   return patch(0.55, [
     makeLayer({
-      gain: 0.536,
+      gain: 0.5,
+      spread: 0.5,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 3300, slide: -6, slideCurve: LINEAR, arpeggioRatio: 1.6, arpeggioAt: 0.4, jitter: 30 },
-      filter: { kind: 'bandpass', cutoff: 2800, resonance: 0.4, envAmount: -1.4, envCurve: EASE_OUT },
-      shaper: { drive: 0.2, bitDepth: 4, crush: 0.3 },
+      pitch: { start: 8200, slide: -6, slideCurve: LINEAR, arpeggioRatio: 1.6, arpeggioAt: 0.4, jitter: 30 },
+      filter: { kind: 'bandpass', cutoff: 7000, resonance: 0.4, envAmount: -1.4, envCurve: EASE_OUT },
+      shaper: { drive: 0.2, bitDepth: 4, crush: 0.02 },
       amp: { attack: 0.001, hold: 0.01, decay: 0.09, sustain: 0.15, release: 0.12, curve: 2.6 },
     }),
     makeLayer({
-      gain: 0.255,
+      gain: 0.26,
+      spread: 0.8,
       source: { kind: 'tone', wave: 'square', pulseWidth: 0.12 },
-      pitch: { start: 1900, slide: 5, jitter: 35 },
-      shaper: { drive: 0, bitDepth: 5, crush: 0.2 },
-      amp: { attack: 0.0008, hold: 0, decay: 0.04, sustain: 0, release: 0.03, curve: 3 },
+      pitch: { start: 4600, slide: 5, jitter: 35 },
+      shaper: { drive: 0, bitDepth: 5, crush: 0.01 },
+      amp: { attack: 0.0008, hold: 0.02, decay: 0.06, sustain: 0.3, release: 0.08, curve: 3 },
     }),
-  ], { delayMix: 0.35, delayTime: 0.055, delayFeedback: 0.52, reverbMix: 0.12, tone: 0.25 }, { gain: 2.155 })
+    makeLayer({
+      gain: 0.2,
+      spread: 0.4,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3600, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 10200, spread: 0.3, decay: 0.03, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 2.6 },
+    }),
+  ], { delayMix: 0.35, delayTime: 0.055, delayFeedback: 0.52, reverbMix: 0.12, width: 0.8, tone: 0.25 },
+     { gain: 1.292 }, [{ enabled: true, shape: 'square', rate: 27, depth: 0.85, phase: 0.3, target: 'layers[1].gain' }])
 }
-
 /** Everything closing at once — pitch, filter and level — which is what "off" sounds like. */
 export function powerDown(): AudioPatch {
   return patch(1.7, [
@@ -349,25 +427,38 @@ export function powerDown(): AudioPatch {
   ], { reverbMix: 0.26, reverbSize: 0.78, reverbDamping: 0.5, tone: -0.3 }, { gain: 3 })
 }
 
-/** Three of the same blip, spaced by a delay rather than played, which is why it locks. */
+/**
+ * Three of the same blip, spaced by a delay rather than played, which is why it locks. The blip
+ * itself is now a struck body rather than a sine, so each repeat is metal rather than a tone —
+ * a targeting reticle is a machine, and machines are made of something.
+ */
 export function lockOn(): AudioPatch {
   return patch(0.95, [
     makeLayer({
-      gain: 0.625,
+      gain: 0.42,
+      spread: 0.4,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 7600, spread: 0.22, decay: 0.05, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
+    }),
+    makeLayer({
+      gain: 0.55,
+      offset: 0.002,
       source: { kind: 'tone', wave: 'sine' },
       pitch: { start: 2550, slide: 3, slideCurve: EASE_OUT, jitter: 10 },
       amp: { attack: 0.0015, hold: 0.008, decay: 0.05, sustain: 0, release: 0.04, curve: 2.8 },
     }),
     makeLayer({
-      gain: 0.294,
+      gain: 0.22,
+      spread: 0.85,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 6200, jitter: 22 },
-      filter: { kind: 'highpass', cutoff: 3600, resonance: 0.18 },
-      amp: { attack: 0.0005, hold: 0, decay: 0.025, sustain: 0, release: 0.02, curve: 3 },
+      pitch: { start: 11500, jitter: 22 },
+      filter: { kind: 'highpass', cutoff: 8500, resonance: 0.12 },
+      amp: { attack: 0.0004, hold: 0, decay: 0.018, sustain: 0, release: 0.012, curve: 3 },
     }),
-  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, tone: 0.35 }, { gain: 2.58 })
+  ], { delayMix: 0.4, delayTime: 0.115, delayFeedback: 0.5, reverbMix: 0.2, reverbSize: 0.55, width: 0.75, tone: 0.35 }, { gain: 0.855 })
 }
-
 /** Held rather than struck. The flanger does the shimmering; the vibrato keeps it from sitting still. */
 export function shield(): AudioPatch {
   return patch(1.4, [
@@ -385,30 +476,50 @@ export function shield(): AudioPatch {
       pitch: { start: 440, slide: 2, vibratoRate: 4.5, vibratoDepth: 0.3, jitter: 12 },
       amp: { attack: 0.08, hold: 0.05, decay: 0.35, sustain: 0.5, release: 0.5, curve: 1.4 },
     }),
-  ], { flangerMix: 0.5, flangerRate: 0.55, flangerDepth: 0.8, reverbMix: 0.34, reverbSize: 0.8, reverbDamping: 0.35, tone: 0.25 }, { gain: 2.547 })
+    makeLayer({
+      gain: 0.26,
+      spread: 1,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 8800, jitter: 24, vibratoRate: 7.5, vibratoDepth: 0.2 },
+      filter: { kind: 'bandpass', cutoff: 9200, resonance: 0.48, envAmount: 0.6, envCurve: EASE_OUT },
+      amp: { attack: 0.06, hold: 0.06, decay: 0.35, sustain: 0.4, release: 0.5, curve: 1.4 },
+    }),
+  ], { flangerMix: 0.5, flangerRate: 0.55, flangerDepth: 0.8, reverbMix: 0.34, reverbSize: 0.8, reverbDamping: 0.35, tone: 0.25 }, { gain: 2.417 })
 }
 
-/** Two notes down and a little dirt on them. Down is what a refusal sounds like in every language. */
+/**
+ * Two notes down and a little dirt on them. Down is what a refusal sounds like in every language,
+ * and the tick that opens it now sits above eight kilohertz — a warning is allowed to be sharp.
+ */
 export function alert(): AudioPatch {
   return patch(0.65, [
     makeLayer({
-      gain: 0.4,
+      gain: 0.34,
       spread: 0.55,
       source: { kind: 'tone', wave: 'square', pulseWidth: 0.42, voices: 2, detune: 10 },
       pitch: { start: 620, arpeggioRatio: 0.72, arpeggioAt: 0.38, jitter: 8 },
+      offset: 0.003,
       shaper: { drive: 0.22, bitDepth: 16, crush: 0 },
       amp: { attack: 0.003, hold: 0.05, decay: 0.22, sustain: 0.3, release: 0.16, curve: 2 },
     }),
     makeLayer({
-      gain: 0.14,
-      source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 3800, jitter: 20 },
-      filter: { kind: 'highpass', cutoff: 2600, resonance: 0.15 },
-      amp: { attack: 0.0005, hold: 0, decay: 0.03, sustain: 0, release: 0.02, curve: 3 },
+      gain: 0.44,
+      spread: 0.5,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3400, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 8600, spread: 0.32, decay: 0.04, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
     }),
-  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, tone: -0.05 }, { gain: 3 })
+    makeLayer({
+      gain: 0.13,
+      spread: 0.8,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9500, jitter: 20 },
+      filter: { kind: 'highpass', cutoff: 7500, resonance: 0.12 },
+      amp: { attack: 0.0004, hold: 0, decay: 0.02, sustain: 0, release: 0.012, curve: 3 },
+    }),
+  ], { delayMix: 0.18, delayTime: 0.14, delayFeedback: 0.3, reverbMix: 0.18, width: 0.7, tone: -0.05 }, { gain: 0.411 })
 }
-
 
 /**
  * Seven that the engine could not have made a week ago.
@@ -420,7 +531,12 @@ export function alert(): AudioPatch {
  * modulators are decoration.
  */
 
-/** Something opening. Wide, slow, and the filter breathing under a swell that never quite settles. */
+/**
+ * Something opening. Wide, slow, and the filter breathing under a swell that never quite settles.
+ * The third layer is the air above it — a band near ten kilohertz that fades in later than the
+ * other two and drifts, because the thing on the far side of a portal should be audible before it
+ * is identifiable.
+ */
 export function portal(): AudioPatch {
   return patch(2, [
     makeLayer({
@@ -438,62 +554,106 @@ export function portal(): AudioPatch {
       filter: { kind: 'bandpass', cutoff: 500, resonance: 0.55, envAmount: 3.2, envCurve: LINEAR },
       amp: { attack: 0.7, hold: 0.05, decay: 0.4, sustain: 0.5, release: 0.6, curve: 1.3 },
     }),
-  ], { reverbMix: 0.45, reverbSize: 0.95, reverbDamping: 0.28, flangerMix: 0.28, flangerRate: 0.35, flangerDepth: 0.7, width: 0.9, tone: 0.1 },
-     { gain: 2.432 }, [{ enabled: true, shape: 'sine', rate: 0.7, depth: 0.5, target: 'layers[0].cutoff' }])
+    makeLayer({
+      gain: 0.42,
+      spread: 1,
+      offset: 0.25,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9800, jitter: 30 },
+      filter: { kind: 'bandpass', cutoff: 9000, resonance: 0.42, envAmount: 0.8, envCurve: LINEAR },
+      amp: { attack: 0.5, hold: 0.1, decay: 0.4, sustain: 0.45, release: 0.6, curve: 1.3 },
+    }),
+  ], { reverbMix: 0.45, reverbSize: 0.95, reverbDamping: 0.28, flangerMix: 0.28, flangerRate: 0.35, flangerDepth: 0.7, width: 0.9, tone: 0.25 },
+     { gain: 2.468 }, [
+       { enabled: true, shape: 'sine', rate: 0.7, depth: 0.5, target: 'layers[0].cutoff' },
+       { enabled: true, shape: 'triangle', rate: 0.45, depth: 0.5, phase: 0.3, target: 'layers[2].gain' },
+     ])
 }
-
-/** Something failing. Stepped pitch and a gate that does not line up with it. */
+/**
+ * Something failing. Stepped pitch and a gate that does not line up with it.
+ *
+ * The crush came down from 0.45, where it was holding each sample twenty-nine times and putting
+ * this preset's own Nyquist at 760 Hz — every source above it folded down into mud, which is not
+ * what a digital fault sounds like. Modern breakage is bright and shattery: it is data arriving
+ * wrong, not a speaker giving up. Three bits of quantisation still supply the grit.
+ */
 export function glitch(): AudioPatch {
   return patch(0.45, [
     makeLayer({
       gain: 0.45,
       spread: 0.6,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 2700, jitter: 40 },
-      shaper: { drive: 0.25, bitDepth: 3, crush: 0.45 },
+      pitch: { start: 5600, jitter: 40 },
+      filter: { kind: 'highpass', cutoff: 2600, resonance: 0.18 },
+      shaper: { drive: 0.25, bitDepth: 3, crush: 0.04 },
       amp: { attack: 0.001, hold: 0.06, decay: 0.1, sustain: 0.4, release: 0.12, curve: 2.4 },
     }),
     makeLayer({
       gain: 0.24,
       spread: 0.8,
       source: { kind: 'tone', wave: 'square', pulseWidth: 0.2, voices: 2, detune: 30 },
-      pitch: { start: 880, jitter: 45 },
-      shaper: { drive: 0, bitDepth: 4, crush: 0.25 },
+      pitch: { start: 2100, jitter: 45 },
+      shaper: { drive: 0, bitDepth: 4, crush: 0.02 },
       amp: { attack: 0.001, hold: 0.05, decay: 0.08, sustain: 0.35, release: 0.1, curve: 2.6 },
     }),
-  ], { delayMix: 0.3, delayTime: 0.042, delayFeedback: 0.5, reverbMix: 0.14, width: 0.85, tone: 0.35 },
-     { gain: 1.26 }, [
+    makeLayer({
+      gain: 0.3,
+      spread: 0.9,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 6000, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 11800, spread: 0.55, decay: 0.02, partials: 3 },
+      amp: { attack: 0.0002, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 3 },
+    }),
+  ], { delayMix: 0.3, delayTime: 0.042, delayFeedback: 0.5, reverbMix: 0.14, width: 0.85, tone: 0.4 },
+     { gain: 1.145 }, [
        { enabled: true, shape: 'square', rate: 23, depth: 0.55, target: 'layers[0].pitch' },
        { enabled: true, shape: 'square', rate: 31, depth: 0.9, target: 'layers[1].gain' },
      ])
 }
-
-/** Held metal, sweeping. The two modulators are deliberately unrelated so it never repeats. */
+/**
+ * Held metal, sweeping. The two modulators are deliberately unrelated so it never repeats, and the
+ * band they sweep now sits an octave and a half higher — ionised air is a hiss, not a hum. The
+ * triangle underneath is the only thing anchoring it to a pitch.
+ */
 export function ion(): AudioPatch {
   return patch(1.7, [
     makeLayer({
       gain: 0.809,
       spread: 1,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 2100, jitter: 20 },
-      filter: { kind: 'bandpass', cutoff: 2300, resonance: 0.58 },
+      pitch: { start: 7400, jitter: 20 },
+      filter: { kind: 'bandpass', cutoff: 7200, resonance: 0.58 },
       amp: { attack: 0.12, hold: 0.1, decay: 0.4, sustain: 0.55, release: 0.6, curve: 1.4 },
     }),
     makeLayer({
-      gain: 0.526,
+      gain: 0.4,
       spread: 0.9,
       source: { kind: 'tone', wave: 'triangle', voices: 3, detune: 11 },
       pitch: { start: 880, jitter: 14 },
       amp: { attack: 0.2, hold: 0.08, decay: 0.35, sustain: 0.5, release: 0.55, curve: 1.3 },
     }),
-  ], { flangerMix: 0.5, flangerRate: 0.45, flangerDepth: 0.85, reverbMix: 0.42, reverbSize: 0.9, reverbDamping: 0.3, width: 1, tone: 0.35 },
-     { gain: 2.828 }, [
+    makeLayer({
+      gain: 0.3,
+      spread: 0.5,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 4000, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 10600, spread: 0.4, decay: 0.06, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.0015, decay: 0.004, sustain: 0, release: 0.002, curve: 2.6 },
+    }),
+  ], { flangerMix: 0.5, flangerRate: 0.45, flangerDepth: 0.85, reverbMix: 0.42, reverbSize: 0.9, reverbDamping: 0.3, width: 1, tone: 0.4 },
+     { gain: 3 }, [
        { enabled: true, shape: 'triangle', rate: 0.4, depth: 0.7, target: 'layers[0].cutoff' },
        { enabled: true, shape: 'sine', rate: 5.5, depth: 0.06, target: 'layers[1].pitch' },
      ])
 }
-
-/** A ship, idling. Five detuned saws is most of it; the rest is the room refusing to be still. */
+/**
+ * A ship, idling. Five detuned saws is most of it; the rest is the room refusing to be still.
+ *
+ * The saws stay where they were, because an engine is a low sound and making it bright would make
+ * it a different object. What it was missing is the turbine over the top — every large machine
+ * that is not a diesel has a whine an octave or three above anything you would call its pitch, and
+ * without it this was a rumble rather than a drive.
+ */
 export function engine(): AudioPatch {
   return patch(2.1, [
     makeLayer({
@@ -512,14 +672,25 @@ export function engine(): AudioPatch {
       filter: { kind: 'lowpass', cutoff: 900, resonance: 0.3 },
       amp: { attack: 0.35, hold: 0.35, decay: 0.5, sustain: 0.6, release: 0.55, curve: 1.3 },
     }),
-  ], { reverbMix: 0.24, reverbSize: 0.7, reverbDamping: 0.6, width: 0.8, tone: -0.35 },
-     { gain: 1.225 }, [
+    makeLayer({
+      gain: 0.16,
+      spread: 0.7,
+      source: { kind: 'tone', wave: 'saw', voices: 3, detune: 7 },
+      pitch: { start: 8400, jitter: 6, vibratoRate: 0.6, vibratoDepth: 0.12 },
+      filter: { kind: 'bandpass', cutoff: 9200, resonance: 0.5 },
+      amp: { attack: 0.4, hold: 0.35, decay: 0.5, sustain: 0.55, release: 0.6, curve: 1.3 },
+    }),
+  ], { reverbMix: 0.24, reverbSize: 0.7, reverbDamping: 0.6, width: 0.8, tone: -0.15 },
+     { gain: 1.253 }, [
        { enabled: true, shape: 'sine', rate: 0.9, depth: 0.35, target: 'layers[0].cutoff' },
        { enabled: true, shape: 'triangle', rate: 1.7, depth: 0.28, target: 'layers[1].gain' },
      ])
 }
-
-/** A laser held down. The fast modulator on the filter is what turns a tone into a weapon. */
+/**
+ * A laser held down. The fast modulator on the filter is what turns a tone into a weapon, and the
+ * layer above it is the part that reads as energy rather than as a note — a narrow band up at nine
+ * kilohertz, modulated by the same fifteen hertz, so the two move together.
+ */
 export function beam(): AudioPatch {
   return patch(0.95, [
     makeLayer({
@@ -530,19 +701,41 @@ export function beam(): AudioPatch {
       filter: { kind: 'bandpass', cutoff: 1900, resonance: 0.66, envAmount: -1.2, envCurve: EASE_OUT },
       amp: { attack: 0.008, hold: 0.35, decay: 0.15, sustain: 0.55, release: 0.2, curve: 1.8 },
     }),
-  ], { delayMix: 0.24, delayTime: 0.068, delayFeedback: 0.44, reverbMix: 0.22, width: 0.9, tone: 0.3 },
-     { gain: 2.23 }, [{ enabled: true, shape: 'sine', rate: 15, depth: 0.5, target: 'layers[0].cutoff' }])
+    makeLayer({
+      gain: 0.3,
+      spread: 0.95,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9200, jitter: 18 },
+      filter: { kind: 'bandpass', cutoff: 9000, resonance: 0.6 },
+      amp: { attack: 0.006, hold: 0.35, decay: 0.15, sustain: 0.5, release: 0.2, curve: 1.8 },
+    }),
+    makeLayer({
+      gain: 0.26,
+      spread: 0.4,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 3600, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 10800, spread: 0.3, decay: 0.04, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
+    }),
+  ], { delayMix: 0.24, delayTime: 0.068, delayFeedback: 0.44, reverbMix: 0.22, width: 0.9, tone: 0.4 },
+     { gain: 1.766 }, [
+       { enabled: true, shape: 'sine', rate: 15, depth: 0.5, target: 'layers[0].cutoff' },
+       { enabled: true, shape: 'sine', rate: 15, depth: 0.45, phase: 0.5, target: 'layers[1].cutoff' },
+     ])
 }
-
-/** Noise resolving into a note: the scatter fades as the tone arrives underneath it. */
+/**
+ * Noise resolving into a note: the scatter fades as the tone arrives underneath it. The scatter
+ * starts far higher than it used to — something assembling out of nothing is a sparkle first and a
+ * pitch second — and the sampled-noise modulator on its pitch is what keeps it from being a hiss.
+ */
 export function materialize(): AudioPatch {
   return patch(1.5, [
     makeLayer({
       gain: 0.838,
       spread: 1,
-      source: { kind: 'noise', colour: 'white' },
-      pitch: { start: 2400 },
-      filter: { kind: 'lowpass', cutoff: 5000, resonance: 0.35, envAmount: -2.6, envCurve: EASE_OUT },
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9600, jitter: 25 },
+      filter: { kind: 'bandpass', cutoff: 9000, resonance: 0.4, envAmount: -2.6, envCurve: EASE_OUT },
       amp: { attack: 0.02, hold: 0.1, decay: 0.55, sustain: 0.1, release: 0.35, curve: 1.7 },
     }),
     makeLayer({
@@ -553,11 +746,28 @@ export function materialize(): AudioPatch {
       pitch: { start: 520, slide: -3, slideCurve: EASE_OUT, jitter: 12 },
       amp: { attack: 0.35, hold: 0.1, decay: 0.3, sustain: 0.5, release: 0.35, curve: 1.4 },
     }),
-  ], { reverbMix: 0.36, reverbSize: 0.82, reverbDamping: 0.4, width: 0.95, tone: 0.15 },
-     { gain: 3 }, [{ enabled: true, shape: 'noise', rate: 19, depth: 0.45, target: 'layers[0].pitch' }])
+    makeLayer({
+      gain: 0.3,
+      spread: 0.9,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 5000, resonance: 0.12 },
+      amp: { attack: 0.01, hold: 0.05, decay: 0.4, sustain: 0.08, release: 0.3, curve: 2 },
+    }),
+  ], { reverbMix: 0.36, reverbSize: 0.82, reverbDamping: 0.4, width: 0.95, tone: 0.35 },
+     { gain: 3 }, [
+       { enabled: true, shape: 'noise', rate: 19, depth: 0.45, target: 'layers[0].pitch' },
+       { enabled: true, shape: 'noise', rate: 26, depth: 0.7, target: 'layers[2].gain' },
+     ])
 }
-
-/** A terminal thinking. A square modulator on the gain is a gate, and a gate is a rhythm. */
+/**
+ * A terminal thinking. A square modulator on the gain is a gate, and a gate is a rhythm.
+ *
+ * This preset is the reason the master chain now blocks DC. A 28% duty pulse is asymmetric, so it
+ * carries a constant offset, and gating it modulates that offset — measured here, 47% of the
+ * peak was a battery rather than a sound, which cost the preset both loudness and its own bottom
+ * end. The chatter above it is the part that makes it read as a machine working rather than a bass
+ * note being interrupted: a high band, gated faster, and out of phase with the low one.
+ */
 export function pulse(): AudioPatch {
   return patch(1.2, [
     makeLayer({
@@ -568,13 +778,29 @@ export function pulse(): AudioPatch {
       filter: { kind: 'lowpass', cutoff: 1700, resonance: 0.52 },
       amp: { attack: 0.01, hold: 0.5, decay: 0.2, sustain: 0.7, release: 0.25, curve: 1.5 },
     }),
-  ], { delayMix: 0.22, delayTime: 0.105, delayFeedback: 0.38, reverbMix: 0.24, reverbSize: 0.65, width: 0.85, tone: 0.2 },
-     { gain: 0.524 }, [
+    makeLayer({
+      gain: 0.3,
+      spread: 0.9,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 8800, jitter: 28 },
+      filter: { kind: 'bandpass', cutoff: 8600, resonance: 0.45 },
+      shaper: { drive: 0, bitDepth: 8, crush: 0 },
+      amp: { attack: 0.004, hold: 0.5, decay: 0.2, sustain: 0.6, release: 0.25, curve: 1.6 },
+    }),
+    makeLayer({
+      gain: 0.22,
+      spread: 0.4,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 4200, resonance: 0.14 },
+      resonator: { amount: 1, frequency: 9800, spread: 0.34, decay: 0.03, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.0025, sustain: 0, release: 0.001, curve: 2.8 },
+    }),
+  ], { delayMix: 0.22, delayTime: 0.105, delayFeedback: 0.38, reverbMix: 0.24, reverbSize: 0.65, width: 0.85, tone: 0.3 },
+     { gain: 0.896 }, [
        { enabled: true, shape: 'square', rate: 9, depth: 1, target: 'layers[0].gain' },
-       { enabled: true, shape: 'triangle', rate: 0.8, depth: 0.6, target: 'layers[0].cutoff' },
+       { enabled: true, shape: 'square', rate: 13.5, depth: 0.9, phase: 0.4, target: 'layers[1].gain' },
      ])
 }
-
 
 /**
  * Five that are not subtractive at all.
@@ -596,7 +822,7 @@ export function chime(): AudioPatch {
       pitch: { start: 780, jitter: 10 },
       amp: { attack: 0.002, hold: 0.01, decay: 0.55, sustain: 0.05, release: 0.5, curve: 2.4 },
     }),
-  ], { reverbMix: 0.3, reverbSize: 0.8, reverbDamping: 0.35, width: 0.9, tone: 0.3 }, { gain: 2.873 }, [])
+  ], { reverbMix: 0.3, reverbSize: 0.8, reverbDamping: 0.35, width: 0.9, tone: 0.3 }, { gain: 2.862 }, [])
 }
 
 /** Struck metal. A high ratio and a depth that collapses is the whole of the clang. */
@@ -634,7 +860,7 @@ export function growl(): AudioPatch {
       amp: { attack: 0.12, hold: 0.3, decay: 0.5, sustain: 0.6, release: 0.6, curve: 1.4 },
     }),
   ], { reverbMix: 0.24, reverbSize: 0.7, reverbDamping: 0.55, width: 0.8, tone: -0.3 },
-     { gain: 1.763 }, [{ enabled: true, shape: 'triangle', rate: 1.3, depth: 0.4, target: 'layers[0].cutoff' }])
+     { gain: 1.652 }, [{ enabled: true, shape: 'triangle', rate: 1.3, depth: 0.4, target: 'layers[0].cutoff' }])
 }
 
 /** A signal arriving through something. Inharmonic, quantised, and stuttered by a short delay. */
@@ -649,7 +875,7 @@ export function transmission(): AudioPatch {
       amp: { attack: 0.004, hold: 0.14, decay: 0.18, sustain: 0.35, release: 0.22, curve: 1.9 },
     }),
   ], { delayMix: 0.3, delayTime: 0.062, delayFeedback: 0.46, reverbMix: 0.2, width: 0.9, tone: 0.3 },
-     { gain: 1.928 }, [{ enabled: true, shape: 'square', rate: 13, depth: 0.35, target: 'layers[0].pitch' }])
+     { gain: 1.857 }, [{ enabled: true, shape: 'square', rate: 13, depth: 0.35, target: 'layers[0].pitch' }])
 }
 
 /** A warning that is not a beep: the ratio makes it sour, and the modulator makes it circle. */
@@ -664,7 +890,7 @@ export function siren(): AudioPatch {
       amp: { attack: 0.05, hold: 0.4, decay: 0.3, sustain: 0.65, release: 0.4, curve: 1.4 },
     }),
   ], { reverbMix: 0.3, reverbSize: 0.75, delayMix: 0.16, delayTime: 0.19, delayFeedback: 0.3, width: 0.95, tone: 0.1 },
-     { gain: 2.674 }, [{ enabled: true, shape: 'sine', rate: 1.1, depth: 0.45, target: 'layers[0].pitch' }])
+     { gain: 2.668 }, [{ enabled: true, shape: 'sine', rate: 1.1, depth: 0.45, target: 'layers[0].pitch' }])
 }
 
 
