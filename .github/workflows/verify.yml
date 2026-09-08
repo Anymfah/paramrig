@@ -10,6 +10,12 @@ on:
   push:
   pull_request:
 
+# The chain only reads the repository. The account's default for workflow tokens is read-only
+# already; saying it here keeps it true if that default ever widens, and is what CodeQL asks of a
+# public workflow.
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
