@@ -8,6 +8,7 @@ import { applyFx } from './space.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
 import { MAX_VOICES } from '../fields.ts'
+import { createModal, modalSample } from './modal.ts'
 
 /**
  * The whole synthesiser, as one pure function.
@@ -46,6 +47,9 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   // channels are no longer the same signal by the time they get here.
   const filters = [createFilter(), createFilter()]
   const shapers = [createShaper(), createShaper()]
+  const partials = Math.min(6, Math.max(1, Math.round(layer.resonator.partials)))
+  const bodies = [createModal(partials), createModal(partials)]
+  const resonance = Math.min(1, Math.max(0, layer.resonator.amount))
   const fitted = fitEnvelope(layer.amp, life)
   const nyquist = sampleRate * 0.5
 
@@ -138,13 +142,20 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     const left = shapeSample(shapers[0]!, layer.shaper, filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate))
     const right = shapeSample(shapers[1]!, layer.shaper, filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate))
 
+    // The bank comes after everything that shapes the excitation and before the envelope: it is
+    // the thing being struck, not a filter on the way out.
+    const struck = resonance <= 0 ? { l: left, r: right } : {
+      l: left * (1 - resonance) + modalSample(bodies[0]!, left, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance,
+      r: right * (1 - resonance) + modalSample(bodies[1]!, right, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance,
+    }
+
     const amplitude = envelopeAt(layer.amp, fitted, t, life)
     // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
     // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
     const tremolo = Math.max(0, 1 + ((swing(gainLfo) - 1) / 2) * LFO_RANGE.gain)
     const level = amplitude * layer.gain * tremolo
-    out.left[i] = (out.left[i] ?? 0) + left * level
-    out.right[i] = (out.right[i] ?? 0) + right * level
+    out.left[i] = (out.left[i] ?? 0) + struck.l * level
+    out.right[i] = (out.right[i] ?? 0) + struck.r * level
   }
 }
 

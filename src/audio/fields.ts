@@ -117,6 +117,14 @@ const SHAPER_FIELDS: Record<string, FieldSpec> = {
   crush: num('Sample crush', 0, 1),
 }
 
+const RESONATOR_FIELDS: Record<string, FieldSpec> = {
+  amount: num('Resonance', 0, 1),
+  frequency: num('Body', 40, 8000, 1, { unit: 'Hz', scale: 'log' }),
+  spread: num('Inharmonicity', 0, 1),
+  decay: num('Ring', 0.01, 3, 0.001, SECONDS),
+  partials: num('Partials', 1, 6, 1),
+}
+
 const AMP_FIELDS: Record<string, FieldSpec> = {
   attack: num('Attack', 0, 2, 0.001, SECONDS),
   hold: num('Hold', 0, 2, 0.001, SECONDS),
@@ -189,7 +197,7 @@ export const AUDIO_FIELDS = {
   master: MASTER_FIELDS,
 } as const
 
-export type LayerSection = 'root' | 'source' | 'pitch' | 'filter' | 'shaper' | 'amp'
+export type LayerSection = 'root' | 'source' | 'pitch' | 'filter' | 'shaper' | 'resonator' | 'amp'
 
 export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
   root: LAYER_FIELDS,
@@ -197,6 +205,7 @@ export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
   pitch: PITCH_FIELDS,
   filter: FILTER_FIELDS,
   shaper: SHAPER_FIELDS,
+  resonator: RESONATOR_FIELDS,
   amp: AMP_FIELDS,
 }
 

@@ -22,6 +22,7 @@ const SECTION_LABELS: Record<LayerSection, string> = {
   pitch: 'Pitch',
   filter: 'Filter',
   shaper: 'Shaper',
+  resonator: 'Body',
   amp: 'Envelope',
 }
 
@@ -36,7 +37,7 @@ export const MODULATION_CATEGORIES: InspectorCategory[] = Array.from(
   (_, index) => ({ id: `lfo${index}`, label: `LFO ${index + 1}` }),
 )
 
-const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'shaper', 'amp']
+const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'shaper', 'resonator', 'amp']
 
 export function boardGroups(): ParamGroup[] {
   const layers = Array.from({ length: LAYER_COUNT }, (_, index) =>

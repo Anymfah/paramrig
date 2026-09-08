@@ -95,6 +95,20 @@ export type AmpSettings = {
 /** Two channels of samples. Everything downstream of the engine takes this shape. */
 export type Stereo = { left: Float32Array; right: Float32Array }
 
+/**
+ * A bank of resonances the layer is played through: what turns a click into a struck thing rather
+ * than a click. At no amount it is a true bypass.
+ */
+export type ResonatorSettings = {
+  amount: number
+  frequency: number
+  /** 0 collapses every partial onto the fundamental; 1 opens them to the ratios of a free bar. */
+  spread: number
+  /** Seconds for the fundamental to fall sixty decibels. */
+  decay: number
+  partials: number
+}
+
 export type Layer = {
   enabled: boolean
   gain: number
@@ -113,6 +127,7 @@ export type Layer = {
   pitch: PitchSettings
   filter: FilterSettings
   shaper: ShaperSettings
+  resonator: ResonatorSettings
   amp: AmpSettings
 }
 

@@ -1,6 +1,6 @@
 import { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, PitchSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -21,6 +21,7 @@ export type LayerInput = {
   pitch?: Partial<PitchSettings>
   filter?: Partial<FilterSettings>
   shaper?: Partial<ShaperSettings>
+  resonator?: Partial<ResonatorSettings>
   amp?: Partial<AmpSettings>
 }
 
@@ -38,6 +39,7 @@ export function makeLayer(input: LayerInput = {}): Layer {
     },
     filter: { kind: 'off', cutoff: 8000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filter },
     shaper: { drive: 0, bitDepth: 16, crush: 0, ...input.shaper },
+    resonator: { amount: 0, frequency: 900, spread: 0.7, decay: 0.25, partials: 4, ...input.resonator },
     amp: { attack: 0.004, hold: 0, decay: 0.12, sustain: 0, release: 0.05, curve: 2, ...input.amp },
   }
 }
