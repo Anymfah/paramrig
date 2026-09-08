@@ -47,11 +47,13 @@ export function modalSample(
 ): number {
   const nyquist = sampleRate * 0.48
   let sum = 0
+  let rang = 0
   for (let i = 0; i < states.length; i += 1) {
     const state = states[i]
     if (!state) continue
     const partial = modalPartial(i, frequency, spread)
     if (partial >= nyquist) continue
+    rang += 1
     const seconds = Math.max(0.005, decay / (DAMPING[i] ?? 1))
     // r is how much of the ring survives one sample; 0.001 is sixty decibels down.
     const r = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * sampleRate)))
@@ -68,6 +70,8 @@ export function modalSample(
     state.y1 = value
     sum += value
   }
-  // Normalised by the count so adding partials thickens the sound rather than raising its level.
-  return states.length > 0 ? sum / Math.sqrt(states.length) : input
+  // A body tuned above what the rate can carry has nothing to ring with, and silence would be the
+  // wrong answer — the strike still happened. Normalised by the count that actually sounded, so
+  // adding partials thickens the sound rather than raising its level.
+  return rang > 0 ? sum / Math.sqrt(rang) : input
 }

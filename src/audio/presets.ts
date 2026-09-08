@@ -671,82 +671,126 @@ export function siren(): AudioPatch {
 /**
  * Four small mechanisms.
  *
- * This is the family a synthesiser normally cannot reach: the click of a modern interface, which
- * is not a tone at all but a very short excitation striking a small body, with resonances that
- * die at their own rates. What makes them read as a *thing* rather than a beep is that the body
- * outlives the strike — the click is over in three milliseconds and the object is still ringing.
+ * The family a synthesiser normally cannot reach: the click of a modern interface, which is not a
+ * tone but a very short excitation striking a body. Three things make them read as a mechanism
+ * rather than a beep, and the first two were wrong in the version before this one.
+ *
+ * The strike is three to five milliseconds long — not ninety. What lasts is the body ringing on
+ * after it, which is why the envelope now shapes the excitation and not the ring.
+ *
+ * And the bodies are high. This kind of sound lives in the air band: eight to twelve kilohertz for
+ * the top, with something in the low mids underneath it for weight. A click built around a body at
+ * one kilohertz sounds like a telephone; the same click at nine sounds like a interface.
  */
 
-/** The one a menu makes. A snap of noise into a small bright body, and nothing else. */
+/** The one a menu makes: a strike of five milliseconds into a bright body, and a tick over it. */
 export function select(): AudioPatch {
-  return patch(0.16, [
+  return patch(0.2, [
     makeLayer({
-      gain: 0.55,
+      gain: 0.3,
+      spread: 0.45,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'highpass', cutoff: 2200, resonance: 0.12 },
+      resonator: { amount: 1, frequency: 9400, spread: 0.26, decay: 0.055, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0012, curve: 2.6 },
+    }),
+    makeLayer({
+      gain: 0.85,
+      spread: 0.7,
+      source: { kind: 'noise', colour: 'pink' },
+      filter: { kind: 'bandpass', cutoff: 2600, resonance: 0.25 },
+      resonator: { amount: 0.95, frequency: 3300, spread: 0.4, decay: 0.085, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.0015, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.4 },
+    }),
+    makeLayer({
+      gain: 0.12,
+      spread: 0.9,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9800, jitter: 25 },
+      filter: { kind: 'highpass', cutoff: 8000, resonance: 0.1 },
+      amp: { attack: 0.0002, hold: 0, decay: 0.008, sustain: 0, release: 0.004, curve: 3.2 },
+    }),
+  ], { reverbMix: 0.14, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.42 }, { gain: 0.527 }, [])
+}
+
+/** The same mechanism committing to something: a lower body, a longer ring, and weight under it. */
+export function toggle(): AudioPatch {
+  return patch(0.3, [
+    makeLayer({
+      gain: 0.75,
       spread: 0.4,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 700, resonance: 0.15 },
-      resonator: { amount: 0.92, frequency: 2450, spread: 0.62, decay: 0.09, partials: 4 },
-      amp: { attack: 0.0004, hold: 0.002, decay: 0.09, sustain: 0, release: 0.05, curve: 2.6 },
+      filter: { kind: 'highpass', cutoff: 1500, resonance: 0.15 },
+      resonator: { amount: 1, frequency: 4600, spread: 0.38, decay: 0.12, partials: 4 },
+      amp: { attack: 0.0004, hold: 0.002, decay: 0.005, sustain: 0, release: 0.002, curve: 2.4 },
+    }),
+    makeLayer({
+      gain: 0.14,
+      spread: 0.65,
+      source: { kind: 'noise', colour: 'metallic' },
+      pitch: { start: 9000, jitter: 20 },
+      filter: { kind: 'highpass', cutoff: 6000, resonance: 0.1 },
+      amp: { attack: 0.0002, hold: 0, decay: 0.01, sustain: 0, release: 0.005, curve: 3 },
+    }),
+    makeLayer({
+      gain: 0.3,
+      offset: 0.005,
+      source: { kind: 'tone', wave: 'sine' },
+      pitch: { start: 165, slide: -9, slideCurve: EASE_OUT },
+      amp: { attack: 0.001, hold: 0.004, decay: 0.05, sustain: 0, release: 0.03, curve: 2.5 },
+    }),
+  ], { reverbMix: 0.13, reverbSize: 0.24, reverbDamping: 0.75, width: 0.8, tone: 0.2 }, { gain: 0.262 }, [])
+}
+
+/** Going back. The body is the same size; what falls is the note underneath it. */
+export function dismiss(): AudioPatch {
+  return patch(0.26, [
+    makeLayer({
+      gain: 0.9,
+      spread: 0.45,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'bandpass', cutoff: 3400, resonance: 0.2 },
+      resonator: { amount: 1, frequency: 7400, spread: 0.34, decay: 0.075, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.0015, decay: 0.0035, sustain: 0, release: 0.0015, curve: 2.5 },
+    }),
+    makeLayer({
+      gain: 0.1,
+      spread: 0.6,
+      source: { kind: 'tone', wave: 'sine', voices: 2, detune: 8 },
+      pitch: { start: 940, slide: -8, slideCurve: EASE_OUT, jitter: 10 },
+      amp: { attack: 0.001, hold: 0.004, decay: 0.07, sustain: 0, release: 0.05, curve: 2.4 },
     }),
     makeLayer({
       gain: 0.16,
-      spread: 0.7,
+      spread: 0.85,
       source: { kind: 'noise', colour: 'metallic' },
-      pitch: { start: 6400, jitter: 25 },
-      filter: { kind: 'highpass', cutoff: 4200, resonance: 0.1 },
-      amp: { attack: 0.0003, hold: 0, decay: 0.012, sustain: 0, release: 0.008, curve: 3.2 },
+      pitch: { start: 8600, jitter: 22 },
+      filter: { kind: 'highpass', cutoff: 6500, resonance: 0.1 },
+      amp: { attack: 0.0002, hold: 0, decay: 0.006, sustain: 0, release: 0.003, curve: 3.2 },
     }),
-  ], { reverbMix: 0.16, reverbSize: 0.3, reverbDamping: 0.65, width: 0.85, tone: 0.32 }, { gain: 0.204 }, [])
+  ], { reverbMix: 0.16, reverbSize: 0.26, reverbDamping: 0.7, width: 0.8, tone: 0.22 }, { gain: 1.427 }, [])
 }
 
-/** The same mechanism, heavier and lower — what a switch that commits to something sounds like. */
-export function toggle(): AudioPatch {
-  return patch(0.24, [
-    makeLayer({
-      gain: 0.6,
-      spread: 0.35,
-      source: { kind: 'noise', colour: 'pink' },
-      filter: { kind: 'bandpass', cutoff: 900, resonance: 0.3 },
-      shaper: { drive: 0.2, bitDepth: 16, crush: 0 },
-      resonator: { amount: 0.88, frequency: 780, spread: 0.78, decay: 0.14, partials: 5 },
-      amp: { attack: 0.0005, hold: 0.003, decay: 0.13, sustain: 0, release: 0.07, curve: 2.4 },
-    }),
-    makeLayer({
-      gain: 0.22,
-      source: { kind: 'tone', wave: 'sine' },
-      pitch: { start: 140, slide: -9, slideCurve: EASE_OUT },
-      amp: { attack: 0.001, hold: 0, decay: 0.06, sustain: 0, release: 0.04, curve: 2.6 },
-    }),
-  ], { reverbMix: 0.15, reverbSize: 0.28, reverbDamping: 0.7, width: 0.8, tone: 0.05 }, { gain: 0.012 }, [])
-}
-
-/** Going back: the same body, struck softer and tuned down, so it reads as undoing. */
-export function dismiss(): AudioPatch {
-  return patch(0.22, [
-    makeLayer({
-      gain: 0.5,
-      spread: 0.4,
-      source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'lowpass', cutoff: 3200, resonance: 0.2 },
-      resonator: { amount: 0.9, frequency: 1150, spread: 0.5, decay: 0.11, partials: 3 },
-      pitch: { start: 1150, slide: -5, slideCurve: EASE_OUT },
-      amp: { attack: 0.0006, hold: 0.002, decay: 0.1, sustain: 0, release: 0.06, curve: 2.5 },
-    }),
-  ], { reverbMix: 0.18, reverbSize: 0.32, reverbDamping: 0.6, width: 0.85, tone: 0.05 }, { gain: 0.08 }, [])
-}
-
-/** Glass rather than metal: a long thin body, struck once, allowed to ring out. */
+/** Glass. A body near the top of hearing, its partials almost in tune, allowed to ring right out. */
 export function crystal(): AudioPatch {
-  return patch(1.1, [
+  return patch(1.3, [
     makeLayer({
-      gain: 0.5,
+      gain: 0.55,
       spread: 0.7,
       source: { kind: 'noise', colour: 'white' },
-      filter: { kind: 'highpass', cutoff: 1200, resonance: 0.1 },
-      resonator: { amount: 0.95, frequency: 3200, spread: 0.34, decay: 0.85, partials: 5 },
-      amp: { attack: 0.0004, hold: 0.002, decay: 0.6, sustain: 0, release: 0.45, curve: 2.2 },
+      filter: { kind: 'highpass', cutoff: 3000, resonance: 0.1 },
+      resonator: { amount: 1, frequency: 8400, spread: 0.14, decay: 0.85, partials: 4 },
+      amp: { attack: 0.0003, hold: 0.001, decay: 0.003, sustain: 0, release: 0.001, curve: 2.8 },
     }),
-  ], { reverbMix: 0.3, reverbSize: 0.6, reverbDamping: 0.45, width: 0.95, tone: 0.35 }, { gain: 0.108 }, [])
+    makeLayer({
+      gain: 0.75,
+      spread: 0.9,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'bandpass', cutoff: 5000, resonance: 0.2 },
+      resonator: { amount: 1, frequency: 4100, spread: 0.2, decay: 0.65, partials: 3 },
+      amp: { attack: 0.0004, hold: 0.0012, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.6 },
+    }),
+  ], { reverbMix: 0.3, reverbSize: 0.55, reverbDamping: 0.4, width: 0.95, tone: 0.45 }, { gain: 0.318 }, [])
 }
 
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */

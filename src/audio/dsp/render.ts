@@ -142,20 +142,30 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     const left = shapeSample(shapers[0]!, layer.shaper, filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate))
     const right = shapeSample(shapers[1]!, layer.shaper, filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate))
 
-    // The bank comes after everything that shapes the excitation and before the envelope: it is
-    // the thing being struck, not a filter on the way out.
-    const struck = resonance <= 0 ? { l: left, r: right } : {
-      l: left * (1 - resonance) + modalSample(bodies[0]!, left, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance,
-      r: right * (1 - resonance) + modalSample(bodies[1]!, right, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance,
-    }
-
+    /*
+     * The envelope shapes the *excitation*, and the body rings on after it.
+     *
+     * This was the wrong way round, and it is the whole difference between a struck thing and
+     * filtered noise. With the envelope after the bank, a short envelope cut the ring off, so the
+     * only way to get a tail was to keep the noise running for the length of it — which is not an
+     * object being hit, it is an object being sanded. Struck properly, the excitation is over in
+     * three milliseconds and what you hear afterwards is the body deciding to stop.
+     */
     const amplitude = envelopeAt(layer.amp, fitted, t, life)
     // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
     // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
     const tremolo = Math.max(0, 1 + ((swing(gainLfo) - 1) / 2) * LFO_RANGE.gain)
-    const level = amplitude * layer.gain * tremolo
-    out.left[i] = (out.left[i] ?? 0) + struck.l * level
-    out.right[i] = (out.right[i] ?? 0) + struck.r * level
+    const hitL = left * amplitude
+    const hitR = right * amplitude
+
+    const bodyL = resonance <= 0 ? hitL
+      : hitL * (1 - resonance) + modalSample(bodies[0]!, hitL, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance
+    const bodyR = resonance <= 0 ? hitR
+      : hitR * (1 - resonance) + modalSample(bodies[1]!, hitR, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance
+
+    const level = layer.gain * tremolo
+    out.left[i] = (out.left[i] ?? 0) + bodyL * level
+    out.right[i] = (out.right[i] ?? 0) + bodyR * level
   }
 }
 

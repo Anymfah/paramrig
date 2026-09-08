@@ -47,13 +47,13 @@ describe('modalSample', () => {
 
   it('stays finite at the longest ring and the highest body', () => {
     const rung = strike(6, 7900, 1, 3)
-    for (let i = 0; i < rung.length; i += 1) expect(Number.isFinite(rung[i] ?? 0)).toBe(true)
+    expect(rung.every((value) => Number.isFinite(value))).toBe(true)
   })
 
   /** A partial above Nyquist is skipped rather than folded back down as a whine. */
   it('drops a partial that would not fit under the rate', () => {
     const rung = strike(6, 6000, 1, 0.3)
-    for (let i = 0; i < rung.length; i += 1) expect(Math.abs(rung[i] ?? 0)).toBeLessThan(20)
+    expect(rung.every((value) => Math.abs(value) < 20)).toBe(true)
   })
 
   it('passes the signal straight through when it has no partials', () => {

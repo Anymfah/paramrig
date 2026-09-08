@@ -119,7 +119,9 @@ const SHAPER_FIELDS: Record<string, FieldSpec> = {
 
 const RESONATOR_FIELDS: Record<string, FieldSpec> = {
   amount: num('Resonance', 0, 1),
-  frequency: num('Body', 40, 8000, 1, { unit: 'Hz', scale: 'log' }),
+  // Up to sixteen kilohertz, because the bright end is where this family of sound lives: a
+  // modern interface click is mostly air, and a body capped at eight could not reach it.
+  frequency: num('Body', 40, 16000, 1, { unit: 'Hz', scale: 'log' }),
   spread: num('Inharmonicity', 0, 1),
   decay: num('Ring', 0.01, 3, 0.001, SECONDS),
   partials: num('Partials', 1, 6, 1),

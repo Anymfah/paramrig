@@ -5,10 +5,12 @@ import { PRESETS, coin, makeLayer, makePatch, silentLayer, uiClick } from '@/aud
 const SAMPLE_RATE = 44100
 /**
  * The sweeps over every sample of every preset are about shape, not fidelity, and they cost twice
- * what they did before two channels and a delay network. A third of the rate says the same thing
- * in a third of the time.
+ * what they did before two channels and a delay network, so they run below the rate a file is
+ * written at. Not far below: a resonant body tuned to nine kilohertz has nothing to ring with
+ * under a rate of sixteen, and the preset would read as silent for a reason that is about the
+ * measurement rather than about the sound.
  */
-const SCAN_RATE = 16000
+const SCAN_RATE = 32000
 
 /** The engine renders two channels; what is measured here is what the room hears. */
 const render = (patch: Parameters<typeof renderPatch>[0], rate = SAMPLE_RATE) => monoSum(renderPatch(patch, rate))
@@ -41,14 +43,22 @@ describe('renderPatch', () => {
     }
   })
 
+  /**
+   * Scanned in a plain loop and asserted once a preset. Written with an `expect` a sample it made
+   * over a million assertion calls and timed out — the cost was the assertions, not the audio.
+   */
   it('never leaves full scale and never goes non-finite', () => {
     for (const preset of PRESETS) {
       const samples = render(preset.build(), SCAN_RATE)
+      let loudest = 0
+      let broken = 0
       for (let i = 0; i < samples.length; i += 1) {
         const value = samples[i] ?? 0
-        expect(Number.isFinite(value)).toBe(true)
-        expect(Math.abs(value)).toBeLessThanOrEqual(1)
+        if (!Number.isFinite(value)) broken += 1
+        else if (Math.abs(value) > loudest) loudest = Math.abs(value)
       }
+      expect(broken, `${preset.id} has non-finite samples`).toBe(0)
+      expect(loudest, `${preset.id} goes past full scale`).toBeLessThanOrEqual(1)
     }
   })
 
@@ -164,10 +174,15 @@ describe('renderPatch', () => {
 
     it('stays finite at the deepest it goes', () => {
       const samples = monoSum(renderPatch(tone({ fmIndex: 10, fmRatio: 12, fmFall: 0 }), SAMPLE_RATE))
+      let worst = 0
+      let broken = 0
       for (let i = 0; i < samples.length; i += 1) {
-        expect(Number.isFinite(samples[i] ?? 0)).toBe(true)
-        expect(Math.abs(samples[i] ?? 0)).toBeLessThanOrEqual(1)
+        const value = samples[i] ?? 0
+        if (!Number.isFinite(value)) broken += 1
+        else if (Math.abs(value) > worst) worst = Math.abs(value)
       }
+      expect(broken).toBe(0)
+      expect(worst).toBeLessThanOrEqual(1)
     })
   })
 
