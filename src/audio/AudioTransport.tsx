@@ -4,6 +4,8 @@ import { Tooltip } from '@/ui/Tooltip'
 import { WaveformView } from '@/audio/WaveformView'
 import { decibels, levels } from '@/audio/waveform'
 import { usePlayKey, useTransport } from '@/audio/useTransport'
+import { layerProfiles } from '@/audio/profiles'
+import type { AudioPatch } from '@/audio/types'
 
 /**
  * The transport, and the one loud control on the page.
@@ -13,10 +15,12 @@ import { usePlayKey, useTransport } from '@/audio/useTransport'
  * ends — and a strip answers that as well as a panel does. The room it used to take belongs to the
  * parameters, which are the thing you actually look at while working.
  */
-export function AudioTransport({ samples, sampleRate, name, autoPlay, onAutoPlay }: {
+export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onAutoPlay }: {
   samples: Float32Array
   sampleRate: number
   name: string
+  /** Drawn over the sum as coloured envelopes, so the architecture of the sound is visible. */
+  patch?: AudioPatch
   autoPlay: boolean
   onAutoPlay: (next: boolean) => void
 }) {
@@ -25,7 +29,11 @@ export function AudioTransport({ samples, sampleRate, name, autoPlay, onAutoPlay
   const { peak, rms } = levels(samples)
   const first = useRef(true)
 
-  usePlayKey(() => { if (playing) stop(); else play() })
+  // Space retriggers rather than toggling. These sounds are two hundred milliseconds long: nobody
+  // needs to stop one, they need to hear it again, and waiting for the tail before the next press
+  // does anything turns a comparison into a queue. The button still toggles, so there is a way to
+  // stop a long tail.
+  usePlayKey(play)
 
   useEffect(() => {
     // Not on arrival: a workspace that starts making noise the moment it opens is a workspace
@@ -50,7 +58,7 @@ export function AudioTransport({ samples, sampleRate, name, autoPlay, onAutoPlay
         </button>
       </Tooltip>
       <div className="audio-transport__wave">
-        <WaveformView samples={samples} label={name} head={head} />
+        <WaveformView samples={samples} label={name} head={head} profiles={patch ? layerProfiles(patch) : []} />
       </div>
       <dl className="audio-transport__figures">
         <div><dt>Length</dt><dd>{seconds < 1 ? `${Math.round(seconds * 1000)} ms` : `${seconds.toFixed(2)} s`}</dd></div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { playSamples, stopPlayback } from '@/audio/playback'
-import { hasKeyboardFocus, playsOnSpace } from '@/audio/space-key'
+import { playsOnSpace } from '@/audio/space-key'
 
 /**
  * Playing a buffer, and knowing where it has got to.
@@ -70,9 +70,7 @@ export function usePlayKey(onToggle: () => void): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      const keyboard = target instanceof Element ? hasKeyboardFocus(target) : false
-      if (!playsOnSpace(target, keyboard)) return
+      if (!playsOnSpace(event.target)) return
       event.preventDefault()
       onToggle()
     }
