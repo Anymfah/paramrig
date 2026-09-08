@@ -21,6 +21,8 @@ export type FieldSpec = {
   label: string
   /** A CSS background per option, so a wave is chosen by its shape rather than by its name. */
   previews?: Record<string, string>
+  /** A readable name per option, where the stored value is a path rather than a word. */
+  optionLabels?: Record<string, string>
   min?: number
   max?: number
   step?: number
@@ -63,6 +65,8 @@ const SOURCE_FIELDS: Record<string, FieldSpec> = {
     },
   },
   pulseWidth: num('Pulse width', 0.05, 0.95),
+  voices: num('Voices', 1, 5, 1),
+  detune: num('Detune', 0, 60, 1, { unit: 'cents' }),
   colour: {
     type: 'option', label: 'Noise colour', options: ['white', 'pink', 'metallic'],
     previews: {
@@ -136,6 +140,35 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
   fadeOut: num('Fade out', 0.001, 0.5, 0.001, SECONDS),
 }
 
+/** How many oscillator copies a layer may run, and how many modulators a patch carries. */
+export const MAX_VOICES = 5
+export const LFO_COUNT = 2
+
+/** Everywhere an LFO may point. Built from the layers, so it cannot name one that is not there. */
+export const LFO_DESTINATIONS = ['pitch', 'cutoff', 'pulseWidth', 'gain'] as const
+export const LFO_TARGETS: string[] = [
+  'off',
+  ...Array.from({ length: 3 }, (_, layer) => LFO_DESTINATIONS.map((where) => `layers[${layer}].${where}`)).flat(),
+]
+
+const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
+  LFO_TARGETS.map((target) => {
+    if (target === 'off') return [target, 'Off']
+    const [, layer, where] = /^layers\[(\d)\]\.(\w+)$/.exec(target) ?? []
+    const named: Record<string, string> = { pitch: 'pitch', cutoff: 'cutoff', pulseWidth: 'pulse width', gain: 'gain' }
+    return [target, `Layer ${Number(layer) + 1} ${named[where ?? ''] ?? where}`]
+  }),
+)
+
+export const LFO_FIELDS: Record<string, FieldSpec> = {
+  enabled: { type: 'boolean', label: 'Enabled' },
+  shape: { type: 'option', label: 'Shape', options: ['sine', 'triangle', 'square', 'saw', 'noise'] },
+  rate: num('Rate', 0.1, 40, 0.1, { unit: 'Hz', scale: 'log' }),
+  depth: num('Depth', 0, 1),
+  phase: num('Phase', 0, 1),
+  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+}
+
 /**
  * Every field table in one place. The parser reads it, the docs page is generated from it, a
  * freshly exposed control takes its bounds from it, and the patch reader clamps against it — so a
@@ -143,6 +176,7 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
  */
 export const AUDIO_FIELDS = {
   patch: PATCH_FIELDS,
+  lfo: LFO_FIELDS,
   fx: FX_FIELDS,
   master: MASTER_FIELDS,
 } as const

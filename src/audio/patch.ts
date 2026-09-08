@@ -1,6 +1,6 @@
-import { AUDIO_FIELDS, LAYER_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, MasterSettings, PitchSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, PitchSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -27,7 +27,7 @@ export function makeLayer(input: LayerInput = {}): Layer {
     enabled: input.enabled ?? true,
     gain: input.gain ?? 0.8,
     offset: input.offset ?? 0,
-    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, colour: 'white', ...input.source },
+    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, colour: 'white', voices: 1, detune: 12, ...input.source },
     pitch: {
       start: 440, slide: 0, slideCurve: LINEAR, vibratoRate: 0, vibratoDepth: 0,
       arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
@@ -55,10 +55,15 @@ export function makeMaster(input: Partial<MasterSettings> = {}): MasterSettings 
   return { gain: 0.9, limiter: 0.6, fadeOut: 0.01, ...input }
 }
 
+export function makeLfo(input: Partial<Lfo> = {}): Lfo {
+  return { enabled: false, shape: 'sine', rate: 5, depth: 0.3, phase: 0, target: 'off', ...input }
+}
+
 /** Three layers, whatever was handed over, padded with silent ones. A patch always has three. */
-export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1): AudioPatch {
+export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<Lfo>[] = []): AudioPatch {
   const three = Array.from({ length: LAYER_COUNT }, (_, index) => layers[index] ?? silentLayer())
-  return { version: 1, duration, seed, layers: three, fx: makeFx(fx), master: makeMaster(master) }
+  const modulators = Array.from({ length: LFO_COUNT }, (_, index) => makeLfo(lfos[index]))
+  return { version: 1, duration, seed, layers: three, lfos: modulators, fx: makeFx(fx), master: makeMaster(master) }
 }
 
 /** What a new patch sounds like before anything is touched: one short blip, audible immediately. */
@@ -115,12 +120,16 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
   const base = defaultPatch()
   const top = readSection(AUDIO_FIELDS.patch, source, base as unknown as Record<string, unknown>)
   const rawLayers = Array.isArray(source.layers) ? source.layers : []
+  const rawLfos = Array.isArray(source.lfos) ? source.lfos : []
   return {
     version: 1,
     duration: typeof top.duration === 'number' ? top.duration : base.duration,
     seed: typeof top.seed === 'number' ? Math.round(top.seed) : base.seed,
     layers: Array.from({ length: LAYER_COUNT }, (_, index) =>
       (index < rawLayers.length ? readLayer(rawLayers[index], base.layers[index] ?? silentLayer()) : base.layers[index] ?? silentLayer())),
+    lfos: Array.from({ length: LFO_COUNT }, (_, index) => (
+      readSection(AUDIO_FIELDS.lfo, rawLfos[index], makeLfo() as unknown as Record<string, unknown>) as unknown as Lfo
+    )),
     fx: readSection(AUDIO_FIELDS.fx, source.fx, base.fx as unknown as Record<string, unknown>) as unknown as FxSettings,
     master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,
   }

@@ -16,6 +16,7 @@ import { WebProjectMark } from '@/renderers/html/WebProjectMark'
 import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
 import { PlanetMark } from '@/renderers/three/PlanetMark'
 import { AudioThumb } from '@/audio/AudioThumb'
+import { audioRigDefaults, resolveAudioValues } from '@/audio/rig'
 import { createAudioDocument, getAudioDocument } from '@/audio/document'
 import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
 import { importProject as importSceneProject } from '@/scene/project'
@@ -367,7 +368,10 @@ function RigThumb({ rig }: { rig: RigManifest }) {
   }
   if (rig.renderer === 'audio') {
     const stored = getAudioDocument(id)
-    return stored ? <AudioThumb document={stored} /> : null
+    if (!stored) return null
+    // A rigged patch is shown the way its controls rest, which is what it sounds like new.
+    const patch = stored.rig ? resolveAudioValues(stored, audioRigDefaults(stored.rig)) : stored.patch
+    return <AudioThumb patch={patch} />
   }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
   if (id === 'tidal-planet') return <PlanetMark />

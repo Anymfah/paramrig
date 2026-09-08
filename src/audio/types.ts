@@ -17,6 +17,14 @@ export type SourceSettings = {
   /** Duty cycle of the square, 0..1. Ignored by the other shapes. */
   pulseWidth: number
   colour: NoiseColour
+  /**
+   * Copies of the oscillator, detuned against each other. One oscillator is one oscillator: it is
+   * thin because there is nothing for it to beat against, and no envelope fixes that. Three at a
+   * few cents apart is the oldest trick there is for making a synthesiser sound expensive.
+   */
+  voices: number
+  /** Cents between the outermost voices. Does nothing at one voice. */
+  detune: number
 }
 
 export type PitchSettings = {
@@ -98,6 +106,25 @@ export type FxSettings = {
   tone: number
 }
 
+export type LfoShape = 'sine' | 'triangle' | 'square' | 'saw' | 'noise'
+
+/**
+ * Movement that is not the envelope. An envelope says what happens once; an LFO says what keeps
+ * happening, and a sound with nothing keeping happening reads as a sample rather than as an event.
+ */
+export type Lfo = {
+  enabled: boolean
+  shape: LfoShape
+  /** Hertz. */
+  rate: number
+  /** 0..1, scaled by whatever it is pointed at. */
+  depth: number
+  /** 0..1 of a cycle. */
+  phase: number
+  /** Where it goes: `off`, or a layer and a destination, as `layers[0].pitch`. */
+  target: string
+}
+
 export type MasterSettings = {
   gain: number
   /** 0..1 of soft clipping. */
@@ -112,6 +139,7 @@ export type AudioPatch = {
   duration: number
   seed: number
   layers: Layer[]
+  lfos: Lfo[]
   fx: FxSettings
   master: MasterSettings
 }

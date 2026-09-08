@@ -131,9 +131,57 @@
 .audio-body {
   flex: 1;
   min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-preview);
+}
+
+/*
+ * Three ways of working on one sound, not three places to hunt in. Nothing is hidden inside a
+ * view — the layers show every field at once, and so do the modulators. What these separate is
+ * what you are doing: shaping a voice, giving it movement, or looking for a different sound.
+ */
+.audio-views {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4) 0;
+  border-block-end: 1px solid var(--rule);
+  user-select: none;
+}
+
+.audio-views button {
+  min-block-size: 34px;
+  padding: 0 var(--space-4);
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-block-end: 2px solid transparent;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--duration-instant) var(--ease-out), border-color var(--duration-instant) var(--ease-out);
+}
+
+.audio-views button:hover {
+  color: var(--text-secondary);
+}
+
+.audio-views button[aria-selected='true'] {
+  color: var(--text-primary);
+  border-block-end-color: var(--accent);
+}
+
+.audio-views button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.audio-view {
+  flex: 1;
+  min-block-size: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  background: var(--surface-preview);
 }
 
 /*
@@ -625,4 +673,159 @@
   stroke-width: 1.75;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+
+
+/* ---- The modulators ------------------------------------------------------------------------ */
+
+.lfo-shape {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.lfo-shape svg {
+  inline-size: 100%;
+  block-size: 3.5rem;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.lfo-shape[data-idle] svg {
+  opacity: 0.4;
+}
+
+.lfo-shape__mid {
+  stroke: var(--border-default);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.lfo-shape__line {
+  fill: none;
+  stroke: var(--section, var(--accent));
+  stroke-width: 1.75;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.lfo-shape__read {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- The sound browser --------------------------------------------------------------------- */
+
+.sound-browser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-5) var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.sound-browser__title {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.sound-browser__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sound-browser__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.sound-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  inline-size: 100%;
+  padding: var(--space-2);
+  color: var(--text-secondary);
+  text-align: start;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.sound-card .audio-thumb {
+  block-size: 3.25rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+}
+
+.sound-card:hover {
+  color: var(--text-primary);
+  background: var(--surface-overlay);
+  border-color: var(--border-default);
+}
+
+.sound-card:active {
+  transform: scale(0.99);
+}
+
+.sound-card:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.sound-card[aria-current='true'] {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.sound-card__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sound-card__remove {
+  margin-block-start: var(--space-1);
+  padding: 2px var(--space-1);
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+
+.sound-browser__grid li:hover .sound-card__remove,
+.sound-card__remove:focus-visible {
+  opacity: 1;
+}
+
+.sound-card__remove:hover {
+  color: var(--danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sound-card:active { transform: none; }
 }

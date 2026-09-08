@@ -1,7 +1,9 @@
 import type { CSSProperties } from 'react'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { ParameterField } from '@/ui/ParameterField'
-import { BOARD_CATEGORIES, boardGroups } from '@/audio/board'
+import type { InspectorCategory } from '@/rigs/types'
+import { boardGroups } from '@/audio/board'
+import { AudioLfoShape } from '@/audio/AudioLfoShape'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { LAYER_COLOURS } from '@/audio/profiles'
 
@@ -16,7 +18,9 @@ import { LAYER_COLOURS } from '@/audio/profiles'
  * A layer that is switched off collapses to its own switch. Three columns of settings that make no
  * sound are three columns of noise.
  */
-export function AudioBoard({ parameters, values, duration, onChange, onGestureStart, onGestureEnd }: {
+export function AudioBoard({ categories, parameters, values, duration, onChange, onGestureStart, onGestureEnd }: {
+  /** Which columns this view is made of. The layers are one set, the modulators another. */
+  categories: InspectorCategory[]
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
@@ -27,8 +31,9 @@ export function AudioBoard({ parameters, values, duration, onChange, onGestureSt
   const groups = boardGroups()
   return (
     <div className="audio-board" role="group" aria-label="Sound board">
-      {BOARD_CATEGORIES.map((category, index) => {
-        const layer = category.id.startsWith('l') ? index : null
+      {categories.map((category, index) => {
+        const lfo = category.id.startsWith('lfo') ? index : null
+        const layer = lfo === null && category.id.startsWith('l') ? index : null
         const enabled = layer === null || values[`layers[${layer}].enabled`] !== false
         const columnGroups = groups.filter((group) => group.tab === category.id)
         return (
@@ -43,8 +48,10 @@ export function AudioBoard({ parameters, values, duration, onChange, onGestureSt
             style={layer === null ? undefined : { '--section': LAYER_COLOURS[layer] } as CSSProperties}
           >
             <h2 className="audio-column__title">{category.label}</h2>
+            {lfo === null ? null : <AudioLfoShape index={lfo} values={values} duration={duration} />}
             {columnGroups.map((group) => {
-              const root = group.id.endsWith('.root')
+              // A column with one group has already said its name at the top of the column.
+              const root = group.id.endsWith('.root') || group.id.endsWith('.all')
               if (!enabled && !root) return null
               const fields = parameters.filter((parameter) => parameter.group === group.id)
               if (fields.length === 0) return null

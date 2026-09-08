@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BOARD_CATEGORIES, boardGroups, boardParameters, boardPaths, boardValues, setBoardValue } from '@/audio/board'
+import { BOARD_CATEGORIES, MODULATION_CATEGORIES, boardGroups, boardParameters, boardPaths, boardValues, setBoardValue } from '@/audio/board'
 import { parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import { coin } from '@/audio/presets'
@@ -16,8 +16,9 @@ describe('the board', () => {
     for (const { group } of boardPaths()) expect(groups.has(group), group).toBe(true)
   })
 
-  it('puts every group under a category that exists', () => {
-    const categories = new Set(BOARD_CATEGORIES.map((category) => category.id))
+  /** The board spans two views now: the layers and the modulators, each with its own columns. */
+  it('puts every group under a category that exists, in one view or the other', () => {
+    const categories = new Set([...BOARD_CATEGORIES, ...MODULATION_CATEGORIES].map((category) => category.id))
     for (const group of boardGroups()) expect(categories.has(group.tab ?? ''), group.id).toBe(true)
   })
 

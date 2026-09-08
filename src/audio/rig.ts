@@ -4,13 +4,13 @@ import { applyTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { LINEAR } from '@/audio/dsp/curve'
 import {
-  AUDIO_FIELDS, LAYER_COUNT, LAYER_SECTIONS, TIME_UNITS,
+  AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, TIME_UNITS,
   type AudioPropertyType, type FieldSpec, type LayerSection,
 } from '@/audio/fields'
 import type { AudioPatch, Layer } from '@/audio/types'
 
 export { applyTransform, controlId, type BindingTransform } from '@/rigs/binding'
-export { AUDIO_FIELDS, LAYER_COUNT, LAYER_SECTIONS, type AudioPropertyType, type FieldSpec, type LayerSection } from '@/audio/fields'
+export { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type AudioPropertyType, type FieldSpec, type LayerSection } from '@/audio/fields'
 
 /**
  * A patch is a fixed chain, so a path addresses its target completely on its own — there is no
@@ -35,6 +35,7 @@ export type AudioRig = {
 
 export type AudioPath =
   | { kind: 'patch'; field: string; spec: FieldSpec }
+  | { kind: 'lfo'; index: number; field: string; spec: FieldSpec }
   | { kind: 'layer'; index: number; section: LayerSection; field: string; spec: FieldSpec }
   | { kind: 'fx'; field: string; spec: FieldSpec }
   | { kind: 'master'; field: string; spec: FieldSpec }
@@ -57,6 +58,14 @@ export function parseAudioProperty(property: string): AudioPath | null {
     const field = layer[3] ?? ''
     const spec = LAYER_SECTIONS[section][field]
     return spec ? { kind: 'layer', index, section, field, spec } : null
+  }
+
+  const lfo = /^lfos\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
+  if (lfo) {
+    const index = Number(lfo[1])
+    if (!Number.isInteger(index) || index < 0 || index >= LFO_COUNT) return null
+    const spec = AUDIO_FIELDS.lfo[lfo[2] ?? '']
+    return spec ? { kind: 'lfo', index, field: lfo[2] ?? '', spec } : null
   }
 
   const fx = /^fx\.([A-Za-z]+)$/.exec(property)
@@ -88,6 +97,7 @@ export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: Audi
       type: spec.type,
     })),
   ),
+  ...Object.entries(AUDIO_FIELDS.lfo).map(([field, spec]) => ({ property: `lfos[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.master).map(([field, spec]) => ({ property: `master.${field}`, label: spec.label, type: spec.type })),
 ]
@@ -140,6 +150,11 @@ export function applyAudioBinding(patch: AudioPatch, binding: AudioBinding, valu
   if (next === null) return patch
 
   if (path.kind === 'patch') return { ...patch, [path.field]: next }
+  if (path.kind === 'lfo') {
+    const lfo = patch.lfos[path.index]
+    if (!lfo) return patch
+    return { ...patch, lfos: patch.lfos.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
+  }
   if (path.kind === 'fx') return { ...patch, fx: { ...patch.fx, [path.field]: next } }
   if (path.kind === 'master') return { ...patch, master: { ...patch.master, [path.field]: next } }
 
@@ -208,6 +223,10 @@ export function currentAudioValue(patch: AudioPatch, property: string): ParamVal
     return value && typeof value === 'object' ? (value as ParamValue) : null
   }
   if (path.kind === 'patch') return read(patch, path.field)
+  if (path.kind === 'lfo') {
+    const lfo = patch.lfos[path.index]
+    return lfo ? read(lfo, path.field) : null
+  }
   if (path.kind === 'fx') return read(patch.fx, path.field)
   if (path.kind === 'master') return read(patch.master, path.field)
   const layer = patch.layers[path.index]
@@ -237,7 +256,8 @@ export function parameterForAudioProperty(options: {
       kind: 'select',
       options: choices.map((choice) => ({
         value: choice,
-        label: choice.charAt(0).toUpperCase() + choice.slice(1),
+        // A target is stored as a path; the table says how to say it out loud.
+        label: spec.optionLabels?.[choice] ?? choice.charAt(0).toUpperCase() + choice.slice(1),
         ...(spec.previews?.[choice] ? { preview: spec.previews[choice] } : {}),
       })),
       defaultValue: typeof value === 'string' && choices.includes(value) ? value : (choices[0] ?? ''),
@@ -269,6 +289,7 @@ export function audioPropertyLabel(property: string): string {
   const path = parseAudioProperty(property)
   if (!path) return property
   if (path.kind === 'layer') return `Layer ${path.index + 1} · ${path.spec.label}`
+  if (path.kind === 'lfo') return `LFO ${path.index + 1} · ${path.spec.label}`
   return path.spec.label
 }
 

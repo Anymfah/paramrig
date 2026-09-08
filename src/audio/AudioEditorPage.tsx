@@ -10,7 +10,8 @@ import { Tooltip } from '@/ui/Tooltip'
 import { AudioBoard } from '@/audio/AudioBoard'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioTransport } from '@/audio/AudioTransport'
-import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
+import { BOARD_CATEGORIES, MODULATION_CATEGORIES, boardParameters, boardValues, setBoardValue } from '@/audio/board'
+import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
 import { renderPatch } from '@/audio/dsp/render'
 import { disposePlayback, playbackRate } from '@/audio/playback'
@@ -20,6 +21,20 @@ import { mutatePatch, randomPatch } from '@/audio/shuffle'
 import type { AudioPatch } from '@/audio/types'
 
 const HISTORY_LIMIT = 100
+
+/**
+ * Three ways of working on one sound, rather than three places to hunt in.
+ *
+ * Nothing is hidden inside a view — the layers show every field they have at once, and so do the
+ * modulators. What the tabs separate is what you are doing: shaping a voice, giving it movement,
+ * or looking for a different sound entirely.
+ */
+type ViewId = 'layers' | 'modulation' | 'sounds'
+const VIEWS: { id: ViewId; label: string }[] = [
+  { id: 'layers', label: 'Layers' },
+  { id: 'modulation', label: 'Modulation' },
+  { id: 'sounds', label: 'Sounds' },
+]
 
 /**
  * Edit mode: the instrument.
@@ -49,6 +64,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
   const [preset, setPreset] = useState('')
+  const [view, setView] = useState<ViewId>('layers')
   const [snapshots, setSnapshots] = useState<AudioSnapshot[]>(() => loaded?.snapshots ?? [])
   const [touched, setTouched] = useState(false)
   const gestureRef = useRef(false)
@@ -268,18 +284,55 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
       <p className="editor-notice" role="status" data-empty={notice.length === 0}>{notice}</p>
       <div className="audio-body" id="main" tabIndex={-1}>
-        <AudioBoard
-          parameters={parameters}
-          values={values}
-          duration={patch.duration}
-          onChange={change}
-          onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
-          onGestureEnd={() => {
-            gestureRef.current = false
-            capturedRef.current = false
-            if (latest.current) setHeard(latest.current)
-          }}
-        />
+        <div className="audio-views" role="tablist" aria-label="Views">
+          {VIEWS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              id={`audio-view-${entry.id}`}
+              aria-selected={view === entry.id}
+              aria-controls="audio-view-panel"
+              tabIndex={view === entry.id ? 0 : -1}
+              onClick={() => setView(entry.id)}
+              onKeyDown={(event) => {
+                const at = VIEWS.findIndex((item) => item.id === view)
+                const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+                if (!step) return
+                event.preventDefault()
+                const next = VIEWS[(at + step + VIEWS.length) % VIEWS.length]!
+                setView(next.id)
+                queueMicrotask(() => window.document.getElementById(`audio-view-${next.id}`)?.focus())
+              }}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
+          {view === 'sounds' ? (
+            <AudioPresetsView
+              current={preset}
+              snapshots={snapshots}
+              onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+              onRemove={forget}
+            />
+          ) : (
+            <AudioBoard
+              categories={view === 'layers' ? BOARD_CATEGORIES : MODULATION_CATEGORIES}
+              parameters={parameters}
+              values={values}
+              duration={patch.duration}
+              onChange={change}
+              onGestureStart={() => { gestureRef.current = true; capturedRef.current = false }}
+              onGestureEnd={() => {
+                gestureRef.current = false
+                capturedRef.current = false
+                if (latest.current) setHeard(latest.current)
+              }}
+            />
+          )}
+        </div>
       </div>
     </WorkspaceShell>
   )

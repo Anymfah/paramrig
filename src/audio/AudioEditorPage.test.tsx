@@ -35,6 +35,47 @@ describe('AudioEditorPage', () => {
     expect(within(board).queryAllByRole('tab')).toHaveLength(0)
   })
 
+  /**
+   * The tabs separate what you are doing, not what you can see: nothing is hidden inside a view.
+   * The layers show every field they have at once, and so do the modulators.
+   */
+  it('offers three ways of working, opening on the layers', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const tabs = screen.getByRole('tablist', { name: 'Views' })
+    expect(within(tabs).getByRole('tab', { name: 'Layers', selected: true })).toBeInTheDocument()
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Modulation' }))
+    expect(screen.getByRole('region', { name: 'LFO 1' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'LFO 2' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Layer 1' })).toBeNull()
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Sounds' }))
+    expect(screen.getByRole('region', { name: 'Impact' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Sub drop/ })).toBeInTheDocument()
+
+    await user.click(within(tabs).getByRole('tab', { name: 'Layers' }))
+    expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
+  })
+
+  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    await user.click(screen.getByRole('tab', { name: 'Modulation' }))
+    const first = screen.getByRole('region', { name: 'LFO 1' })
+    expect(within(first).getByText('Not assigned')).toBeInTheDocument()
+    expect(within(first).getByText('Target')).toBeInTheDocument()
+    expect(within(first).getByText('Depth')).toBeInTheDocument()
+  })
+
+  it('picks a sound from the browser', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    await user.click(screen.getByRole('tab', { name: 'Sounds' }))
+    await user.click(screen.getByRole('button', { name: /Sub drop/ }))
+    expect(screen.getByText('1.50 s')).toBeInTheDocument()
+  })
+
   it('collapses a layer that is switched off to its own switch', () => {
     open(arcadeCoin().id)
     const off = screen.getByRole('region', { name: 'Layer 2' })

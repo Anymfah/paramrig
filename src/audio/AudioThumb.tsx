@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import { renderPatch } from '@/audio/dsp/render'
-import { audioRigDefaults, resolveAudioValues } from '@/audio/rig'
 import { waveformBands } from '@/audio/waveform'
-import type { AudioDocument } from '@/audio/document'
+import type { AudioPatch } from '@/audio/types'
 
 /**
  * A patch on a library card.
@@ -16,17 +15,15 @@ import type { AudioDocument } from '@/audio/document'
 const THUMB_RATE = 8000
 const COLUMNS = 96
 
-export function AudioThumb({ document }: { document: AudioDocument }) {
+export function AudioThumb({ patch }: { patch: AudioPatch }) {
   const path = useMemo(() => {
-    // A rigged patch is shown the way its controls rest, which is what it sounds like new.
-    const patch = document.rig ? resolveAudioValues(document, audioRigDefaults(document.rig)) : document.patch
     const bands = waveformBands(renderPatch(patch, THUMB_RATE), COLUMNS)
     // Out along the peaks, back along the troughs, and closed: one filled shape rather than a
     // stroke, which stays legible at a card's size where a 1px line would break up.
     const top = bands.map((band, index) => `${index === 0 ? 'M' : 'L'}${index},${(1 - band.max) * 50}`).join('')
     const bottom = [...bands].reverse().map((band, index) => `L${bands.length - 1 - index},${(1 - band.min) * 50}`).join('')
     return `${top}${bottom}Z`
-  }, [document])
+  }, [patch])
 
   return (
     <svg className="audio-thumb" viewBox={`0 0 ${COLUMNS - 1} 100`} preserveAspectRatio="none" aria-hidden="true">

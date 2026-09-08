@@ -1,5 +1,5 @@
 import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
-import { LAYER_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
+import { LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
 import { AUDIO_FIELDS, applyAudioBinding, currentAudioValue, parameterForAudioProperty, parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import type { AudioPatch } from '@/audio/types'
@@ -30,6 +30,12 @@ export const BOARD_CATEGORIES: InspectorCategory[] = [
   { id: 'mix', label: 'Mix' },
 ]
 
+/** The modulators get their own view, so they are their own set of columns. */
+export const MODULATION_CATEGORIES: InspectorCategory[] = Array.from(
+  { length: LFO_COUNT },
+  (_, index) => ({ id: `lfo${index}`, label: `LFO ${index + 1}` }),
+)
+
 const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'shaper', 'amp']
 
 export function boardGroups(): ParamGroup[] {
@@ -43,6 +49,7 @@ export function boardGroups(): ParamGroup[] {
   ).flat()
   return [
     ...layers,
+    ...Array.from({ length: LFO_COUNT }, (_, index) => ({ id: `lfo${index}.all`, label: `LFO ${index + 1}`, tab: `lfo${index}` })),
     { id: 'mix.patch', label: 'Patch', tab: 'mix' },
     { id: 'mix.fx', label: 'Effects', tab: 'mix' },
     { id: 'mix.master', label: 'Master', tab: 'mix' },
@@ -59,8 +66,12 @@ export function boardPaths(): { property: string; group: string }[] {
       })),
     ),
   ).flat()
+  const lfos = Array.from({ length: LFO_COUNT }, (_, index) =>
+    Object.keys(AUDIO_FIELDS.lfo).map((field) => ({ property: `lfos[${index}].${field}`, group: `lfo${index}.all` })),
+  ).flat()
   return [
     ...layers,
+    ...lfos,
     ...Object.keys(AUDIO_FIELDS.patch).map((field) => ({ property: field, group: 'mix.patch' })),
     ...Object.keys(AUDIO_FIELDS.fx).map((field) => ({ property: `fx.${field}`, group: 'mix.fx' })),
     ...Object.keys(AUDIO_FIELDS.master).map((field) => ({ property: `master.${field}`, group: 'mix.master' })),
