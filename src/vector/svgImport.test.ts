@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { importSvg, parsePathData, parseTransform } from '@/vector/svgImport'
+import { documentThumbnail, serializeVectorMarkup } from '@/vector/document'
 import { chains, worldNetwork } from '@/vector/network'
 import { outlinePathData } from '@/vector/render'
 
@@ -52,5 +53,33 @@ describe('svg import', () => {
   it('returns nothing for invalid markup', () => {
     expect(importSvg('<svg><rect width="1" height="1"')).toEqual([])
     expect(importSvg('not svg')).toEqual([])
+  })
+
+  // Static analysis reads `DOMParser.parseFromString` on imported markup as an XSS sink, and what
+  // answers it is a chain rather than a line. The parsed document is only ever read; a paint has to
+  // match a closed set or it is dropped; script, style and foreignObject produce no element at all.
+  // One hostile string does survive — the name, taken from `id` — and it is harmless only because
+  // the writer never serialises a name, emitting generated ids instead. That last link is the one
+  // that could quietly break, so it is held here: a name that reaches the markup fails this first.
+  it('cannot smuggle markup out of the file it came from', () => {
+    const elements = importSvg(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100" width="100" height="100">
+      <script>alert('script')</script>
+      <rect id="&quot;&gt;&lt;script&gt;alert('id')&lt;/script&gt;" width="10" height="10" fill="red" onload="alert('onload')"/>
+      <path id="&quot;&gt;&lt;img src=x onerror=alert('img')&gt;" d="M0 0 L10 10 L20 0 Z" fill="url(javascript:alert('fill'))" stroke="expression(alert('stroke'))" style="fill:javascript:alert('style')"/>
+      <a xlink:href="javascript:alert('href')"><circle cx="5" cy="5" r="5"/></a>
+      <foreignObject width="10" height="10"><body xmlns="http://www.w3.org/1999/xhtml"><img src="x" onerror="alert('fo')"/></body></foreignObject>
+    </svg>`)
+    expect(elements).toHaveLength(3)
+    expect(elements.map((element) => [element.fill, element.stroke])).toEqual([['#FF0000', 'none'], ['#000000', 'none'], ['#000000', 'none']])
+    expect(elements[0]!.name).toContain('<script>')
+    const written = [
+      serializeVectorMarkup(elements, { x: 0, y: 0, width: 100, height: 100 }),
+      documentThumbnail({ id: 'hostile', elements }),
+    ]
+    for (const output of written) {
+      for (const smuggled of ['script', 'onerror', 'onload', 'javascript:', 'expression(', '<img', 'foreignobject', 'alert(']) {
+        expect(output.toLowerCase()).not.toContain(smuggled)
+      }
+    }
   })
 })
