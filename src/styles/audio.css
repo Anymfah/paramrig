@@ -1302,12 +1302,14 @@
  */
 .audio-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-3);
   min-block-size: 3rem;
   padding: 0 var(--space-3);
   background: var(--surface-inset);
   border-block-end: 1px solid var(--rule);
+  container-type: inline-size;
 }
 .audio-bar .audio-name { inline-size: 11rem; flex: none; }
 .audio-bar .audio-transport { flex: 1; min-inline-size: 0; }
@@ -1322,6 +1324,31 @@
 .audio-transport[data-compact] .audio-transport__figures dt { font-size: 0.5625rem; }
 .audio-transport[data-compact] .audio-transport__figures dd { font-size: 0.6875rem; }
 .audio-transport[data-compact] .audio-transport__notice { display: none; }
+
+/*
+ * The bar in one row needs about 1370 pixels inside its padding with everything on it, and 1140
+ * without the four figures. Short of the first, the figures go — they say in numbers what the
+ * picture in the rail already shows. Short of the second, the bar is two rows: the name, the views
+ * and the history above, and the transport, the row you play from, below at the full width, with
+ * the figures back while that row has room for them. A phone's width loses the stepping chevrons
+ * too; the menu still lists every sound.
+ */
+@container (width < 86rem) {
+  .audio-transport[data-compact] .audio-transport__figures { display: none; }
+}
+@container (width < 72rem) {
+  .audio-bar { padding-block: var(--space-2); }
+  .audio-bar .audio-transport { order: 1; flex: 1 0 100%; }
+  .audio-transport[data-compact] .audio-transport__figures { display: flex; }
+}
+@container (width < 45rem) {
+  .audio-transport[data-compact] .audio-transport__figures { display: none; }
+  .audio-bar .audio-name { inline-size: 7rem; }
+}
+@container (width < 30rem) {
+  .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back), .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back) + .tt__anchor + .tt__anchor { display: none; }
+  .audio-bar .audio-sounds__trigger { min-inline-size: 7rem; }
+}
 
 /* The picture at the foot of the rail: pinned, small, the list scrolling above it. The rail itself
    no longer scrolls — ninety-two names scrolled the picture off the bottom — its list area does. */
@@ -1379,14 +1406,12 @@
   --fp-amber: var(--warning); --fp-amber-dim: color-mix(in srgb, var(--warning) 70%, var(--surface)); --fp-amber-bright: var(--accent);
   --fp-plot-fill: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); --fp-plot-line: var(--accent); --fp-wheel: var(--surface); --fp-wheel-hover: var(--surface-overlay); --fp-wheel-top: var(--surface-overlay);
   --fp-icon: var(--stone); --fp-icon-cut: var(--carbon); --fp-bracket: var(--rule);
-  flex-wrap: wrap;
   --fp-font: var(--font-sans);
   --fp-stretch: 100%;
 }
 
 @font-face {
   font-family: 'Roboto';
-  container-type: inline-size;
   src: url('/fonts/Roboto.woff2') format('woff2');
   font-weight: 100 900;
   font-stretch: 75% 100%;
@@ -1402,43 +1427,26 @@
  */
 .fp-stage {
   position: relative;
-/*
- * The bar in one row needs about 1370 pixels inside its padding with everything on it, and 1140
- * without the four figures. Short of the first, the figures go — they say in numbers what the
- * picture in the rail already shows. Short of the second, the bar is two rows: the name, the views
- * and the history above, and the transport, the row you play from, below at the full width, with
- * the figures back while that row has room for them. A phone's width loses the stepping chevrons
- * too; the menu still lists every sound.
- */
-@container (width < 86rem) {
-  .audio-transport[data-compact] .audio-transport__figures { display: none; }
-}
-@container (width < 72rem) {
-  .audio-bar { padding-block: var(--space-2); }
-  .audio-bar .audio-transport { order: 1; flex: 1 0 100%; }
-  .audio-transport[data-compact] .audio-transport__figures { display: flex; }
-}
-@container (width < 45rem) {
-  .audio-transport[data-compact] .audio-transport__figures { display: none; }
-  .audio-bar .audio-name { inline-size: 7rem; }
-}
-@container (width < 30rem) {
-  .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back), .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back) + .tt__anchor + .tt__anchor { display: none; }
-  .audio-bar .audio-sounds__trigger { min-inline-size: 7rem; }
-}
-
   inline-size: 100%;
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden auto;
   background: var(--fp-ground);
 }
+/* The narrow face scrolls, so its gutter is reserved before the bar is needed: a scrollbar that
+   arrives with the first scroll would narrow the room, refit the plate, and take itself away again. */
+.fp-stage[data-layout='narrow'] { scrollbar-gutter: stable; }
+/* The plate's footprint at its scale, which a transform alone does not give the stage: a face taller
+   than the room scrolls, a narrower one sits centred. */
+.fp-sizer { position: relative; margin-inline: auto; }
 .fp {
   position: absolute;
   inset-block-start: 0;
   inset-inline-start: 0;
   transform: scale(var(--fp-scale, 1));
   transform-origin: 0 0;
+  display: flex;
+  flex-direction: column;
   background: var(--fp-ground);
   color: var(--fp-text);
   font-family: var(--fp-font);
@@ -1448,8 +1456,26 @@
   user-select: none;
 }
 .fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
-.fp-band, .fp-panel, .fp-routing, .fp-strip, .fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box, .fp-slot { position: absolute; }
+.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
+
+/*
+ * The plate is a column of flex rows; the body's items — the panels, the routing bar, the
+ * modulators — wrap where the face's width makes them, in the order the face gives them
+ * (faces.ts). Inside a panel nothing flows: its controls are absolute at their measured
+ * coordinates, in a body of the measured width that sits centred when the panel has grown.
+ */
+.fp-band { display: flex; flex-wrap: wrap; align-items: flex-start; border-block-end: 1px solid var(--fp-hairline); }
+.fp-band__seed, .fp-band__lead { position: relative; flex: none; block-size: 53px; }
+.fp-band__group { display: flex; flex: none; inline-size: 514px; block-size: 53px; }
+.fp-body { display: flex; flex-wrap: wrap; align-content: flex-start; }
+.fp-rule { flex: 0 0 100%; block-size: 1.5px; background: var(--fp-hairline); }
+.fp-panel { position: relative; }
+.fp-panel__body { position: relative; margin-inline: auto; }
+.fp-routing { position: relative; flex: 0 0 100%; display: flex; justify-content: center; block-size: 39px; }
+.fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 497.875px; }
+.fp-strip { display: flex; block-size: 24px; border-block-start: 1px solid var(--fp-hairline); }
+.fp-strip__din { position: relative; flex: none; block-size: 23px; }
 
 /* Panels: the grey ones carry a black hairline down each side; the dark ones are the ground itself. */
 .fp-panel { background: var(--fp-panel); box-shadow: -1px 0 0 var(--fp-hairline), 1px 0 0 var(--fp-hairline); }
@@ -1509,12 +1535,6 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --rim: var(--fp-knob-rim); --hand: var(--fp-light-hand); --ringc: var(--fp-ring-dark); }
 .fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --ringc: var(--fp-slot); }
 .fp-knob[data-inert] { cursor: default; }
-/* The narrow face scrolls, so its gutter is reserved before the bar is needed: a scrollbar that
-   arrives with the first scroll would narrow the room, refit the plate, and take itself away again. */
-.fp-stage[data-layout='narrow'] { scrollbar-gutter: stable; }
-/* The plate's footprint at its scale, which a transform alone does not give the stage: a face taller
-   than the room scrolls, a narrower one sits centred. */
-.fp-sizer { position: relative; margin-inline: auto; }
 .fp-knob[data-dots]::before, .fp-knob[data-dots]::after { content: ''; position: absolute; inline-size: 2.5px; block-size: 2.5px; border-radius: 50%; background: #6e6e6e; inset-block-start: calc(85.36% - 1.25px); }
 .fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
 .fp-knob[data-dots]::after { inset-inline-start: calc(85.36% - 1.25px); }
@@ -1714,12 +1734,12 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-wheel i { position: absolute; inset-inline: 2px; block-size: 2px; background: var(--fp-badge); border-radius: 1px; }
 .fp-at { inline-size: 17px; block-size: 17px; translate: -50% -50%; border-radius: 50%; background: var(--fp-slot-open); box-shadow: 0 0 0 1px var(--fp-knob-rim); }
 .fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: var(--fp-dim); }
-.fp-macro { display: contents; }
+.fp-macro { position: relative; flex: none; inline-size: 64.25px; block-size: 53px; }
 
 /* The routing bar: the two page tabs, then the modulation sources in their colours. */
-.fp-sources { list-style: none; margin: 0; padding: 0; display: contents; }
-.fp-source { display: contents; }
-.fp-sources__box { block-size: 18px; border-radius: 3px; background: var(--fp-tray); }
+.fp-sources { position: relative; display: flex; list-style: none; margin: 0; padding: 0; }
+.fp-source { position: relative; flex: none; inline-size: 40.25px; block-size: 39px; }
+.fp-sources__box { inset-block-start: 20.5px; block-size: 18px; border-radius: 3px; background: var(--fp-tray); }
 .fp-source[data-kind='p'] .fp-text { color: var(--fp-src-p); }
 .fp-source[data-kind='e'] .fp-text { color: var(--fp-src-e); }
 .fp-source[data-kind='l'] .fp-text { color: var(--fp-src-l); }
@@ -1745,7 +1765,9 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 
 /* The strip of kept sounds along the foot. */
 .fp-slot {
-  margin: 0;
+  position: relative;
+  block-size: 18.5px;
+  margin: 2px 0 0;
   padding: 0 0 0 6.5px;
   border: 0;
   background: var(--fp-line);

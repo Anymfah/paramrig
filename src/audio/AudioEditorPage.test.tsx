@@ -85,34 +85,47 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
   })
 
-  it('folds the plate in a room that would shrink it past reading, and then shows one modulator at a time', () => {
-    // jsdom measures nothing; a stand-in observer reports a small laptop's stage the moment it is asked to watch.
-    const Real = globalThis.ResizeObserver
-    class Narrow {
-      constructor(private readonly callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback([{ target, contentRect: { width: 784, height: 668 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
-      }
-      unobserve() {}
-      disconnect() {}
+  /** jsdom measures nothing; a stand-in observer reports a room of the given size the moment it is asked to watch. */
+  const roomOf = (width: number, height: number) => class {
+    constructor(private readonly callback: ResizeObserverCallback) {}
+    observe(target: Element) {
+      this.callback([{ target, contentRect: { width, height } } as ResizeObserverEntry], this as unknown as ResizeObserver)
     }
-    globalThis.ResizeObserver = Narrow as unknown as typeof ResizeObserver
+    unobserve() {}
+    disconnect() {}
+  }
+
+  it('folds the plate to its medium face in a laptop room that would shrink it past reading', () => {
+    const Real = globalThis.ResizeObserver
+    globalThis.ResizeObserver = roomOf(1046, 835) as unknown as typeof ResizeObserver
     try {
       open(arcadeCoin().id)
-      const stage = window.document.querySelector('.fp-stage')
-      expect(stage).toHaveAttribute('data-layout', 'narrow')
-      // The fold keeps the reference's size rather than fit the room's height: the stage scrolls.
-      expect(stage).toHaveStyle({ '--fp-scale': '1' })
-      // Every panel is still there, and the amp envelope is the modulator on show.
+      expect(window.document.querySelector('.fp-stage')).toHaveAttribute('data-layout', 'medium')
+      // Every panel is still there, and the amp envelope is the one modulator on show.
       for (const name of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX', 'Amp envelope']) {
         expect(screen.getByRole('region', { name })).toBeInTheDocument()
       }
       expect(screen.queryByRole('region', { name: 'Envelope 2' })).toBeNull()
+      // A source's name brings its modulator alone; the trio is the wide face's.
       fireEvent.click(screen.getByRole('button', { name: 'Show modulator L5' }))
       expect(screen.getByRole('region', { name: 'LFO 2' })).toBeInTheDocument()
       expect(screen.queryByRole('region', { name: 'LFO 1' })).toBeNull()
       expect(screen.queryByRole('region', { name: 'Amp envelope' })).toBeNull()
-      // The narrow face never puts a control below the reference's own size.
+    } finally {
+      globalThis.ResizeObserver = Real
+    }
+  })
+
+  it('folds the plate to its narrow face in a room taller than it is wide, at the reference\'s own size', () => {
+    const Real = globalThis.ResizeObserver
+    globalThis.ResizeObserver = roomOf(695, 1100) as unknown as typeof ResizeObserver
+    try {
+      open(arcadeCoin().id)
+      const stage = window.document.querySelector('.fp-stage')
+      expect(stage).toHaveAttribute('data-layout', 'narrow')
+      expect(stage).toHaveStyle({ '--fp-scale': '1' })
+      expect(screen.getByRole('region', { name: 'Amp envelope' })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Envelope 3' })).toBeNull()
       expect(screen.getByRole('list', { name: 'Routing' })).toBeInTheDocument()
     } finally {
       globalThis.ResizeObserver = Real
