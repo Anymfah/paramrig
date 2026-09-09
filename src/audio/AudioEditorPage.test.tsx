@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -97,6 +97,29 @@ describe('AudioEditorPage', () => {
     const routing = screen.getByRole('list', { name: 'Routing' })
     expect(within(routing).getAllByRole('listitem')).toHaveLength(17)
     for (const live of ['E1', 'L2', 'L3']) expect(within(routing).getByText(live)).toBeInTheDocument()
+  })
+
+  /**
+   * The reference's way of routing: pick a modulator's handle up in the routing bar and drop it
+   * on a control. jsdom cannot say what is under a pointer, so the drop is answered for it.
+   */
+  it('assigns a modulator by dropping its handle on a control', () => {
+    open(arcadeCoin().id)
+    const filter = screen.getByRole('region', { name: 'Filter' })
+    const cutoff = within(filter).getByRole('slider', { name: 'Pitch' })
+    expect(cutoff).toHaveAttribute('data-target', 'layers[0].cutoff')
+    expect(cutoff.querySelector('.fp-knob__mod')).toBeNull()
+    const handle = screen.getByRole('button', { name: 'Drag L2 onto a control to modulate it' })
+    const under = document.elementFromPoint
+    document.elementFromPoint = () => cutoff
+    try {
+      fireEvent.pointerDown(handle, { clientX: 10, clientY: 10 })
+      fireEvent.pointerUp(handle, { clientX: 20, clientY: 20 })
+    } finally {
+      document.elementFromPoint = under
+    }
+    expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+    expect(within(screen.getByRole('region', { name: 'LFO 1' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
   })
 
   it('picks a sound from the browser', async () => {

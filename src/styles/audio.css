@@ -1482,7 +1482,12 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
 .fp-knob[data-dots]::after { inset-inline-start: calc(85.36% - 1.25px); }
 .fp-knob__ring { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; display: block; }
-.fp-knob__ring path { fill: none; stroke: var(--ringc); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fp-knob__track { fill: none; stroke: var(--ringc); stroke-width: 1; vector-effect: non-scaling-stroke; }
+/* A modulator on the control: a coloured stretch of the arc either side of the value, and the arc
+   itself becomes a handle for how far it swings. */
+.fp-knob__mod { fill: none; stroke-width: 3; stroke-linecap: round; vector-effect: non-scaling-stroke; pointer-events: none; }
+.fp-knob__hit { fill: none; stroke: transparent; stroke-width: 10; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: ns-resize; }
+.fp-fader__mod { position: absolute; inset-inline-start: calc(50% + 4.5px); inline-size: 2px; border-radius: 1px; pointer-events: none; }
 .fp-knob__body {
   position: absolute;
   inset-inline-start: 50%;
@@ -1604,6 +1609,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-box[data-align='right'] { text-align: end; padding-inline-end: 4px; }
 .fp-box[data-selected] { background: #9a9a9a; }
 button.fp-box { cursor: pointer; touch-action: manipulation; }
+button.fp-box:hover { background: #626262; }
+button.fp-box[data-selected]:hover { background: #a6a6a6; }
 button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 
 /* The light-grey markers: hexagon, circle, square, and the serrated square of a noise generator. */
@@ -1625,6 +1632,8 @@ button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offs
 button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-badge[role='tab'] { background: #6a6a6a; color: #1c1c1c; }
 .fp-badge[role='tab'][aria-selected='true'] { background: #999; color: #111; }
+.fp-badge[role='tab']:hover { background: #7e7e7e; }
+.fp-badge[role='tab'][aria-selected='true']:hover { background: #a8a8a8; }
 .fp-badge:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 .fp-tabs { display: contents; }
 
@@ -1660,6 +1669,17 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-source[data-kind='l'] .fp-text { color: #6fb904; }
 .fp-source[data-kind='t'] .fp-text { color: #8d52a4; }
 .fp-source[data-kind='v'] .fp-text { color: #d0708b; }
+.fp-source__grab { cursor: grab; touch-action: none; }
+.fp-source__grab[data-held] { cursor: grabbing; }
+.fp-source__grab:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.fp-source__fixed { cursor: not-allowed; }
+/* While a modulator is held: its name rides the pointer, and every control that could take it lights up. */
+.fp-ghost { position: absolute; z-index: 10; display: none; padding: 2px 5px; border-radius: 3px; background: #404040; color: var(--assign, #6fb904); font: 700 13px/1 'Roboto', var(--font-sans); pointer-events: none; }
+.fp[data-assigning] .fp-ghost { display: block; }
+.fp[data-assigning] .fp-knob[data-target] .fp-knob__track { stroke: var(--assign); opacity: 0.6; }
+.fp[data-assigning] .fp-knob[data-target]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
+.fp[data-assigning] .fp-fader[data-target] .fp-fader__track { box-shadow: inset 0 0 0 1px var(--assign); }
+.fp[data-assigning] .fp-fader[data-target]:hover .fp-fader__track { box-shadow: inset 0 0 0 2px var(--assign); }
 
 /* The strip of kept sounds along the foot. */
 .fp-slot {
@@ -1674,6 +1694,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 }
 .fp-slot { box-shadow: -1.5px 0 0 #050505; }
 .fp-slot[data-filled] { background: #121212; cursor: pointer; }
+.fp-slot[data-filled]:hover { background: #1e1e1e; color: #e0a00c; }
 .fp-slot[data-active] { background: #262626; box-shadow: -1.5px 0 0 #050505, 0 0 0 2px #db9d09; color: #f2aa07; }
 .fp-slot:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 3px; }
 

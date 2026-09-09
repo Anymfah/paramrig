@@ -17,7 +17,19 @@ import type { ParameterDef } from '@/rigs/types'
 export type KnobSize = 'hero' | 'std' | 'sm' | 'macro'
 export type KnobTone = 'dark' | 'light' | 'cool'
 
-export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, onGestureStart, onGestureEnd }: {
+/** A modulator pointed at the control: its colour, how far it swings, and where to write a new swing. */
+export type KnobMod = { colour: string; depth: number; onDepth: (next: number) => void }
+
+/** The arc every dial wears: 270 degrees from half-past seven, on a hundred-unit box. */
+const TRACK = 'M14.645 85.355 A50 50 0 1 1 85.355 85.355'
+const point = (deg: number) => {
+  const rad = (deg * Math.PI) / 180
+  return `${(50 + 50 * Math.cos(rad)).toFixed(3)} ${(50 + 50 * Math.sin(rad)).toFixed(3)}`
+}
+/** The stretch of the track between two angles, clockwise, in the same units. */
+const arc = (from: number, to: number) => `M${point(from)} A50 50 0 ${to - from > 180 ? 1 : 0} 1 ${point(to)}`
+
+export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, target, mod, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
@@ -32,6 +44,10 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   inert?: boolean
   /** Two dots at the ends of the arc: the reference's mark for a bipolar range. */
   dots?: boolean
+  /** The modulation target this control stands for, if a modulator may be dropped on it. */
+  target?: string
+  /** The modulator pointed at it, drawn as a coloured stretch of the arc either side of the value. */
+  mod?: KnobMod
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }) {
@@ -54,6 +70,29 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   const fraction = toFraction(value)
   const origin = useRef({ y: 0, fraction: 0 })
   const dragging = useRef(false)
+  // A drag on the arc itself, when a modulator sits there, sets how far it swings.
+  const depthOrigin = useRef({ y: 0, depth: 0 })
+  const depthDragging = useRef(false)
+  const depthDown = (event: ReactPointerEvent<SVGPathElement>) => {
+    if (!mod || (event.button && event.button !== 0)) return
+    event.stopPropagation()
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    depthDragging.current = true
+    depthOrigin.current = { y: event.clientY, depth: mod.depth }
+    onGestureStart?.()
+  }
+  const depthMove = (event: ReactPointerEvent<SVGPathElement>) => {
+    if (!depthDragging.current || !mod) return
+    mod.onDepth(Math.min(1, Math.max(0, depthOrigin.current.depth + (depthOrigin.current.y - event.clientY) / 150)))
+  }
+  const depthUp = (event: ReactPointerEvent<SVGPathElement>) => {
+    if (!depthDragging.current) return
+    depthDragging.current = false
+    event.currentTarget.releasePointerCapture?.(event.pointerId)
+    onGestureEnd?.()
+  }
+  const angle = 135 + fraction * 270
+  const swing = mod ? Math.min(135, mod.depth * 135) : 0
 
   const down = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return
@@ -84,11 +123,13 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       tabIndex={inert ? -1 : 0}
       data-inert={inert || undefined}
       data-dots={dots || undefined}
+      data-target={target}
+      data-mod={mod ? '' : undefined}
       aria-label={inert ? `${param.label}, not wired` : param.label || param.id}
       aria-valuemin={inert ? undefined : param.min}
       aria-valuemax={inert ? undefined : param.max}
       aria-valuenow={inert ? undefined : value}
-      aria-valuetext={inert ? undefined : `${shown}${param.unit ? ` ${param.unit}` : ''}`}
+      aria-valuetext={inert ? undefined : `${shown}${param.unit ? ` ${param.unit}` : ''}${mod ? `, modulated ${Math.round(mod.depth * 100)} per cent` : ''}`}
       style={{ ...style, '--turn': `${fraction * 270 - 135}deg` } as CSSProperties}
       onPointerDown={inert ? undefined : down}
       onPointerMove={inert ? undefined : move}
@@ -100,12 +141,19 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
         const back = event.key === 'ArrowDown' || event.key === 'ArrowLeft'
         if (!forward && !back) return
         event.preventDefault()
+        // Alt and an arrow move the modulator's swing instead of the value.
+        if (mod && event.altKey) {
+          mod.onDepth(Math.min(1, Math.max(0, mod.depth + (forward ? 1 : -1) * 0.02)))
+          return
+        }
         onChange(fromFraction(fraction + (forward ? 1 : -1) * (event.shiftKey ? 0.002 : 0.02)))
       }}
     >
       {/* The arc: 270 degrees from half-past seven, one device pixel, standing off the body. */}
       <svg className="fp-knob__ring" viewBox="0 0 100 100" aria-hidden="true">
-        <path d="M14.645 85.355 A50 50 0 1 1 85.355 85.355" />
+        <path className="fp-knob__track" d={TRACK} />
+        {mod && swing > 0.5 ? <path className="fp-knob__mod" d={arc(Math.max(135, angle - swing), Math.min(405, angle + swing))} style={{ stroke: mod.colour }} /> : null}
+        {mod ? <path className="fp-knob__hit" d={TRACK} onPointerDown={depthDown} onPointerMove={depthMove} onPointerUp={depthUp} onPointerCancel={depthUp} /> : null}
       </svg>
       <span className="fp-knob__body" aria-hidden="true">
         {face ? <span className="fp-knob__face">{face}</span> : null}

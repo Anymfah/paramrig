@@ -1,5 +1,6 @@
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { ParameterDef } from '@/rigs/types'
+import type { KnobMod } from '@/audio/AudioKnob'
 
 /**
  * A vertical fader, to the reference's two patterns.
@@ -11,13 +12,16 @@ import type { ParameterDef } from '@/rigs/types'
  * handle's height is the reading. The whole box is the drag target, and a press starts from where
  * the value already is rather than jumping to the pointer.
  */
-export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, onGestureStart, onGestureEnd }: {
+export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, target, mod, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
   kind?: 'osc' | 'noise'
   digit?: string | number
   style?: CSSProperties
+  /** The modulation target this level stands for, and the modulator pointed at it. */
+  target?: string
+  mod?: KnobMod
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }) {
@@ -54,6 +58,12 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
     onGestureEnd?.()
   }
 
+  // The modulator's swing, as a bar beside the groove either side of the cap.
+  const centre = 7.5 + (1 - fraction) * travel
+  const half = mod ? (mod.depth * travel) / 2 : 0
+  const barTop = Math.max(7.5, centre - half)
+  const barBottom = Math.min(7.5 + travel, centre + half)
+
   const nudge = (direction: 1 | -1, coarse: boolean) => {
     const step = (param.step > 0 ? param.step : 0.01) * (coarse ? 10 : 1)
     onChange(Math.min(param.max, Math.max(param.min, Number((value + direction * step).toFixed(6)))))
@@ -69,7 +79,9 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       aria-valuemin={param.min}
       aria-valuemax={param.max}
       aria-valuenow={value}
-      aria-valuetext={`${value}${param.unit ?? ''}`}
+      aria-valuetext={`${value}${param.unit ?? ''}${mod ? `, modulated ${Math.round(mod.depth * 100)} per cent` : ''}`}
+      data-target={target}
+      data-mod={mod ? '' : undefined}
       style={{ ...style, '--fill': String(fraction) } as CSSProperties}
       onPointerDown={down}
       onPointerMove={move}
@@ -85,6 +97,7 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       }}
     >
       <span className="fp-fader__track" aria-hidden="true" />
+      {mod && half > 0.5 ? <span className="fp-fader__mod" aria-hidden="true" style={{ top: barTop, height: barBottom - barTop, background: mod.colour }} /> : null}
       <span className="fp-fader__handle" aria-hidden="true">{digit}</span>
     </div>
   )

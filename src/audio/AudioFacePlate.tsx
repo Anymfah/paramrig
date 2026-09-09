@@ -1,10 +1,11 @@
 import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
-import { AudioKnob, type KnobSize, type KnobTone } from '@/audio/AudioKnob'
+import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/AudioKnob'
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { AudioLfoShape } from '@/audio/AudioLfoShape'
 import { ParameterField } from '@/ui/ParameterField'
+import { LFO_COUNT } from '@/audio/fields'
 
 /**
  * The face-plate, transcribed from the reference at its own scale.
@@ -47,6 +48,29 @@ const read = (ctx: Ctx, id: string) => ctx.values[id] ?? ctx.byId.get(id)?.defau
 const readNum = (ctx: Ctx, id: string, fallback = 0) => {
   const value = read(ctx, id)
   return typeof value === 'number' ? value : fallback
+}
+
+/* ── Modulation ──────────────────────────────────────────────────────────────────────────────── */
+
+/** The colour of each kind of source, as the reference paints its buttons. */
+const SOURCE_COLOUR = { p: '#efa807', e: '#4576c4', l: '#6fb904', t: '#8d52a4', v: '#d0708b' } as const
+
+/** The modulation target a parameter stands for, when an LFO may be pointed at it. */
+const targetOf = (id: string): string | undefined => {
+  const found = /^layers\[(\d)\]\.(pitch\.start|filter\.cutoff|source\.pulseWidth|gain)$/.exec(id)
+  if (!found) return undefined
+  const where: Record<string, string> = { 'pitch.start': 'pitch', 'filter.cutoff': 'cutoff', 'source.pulseWidth': 'pulseWidth', gain: 'gain' }
+  return `layers[${found[1]}].${where[found[2] ?? ''] ?? ''}`
+}
+
+/** The LFO pointed at a target, if one is, as the arc the control will wear. */
+const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
+  if (!target) return undefined
+  for (let index = 0; index < LFO_COUNT; index += 1) {
+    if (read(ctx, `lfos[${index}].enabled`) === false || read(ctx, `lfos[${index}].target`) !== target) continue
+    return { colour: SOURCE_COLOUR.l, depth: readNum(ctx, `lfos[${index}].depth`), onDepth: (next) => ctx.onChange(`lfos[${index}].depth`, next) }
+  }
+  return undefined
 }
 
 /* ── Placement ───────────────────────────────────────────────────────────────────────────────── */
@@ -101,6 +125,7 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
   const parameter = param ?? num(ctx, id)
   if (!parameter) return <span className="fp-knob-empty" data-size={size} style={at(x, y)} aria-hidden="true"><Ring /></span>
   const current = read(ctx, id)
+  const target = targetOf(id)
   return (
     <AudioKnob
       param={{ ...parameter, label }}
@@ -109,6 +134,8 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
       tone={tone}
       digit={digit}
       face={face}
+      target={target}
+      mod={modOf(ctx, target)}
       style={at(x, y)}
       onChange={(next) => ctx.onChange(id, next)}
       onGestureStart={ctx.onGestureStart}
@@ -116,7 +143,7 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
     />
   )
 }
-const Ring = () => <svg className="fp-knob__ring" viewBox="0 0 100 100" aria-hidden="true"><path d="M14.645 85.355 A50 50 0 1 1 85.355 85.355" /></svg>
+const Ring = () => <svg className="fp-knob__ring" viewBox="0 0 100 100" aria-hidden="true"><path className="fp-knob__track" d="M14.645 85.355 A50 50 0 1 1 85.355 85.355" /></svg>
 
 /** A knob over a list of options: the dial steps through them, the reference's way of choosing a shape. */
 function OptionKnob({ ctx, x, y, id, label, options, size = 'sm' }: { ctx: Ctx; x: number; y: number; id: string; label: string; options: readonly string[]; size?: KnobSize }) {
@@ -136,8 +163,9 @@ function Fader({ ctx, x, top, id, label, kind, digit }: { ctx: Ctx; x: number; t
   const parameter = num(ctx, id)
   if (!parameter) return null
   const current = read(ctx, id)
+  const target = targetOf(id)
   return (
-    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit} style={at(x, top)}
+    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit} target={target} mod={modOf(ctx, target)} style={at(x, top)}
       onChange={(next) => ctx.onChange(id, next)} onGestureStart={ctx.onGestureStart} onGestureEnd={ctx.onGestureEnd} />
   )
 }
@@ -175,6 +203,22 @@ function Block({ x, y, w, h, className, off, children }: { x: number; y: number;
 function Line({ x, y, w, h = 1, colour = '#000' }: { x: number; y: number; w: number; h?: number; colour?: string }) {
   const at = useAt()
   return <span className="fp-line" style={{ ...at(x, y), width: w, height: h, background: colour }} aria-hidden="true" />
+}
+
+/** A modulator's handle in the routing bar: picked up with the pointer and dropped on a control. */
+function Grab({ x, y, label, held, children, ...handlers }: {
+  x: number; y: number; label: string; held?: boolean; children: ReactNode
+  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void
+  onPointerMove?: (event: React.PointerEvent<HTMLElement>) => void
+  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void
+  onPointerCancel: () => void
+}) {
+  const at = useAt()
+  return (
+    <span className="fp-icon fp-source__grab" role="button" tabIndex={-1} aria-label={label} data-held={held || undefined} style={{ ...at(x, y), width: 17.5, height: 14.5 }} {...handlers}>
+      {children}
+    </span>
+  )
 }
 
 /** An icon placed by its centre. */
@@ -363,9 +407,9 @@ const MACROS: { label: string; id?: string }[] = [
 /** Hertz as the reference's semitone readout: distance from A4, to the thousandth. */
 const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 
-const SOURCES: { id: string; kind: 'p' | 'e' | 'l' | 't' | 'v'; x: number; box?: boolean }[] = [
+const SOURCES: { id: string; kind: 'p' | 'e' | 'l' | 't' | 'v'; x: number; lfo?: number; fixed?: boolean }[] = [
   { id: 'P1', kind: 'p', x: 357.4 }, { id: 'P2', kind: 'p', x: 397.8 }, { id: 'P3', kind: 'p', x: 438.1 },
-  { id: 'E1', kind: 'e', x: 518, box: true }, { id: 'L2', kind: 'l', x: 558.5, box: true }, { id: 'L3', kind: 'l', x: 598.8, box: true },
+  { id: 'E1', kind: 'e', x: 518, fixed: true }, { id: 'L2', kind: 'l', x: 558.5, lfo: 0 }, { id: 'L3', kind: 'l', x: 598.8, lfo: 1 },
   { id: 'L4', kind: 'l', x: 679.3 }, { id: 'L5', kind: 'l', x: 719.5 }, { id: 'L6', kind: 'l', x: 759.7 },
   { id: 'E7', kind: 'e', x: 840 }, { id: 'L8', kind: 'l', x: 880.3 }, { id: 'L9', kind: 'l', x: 920.6 },
   { id: 'T1', kind: 't', x: 1001 }, { id: 'T2', kind: 't', x: 1041.5 }, { id: 'T3', kind: 't', x: 1081.8 }, { id: 'T4', kind: 't', x: 1122 },
@@ -395,7 +439,40 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
 
   // The stage fits the plate to the room it has, as the plugin's window zoom does.
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const plateRef = useRef<HTMLDivElement | null>(null)
   const [scale, setScale] = useState(1)
+
+  /**
+   * Assigning a modulator the reference's way: pick up its handle in the routing bar and drop it
+   * on a control. While it is held, every control that could take it lights its arc in the
+   * source's colour, and a small badge of its name follows the pointer. The Target field in the
+   * modulator's own panel does the same job for a keyboard.
+   */
+  const [assigning, setAssigning] = useState<number | null>(null)
+  const ghostRef = useRef<HTMLSpanElement | null>(null)
+  const follow = (event: { clientX: number; clientY: number }) => {
+    const plate = plateRef.current?.getBoundingClientRect()
+    const ghost = ghostRef.current
+    if (!plate || !ghost) return
+    ghost.style.left = `${(event.clientX - plate.left) / scale + 14}px`
+    ghost.style.top = `${(event.clientY - plate.top) / scale - 9}px`
+  }
+  const pickUp = (index: number) => (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button && event.button !== 0) return
+    event.currentTarget.setPointerCapture?.(event.pointerId)
+    setAssigning(index)
+    follow(event)
+  }
+  const putDown = (event: React.PointerEvent<HTMLElement>) => {
+    if (assigning === null) return
+    const under = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
+    const target = under?.closest?.('[data-target]')?.getAttribute('data-target')
+    if (target) {
+      onChange(`lfos[${assigning}].target`, target)
+      if (read(ctx, `lfos[${assigning}].enabled`) === false) onChange(`lfos[${assigning}].enabled`, true)
+    }
+    setAssigning(null)
+  }
   useEffect(() => {
     const stage = stageRef.current
     if (!stage || typeof ResizeObserver === 'undefined') return
@@ -437,7 +514,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
 
   return (
     <div className="fp-stage" ref={stageRef} style={{ '--fp-scale': scale } as CSSProperties}>
-      <div className="fp" role="group" aria-label="Face-plate" style={{ width: PLATE.w, height: PLATE.h }}>
+      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning === null ? undefined : ''} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR.l } as CSSProperties}>
+        <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning === null ? '' : `L${assigning + 2}`}</span>
         {/* ═══ Macro band ═══ */}
         <Origin.Provider value={{ x: 0, y: 0 }}>
           <div className="fp-band" role="group" aria-label="Macros" style={{ left: 0, top: 0, width: PLATE.w, height: 53 }}>
@@ -659,8 +737,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <span className="fp-sources__box" style={{ left: 502, top: 364 - 343.5 }} aria-hidden="true" />
             <ul className="fp-sources" role="list" aria-label="Routing">
               {SOURCES.map((source) => (
-                <li key={source.id} className="fp-source" data-kind={source.kind} data-live={['E1', 'L2', 'L3'].includes(source.id) || undefined}>
-                  <Icon x={source.x} y={352.6} w={17.5} h={14.5}><MoveIcon /></Icon>
+                <li key={source.id} className="fp-source" data-kind={source.kind} data-live={source.lfo !== undefined || source.fixed || undefined}>
+                  {source.lfo !== undefined ? (
+                    <Grab x={source.x} y={352.6} label={`Drag ${source.id} onto a control to modulate it`} held={assigning === source.lfo}
+                      onPointerDown={pickUp(source.lfo)} onPointerMove={assigning === source.lfo ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
+                      <MoveIcon />
+                    </Grab>
+                  ) : (
+                    <Icon x={source.x} y={352.6} w={17.5} h={14.5} className={source.fixed ? 'fp-source__fixed' : undefined}><MoveIcon /></Icon>
+                  )}
                   <Text x={source.x + 1} y={367.5} kind="source">{source.id}</Text>
                 </li>
               ))}
