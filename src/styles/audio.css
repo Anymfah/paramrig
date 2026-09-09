@@ -1427,3 +1427,261 @@
 
 .audio-routing__fold:hover { color: var(--text-primary); border-color: var(--border-default); }
 .audio-routing__fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/*
+ * The face-plate, measured off the reference.
+ *
+ * Rows are the reference's fractions of its window: a macro strip, a main row at forty per cent,
+ * the routing bar, and the modulators taking what is left. Columns of the main row are its panel
+ * widths in pixels on a 2000-wide capture, used as fractions so they hold at any width. Nothing
+ * here stretches to fill leftover space, because a face-plate is a fixed object and letting panels
+ * grow into emptiness is exactly what made every earlier version look like a form.
+ */
+.fp {
+  --fp-bg: #1f1f1f;
+  --fp-panel: #2a2a2a;
+  --fp-panel-2: #313131;
+  --fp-line: #3d3d3d;
+  --fp-text: #c9c9c9;
+  --fp-dim: #8a8a8a;
+  --fp-knob: #3a3a3a;
+  --fp-knob-rim: #4d4d4d;
+  --fp-knob-light: #b9b9b9;
+  --fp-red: #e0413a;
+  display: grid;
+  grid-template-rows: auto minmax(0, 40fr) auto minmax(0, 39fr);
+  min-block-size: 0;
+  block-size: 100%;
+  background: var(--fp-bg);
+  color: var(--fp-text);
+  font-size: 0.6875rem;
+  user-select: none;
+}
+
+/* ── Macro strip ─────────────────────────────────────────────────────────── */
+.fp-macros {
+  display: grid;
+  grid-template-columns: 8.5rem repeat(16, minmax(0, 1fr));
+  align-items: end;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem 0.375rem;
+  border-block-end: 1px solid var(--fp-line);
+}
+.fp-macros__left { display: flex; align-items: center; gap: 0.5rem; padding-block-end: 0.5rem; }
+.fp-mini-fader { inline-size: 0.5rem; block-size: 1.1rem; background: var(--fp-panel-2); border: 1px solid var(--fp-line); border-radius: 1px; }
+.fp-mini-dot { inline-size: 0.8rem; block-size: 0.8rem; border-radius: 50%; border: 1px solid var(--fp-line); background: var(--fp-panel-2); }
+.fp-macro { display: flex; align-items: center; justify-content: center; gap: 0.25rem; }
+.fp-macro__number { color: var(--fp-dim); font-weight: 600; font-size: 0.6875rem; }
+.fp-macro[data-wired] .fp-macro__number { color: var(--fp-red); }
+
+/* ── Main row ────────────────────────────────────────────────────────────── */
+.fp-main {
+  display: grid;
+  grid-template-columns: 110fr 820fr 185fr 255fr 260fr 115fr 255fr;
+  gap: 2px;
+  min-block-size: 0;
+  padding: 2px;
+}
+
+.fp-panel {
+  --section: var(--fp-dim);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 0.25rem 0.5rem 0.5rem;
+  background: var(--fp-panel);
+  border: 1px solid var(--fp-line);
+  overflow: hidden;
+}
+
+.fp-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin: 0;
+  color: var(--fp-text);
+  font-size: 0.75rem;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fp-badge {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1rem;
+  block-size: 1rem;
+  color: var(--fp-bg);
+  background: var(--fp-text);
+  border-radius: 50%;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+.fp-badge--red { background: var(--fp-red); color: #fff; }
+.fp-badge--onknob { position: absolute; inset-block-end: 12%; inset-inline-start: 50%; transform: translateX(-50%); }
+
+.fp-label { color: var(--fp-text); font-size: 0.6875rem; line-height: 1.1; }
+.fp-label--u { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
+
+.fp-readout-block { display: flex; flex-direction: column; gap: 2px; }
+.fp-readout-block--inline { flex-direction: row; }
+.fp-readout {
+  padding: 0.0625rem 0.3rem;
+  color: var(--fp-text);
+  background: var(--fp-bg);
+  border: 1px solid var(--fp-line);
+  border-radius: 2px;
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+  min-inline-size: 3rem;
+}
+.fp-readout--main { font-size: 0.8125rem; font-weight: 600; background: transparent; border: 0; text-align: start; }
+.fp-readout--main small { margin-inline-start: 0.125rem; font-size: 0.6em; font-weight: 400; }
+
+.fp-row { display: flex; align-items: flex-start; justify-content: space-evenly; gap: 0.25rem; }
+.fp-row--foot { margin-block-start: auto; }
+.fp-stack { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.fp-stack--spread { flex: 1; justify-content: space-evenly; }
+.fp-center { display: flex; justify-content: center; }
+.fp-panel__foot { margin-block-start: auto; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+
+/* The reference's option buttons and toggles: flat, one lit. */
+.fp-choice { display: inline-flex; gap: 1px; flex-wrap: wrap; }
+.fp-choice[data-vertical] { flex-direction: column; }
+.fp-choice__item {
+  padding: 0.0625rem 0.35rem;
+  color: var(--fp-dim);
+  background: var(--fp-panel-2);
+  border: 0;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 0.6875rem;
+  line-height: 1.25;
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fp-choice__item[aria-checked='true'] { color: var(--fp-text); background: var(--fp-line); text-decoration: underline; text-underline-offset: 2px; }
+.fp-choice__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+
+.fp-toggle {
+  padding: 0.0625rem 0.45rem;
+  color: var(--fp-dim);
+  background: var(--fp-panel-2);
+  border: 0;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fp-toggle--wide { align-self: stretch; text-align: center; }
+.fp-toggle--static { cursor: default; }
+.fp-toggle[aria-pressed='true'] { color: var(--fp-text); background: var(--fp-line); }
+.fp-panel__title .fp-toggle { margin-inline-start: auto; }
+
+.fp-tabs { display: inline-flex; gap: 1px; margin-inline-start: auto; }
+.fp-tabs__tab {
+  inline-size: 1.1rem; block-size: 1rem;
+  color: var(--section);
+  background: color-mix(in oklab, var(--section) 14%, transparent);
+  border: 0; border-radius: 2px;
+  font: inherit; font-size: 0.6rem; font-weight: 700;
+  cursor: pointer;
+}
+.fp-tabs__tab[aria-selected='true'] { color: var(--fp-bg); background: var(--section); }
+
+/* The oscillator pair: two halves, a rule between, the phase-modulation row along the foot. */
+.fp-panel--osc { padding: 0; gap: 0; }
+.fp-osc-pair { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-block-size: 0; }
+.fp-osc { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem 0.5rem; min-inline-size: 0; }
+.fp-osc[data-side='right'] { border-inline-start: 1px solid var(--fp-line); }
+.fp-osc__body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.5rem; align-items: start; flex: 1; }
+.fp-osc[data-side='right'] .fp-osc__body { grid-template-columns: auto minmax(0, 1fr) auto; }
+.fp-osc__side { display: flex; flex-direction: column; gap: 0.375rem; }
+.fp-osc__side--fader { align-items: center; }
+.fp-osc__mid { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.fp-osc__hero { position: relative; }
+.fp-osc__foot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  justify-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--fp-panel-2);
+  border-block-start: 1px solid var(--fp-line);
+}
+.fp-wave .fp-choice { gap: 2px; }
+
+.fp-fader { display: flex; flex-direction: column; align-items: center; gap: 0.125rem; }
+
+/* Noise: two slots side by side, a fader over a glyph over a pitch dial. */
+.fp-noise { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; flex: 1; }
+.fp-noise__slot { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 0.25rem; }
+.fp-noise__glyph { inline-size: 2.6rem; block-size: 1.6rem; background: repeating-linear-gradient(90deg, var(--fp-text) 0 1px, transparent 1px 3px); opacity: 0.55; mask: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); }
+
+.fp-comb { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem; align-items: start; }
+.fp-comb__left { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.fp-comb__glyph { inline-size: 1.8rem; block-size: 1.8rem; border-radius: 50%; background: var(--fp-text); opacity: 0.85; mask: radial-gradient(circle at 50% 40%, #000 45%, transparent 47%), radial-gradient(circle at 50% 100%, #000 55%, transparent 57%); }
+
+/* ── Routing bar ─────────────────────────────────────────────────────────── */
+.fp-routing {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.375rem 1rem;
+  background: #171717;
+  border-block: 1px solid var(--fp-line);
+}
+.fp-routing__mode { display: flex; gap: 1.5rem; }
+.fp-routing .audio-routing { padding: 0; border: 0; background: transparent; }
+
+/* ── Modulators ──────────────────────────────────────────────────────────── */
+.fp-mods { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; min-block-size: 0; padding: 2px; }
+.fp-mod { display: flex; flex-direction: column; gap: 0.375rem; min-inline-size: 0; min-block-size: 0; padding: 0.25rem 0.75rem 0.5rem; background: var(--fp-panel); border: 1px solid var(--fp-line); overflow: hidden; }
+.fp-mod__title { display: flex; align-items: center; gap: 1rem; margin: 0; color: var(--fp-text); font-size: 0.75rem; font-weight: 400; }
+.fp-mod__name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
+.fp-mod__knobs { display: flex; justify-content: space-evenly; align-items: flex-end; gap: 0.5rem; padding-block: 0.25rem; }
+.fp-mod__display { flex: 1; min-block-size: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; align-items: start; }
+.fp-mod__display .audio-envelope { block-size: 100%; }
+.fp-mod__empty { margin: auto; color: var(--fp-dim); font-size: 0.6875rem; text-align: center; }
+
+/* ── Knobs and faders at the reference's sizes and in its finish ─────────── */
+.fp .audio-knob { gap: 0.125rem; }
+.fp .audio-knob__dial {
+  --size: 2.2rem;
+  background: radial-gradient(circle at 50% 35%, #454545, var(--fp-knob) 60%, #262626);
+  border: 1px solid var(--fp-knob-rim);
+  box-shadow: 0 0 0 1px #1a1a1a, 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.fp .audio-knob[data-size='lg'] .audio-knob__dial { --size: 4.4rem; }
+.fp .audio-knob[data-size='sm'] .audio-knob__dial { --size: 1.6rem; }
+.fp .fp-macro .audio-knob__dial { --size: 1.35rem; }
+/* The arc is a plain grey track until a modulator is pointed at the control. */
+.fp .audio-knob__dial::before {
+  background: conic-gradient(from 225deg, #6a6a6a calc(var(--fraction, 0) * 270deg), #333 0 270deg, transparent 0);
+  inset: -3px;
+  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
+  opacity: 1;
+}
+.fp .audio-knob__hand { background: #eaeaea; inline-size: 2px; block-size: 36%; inset-block-start: 10%; }
+.fp .fp-knob[data-tone='light'] .audio-knob__dial { background: radial-gradient(circle at 50% 35%, #d2d2d2, var(--fp-knob-light) 60%, #8f8f8f); border-color: #d8d8d8; }
+.fp .fp-knob[data-tone='light'] .audio-knob__hand { background: #222; }
+.fp .audio-knob__value { color: var(--fp-text); font-size: 0.625rem; }
+.fp .audio-knob__label { color: var(--fp-text); font-size: 0.6875rem; }
+.fp .fp-macro .audio-knob__value { display: none; }
+.fp-knob-gap { display: inline-block; inline-size: 2.2rem; block-size: 2.2rem; }
+.fp-knob-gap--drawn { inline-size: 1.35rem; block-size: 1.35rem; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #3a3a3a, #262626); border: 1px solid #3a3a3a; }
+.fp-knob-gap[data-size='xs'] { inline-size: 1.35rem; block-size: 1.35rem; }
+
+.fp .audio-fader { flex-direction: column; }
+.fp .audio-fader__track { inline-size: 0.5rem; block-size: 6rem; background: #1a1a1a; border-color: var(--fp-line); border-radius: 2px; }
+.fp .audio-fader__fill { background: #666; opacity: 1; }
+.fp .audio-fader__value { color: var(--fp-text); font-size: 0.625rem; }
+.fp .audio-fader__label { display: none; }

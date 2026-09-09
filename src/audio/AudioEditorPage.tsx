@@ -7,12 +7,12 @@ import { Button, IconButton } from '@/ui/Button'
 import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
-import { AudioRack } from '@/audio/AudioRack'
-import { AudioDrawer, AudioRouting } from '@/audio/AudioDrawer'
+import { AudioFacePlate } from '@/audio/AudioFacePlate'
+import { AudioDrawer } from '@/audio/AudioDrawer'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioSoundList } from '@/audio/AudioSoundList'
 import { AudioTransport } from '@/audio/AudioTransport'
-import { BOARD_CATEGORIES, boardParameters, boardValues, setBoardValue } from '@/audio/board'
+import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
 import { renderPatch } from '@/audio/dsp/render'
@@ -359,8 +359,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             />
           ) : (
             <div className="audio-instrument">
-              <AudioRack
-                categories={BOARD_CATEGORIES}
+              <AudioFacePlate
                 parameters={parameters}
                 values={values}
                 duration={patch.duration}
@@ -368,7 +367,6 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onGestureStart={began}
                 onGestureEnd={ended}
               />
-              <AudioRouting values={values} />
             </div>
           )}
         </div>

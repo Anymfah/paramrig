@@ -26,31 +26,27 @@ const open = (id: string) => render(
 
 describe('AudioEditorPage', () => {
   /** The whole argument of the layout: nothing is behind a tab, so nothing has to be found. */
-  it('lays the stages across the window in the order the signal goes through them', () => {
+  it('lays the panels across the window in the reference order', () => {
     open(arcadeCoin().id)
-    const rack = screen.getByRole('group', { name: 'Signal path' })
-    for (const stage of ['Level', 'Source', 'Pitch', 'Filter', 'Shaper', 'Body', 'Envelope', 'Mix']) {
-      expect(within(rack).getByRole('region', { name: stage })).toBeInTheDocument()
+    const plate = screen.getByRole('group', { name: 'Face-plate' })
+    for (const panel of ['Pitch', 'Oscillators', 'Noise', 'Comb', 'Filter', 'Amp', 'FX']) {
+      expect(within(plate).getByRole('region', { name: panel })).toBeInTheDocument()
     }
-    expect(within(rack).queryAllByRole('tab')).toHaveLength(0)
+    expect(within(plate).getByRole('group', { name: 'Macros' })).toBeInTheDocument()
+    expect(within(plate).getByRole('list', { name: 'Routing' })).toBeInTheDocument()
   })
 
-  it('keeps all three levels, and gives the stages the layer being worked on', async () => {
+  it('filters the layer chosen at the panel head, since this engine filters per layer', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
-    const level = screen.getByRole('region', { name: 'Level' })
-    // Which layers are on and how loud they are against each other is the comparison worth
-    // keeping, so the level column holds all three.
-    for (const layer of ['Layer 1', 'Layer 2', 'Layer 3']) {
-      expect(within(level).getByRole('group', { name: `${layer} · Level` })).toBeInTheDocument()
-    }
     const filter = screen.getByRole('region', { name: 'Filter' })
-    expect(within(filter).getByRole('group', { name: 'Layer 1 · Filter' })).toBeInTheDocument()
-    expect(within(filter).queryByRole('group', { name: 'Layer 2 · Filter' })).toBeNull()
-
-    await user.click(within(level).getByRole('button', { name: 'Work on Layer 2' }))
-    expect(within(filter).getByRole('group', { name: 'Layer 2 · Filter' })).toBeInTheDocument()
-    expect(within(filter).queryByRole('group', { name: 'Layer 1 · Filter' })).toBeNull()
+    const tabs = within(filter).getByRole('tablist', { name: 'Filter layer' })
+    expect(within(tabs).getByRole('tab', { name: '1', selected: true })).toBeInTheDocument()
+    await user.click(within(tabs).getByRole('tab', { name: '2' }))
+    expect(within(tabs).getByRole('tab', { name: '2', selected: true })).toBeInTheDocument()
+    // One selector moves every per-layer panel together, so Comb agrees.
+    const comb = within(screen.getByRole('region', { name: 'Comb' })).getByRole('tablist', { name: 'Comb layer' })
+    expect(within(comb).getByRole('tab', { name: '2', selected: true })).toBeInTheDocument()
   })
 
   /**
@@ -102,14 +98,15 @@ describe('AudioEditorPage', () => {
     expect(screen.getByText('1.50 s')).toBeInTheDocument()
   })
 
-  it('says a stage is off rather than showing settings that make no sound', async () => {
+  it('switches a source on and off from its own panel head', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
-    const filter = screen.getByRole('region', { name: 'Filter' })
-    expect(within(filter).getByText('Cutoff')).toBeInTheDocument()
-    await user.click(within(screen.getByRole('region', { name: 'Level' })).getByRole('button', { name: 'Work on Layer 2' }))
-    expect(within(filter).getByText('Off')).toBeInTheDocument()
-    expect(within(filter).queryByText('Cutoff')).toBeNull()
+    const oscs = screen.getByRole('region', { name: 'Oscillators' })
+    const switches = within(oscs).getAllByRole('button', { name: 'On' })
+    expect(switches[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(switches[1]).toHaveAttribute('aria-pressed', 'false')
+    await user.click(switches[1]!)
+    expect(within(oscs).getAllByRole('button', { name: 'On' })[1]).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('puts the waveform in the transport with the numbers that describe it', () => {
@@ -201,17 +198,16 @@ describe('AudioEditorPage', () => {
 
   it('draws the envelope rather than listing its five times', () => {
     open(arcadeCoin().id)
-    const layer = screen.getByRole('region', { name: 'Envelope' })
+    const layer = screen.getByRole('region', { name: 'Amp envelope' })
     for (const handle of ['Attack, layer 1', 'Hold, layer 1', 'Decay and sustain, layer 1', 'Release, layer 1']) {
       expect(within(layer).getByRole('slider', { name: handle })).toBeInTheDocument()
     }
-    expect(within(layer).queryByLabelText('Attack')).toBeNull()
     expect(within(layer).getByLabelText('Envelope curve')).toBeInTheDocument()
   })
 
   it('reads the envelope out in numbers beside the shape', () => {
     open(arcadeCoin().id)
-    const layer = screen.getByRole('region', { name: 'Envelope' })
+    const layer = screen.getByRole('region', { name: 'Amp envelope' })
     expect(within(layer).getByText('D 260 ms')).toBeInTheDocument()
     expect(within(layer).getByText('S 0.00')).toBeInTheDocument()
   })
