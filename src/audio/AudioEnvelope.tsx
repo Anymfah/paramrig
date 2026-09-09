@@ -29,19 +29,21 @@ const SAMPLES = 120
 
 const ms = (seconds: number) => `${Math.round(seconds * 1000)} ms`
 
-export function AudioEnvelope({ layer, values, duration, onChange, onGestureStart, onGestureEnd }: {
+export function AudioEnvelope({ layer, values, duration, onChange, onGestureStart, onGestureEnd, height = 88, pad = PAD }: {
   layer: number
   values: Record<string, ParamValue>
   duration: number
   onChange: (property: string, value: ParamValue) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
+  /** The face-plate draws the plot at the reference's size, sixty pixels with a pixel of margin. */
+  height?: number
+  pad?: number
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   // Only the width is measured. The height is fixed because the plot is one line of a column and
   // has to keep its place in the rhythm, not grow with whatever sits under it.
   const [width, setWidth] = useState(240)
-  const height = 88
   const dragRef = useRef<Handle | null>(null)
 
   const offsetValue = values[`layers[${layer}].offset`]
@@ -73,10 +75,10 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
     return () => observer.disconnect()
   }, [])
 
-  const plotW = Math.max(1, width - PAD * 2)
-  const plotH = Math.max(1, height - PAD * 2)
-  const x = (seconds: number) => PAD + (seconds / life) * plotW
-  const y = (level: number) => PAD + (1 - level) * plotH
+  const plotW = Math.max(1, width - pad * 2)
+  const plotH = Math.max(1, height - pad * 2)
+  const x = (seconds: number) => pad + (seconds / life) * plotW
+  const y = (level: number) => pad + (1 - level) * plotH
 
   const path = Array.from({ length: SAMPLES + 1 }, (_, index) => {
     const at = (index / SAMPLES) * life
@@ -140,15 +142,15 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
 
   const fromPointer = (event: React.PointerEvent<SVGSVGElement>, handle: Handle) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    const seconds = ((event.clientX - rect.left - PAD) / plotW) * life
-    const level = 1 - (event.clientY - rect.top - PAD) / plotH
+    const seconds = ((event.clientX - rect.left - pad) / plotW) * life
+    const level = 1 - (event.clientY - rect.top - pad) / plotH
     write(handle, seconds, handle === 'decay' ? level : null)
   }
 
   const nudge = (handle: Handle, event: React.KeyboardEvent) => {
     const step = event.shiftKey ? life / 200 : life / 40
     const spot = spots[handle]
-    const seconds = ((spot.cx - PAD) / plotW) * life
+    const seconds = ((spot.cx - pad) / plotW) * life
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
       event.preventDefault()
       write(handle, seconds + (event.key === 'ArrowRight' ? step : -step), null)
@@ -190,7 +192,7 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
           onGestureEnd?.()
         }}
       >
-        <line className="envelope__floor" x1={PAD} y1={y(0)} x2={width - PAD} y2={y(0)} />
+        <line className="envelope__floor" x1={pad} y1={y(0)} x2={width - pad} y2={y(0)} />
         <path className="envelope__fill" d={`${path}L${x(life).toFixed(2)},${y(0).toFixed(2)}L${x(0).toFixed(2)},${y(0).toFixed(2)}Z`} />
         <path className="envelope__line" d={path} />
         {HANDLES.map(({ id, label }) => (

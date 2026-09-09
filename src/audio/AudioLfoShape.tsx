@@ -46,6 +46,7 @@ export function AudioLfoShape({ index, values, duration }: {
     <div className="lfo-shape" data-idle={idle || undefined}>
       <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         <line className="lfo-shape__mid" x1="0" y1="50" x2="100" y2="50" />
+        <path className="lfo-shape__fill" d={`${path}L100,50L0,50Z`} />
         <path className="lfo-shape__line" d={path} />
       </svg>
       <p className="lfo-shape__read">

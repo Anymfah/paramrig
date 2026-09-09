@@ -368,6 +368,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onChange={change}
                 onGestureStart={began}
                 onGestureEnd={ended}
+                slots={snapshots.slice(0, 12).map((snapshot) => ({
+                  name: snapshot.name,
+                  active: snapshot.id === preset,
+                  onPick: () => { setPreset(snapshot.id); setTouched(false); commit({ ...snapshot.patch, seed: patch.seed }) },
+                }))}
               />
             </div>
           )}

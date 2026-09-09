@@ -39,14 +39,26 @@ describe('AudioEditorPage', () => {
   it('filters the layer chosen at the panel head, since this engine filters per layer', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
+    // The layer badges in the oscillator and noise heads choose which layer Comb, Filter and the
+    // amp envelope show; the reference's own badges, given a job.
+    const oscillators = screen.getByRole('tablist', { name: 'Oscillator layer' })
+    expect(within(oscillators).getByRole('tab', { name: 'Oscillator 1', selected: true })).toBeInTheDocument()
     const filter = screen.getByRole('region', { name: 'Filter' })
-    const tabs = within(filter).getByRole('tablist', { name: 'Filter layer' })
-    expect(within(tabs).getByRole('tab', { name: '1', selected: true })).toBeInTheDocument()
-    await user.click(within(tabs).getByRole('tab', { name: '2' }))
-    expect(within(tabs).getByRole('tab', { name: '2', selected: true })).toBeInTheDocument()
-    // One selector moves every per-layer panel together, so Comb agrees.
-    const comb = within(screen.getByRole('region', { name: 'Comb' })).getByRole('tablist', { name: 'Comb layer' })
-    expect(within(comb).getByRole('tab', { name: '2', selected: true })).toBeInTheDocument()
+    const cutoff = () => within(filter).getByRole('slider', { name: 'Pitch' })
+    const before = cutoff().getAttribute('aria-valuenow')
+    await user.click(within(oscillators).getByRole('tab', { name: 'Oscillator 2' }))
+    expect(within(oscillators).getByRole('tab', { name: 'Oscillator 2', selected: true })).toBeInTheDocument()
+    // An edit made now lands on the second layer, and the first still reads as it did.
+    cutoff().focus()
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(cutoff().getAttribute('aria-valuenow')).not.toBe(before)
+    await user.click(within(oscillators).getByRole('tab', { name: 'Oscillator 1' }))
+    expect(cutoff().getAttribute('aria-valuenow')).toBe(before)
+    // One selector moves every per-layer panel together, so the noise badges take over the same way.
+    const noise = screen.getByRole('tablist', { name: 'Noise layer' })
+    await user.click(within(noise).getByRole('tab', { name: 'Noise 1' }))
+    expect(within(oscillators).queryByRole('tab', { selected: true })).toBeNull()
+    expect(within(noise).getByRole('tab', { name: 'Noise 1', selected: true })).toBeInTheDocument()
   })
 
   /**
@@ -78,13 +90,13 @@ describe('AudioEditorPage', () => {
     // The LFOs sit in the reference's second and third modulator slots, on the plate itself.
     for (const name of ['LFO 1', 'LFO 2']) {
       const panel = screen.getByRole('region', { name })
-      expect(within(panel).getByText('Target')).toBeInTheDocument()
+      expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
       expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
     }
-    // The routing bar answers the across-the-room question without opening anything.
+    // The routing bar lists the reference's sources; ours are the envelope and the two LFOs.
     const routing = screen.getByRole('list', { name: 'Routing' })
-    expect(within(routing).getAllByRole('listitem')).toHaveLength(2)
-    expect(within(routing).getAllByText('not assigned')).toHaveLength(2)
+    expect(within(routing).getAllByRole('listitem')).toHaveLength(17)
+    for (const live of ['E1', 'L2', 'L3']) expect(within(routing).getByText(live)).toBeInTheDocument()
   })
 
   it('picks a sound from the browser', async () => {
@@ -100,12 +112,12 @@ describe('AudioEditorPage', () => {
   it('switches a source on and off from its own panel head', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
-    const oscs = screen.getByRole('region', { name: 'Oscillators' })
-    const switches = within(oscs).getAllByRole('button', { name: 'On' })
-    expect(switches[0]).toHaveAttribute('aria-pressed', 'true')
-    expect(switches[1]).toHaveAttribute('aria-pressed', 'false')
-    await user.click(switches[1]!)
-    expect(within(oscs).getAllByRole('button', { name: 'On' })[1]).toHaveAttribute('aria-pressed', 'true')
+    // The reference's ART column, given the job: Hard is a tone, Neutral is noise, Nobody is silence.
+    const second = screen.getByRole('radiogroup', { name: 'Oscillator 2 mode' })
+    expect(within(second).getByRole('radio', { name: 'Nobody' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(second).getByRole('radio', { name: 'Hard' }))
+    expect(within(second).getByRole('radio', { name: 'Hard' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(second).getByRole('radio', { name: 'Nobody' })).toHaveAttribute('aria-checked', 'false')
   })
 
   it('puts the waveform in the transport with the numbers that describe it', () => {

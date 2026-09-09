@@ -1333,403 +1333,8 @@
 .audio-stage[data-stage='root'] { min-inline-size: 7.5rem; }
 
 
-/*
- * The knob, to the reference's anatomy.
- *
- * Name above. A dark body with a soft top-left highlight and a hairline rim, ringed by a thin
- * grey arc that stands a few pixels off the body — track dark, swept portion only a little lighter,
- * never coloured unless a modulator is pointed at the control. A white pointer from a third of the
- * radius to the edge. No number under it: the value appears only while the knob is in use, and
- * floats rather than reflows so the panel does not breathe when it does.
- */
-.audio-knob {
-  /* Measured on the reference at 2x and halved: standard 32, hero 64, small 22, macro 22. */
-  --size: 2rem;
-  --track: #585858;
-  --sweep: #7a7a7a;
-  --body: #47474c;
-  --body-hi: #4b4c51;
-  --rim: #2d2d2d;
-  --hand: #dcdcdc;
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  user-select: none;
-}
-.audio-knob[data-size='lg'] { --size: 4rem; --body: #3c3c3c; --body-hi: #414141; --rim: #454545; }
-.audio-knob[data-size='sm'] { --size: 1.375rem; }
-
-.audio-knob__label {
-  max-inline-size: calc(var(--size) + 3rem);
-  color: var(--fp-text, #969d9c);
-  font-size: 0.8125rem;
-  line-height: 1.1;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* The body is flat — the radial profile is level from the centre to the rim — with a faint
-   highlight at the top left and a one-pixel dark rim. */
-.audio-knob__dial {
-  position: relative;
-  inline-size: var(--size);
-  block-size: var(--size);
-  border-radius: 50%;
-  background: radial-gradient(circle at 36% 30%, var(--body-hi), var(--body) 45%);
-  box-shadow: inset 0 0 0 1px var(--rim);
-  cursor: ns-resize;
-  touch-action: none;
-}
-.audio-knob__dial:hover { --rim: #3a3a3a; }
-.audio-knob__dial:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
-
-/* No ring at rest: the reference draws a track only around its macro dials and around a control a
-   modulator is pointed at. The element stays for those two cases. */
-.audio-knob__arc {
-  display: none;
-  position: absolute;
-  inset: calc(var(--size) * -0.09 - 1px);
-  border-radius: 50%;
-  background: conic-gradient(from 225deg, var(--sweep) calc(var(--fraction, 0) * 270deg), var(--track) 0 270deg, transparent 0);
-  mask: radial-gradient(circle, transparent calc(50% - 1.5px), #000 calc(50% - 1.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
-  -webkit-mask: radial-gradient(circle, transparent calc(50% - 1.5px), #000 calc(50% - 1.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
-  pointer-events: none;
-}
-.fp-macro .audio-knob__arc { display: block; }
-
-/* The pointer: three pixels wide, from forty-five to seventy-eight per cent of the radius. */
-.audio-knob__hand {
-  position: absolute;
-  inset-inline-start: 50%;
-  inset-block-start: 11%;
-  inline-size: 3px;
-  block-size: 33%;
-  margin-inline-start: -1.5px;
-  background: var(--hand);
-  border-radius: 1.5px;
-  transform-origin: 50% calc(100% / 33 * 50);
-  transform: rotate(var(--turn, 0deg));
-  pointer-events: none;
-}
-.audio-knob[data-size='sm'] .audio-knob__hand { inline-size: 2.5px; margin-inline-start: -1.25px; inset-block-start: 12%; block-size: 60%; transform-origin: 50% calc(100% / 60 * 38); }
-
-/* The value floats in only while the knob is in use. */
-.audio-knob__value {
-  position: absolute;
-  inset-block-start: 100%;
-  inset-inline-start: 50%;
-  transform: translate(-50%, 0.15rem);
-  padding: 0.0625rem 0.3rem;
-  color: #f2f2f2;
-  background: #141414;
-  border: 1px solid #3a3a3a;
-  border-radius: 2px;
-  font-size: 0.625rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  white-space: nowrap;
-  display: none;
-  pointer-events: none;
-  z-index: 2;
-}
-.audio-knob:hover .audio-knob__value,
-.audio-knob:focus-within .audio-knob__value { display: block; }
-
-/* The light finish the reference gives its amplifier and level dials. */
-.fp-knob[data-tone='light'] .audio-knob { --size: 1.8125rem; --body: #878683; --body-hi: #92918f; --rim: #918f8d; --hand: #222; }
-
-/* Macros carry their name under the dial, as the reference's do; everything else above. */
-.fp-macro .audio-knob__label { order: 2; }
-.fp-macro .audio-knob { --size: 1.375rem; --body: #505050; --body-hi: #595959; }
-
 .audio-slot[data-size='wide'] { grid-column: 1 / -1; }
 
-
-/* Folding the drawer hands its three hundred pixels back to whichever stage wanted them. */
-.audio-routing__fold {
-  margin-inline-start: auto;
-  padding: 0.25rem var(--space-3);
-  color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-full);
-  font: inherit;
-  font-size: var(--text-sm);
-  white-space: nowrap;
-  cursor: pointer;
-  user-select: none;
-  touch-action: manipulation;
-  transition: color var(--duration-instant) var(--ease-out), border-color var(--duration-instant) var(--ease-out);
-}
-
-.audio-routing__fold:hover { color: var(--text-primary); border-color: var(--border-default); }
-.audio-routing__fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-
-/*
- * The face-plate, measured off the reference.
- *
- * Rows are the reference's fractions of its window: a macro strip, a main row at forty per cent,
- * the routing bar, and the modulators taking what is left. Columns of the main row are its panel
- * widths in pixels on a 2000-wide capture, used as fractions so they hold at any width. Nothing
- * here stretches to fill leftover space, because a face-plate is a fixed object and letting panels
- * grow into emptiness is exactly what made every earlier version look like a form.
- */
-.fp {
-  /* Sampled off a 2500-pixel Retina capture of the reference, not remembered from it. */
-  --fp-bg: #262626;
-  --fp-panel: #323232;
-  --fp-panel-2: #383838;
-  --fp-line: #262626;
-  --fp-text: #969d9c;
-  --fp-title: #898a85;
-  --fp-readout: #7b7a78;
-  --fp-dim: #6e6e6e;
-  --fp-knob: #47474c;
-  --fp-knob-rim: #2d2d2d;
-  --fp-knob-light: #878683;
-  --fp-red: #df282d;
-  display: grid;
-  /* Rows as measured: main 301, routing 35, modulators 288 of a 724-pixel window. */
-  grid-template-rows: auto minmax(0, 301fr) auto minmax(0, 288fr);
-  min-block-size: 0;
-  block-size: 100%;
-  background: var(--fp-bg);
-  color: var(--fp-text);
-  font-size: 0.6875rem;
-  user-select: none;
-}
-
-/* ── Macro strip ─────────────────────────────────────────────────────────── */
-.fp-macros {
-  display: grid;
-  grid-template-columns: 8.5rem repeat(16, minmax(0, 1fr));
-  align-items: end;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem 0.375rem;
-  border-block-end: 1px solid var(--fp-line);
-}
-.fp-macros__left { display: flex; align-items: center; gap: 0.5rem; padding-block-end: 0.5rem; }
-.fp-mini-fader { inline-size: 0.5rem; block-size: 1.1rem; background: var(--fp-panel-2); border: 1px solid var(--fp-line); border-radius: 1px; }
-.fp-mini-dot { inline-size: 0.8rem; block-size: 0.8rem; border-radius: 50%; border: 1px solid var(--fp-line); background: var(--fp-panel-2); }
-.fp-macro { display: flex; align-items: center; justify-content: center; gap: 0.25rem; }
-.fp-macro__number { color: var(--fp-dim); font-weight: 600; font-size: 0.6875rem; }
-.fp-macro[data-wired] .fp-macro__number { color: var(--fp-red); }
-
-/* ── Main row ────────────────────────────────────────────────────────────── */
-.fp-main {
-  display: grid;
-  /* Panel widths in CSS pixels, measured at the dark gaps between them: 61 · 528 · 98 · 168 · 172 · 52 · 171 of 1250. */
-  grid-template-columns: 61fr 528fr 98fr 168fr 172fr 52fr 171fr;
-  gap: 2px;
-  min-block-size: 0;
-  padding: 2px;
-}
-
-.fp-panel {
-  --section: var(--fp-dim);
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.375rem;
-  min-inline-size: 0;
-  min-block-size: 0;
-  padding: 0.25rem 0.5rem 0.5rem;
-  background: var(--fp-panel);
-  border: 1px solid var(--fp-line);
-  overflow: hidden;
-}
-
-.fp-panel__title {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  margin: 0;
-  color: var(--fp-title);
-  font-size: 0.8125rem;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  text-decoration-color: var(--fp-dim);
-  font-weight: 400;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.fp-badge {
-  display: inline-grid;
-  place-items: center;
-  inline-size: 1rem;
-  block-size: 1rem;
-  color: var(--fp-bg);
-  background: var(--fp-text);
-  border-radius: 50%;
-  font-size: 0.6rem;
-  font-weight: 700;
-}
-.fp-badge--red { background: var(--fp-red); color: #fff; }
-.fp-badge--onknob { position: absolute; inset-block-end: 12%; inset-inline-start: 50%; transform: translateX(-50%); }
-
-.fp-label { color: var(--fp-text); font-size: 0.8125rem; line-height: 1.1; }
-.fp-label--u { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
-
-.fp-readout-block { display: flex; flex-direction: column; gap: 2px; }
-.fp-readout-block--inline { flex-direction: row; }
-.fp-readout {
-  padding: 0 0.3rem;
-  color: var(--fp-readout);
-  background: #3a3a3a;
-  border: 0;
-  border-radius: 2px;
-  font-size: 0.6875rem;
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
-  text-align: end;
-  min-inline-size: 3.2rem;
-}
-.fp-readout--main { color: var(--fp-readout); font-size: 1.0625rem; font-weight: 400; line-height: 1.1; background: transparent; padding-inline: 0; text-align: start; }
-.fp-readout--main small { margin-inline-start: 0.125rem; font-size: 0.6em; font-weight: 400; }
-
-.fp-row { display: flex; align-items: flex-start; justify-content: space-evenly; gap: 0.25rem; }
-.fp-row--foot { margin-block-start: auto; }
-.fp-stack { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-.fp-stack--spread { flex: 1; justify-content: space-evenly; }
-.fp-center { display: flex; justify-content: center; }
-.fp-panel__foot { margin-block-start: auto; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-
-/*
- * The reference's option groups are words, not pills: a column of plain labels with the chosen one
- * underlined, the rest dimmer. Only the phase-modulation input group sits in a faint box.
- */
-.fp-choice { display: inline-flex; gap: 0 0.5rem; flex-wrap: wrap; }
-.fp-choice[data-vertical] { flex-direction: column; gap: 0; }
-.fp-choice__item {
-  padding: 0 0.125rem;
-  color: var(--fp-dim);
-  background: transparent;
-  border: 0;
-  font: inherit;
-  font-size: 0.8125rem;
-  line-height: 1.3;
-  text-align: start;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.fp-choice__item:hover { color: var(--fp-text); }
-.fp-choice__item[aria-checked='true'] { color: var(--fp-text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fp-dim); }
-.fp-choice-box { display: inline-block; padding: 0.125rem 0.25rem; background: var(--fp-panel-2); border-radius: 2px; }
-.fp-choice-box .fp-choice__item { font-size: 0.75rem; line-height: 1.2; }
-.fp-choice__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
-
-.fp-toggle {
-  padding: 0.0625rem 0.45rem;
-  color: var(--fp-dim);
-  background: var(--fp-panel-2);
-  border: 0;
-  border-radius: 2px;
-  font: inherit;
-  font-size: 0.6875rem;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.fp-toggle--wide { align-self: stretch; text-align: center; }
-.fp-toggle--static { cursor: default; }
-.fp-toggle[aria-pressed='true'] { color: var(--fp-text); background: var(--fp-line); }
-.fp-panel__title .fp-toggle { margin-inline-start: auto; }
-
-.fp-tabs { display: inline-flex; gap: 1px; margin-inline-start: auto; }
-.fp-tabs__tab {
-  inline-size: 1.1rem; block-size: 1rem;
-  color: var(--section);
-  background: color-mix(in oklab, var(--section) 14%, transparent);
-  border: 0; border-radius: 2px;
-  font: inherit; font-size: 0.6rem; font-weight: 700;
-  cursor: pointer;
-}
-.fp-tabs__tab[aria-selected='true'] { color: var(--fp-bg); background: var(--section); }
-
-/* The oscillator pair: two halves, a rule between, the phase-modulation row along the foot. */
-.fp-panel--osc { padding: 0; gap: 0; }
-.fp-osc-pair { display: grid; grid-template-columns: 1fr 1fr; flex: 1; min-block-size: 0; }
-.fp-osc { display: flex; flex-direction: column; gap: 0.25rem; padding: 0.25rem 0.5rem; min-inline-size: 0; }
-.fp-osc[data-side='right'] { border-inline-start: 1px solid var(--fp-line); }
-.fp-osc__body { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.5rem; align-items: start; flex: 1; }
-.fp-osc[data-side='right'] .fp-osc__body { grid-template-columns: auto minmax(0, 1fr) auto; }
-.fp-osc__side { display: flex; flex-direction: column; gap: 0.375rem; }
-.fp-osc__side--fader { align-items: center; }
-.fp-osc__mid { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
-.fp-osc__hero { position: relative; }
-.fp-osc__foot {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto minmax(0, 1fr) auto;
-  align-items: center;
-  justify-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.5rem;
-  background: var(--fp-panel-2);
-  border-block-start: 1px solid var(--fp-line);
-}
-.fp-wave .fp-choice { gap: 2px; }
-
-.fp-fader { display: flex; flex-direction: column; align-items: center; gap: 0.125rem; }
-
-/* Noise: two slots side by side, a fader over a glyph over a pitch dial. */
-.fp-noise { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; flex: 1; }
-.fp-noise__slot { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 0.25rem; }
-.fp-noise__glyph { inline-size: 2.6rem; block-size: 1.6rem; background: repeating-linear-gradient(90deg, var(--fp-text) 0 1px, transparent 1px 3px); opacity: 0.55; mask: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); }
-
-.fp-comb { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.5rem; align-items: start; }
-.fp-comb__left { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-.fp-comb__glyph { inline-size: 1.8rem; block-size: 1.8rem; border-radius: 50%; background: var(--fp-text); opacity: 0.85; mask: radial-gradient(circle at 50% 40%, #000 45%, transparent 47%), radial-gradient(circle at 50% 100%, #000 55%, transparent 57%); }
-
-/* ── Routing bar ─────────────────────────────────────────────────────────── */
-.fp-routing {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-  padding: 0.375rem 1rem;
-  background: #171717;
-  border-block: 1px solid var(--fp-line);
-}
-.fp-routing__mode { display: flex; gap: 1.5rem; }
-.fp-routing .audio-routing { padding: 0; border: 0; background: transparent; }
-
-/* ── Modulators ──────────────────────────────────────────────────────────── */
-.fp-mods { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2px; min-block-size: 0; padding: 2px; }
-.fp-mod { display: flex; flex-direction: column; gap: 0.375rem; min-inline-size: 0; min-block-size: 0; padding: 0.25rem 0.75rem 0.5rem; background: var(--fp-panel); border: 1px solid var(--fp-line); overflow: hidden; }
-.fp-mod__title { display: flex; align-items: center; gap: 1rem; margin: 0; color: var(--fp-text); font-size: 0.75rem; font-weight: 400; }
-.fp-mod__name { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
-.fp-mod__knobs { display: flex; justify-content: space-evenly; align-items: flex-end; gap: 0.5rem; padding-block: 0.25rem; }
-.fp-mod__display { flex: 1; min-block-size: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; align-items: start; }
-.fp-mod__display .audio-envelope { block-size: 100%; }
-.fp-mod__empty { margin: auto; color: var(--fp-dim); font-size: 0.6875rem; text-align: center; }
-
-.fp-knob-gap { display: inline-block; inline-size: 2.2rem; block-size: 2.2rem; }
-.fp-knob-gap--drawn { inline-size: 1.35rem; block-size: 1.35rem; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #3a3a3a, #262626); border: 1px solid #3a3a3a; }
-.fp-knob-gap[data-size='xs'] { inline-size: 1.35rem; block-size: 1.35rem; }
-
-.fp .audio-fader { flex-direction: column; }
-.fp .audio-fader__track { inline-size: 0.34375rem; block-size: 5.1875rem; background: #202020; border: 0; border-radius: 2px; }
-.fp .audio-fader__fill { background: #666; opacity: 1; }
-.fp .audio-fader__value { color: var(--fp-text); font-size: 0.625rem; }
-.fp .audio-fader__label { display: none; }
-
-
-/* The two LFOs in the reference's second and third modulator slots. */
-.fp-mod[data-off] { opacity: 0.55; }
-.fp-mod__title .fp-toggle { margin-inline-start: auto; }
-.fp-mod__shape { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
-.fp-mod__shape .fp-choice__item { min-inline-size: 1.4rem; text-align: center; font-size: 0.8rem; line-height: 1; padding-block: 0.2rem; }
-.fp-mod__target { display: flex; flex-direction: column; gap: 0.25rem; min-inline-size: 7rem; }
-.fp-mod__target .control { min-inline-size: 0; }
-.fp-mod__target .control__label,
-.fp-mod__target label { color: var(--fp-text); font-size: 0.6875rem; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
-.fp-mod__display .audio-lfo-shape,
-.fp-mod__display > svg { block-size: 100%; min-block-size: 3rem; }
 
 /*
  * One bar, as the reference keeps its top row: everything that was stacked above the face-plate —
@@ -1772,38 +1377,338 @@
 }
 .audio-library__wave canvas, .audio-library__wave svg { inline-size: 100%; block-size: 100%; }
 
-
-/* The face of an oscillator dial: the wave the source makes, drawn under the pointer. */
-.audio-knob__face {
-  position: absolute;
-  inset: 13%;
-  display: grid;
-  place-items: center;
-  color: #c9c9c9;
-  pointer-events: none;
+/* ---- The face-plate, at the reference's own coordinates ---------------------------------------
+ *
+ * The reference sets its labels in Roboto, and a transcription at the pixel needs the same face or
+ * every word is a different width. Self-hosted, one variable file, the latin range only.
+ */
+@font-face {
+  font-family: 'Roboto';
+  src: url('/fonts/Roboto.woff2') format('woff2');
+  font-weight: 100 900;
+  font-stretch: 75% 100%;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+2010-2027, U+2212;
 }
-.fp-waveglyph { inline-size: 100%; block-size: auto; overflow: visible; }
-.audio-knob__face .fp-waveglyph path { stroke-width: 1.3; }
 
+/*
+ * The plate is a fixed object, 1250 by 696, and every control on it sits at measured coordinates.
+ * The stage scales the whole thing to the room it has, as the plugin's own window zoom does, so
+ * nothing ever reflows and nothing ever scrolls.
+ */
+.fp-stage {
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+  min-block-size: 0;
+  overflow: hidden;
+  background: #262626;
+}
+.fp {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  transform: scale(var(--fp-scale, 1));
+  transform-origin: 50% 0;
+  background: #262626;
+  color: #a5a39a;
+  font-family: 'Roboto', var(--font-sans);
+  font-size: 13px;
+  line-height: 1;
+  user-select: none;
+}
+.fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
+.fp-band, .fp-panel, .fp-routing, .fp-strip, .fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box, .fp-slot { position: absolute; }
+.fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
-/* The fader's handle: a small round cap riding the track at the value, as the reference's does. */
-.audio-fader__handle {
+/* Panels: the grey ones carry a black hairline down each side; the dark ones are the ground itself. */
+.fp-panel { background: #323232; box-shadow: -1px 0 0 #050505, 1px 0 0 #050505; }
+.fp-panel[data-tone='noise'] { background: #242424; box-shadow: none; }
+.fp-panel[data-tone='bare'] { background: transparent; box-shadow: none; }
+
+/* Words. Placed by the top of their capitals; Roboto 13 in the reference's greys. */
+.fp-text {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  color: #a5a39a;
+  cursor: default;
+}
+.fp-text[data-align='center'] { translate: -50% 0; }
+.fp-text[data-align='right'] { translate: -100% 0; }
+.fp-text[data-kind='title'] { color: #a7a7a7; }
+.fp-text[data-kind='bold'] { font-weight: 700; color: #a8a8a8; }
+.fp-text[data-kind='macro'] { color: #c0c1bd; }
+.fp-text[data-kind='digit'] { font-weight: 700; color: #a2a3a2; }
+.fp-macro[data-wired] .fp-text[data-kind='digit'] { color: #eb292f; }
+.fp-text[data-kind='dim'] { color: #838383; }
+.fp-text[data-kind='source'] { font-weight: 700; }
+.fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: #8a8a8a; }
+button.fp-text { cursor: pointer; touch-action: manipulation; }
+button.fp-text:hover { color: #d4d4d4; }
+button.fp-text[aria-checked='true'] { color: #d0d0d0; }
+button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+
+/*
+ * Knobs. The box is the arc's diameter and the knob is placed by its centre. Measured: the body a
+ * vertical gradient with a near-black hairline and a shadow falling below; the arc one device pixel,
+ * from half-past seven round to half-past four; the pointer a rounded bar from a third of the radius
+ * to the rim. Four sizes, and a light warm finish for the amplifier's.
+ */
+.fp-knob, .fp-knob-empty {
+  translate: -50% -50%;
+  inline-size: var(--ring);
+  block-size: var(--ring);
+  border-radius: 50%;
+  --top: #53555a; --bottom: #3c3b40; --rim: #101010; --hand: #c4c2bf; --ringc: #505050;
+}
+.fp-knob { cursor: ns-resize; touch-action: none; outline: none; }
+.fp-knob:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.fp-knob[data-size='std'], .fp-knob-empty[data-size='std'] { --ring: 57px; --d: 29px; --hand-w: 3.5px; --hand-h: 8.5px; }
+.fp-knob[data-size='sm'], .fp-knob-empty[data-size='sm'] { --ring: 38.5px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; }
+.fp-knob[data-size='hero'] { --ring: 96px; --d: 66px; --hand-w: 3.5px; --hand-h: 5px; --hand: #eae1ca; --ringc: #535353; }
+.fp-knob[data-size='macro'], .fp-knob-empty[data-size='macro'] { --ring: 26px; --d: 21px; --hand-w: 2.5px; --hand-h: 6px; --hand: #e9e9e9; --ringc: #545454; --top: #5c5c5c; --bottom: #3c3c3c; --rim: #202020; }
+.fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: #a8a7a6; --bottom: #6c6b68; --rim: #141414; --hand: #0e0e0e; --ringc: #494949; }
+.fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: #a3a2a0; --bottom: #6e6d6a; --ringc: #3a3a3a; }
+.fp-knob[data-inert] { cursor: default; }
+.fp-knob__ring { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; display: block; }
+.fp-knob__ring path { fill: none; stroke: var(--ringc); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fp-knob__body {
   position: absolute;
   inset-inline-start: 50%;
-  inset-block-end: calc(var(--fill, 0) * 100%);
-  inline-size: 0.6rem;
-  block-size: 0.6rem;
-  transform: translate(-50%, 50%);
+  inset-block-start: 50%;
+  inline-size: var(--d);
+  block-size: var(--d);
+  translate: -50% -50%;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 50%, #cfcfcf 0 30%, #47474c 32%);
-  box-shadow: 0 0 0 1px #2d2d2d;
-  pointer-events: none;
+  background: linear-gradient(var(--top), var(--bottom));
+  box-shadow: 0 0 0 1px var(--rim), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 5px 9px -2px rgba(0, 0, 0, 0.6);
 }
-.fp .audio-fader__fill { background: transparent; }
+.fp-knob[data-size='hero'] .fp-knob__body {
+  background: radial-gradient(circle, #3a3c3e 0 87.5%, #414345 88.5% 98.5%, #2c2c2e 99%);
+  box-shadow: 0 0 0 1px #050505, 0 6px 12px -3px rgba(0, 0, 0, 0.6);
+}
+.fp-knob__spin { position: absolute; inset: 0; rotate: var(--turn, 0deg); }
+.fp-knob__hand {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 0;
+  inline-size: var(--hand-w);
+  block-size: var(--hand-h);
+  translate: -50% 0;
+  border-radius: 2px;
+  background: var(--hand);
+}
+.fp-knob[data-size='hero'] .fp-knob__hand { inset-block-start: 0.5px; border-radius: 1px; }
+.fp-knob__face {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 50%;
+  inline-size: 46px;
+  block-size: 23px;
+  translate: -50% calc(-50% + 1.5px);
+  color: #a7a7a7;
+}
+.fp-waveglyph { display: block; inline-size: 100%; block-size: 100%; overflow: visible; }
+.fp-knob__digit {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 50%;
+  translate: -50% -50%;
+  color: #db282d;
+  font: 700 12px/1 'Roboto', var(--font-sans);
+}
+.fp-knob[data-size='hero'] .fp-knob__digit { inset-block-start: calc(50% + 21px); }
+.fp-knob__value {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 50%;
+  translate: -50% 2px;
+  padding: 1px 5px;
+  color: #f2f2f2;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  display: none;
+  pointer-events: none;
+  z-index: 2;
+}
+.fp-knob:hover .fp-knob__value, .fp-knob:focus-visible .fp-knob__value { display: block; }
 
-/* The wave as an icon with its name above; the reference's PM row shows Sine and Tri this way. */
-.fp-wavepick { display: inline-flex; flex-direction: column; align-items: center; gap: 0.125rem; padding: 0; background: transparent; border: 0; color: var(--fp-text); cursor: pointer; touch-action: manipulation; }
-.fp-wavepick__name { font-size: 0.8125rem; line-height: 1.1; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fp-dim); }
-.fp-wavepick__icon { inline-size: 2.6rem; block-size: 2.6rem; display: grid; place-items: center; border-radius: 50%; background: #c9c9c9; color: #303030; }
-.fp-wavepick__icon .fp-waveglyph { inline-size: 70%; }
-.fp-wavepick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* Faders: an oscillator's dark groove with its numbered cap; a noise generator's thinner groove with a light ring. */
+.fp-fader { translate: -50% 0; inline-size: 16px; block-size: 88px; cursor: ns-resize; touch-action: none; outline: none; }
+.fp-fader:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.fp-fader__track {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 6.5px;
+  inline-size: 5.5px;
+  block-size: 75px;
+  translate: -50% 0;
+  border-radius: 3px;
+  background: #1e1e1e;
+  box-shadow: inset 0 0 0 1px #141414;
+}
+.fp-fader__handle {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: calc(7.5px + (1 - var(--fill, 0)) * 72.5px);
+  inline-size: 14.5px;
+  block-size: 14.5px;
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(#585b5f, #333436);
+  box-shadow: 0 0 0 1px #0d0d0c, 0 3px 5px rgba(0, 0, 0, 0.5);
+  color: #e1272c;
+  font: 700 9.5px/1 'Roboto', var(--font-sans);
+}
+.fp-fader[data-kind='noise'] { block-size: 79.5px; }
+.fp-fader[data-kind='noise'] .fp-fader__track { inline-size: 5px; block-size: 66px; border-radius: 2.5px; background: #1e1e1e; box-shadow: inset 0 0 0 1px #151515; }
+.fp-fader[data-kind='noise'] .fp-fader__handle {
+  inset-block-start: calc(7.5px + (1 - var(--fill, 0)) * 72px);
+  inline-size: 16px;
+  block-size: 16px;
+  background: radial-gradient(circle, #111 0 2.3px, transparent 2.7px), linear-gradient(#9a9997, #737270);
+  box-shadow: 0 0 0 1px #101011, 0 3px 5px rgba(0, 0, 0, 0.5);
+}
+
+/* The quiet grey box: mid grey, dark text, a pixel of radius; lighter when it is the chosen one. */
+.fp-box {
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  background: #545454;
+  border-radius: 2px;
+  color: #1e1e1e;
+  font: 400 11px/1 'Roboto', var(--font-sans);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fp-box[data-align='right'] { text-align: end; }
+.fp-box[data-selected] { background: #9a9a9a; }
+button.fp-box { cursor: pointer; touch-action: manipulation; }
+button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
+
+/* The light-grey markers: hexagon, circle, square, and the serrated square of a noise generator. */
+.fp-badge {
+  translate: -50% -50%;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: #999;
+  color: #111;
+  font: 700 11px/1 'Roboto', var(--font-sans);
+}
+.fp-badge[data-kind='hex'] { inline-size: 18px; block-size: 16px; clip-path: polygon(24% 0, 76% 0, 100% 50%, 76% 100%, 24% 100%, 0 50%); }
+.fp-badge[data-kind='circle'] { inline-size: 16px; block-size: 16px; border-radius: 50%; font-size: 11px; }
+.fp-badge[data-kind='square'] { inline-size: 11px; block-size: 11px; font-size: 9px; box-shadow: inset 0 0 0 0.5px #b8b8b8; }
+.fp-badge[data-kind='noise'] { inline-size: 18px; block-size: 17px; border-radius: 1.5px; clip-path: polygon(0 0, 100% 0, 100% 36%, 87% 36%, 87% 62%, 100% 62%, 100% 100%, 0 100%, 0 62%, 13% 62%, 13% 36%, 0 36%); }
+button.fp-badge { cursor: pointer; touch-action: manipulation; }
+.fp-badge[role='tab'] { background: #6a6a6a; color: #1c1c1c; }
+.fp-badge[role='tab'][aria-selected='true'] { background: #999; color: #111; }
+.fp-badge:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.fp-tabs { display: contents; }
+
+.fp-icon { translate: -50% -50%; display: block; line-height: 0; }
+.fp-icon svg { display: block; }
+.fp-line { display: block; }
+
+/* The big readout: a mark, the whole part tall, the decimals small, one baseline. */
+.fp-read { color: #7d7e7e; font-family: 'Roboto', var(--font-sans); font-stretch: 75%; font-weight: 700; line-height: 1; }
+.fp-read > * { position: absolute; white-space: nowrap; }
+/* The global `svg { max-width: 100% }` would cap the mark at its zero-width anchor. */
+.fp-read__mark { fill: #8a8a8a; color: #8a8a8a; display: block; max-inline-size: none; }
+.fp-read__u { display: block; block-size: 0.5px; background: #8a8a8a; }
+.fp-read__row { display: flex; align-items: baseline; }
+.fp-read__big { position: static; font-size: 17.6px; font-weight: 700; font-style: normal; margin-inline-end: 1.7px; }
+.fp-read__dot { position: static; display: block; inline-size: 1.5px; block-size: 1.5px; background: #7d7e7e; margin-inline-end: 2.8px; }
+.fp-read__small { position: static; }
+.fp-read__small { font-size: 12.7px; font-weight: 700; }
+
+/* Pitch-bend and mod wheels and aftertouch, drawn as the reference draws its own. */
+.fp-wheel { inline-size: 17px; block-size: 26.5px; border-radius: 2.5px; background: linear-gradient(#3b3b3b, #2a2a2a); box-shadow: 0 0 0 1px #171717; }
+.fp-wheel i { position: absolute; inset-inline: 2px; block-size: 2px; background: #ababab; border-radius: 1px; }
+.fp-at { inline-size: 17px; block-size: 17px; translate: -50% -50%; border-radius: 50%; background: #2e2e2e; box-shadow: 0 0 0 1px #171717; }
+.fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: #7f7e7f; }
+.fp-macro { display: contents; }
+
+/* The routing bar: the two page tabs, then the modulation sources in their colours. */
+.fp-sources { list-style: none; margin: 0; padding: 0; display: contents; }
+.fp-source { display: contents; }
+.fp-sources__box { inline-size: 116.5px; block-size: 18px; border-radius: 3px; background: #404040; }
+.fp-source[data-kind='p'] .fp-text { color: #efa807; }
+.fp-source[data-kind='e'] .fp-text { color: #4576c4; }
+.fp-source[data-kind='l'] .fp-text { color: #6fb904; }
+.fp-source[data-kind='t'] .fp-text { color: #8d52a4; }
+.fp-source[data-kind='v'] .fp-text { color: #d0708b; }
+
+/* The strip of kept sounds along the foot. */
+.fp-slot {
+  margin: 0;
+  padding: 0 0 0 6.5px;
+  border: 0;
+  background: #282828;
+  color: #bb860e;
+  font: 400 13px/21.5px 'Roboto', var(--font-sans);
+  text-align: start;
+  cursor: default;
+}
+.fp-slot { box-shadow: -1.5px 0 0 #050505; }
+.fp-slot[data-filled] { background: #121212; cursor: pointer; }
+.fp-slot[data-active] { background: #262626; box-shadow: -1.5px 0 0 #050505, 0 0 0 2px #db9d09; color: #f2aa07; }
+.fp-slot:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 3px; }
+
+/* The plots, in the reference's blue, without the chrome the standalone versions carry. */
+.fp-plot { overflow: hidden; }
+.fp-plot[data-off] { opacity: 0.45; }
+.fp-plot .envelope { display: block; gap: 0; }
+.fp-plot .envelope__plot { display: block; background: transparent; border: 0; border-radius: 0; }
+.fp-plot .envelope__floor { display: none; }
+.fp-plot .envelope__fill { fill: #394963; }
+.fp-plot .envelope__line { stroke: #4675bf; stroke-width: 1.5; }
+.fp-plot .envelope__dot { display: none; }
+.fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
+.fp-plot .envelope__read, .fp-plot .lfo-shape__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.fp-plot .lfo-shape { display: block; gap: 0; }
+.fp-plot .lfo-shape svg { display: block; inline-size: 100%; block-size: 60px; background: transparent; border: 0; border-radius: 0; opacity: 1; }
+.fp-plot .lfo-shape__mid { stroke: #4675bf; stroke-width: 1; }
+.fp-plot .lfo-shape__line { stroke: #4675bf; stroke-width: 1.5; }
+.fp-plot .lfo-shape__fill { fill: #394963; stroke: none; }
+.lfo-shape__fill { fill: none; }
+
+/* The LFO's target, in the box style, where the reference keeps its gate options. */
+.fp-target { inline-size: 105px; }
+.fp-target .control { margin: 0; padding: 0; min-inline-size: 0; }
+.fp-target .select-trigger {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  inline-size: 105px;
+  min-block-size: 0;
+  block-size: 14.5px;
+  margin: 0;
+  padding: 0 3px 0 4px;
+  border: 0;
+  border-radius: 2px;
+  background: #545454;
+  color: #1e1e1e;
+  font: 400 11px/1 'Roboto', var(--font-sans);
+  cursor: pointer;
+}
+.fp-target .select-trigger__label { display: none; }
+.fp-target .select-trigger__value { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
+.fp-target .select-trigger__icon { inline-size: 8px; block-size: 8px; flex: none; }
