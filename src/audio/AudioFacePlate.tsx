@@ -4,7 +4,7 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { LFO_COUNT } from '@/audio/fields'
+import { LFO_COUNT, MOD_ENVELOPE_COUNT } from '@/audio/fields'
 
 /**
  * The face-plate, transcribed from the reference at its own scale.
@@ -62,12 +62,22 @@ const targetOf = (id: string): string | undefined => {
   return `layers[${found[1]}].${where[found[2] ?? ''] ?? ''}`
 }
 
-/** The LFO pointed at a target, if one is, as the arc the control will wear. */
+/**
+ * The source pointed at a target, if one is, as the arc the control will wear: a free envelope in
+ * its blue, an LFO in its green. Two sources on one control add in the engine; the arc shows the
+ * first.
+ */
 const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
   if (!target) return undefined
+  for (let index = 0; index < MOD_ENVELOPE_COUNT; index += 1) {
+    const id = `envelopes[${index}]`
+    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
+    return { colour: SOURCE_COLOUR.e, depth: readNum(ctx, `${id}.depth`), bipolar: false, onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
+  }
   for (let index = 0; index < LFO_COUNT; index += 1) {
-    if (read(ctx, `lfos[${index}].enabled`) === false || read(ctx, `lfos[${index}].target`) !== target) continue
-    return { colour: SOURCE_COLOUR.l, depth: readNum(ctx, `lfos[${index}].depth`), onDepth: (next) => ctx.onChange(`lfos[${index}].depth`, next) }
+    const id = `lfos[${index}]`
+    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
+    return { colour: SOURCE_COLOUR.l, depth: readNum(ctx, `${id}.depth`), onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
   }
   return undefined
 }
@@ -125,13 +135,15 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
   if (!parameter) return <span className="fp-knob-empty" data-size={size} style={at(x, y)} aria-hidden="true"><Ring /></span>
   const current = read(ctx, id)
   const target = targetOf(id)
+  // Macro-band dials keep the index to their left; they do not wear a red digit on the face.
+  const shownDigit = size === 'macro' ? undefined : (digit ?? macroDigit(id))
   return (
     <AudioKnob
       param={{ ...parameter, label }}
       value={typeof current === 'number' ? current : parameter.min}
       size={size}
       tone={tone}
-      digit={digit ?? macroDigit(id)}
+      digit={shownDigit}
       face={face}
       target={target}
       mod={modOf(ctx, target)}
@@ -429,6 +441,23 @@ function ShapeWheel({ x, y, value, label, onPick }: { x: number; y: number; valu
   )
 }
 
+/** The thin bracket that gathers two dials towards the name of the stage under them. */
+function Bracket({ x0, x1, top, mid, tip, width }: { x0: number; x1: number; top: number; mid: number; tip: number; width: number }) {
+  const at = useAt()
+  const left = Math.min(x0, x1) - 1
+  const w = Math.abs(x1 - x0) + 2
+  const h = tip - top + 1
+  const centre = (x0 + x1) / 2
+  const gap = width / 2 + 5
+  const rel = (x: number) => x - left
+  return (
+    <svg className="fp-bracket" style={{ ...at(left, top), width: w, height: h }} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+      <path d={`M${rel(x0)} 0 V${mid - top} L${rel(centre - gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
+      <path d={`M${rel(x1)} 0 V${mid - top} L${rel(centre + gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
+    </svg>
+  )
+}
+
 /* ── The plate ───────────────────────────────────────────────────────────────────────────────── */
 
 /**
@@ -462,10 +491,28 @@ const macroDigit = (id: string) => {
 const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 const hertz = (st: number) => 440 * Math.pow(2, st / 12)
 
-/** The routing bar's sources: the amp envelope, fixed to its layer, and the two LFOs. */
-const SOURCES: { id: string; kind: 'e' | 'l'; x: number; lfo?: number }[] = [
-  { id: 'E1', kind: 'e', x: 518 }, { id: 'L2', kind: 'l', x: 558.5, lfo: 0 }, { id: 'L3', kind: 'l', x: 598.8, lfo: 1 },
+/** A modulation source of the routing bar: which slot it is, which page of panels shows it. */
+type Source = { id: string; kind: 'e' | 'l'; x: number; page: number; lfo?: number; envelope?: number }
+const SOURCES: Source[] = [
+  { id: 'E1', kind: 'e', x: 518, page: 0 },
+  { id: 'E2', kind: 'e', x: 558.5, page: 0, envelope: 0 },
+  { id: 'E3', kind: 'e', x: 598.8, page: 0, envelope: 1 },
+  { id: 'L4', kind: 'l', x: 679.3, page: 1, lfo: 0 },
+  { id: 'L5', kind: 'l', x: 719.5, page: 1, lfo: 1 },
+  { id: 'L6', kind: 'l', x: 759.7, page: 1, lfo: 2 },
+  { id: 'L7', kind: 'l', x: 840, page: 2, lfo: 3 },
+  { id: 'L8', kind: 'l', x: 880.3, page: 2, lfo: 4 },
+  { id: 'L9', kind: 'l', x: 920.6, page: 2, lfo: 5 },
 ]
+/** The three slots' left edges. */
+const SLOT_X = [0, 414.5, 832.5]
+/** Where the box behind the visible trio sits, a page each. */
+const PAGE_BOX = [502, 663, 824]
+/** The slot a modulator's property path names, or null. */
+const held = (source: Source): { path: string; id: string } | null =>
+  source.lfo !== undefined ? { path: `lfos[${source.lfo}]`, id: source.id }
+  : source.envelope !== undefined ? { path: `envelopes[${source.envelope}]`, id: source.id }
+  : null
 
 export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots }: {
   parameters: ParameterDef[]
@@ -497,7 +544,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
    * source's colour, and a small badge of its name follows the pointer. The Target field in the
    * modulator's own panel does the same job for a keyboard.
    */
-  const [assigning, setAssigning] = useState<number | null>(null)
+  const [assigning, setAssigning] = useState<Source | null>(null)
+  const [page, setPage] = useState(0)
+  /** The LFOs the page shows, and the slot of the three each takes. */
+  const lfosOnPage = page === 0 ? [] : [0, 1, 2].map((slot) => ({ index: (page - 1) * 3 + slot, slot }))
   const ghostRef = useRef<HTMLSpanElement | null>(null)
   const follow = (event: { clientX: number; clientY: number }) => {
     const plate = plateRef.current?.getBoundingClientRect()
@@ -506,19 +556,20 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     ghost.style.left = `${(event.clientX - plate.left) / scale + 14}px`
     ghost.style.top = `${(event.clientY - plate.top) / scale - 9}px`
   }
-  const pickUp = (index: number) => (event: React.PointerEvent<HTMLElement>) => {
+  const pickUp = (source: Source) => (event: React.PointerEvent<HTMLElement>) => {
     if (event.button && event.button !== 0) return
     event.currentTarget.setPointerCapture?.(event.pointerId)
-    setAssigning(index)
+    setAssigning(source)
     follow(event)
   }
   const putDown = (event: React.PointerEvent<HTMLElement>) => {
-    if (assigning === null) return
+    const slot = assigning ? held(assigning) : null
+    if (!slot) { setAssigning(null); return }
     const under = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
     const target = under?.closest?.('[data-target]')?.getAttribute('data-target')
     if (target) {
-      onChange(`lfos[${assigning}].target`, target)
-      if (read(ctx, `lfos[${assigning}].enabled`) === false) onChange(`lfos[${assigning}].enabled`, true)
+      onChange(`${slot.path}.target`, target)
+      if (read(ctx, `${slot.path}.enabled`) === false) onChange(`${slot.path}.enabled`, true)
     }
     setAssigning(null)
   }
@@ -583,13 +634,6 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       text: (ratio) => `ratio ${ratio.toFixed(3)}`,
     }
   }
-  const targetName = (index: number) => {
-    const parameter = ctx.byId.get(`lfos[${index}].target`)
-    const current = read(ctx, `lfos[${index}].target`)
-    if (!parameter || parameter.kind !== 'select') return 'unassigned'
-    const option = parameter.options.find((entry) => entry.value === current)
-    return option && option.value !== 'off' ? option.label : 'unassigned'
-  }
   const seed = readNum(ctx, 'seed', 0)
 
   /** The wave picker at the head of an oscillator: the four waves of the table, the chosen one lit. */
@@ -611,23 +655,23 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   /** An oscillator's side column: jitter, the source, the unison voices. Mirrored for the second. */
   const sideColumn = (index: number, cx: number) => (
     <>
-      <Text x={cx} y={98}>Jitter</Text>
+      <Text x={cx} y={98} size={11}>Jitter</Text>
       <Knob ctx={ctx} x={cx} y={131} id={L(index, 'pitch.jitter')} label="Jitter" size="sm" />
-      <Text x={cx} y={154}>Source</Text>
+      <Text x={cx} y={154} size={11}>Source</Text>
       <span role="radiogroup" aria-label={`Oscillator ${index + 1} source`}>
-        <Text x={cx} y={167} u checked={source(index) === 'tone'} onClick={() => setSource(index, 'tone')}>Tone</Text>
-        <Text x={cx} y={181} u checked={source(index) === 'noise'} onClick={() => setSource(index, 'noise')}>Noise</Text>
-        <Text x={cx} y={195} u checked={source(index) === 'off'} onClick={() => setSource(index, 'off')}>Off</Text>
+        <Text x={cx} y={167} size={11} u checked={source(index) === 'tone'} onClick={() => setSource(index, 'tone')}>Tone</Text>
+        <Text x={cx} y={181} size={11} u checked={source(index) === 'noise'} onClick={() => setSource(index, 'noise')}>Noise</Text>
+        <Text x={cx} y={195} size={11} u checked={source(index) === 'off'} onClick={() => setSource(index, 'off')}>Off</Text>
       </span>
-      <Text x={cx} y={210}>Voices</Text>
+      <Text x={cx} y={210} size={11}>Voices</Text>
       <Knob ctx={ctx} x={cx} y={242.5} id={L(index, 'source.voices')} label="Voices" size="sm" />
     </>
   )
 
   return (
     <div className="fp-stage" ref={stageRef} style={{ '--fp-scale': scale } as CSSProperties}>
-      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning === null ? undefined : ''} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR.l } as CSSProperties}>
-        <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning === null ? '' : `L${assigning + 2}`}</span>
+      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning ? '' : undefined} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
+        <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band ═══ */}
         <Origin.Provider value={{ x: 0, y: 0 }}>
           <div className="fp-band" role="group" aria-label="Macros" style={{ left: 0, top: 0, width: PLATE.w, height: 53 }}>
@@ -694,18 +738,18 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" stroke="#000" strokeWidth="1" />
             <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" stroke="#161616" strokeWidth="1" />
           </svg>
-          <Readout x={70.5} base={281} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
-          <Text x={203.8} y={272} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
-          <Icon x={204.6} y={306.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
-          <Text x={277.2} y={273}>PM1</Text>
-          <Text x={325.5} y={274}>Fall</Text>
-          <Text x={373.8} y={273}>PM2</Text>
-          <Knob ctx={ctx} x={277.2} y={305.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
-          <Knob ctx={ctx} x={325.5} y={306} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
-          <Knob ctx={ctx} x={373.8} y={305.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
-          <Text x={447.3} y={272} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
-          <Icon x={445.9} y={306.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
-          <Readout x={512.5} base={281} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
+          <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
+          <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
+          <Icon x={204.6} y={314.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
+          <Text x={277.2} y={281}>PM1</Text>
+          <Text x={325.5} y={282}>Fall</Text>
+          <Text x={373.8} y={281}>PM2</Text>
+          <Knob ctx={ctx} x={277.2} y={313.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
+          <Knob ctx={ctx} x={325.5} y={314} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
+          <Knob ctx={ctx} x={373.8} y={313.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
+          <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
+          <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
+          <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
         </Panel>
 
         <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise">
@@ -755,8 +799,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Text x={972.4} y={80}>Reso</Text>
           <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
           <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
-          <Text x={900.2} y={171.5}>Env</Text>
-          <Text x={972.7} y={172.5}>Drive</Text>
+          <Text x={900.2} y={167.5}>Env</Text>
+          <Text x={972.7} y={168.5}>Drive</Text>
           <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
           <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
           <Text x={892.6} y={275}>Bits</Text>
@@ -780,9 +824,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <Panel x={1090.5} y={54} w={159.5} h={288} label="FX">
           <Badge x={1100.5} y={65} kind="square">X</Badge>
           <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
-          <Text x={1118} y={84}>Rate</Text>
-          <Text x={1169.5} y={84}>Mix</Text>
-          <Text x={1222} y={84}>Depth</Text>
+          <Text x={1118} y={80}>Rate</Text>
+          <Text x={1169.5} y={80}>Mix</Text>
+          <Text x={1222} y={80}>Depth</Text>
           <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
           <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
           <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
@@ -809,69 +853,112 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Line x={0} y={342} w={PLATE.w} h={1.5} />
         </Origin.Provider>
 
-        {/* ═══ Routing bar: the sources, and where each is pointed ═══ */}
+        {/* ═══ Routing bar: the sources, three of them shown below at a time ═══ */}
         <Origin.Provider value={{ x: 0, y: 343.5 }}>
           <div className="fp-routing" role="group" aria-label="Routing bar" style={{ left: 0, top: 343.5, width: PLATE.w, height: 39 }}>
-            <span className="fp-sources__box" style={{ left: 502, top: 364 - 343.5 }} aria-hidden="true" />
+            <span className="fp-sources__box" style={{ left: PAGE_BOX[page], top: 364 - 343.5 }} aria-hidden="true" />
             <ul className="fp-sources" role="list" aria-label="Routing">
               {SOURCES.map((source) => (
                 <li key={source.id} className="fp-source" data-kind={source.kind} data-live="">
-                  {source.lfo !== undefined ? (
-                    <Grab x={source.x} y={352.6} label={`Drag ${source.id} onto a control to modulate it`} held={assigning === source.lfo}
-                      onPointerDown={pickUp(source.lfo)} onPointerMove={assigning === source.lfo ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
+                  {held(source) ? (
+                    <Grab x={source.x} y={352.6} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id}
+                      onPointerDown={pickUp(source)} onPointerMove={assigning?.id === source.id ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
                       <MoveIcon />
                     </Grab>
                   ) : (
                     <Icon x={source.x} y={352.6} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
                   )}
-                  <Text x={source.x + 1} y={367.5} kind="source">{source.id}</Text>
+                  <Text x={source.x + 1} y={367.5} kind="source" onClick={() => setPage(source.page)} label={`Show modulator ${source.id}`}>{source.id}</Text>
                 </li>
               ))}
             </ul>
-            <Text x={640} y={367.5} align="left" kind="dim">E1 · amp</Text>
-            <Text x={790} y={367.5} align="left" kind="dim">L2 · {targetName(0)}</Text>
-            <Text x={980} y={367.5} align="left" kind="dim">L3 · {targetName(1)}</Text>
           </div>
         </Origin.Provider>
         <Origin.Provider value={{ x: 0, y: 0 }}>
           <Line x={0} y={382.5} w={PLATE.w} h={1.5} />
         </Origin.Provider>
 
-        {/* ═══ Modulators ═══ */}
-        <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
-          <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
-          <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
-          <Text x={70.9} y={413.5}>Shape</Text>
-          <Text x={120.8} y={413.5}>Pan</Text>
-          <Text x={209} y={413.5}>Spread</Text>
-          <Text x={257.5} y={413.5}>Sustain</Text>
-          <Text x={370.5} y={413}>Env Level</Text>
-          <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
-          <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
-          <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
-          <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
-          <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
-          <Text x={96} y={500}>A</Text>
-          <Text x={232.4} y={499.5}>D</Text>
-          <Text x={368.6} y={499.5}>R</Text>
-          <Text x={27.6} y={510}>Delay</Text>
-          <Text x={164.8} y={510}>Hold</Text>
-          <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
-          <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
-          <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
-          <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
-          <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
-          <Line x={0} y={583.5} w={413.5} h={1} colour="#282828" />
-          <Text x={40.4} y={592} u>Gate</Text>
-          <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
-            <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
-          </Block>
-        </Panel>
+        {/* ═══ Modulators: three of nine at a time, the page the routing bar chose ═══ */}
+        {page === 0 ? (
+          <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
+            <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
+            <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
+            <Text x={70.9} y={413.5}>Shape</Text>
+            <Text x={120.8} y={413.5}>Pan</Text>
+            <Text x={209} y={413.5}>Spread</Text>
+            <Text x={257.5} y={413.5}>Sustain</Text>
+            <Text x={370.5} y={413}>Env Level</Text>
+            <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
+            <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
+            <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
+            <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
+            <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
+            <Bracket x0={40} x1={151} top={474} mid={486.5} tip={500} width={8} />
+            <Bracket x0={177.5} x1={287.5} top={474} mid={486.5} tip={500} width={11.5} />
+            <Text x={96} y={496}>A</Text>
+            <Text x={232.4} y={495.5}>D</Text>
+            <Text x={368.6} y={495.5}>R</Text>
+            <Text x={27.6} y={510}>Delay</Text>
+            <Text x={164.8} y={510}>Hold</Text>
+            <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
+            <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
+            <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
+            <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
+            <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
+            <Line x={0} y={583.5} w={413.5} h={1} colour="#282828" />
+            <Text x={40.4} y={592} u>Gate</Text>
+            <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
+              <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+            </Block>
+          </Panel>
 
-        {[0, 1].map((index) => {
-          const o = 418.3 * (index + 1)
-          const px = index === 0 ? 414.5 : 832.5
-          const pw = 417.5
+        ) : null}
+        {page === 0 ? [0, 1].map((index) => {
+          const slot = index + 1
+          const o = 418.3 * slot
+          const px = SLOT_X[slot] ?? 0
+          const id = (tail: string) => `envelopes[${index}].${tail}`
+          const target = ctx.byId.get(id('target'))
+          const on = read(ctx, id('enabled')) !== false
+          const Y = (local: number) => 384 + local
+          return (
+            <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`}>
+              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
+              <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
+              <Text x={70.9 + o} y={Y(29.5)}>Shape</Text>
+              <Text x={257.5 + o} y={Y(29.5)}>Sustain</Text>
+              <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
+              <Knob ctx={ctx} x={71.7 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
+              <Knob ctx={ctx} x={256.4 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
+              <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
+              <Text x={96 + o} y={Y(116)}>A</Text>
+              <Text x={232.4 + o} y={Y(115.5)}>D</Text>
+              <Text x={368.6 + o} y={Y(115.5)}>R</Text>
+              <Text x={27.6 + o} y={Y(126)}>Delay</Text>
+              <Text x={164.8 + o} y={Y(126)}>Hold</Text>
+              <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
+              <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
+              <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
+              <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
+              <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
+              <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="#282828" />
+              <Text x={38.4 + o} y={Y(208)} u>Target</Text>
+              <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5}>
+                {target ? (
+                  <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+                ) : null}
+              </Block>
+              <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
+              <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on}>
+                <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+              </Block>
+            </Panel>
+          )
+        }) : null}
+        {lfosOnPage.map(({ index, slot }) => {
+          const o = 418.3 * slot
+          const px = SLOT_X[slot] ?? 0
+          const pw = slot === 0 ? 413.5 : 417.5
           const id = (tail: string) => `lfos[${index}].${tail}`
           const target = ctx.byId.get(id('target'))
           const on = read(ctx, id('enabled')) !== false
@@ -880,21 +967,21 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           const Y = (local: number) => 384 + local
           return (
             <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`}>
-              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
+              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 4}</Text>
               <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
               {/* the left column: how fast, and whether at all */}
-              <Text x={36.5 + o} y={Y(108)}>Rate</Text>
+              <Text x={36.5 + o} y={Y(104)}>Rate</Text>
               <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
               <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
-              <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
+              <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`}>On</Box>
               {/* the wheel */}
               <Text x={193 + o} y={Y(30)}>Shape</Text>
               <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
               <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
               {/* the right column: how much, and from where in the cycle */}
-              <Text x={351.5 + o} y={Y(30)}>LFO Level</Text>
+              <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
               <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
-              <Text x={351.5 + o} y={Y(168)}>Phase</Text>
+              <Text x={351.5 + o} y={Y(164)}>Phase</Text>
               <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
               {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
               <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>

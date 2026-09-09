@@ -85,19 +85,23 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
   })
 
-  it('says what a modulator is doing, and that it is doing it to nothing yet', () => {
+  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
+    const user = userEvent.setup()
     open(arcadeCoin().id)
-    // The LFOs sit in the reference's second and third modulator slots, on the plate itself.
-    for (const name of ['LFO 1', 'LFO 2']) {
+    // The plate opens on the envelopes; the LFOs are a page away, reached by their names.
+    expect(screen.getByRole('region', { name: 'Envelope 2' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'LFO 1' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
+    for (const name of ['LFO 1', 'LFO 2', 'LFO 3']) {
       const panel = screen.getByRole('region', { name })
       expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
       expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
     }
-    // The routing bar lists this engine's sources — the envelope and the two LFOs — and says where each points.
+    // The routing bar lists the reference's nine sources, all of them this engine's: the amp
+    // envelope, two free envelopes, six LFOs. A name shows its trio of panels.
     const routing = screen.getByRole('list', { name: 'Routing' })
-    expect(within(routing).getAllByRole('listitem')).toHaveLength(3)
-    for (const live of ['E1', 'L2', 'L3']) expect(within(routing).getByText(live)).toBeInTheDocument()
-    expect(screen.getByText('L2 · unassigned')).toBeInTheDocument()
+    expect(within(routing).getAllByRole('listitem')).toHaveLength(9)
+    for (const live of ['E1', 'E2', 'E3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9']) expect(within(routing).getByText(live)).toBeInTheDocument()
   })
 
   /**
@@ -110,7 +114,7 @@ describe('AudioEditorPage', () => {
     const cutoff = within(filter).getByRole('slider', { name: 'Cutoff' })
     expect(cutoff).toHaveAttribute('data-target', 'layers[0].cutoff')
     expect(cutoff.querySelector('.fp-knob__mod')).toBeNull()
-    const handle = screen.getByRole('button', { name: 'Drag L2 onto a control to modulate it' })
+    const handle = screen.getByRole('button', { name: 'Drag L4 onto a control to modulate it' })
     const under = document.elementFromPoint
     document.elementFromPoint = () => cutoff
     try {
@@ -120,6 +124,7 @@ describe('AudioEditorPage', () => {
       document.elementFromPoint = under
     }
     expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+    fireEvent.click(screen.getByRole('button', { name: 'Show modulator L4' }))
     expect(within(screen.getByRole('region', { name: 'LFO 1' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
   })
 
