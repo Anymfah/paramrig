@@ -14,6 +14,7 @@ import { AudioTransport } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
+import type { AudioRig } from '@/audio/rig'
 import { monoSum, renderPatch } from '@/audio/dsp/render'
 import { useTransport } from '@/audio/useTransport'
 import { layerProfiles } from '@/audio/profiles'
@@ -63,6 +64,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 }) {
   const navigate = useNavigate()
   const [loaded] = useState<AudioDocument | null>(() => getAudioDocument(documentId))
+  // The macro band is the document's rig; it is edited on the plate and saved with the patch.
+  const [rig, setRig] = useState<AudioRig | undefined>(() => getAudioDocument(documentId)?.rig)
   const [patch, setPatch] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
   const [name, setName] = useState(loaded?.name ?? '')
   const [past, setPast] = useState<AudioPatch[]>([])
@@ -107,11 +110,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!loaded || !patch || !dirty) return
     // Written on a delay so a drag lands once, not on every frame of itself.
     const timer = setTimeout(() => {
-      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, updatedAt: new Date().toISOString() })
+      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, ...(rig ? { rig } : {}), updatedAt: new Date().toISOString() })
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
-  }, [dirty, loaded, name, patch, snapshots])
+  }, [dirty, loaded, name, patch, rig, snapshots])
 
   /**
    * Every one of these writes state from the callback rather than from inside another updater.
@@ -245,7 +248,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     )
   }
 
-  const exposed = loaded.rig?.parameters.length ?? 0
+  const exposed = rig?.parameters.length ?? 0
   const shownPatch = heard ?? patch
   const began = () => { gestureRef.current = true; capturedRef.current = false }
   const ended = () => {
@@ -368,6 +371,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onChange={change}
                 onGestureStart={began}
                 onGestureEnd={ended}
+                rig={rig}
+                onRig={(next) => { setRig(next); setDirty(true) }}
                 slots={snapshots.slice(0, 12).map((snapshot) => ({
                   name: snapshot.name,
                   active: snapshot.id === preset,

@@ -12,7 +12,7 @@ import type { KnobMod } from '@/audio/AudioKnob'
  * handle's height is the reading. The whole box is the drag target, and a press starts from where
  * the value already is rather than jumping to the pointer.
  */
-export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, target, mod, onGestureStart, onGestureEnd }: {
+export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, target, property, mod, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
@@ -21,6 +21,8 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
   style?: CSSProperties
   /** The modulation target this level stands for, and the modulator pointed at it. */
   target?: string
+  /** The parameter it edits, so a macro may be dropped on it. */
+  property?: string
   mod?: KnobMod
   onGestureStart?: () => void
   onGestureEnd?: () => void
@@ -87,6 +89,7 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       aria-valuenow={value}
       aria-valuetext={`${value}${param.unit ?? ''}${mod ? `, modulated ${Math.round(mod.depth * 100)} per cent` : ''}`}
       data-target={target}
+      data-property={property}
       data-mod={mod ? '' : undefined}
       style={{ ...style, '--fill': String(fraction) } as CSSProperties}
       onPointerDown={down}
@@ -105,7 +108,7 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       <span className="fp-fader__track" aria-hidden="true" />
       {mod && half > 0.25 ? <span className="fp-fader__mod" aria-hidden="true" style={{ top: barTop, height: barBottom - barTop, background: mod.colour }} /> : null}
       <span className="fp-fader__handle" aria-hidden="true">{digit}</span>
-      {target ? (
+      {target || property ? (
         <span className="fp-fader__slot" aria-hidden="true" style={mod ? { '--slot': mod.colour } as CSSProperties : undefined}
           onPointerDown={mod ? (event) => {
             if (event.button && event.button !== 0) return

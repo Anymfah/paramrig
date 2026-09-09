@@ -29,3 +29,6 @@ workproduct/lean-mvp/
 .local/
 output/
 e2e/output/
+
+# Scratch output of the controller catalogue check
+.tmp-controllers.json

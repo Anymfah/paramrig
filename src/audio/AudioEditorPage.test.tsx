@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -128,6 +128,37 @@ describe('AudioEditorPage', () => {
     expect(within(screen.getByRole('region', { name: 'LFO 1' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
   })
 
+  /** A macro is a control of the rig: dropped on a dial, it exposes that dial to Tune and the SDK. */
+  it('assigns a macro by dropping its number on a control, and that is the document rig', async () => {
+    // A fresh document has no rig yet, so its macros are the default table.
+    // Named so as not to shadow the global document, whose elementFromPoint the drop reads.
+    const doc = createAudioDocument()
+    open(doc.id)
+    const filter = screen.getByRole('region', { name: 'Filter' })
+    const drive = within(filter).getByRole('slider', { name: 'Drive' })
+    // Drive wears macro 9 out of the box; the tenth macro will take it over.
+    expect(within(drive).getByText('9')).toBeInTheDocument()
+    const handle = screen.getByRole('button', { name: /^Drag macro 10 onto a control/ })
+    const under = document.elementFromPoint
+    document.elementFromPoint = () => drive
+    try {
+      fireEvent.pointerDown(handle, { clientX: 10, clientY: 10 })
+      fireEvent.pointerUp(handle, { clientX: 20, clientY: 20 })
+    } finally {
+      document.elementFromPoint = under
+    }
+    expect(within(drive).getByText('10')).toBeInTheDocument()
+    expect(within(drive).queryByText('9')).toBeNull()
+    const band = screen.getByRole('group', { name: 'Macros' })
+    expect(within(band).getByRole('slider', { name: 'Drive 1' })).toBeInTheDocument()
+    // The rig reaches storage with the patch, bound under the macro's number.
+    await waitFor(() => {
+      const saved = getAudioDocument(doc.id)
+      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].shaper.drive')
+      expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-9')).toBe(false)
+    })
+  })
+
   it('picks a sound from the browser', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
@@ -152,7 +183,7 @@ describe('AudioEditorPage', () => {
   it('puts the waveform in the transport with the numbers that describe it', () => {
     open(arcadeCoin().id)
     expect(screen.getByRole('img', { name: /waveform/i })).toBeInTheDocument()
-    expect(screen.getByText('Length')).toBeInTheDocument()
+    expect(screen.getByText('Length', { selector: 'dt' })).toBeInTheDocument()
     expect(screen.getByText('450 ms')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
   })

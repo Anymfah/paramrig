@@ -33,7 +33,7 @@ const point = (deg: number) => {
 /** The stretch of the track between two angles, clockwise, in the same units. */
 const arc = (from: number, to: number) => `M${point(from)} A50 50 0 ${to - from > 180 ? 1 : 0} 1 ${point(to)}`
 
-export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, target, mod, onGestureStart, onGestureEnd }: {
+export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, target, property, mod, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
@@ -50,6 +50,8 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   dots?: boolean
   /** The modulation target this control stands for, if a modulator may be dropped on it. */
   target?: string
+  /** The parameter it edits, so a macro may be dropped on it. */
+  property?: string
   /** The modulator pointed at it, drawn as a coloured stretch of the arc either side of the value. */
   mod?: KnobMod
   onGestureStart?: () => void
@@ -132,6 +134,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       data-inert={inert || undefined}
       data-dots={dots || undefined}
       data-target={target}
+      data-property={property}
       data-mod={mod ? '' : undefined}
       aria-label={inert ? `${param.label}, not wired` : param.label || param.id}
       aria-valuemin={inert ? undefined : param.min}
@@ -169,7 +172,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
         {digit !== undefined ? <span className="fp-knob__digit">{digit}</span> : null}
       </span>
       {/* The slot: the case a held modulator is dropped in, and afterwards the amount it took, in its colour. */}
-      {target ? (
+      {target || property ? (
         <span className="fp-knob__slot" aria-hidden="true" style={mod ? { '--slot': mod.colour } as CSSProperties : undefined}
           onPointerDown={mod ? depthDown : undefined} onPointerMove={mod ? depthMove : undefined} onPointerUp={mod ? depthUp : undefined} onPointerCancel={mod ? depthUp : undefined}
           onDoubleClick={mod?.onClear}>

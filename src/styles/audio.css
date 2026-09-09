@@ -1658,10 +1658,16 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 /* While a modulator is held: its name rides the pointer, and every control that could take it lights up. */
 .fp-ghost { position: absolute; z-index: 10; display: none; padding: 2px 5px; border-radius: 3px; background: #404040; color: var(--assign, #6fb904); font: 700 13px/1 'Roboto', var(--font-sans); pointer-events: none; }
 .fp[data-assigning] .fp-ghost { display: block; }
-.fp[data-assigning] .fp-knob[data-target] .fp-knob__track { stroke: var(--assign); opacity: 0.6; }
-.fp[data-assigning] .fp-knob[data-target]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
-.fp[data-assigning] .fp-fader[data-target] .fp-fader__track { box-shadow: inset 0 0 0 1px var(--assign); }
-.fp[data-assigning] .fp-fader[data-target]:hover .fp-fader__track { box-shadow: inset 0 0 0 2px var(--assign); }
+.fp[data-assigning='source'] .fp-knob[data-target] .fp-knob__track { stroke: var(--assign); opacity: 0.6; }
+.fp[data-assigning='source'] .fp-knob[data-target]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
+.fp[data-assigning='source'] .fp-fader[data-target] .fp-fader__track { box-shadow: inset 0 0 0 1px var(--assign); }
+.fp[data-assigning='source'] .fp-fader[data-target]:hover .fp-fader__track { box-shadow: inset 0 0 0 2px var(--assign); }
+/* A held macro may land on any dial but another macro's. */
+.fp[data-assigning='macro'] .fp-knob[data-property] .fp-knob__track { stroke: var(--assign); opacity: 0.5; }
+.fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
+.fp-macro__grab { cursor: grab; touch-action: none; }
+.fp-macro__grab[data-held] { cursor: grabbing; }
+.fp-macro__grab:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
 /* The strip of kept sounds along the foot. */
 .fp-slot {
@@ -1744,6 +1750,8 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-knob__slot { inset-block-end: 0; }
 .fp-fader__slot { inset-block-start: calc(100% + 1px); }
 .fp-knob[data-mod] .fp-knob__slot, .fp-fader[data-mod] .fp-fader__slot { display: grid; box-shadow: 0 0 0 1px var(--slot); }
-.fp[data-assigning] .fp-knob[data-target] .fp-knob__slot, .fp[data-assigning] .fp-fader[data-target] .fp-fader__slot { display: grid; background: #2e2e2e; box-shadow: 0 0 0 1px var(--assign); }
-.fp[data-assigning] .fp-knob[data-target]:hover .fp-knob__slot, .fp[data-assigning] .fp-fader[data-target]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, #2e2e2e); box-shadow: 0 0 0 1.5px var(--assign); }
+.fp[data-assigning='source'] .fp-knob[data-target] .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target] .fp-fader__slot,
+.fp[data-assigning='macro'] .fp-knob[data-property] .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property] .fp-fader__slot { display: grid; background: #2e2e2e; box-shadow: 0 0 0 1px var(--assign); }
+.fp[data-assigning='source'] .fp-knob[data-target]:hover .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target]:hover .fp-fader__slot,
+.fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, #2e2e2e); box-shadow: 0 0 0 1.5px var(--assign); }
 .fp-knob[data-size='macro'] .fp-knob__slot { display: none; }
