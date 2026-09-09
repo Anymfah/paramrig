@@ -85,6 +85,40 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
   })
 
+  it('folds the plate in a room that would shrink it past reading, and then shows one modulator at a time', () => {
+    // jsdom measures nothing; a stand-in observer reports a small laptop's stage the moment it is asked to watch.
+    const Real = globalThis.ResizeObserver
+    class Narrow {
+      constructor(private readonly callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width: 784, height: 668 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = Narrow as unknown as typeof ResizeObserver
+    try {
+      open(arcadeCoin().id)
+      const stage = window.document.querySelector('.fp-stage')
+      expect(stage).toHaveAttribute('data-layout', 'narrow')
+      // The fold keeps the reference's size rather than fit the room's height: the stage scrolls.
+      expect(stage).toHaveStyle({ '--fp-scale': '1' })
+      // Every panel is still there, and the amp envelope is the modulator on show.
+      for (const name of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX', 'Amp envelope']) {
+        expect(screen.getByRole('region', { name })).toBeInTheDocument()
+      }
+      expect(screen.queryByRole('region', { name: 'Envelope 2' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Show modulator L5' }))
+      expect(screen.getByRole('region', { name: 'LFO 2' })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'LFO 1' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Amp envelope' })).toBeNull()
+      // The narrow face never puts a control below the reference's own size.
+      expect(screen.getByRole('list', { name: 'Routing' })).toBeInTheDocument()
+    } finally {
+      globalThis.ResizeObserver = Real
+    }
+  })
+
   it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)

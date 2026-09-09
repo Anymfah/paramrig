@@ -6,6 +6,7 @@ import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
 import { LFO_COUNT, MOD_ENVELOPE_COUNT } from '@/audio/fields'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
+import { NARROW, PLATE, ROWS, fitPlate, rowB, type Layout, type Place } from '@/audio/faces'
 
 /**
  * The face-plate, transcribed from the reference at its own scale.
@@ -16,15 +17,14 @@ import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from 
  * and flex boxes and asked the browser to distribute them, and the browser distributed them
  * differently from the reference every time; a fixed object does not flow, so nothing here does.
  * The stage scales the whole plate to fit whatever window it has, which is how the plugin itself
- * handles a window that is not its own size.
+ * handles a window that is not its own size — down to a point. Below it the plate folds to its
+ * narrow face (faces.ts) rather than shrink past reading, and the stage scrolls.
  *
  * What the controls do is ParamRig's. Two oscillators and two noise generators are the four
  * layers; the panels that act on one layer at a time — Comb, Filter, the amp envelope — follow
  * the layer whose badge is lit in the oscillator or noise head. A few controls the reference has
  * and this engine does not are drawn and inert, and say so in a title.
  */
-
-const PLATE = { w: 1250, h: 696 }
 
 /** Where a text's cap line sits below its box top at line-height 1, in ems; Roboto's metrics. */
 const CAP = 0.054
@@ -100,10 +100,13 @@ function useAt() {
   return (x: number, y: number): CSSProperties => ({ left: x - origin.x, top: y - origin.y })
 }
 
-function Panel({ x, y, w, h, label, tone, children }: { x: number; y: number; w: number; h: number; label: string; tone?: 'panel' | 'noise' | 'bare'; children: ReactNode }) {
+function Panel({ x, y, w, h, label, tone, place, children }: { x: number; y: number; w: number; h: number; label: string; tone?: 'panel' | 'noise' | 'bare'; place?: Place; children: ReactNode }) {
+  // Placed elsewhere or wider than it was measured, a panel carries its controls with it and centres
+  // them in the extra width: they keep the coordinates they were measured at.
+  const at = place ?? { x, y, w }
   return (
-    <Origin.Provider value={{ x, y }}>
-      <section className="fp-panel" data-tone={tone ?? 'panel'} aria-label={label} style={{ left: x, top: y, width: w, height: h }}>
+    <Origin.Provider value={{ x: x - (at.w - w) / 2, y }}>
+      <section className="fp-panel" data-tone={tone ?? 'panel'} aria-label={label} style={{ left: at.x, top: at.y, width: at.w, height: h }}>
         {children}
       </section>
     </Origin.Provider>
@@ -500,18 +503,20 @@ const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 const hertz = (st: number) => 440 * Math.pow(2, st / 12)
 
 /** A modulation source of the routing bar: which slot it is, which page of panels shows it. */
-type Source = { id: string; kind: 'e' | 'l'; x: number; page: number; lfo?: number; envelope?: number }
+type Source = { id: string; kind: 'e' | 'l'; x: number; lfo?: number; envelope?: number }
 const SOURCES: Source[] = [
-  { id: 'E1', kind: 'e', x: 518, page: 0 },
-  { id: 'E2', kind: 'e', x: 558.5, page: 0, envelope: 0 },
-  { id: 'E3', kind: 'e', x: 598.8, page: 0, envelope: 1 },
-  { id: 'L4', kind: 'l', x: 679.3, page: 1, lfo: 0 },
-  { id: 'L5', kind: 'l', x: 719.5, page: 1, lfo: 1 },
-  { id: 'L6', kind: 'l', x: 759.7, page: 1, lfo: 2 },
-  { id: 'L7', kind: 'l', x: 840, page: 2, lfo: 3 },
-  { id: 'L8', kind: 'l', x: 880.3, page: 2, lfo: 4 },
-  { id: 'L9', kind: 'l', x: 920.6, page: 2, lfo: 5 },
+  { id: 'E1', kind: 'e', x: 518 },
+  { id: 'E2', kind: 'e', x: 558.5, envelope: 0 },
+  { id: 'E3', kind: 'e', x: 598.8, envelope: 1 },
+  { id: 'L4', kind: 'l', x: 679.3, lfo: 0 },
+  { id: 'L5', kind: 'l', x: 719.5, lfo: 1 },
+  { id: 'L6', kind: 'l', x: 759.7, lfo: 2 },
+  { id: 'L7', kind: 'l', x: 840, lfo: 3 },
+  { id: 'L8', kind: 'l', x: 880.3, lfo: 4 },
+  { id: 'L9', kind: 'l', x: 920.6, lfo: 5 },
 ]
+/** The sources' span, so the narrow face can centre them. */
+const SOURCE_SPAN = { from: Math.min(...SOURCES.map((source) => source.x)), to: Math.max(...SOURCES.map((source) => source.x)) }
 /** The three slots' left edges. */
 const SLOT_X = [0, 414.5, 832.5]
 /** Where the box behind the visible trio sits, a page each. */
@@ -605,7 +610,20 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   // The stage fits the plate to the room it has, as the plugin's window zoom does.
   const stageRef = useRef<HTMLDivElement | null>(null)
   const plateRef = useRef<HTMLDivElement | null>(null)
-  const [scale, setScale] = useState(1)
+  const [fit, setFit] = useState<{ layout: Layout; scale: number }>({ layout: 'wide', scale: 1 })
+  const { layout, scale } = fit
+  const narrow = layout === 'narrow'
+  const face = narrow ? NARROW : PLATE
+  const rows = ROWS[layout]
+  /** Row A's panels keep their places on whichever band the face gives the row. */
+  const rowA = (x: number, w: number): Place => ({ x, y: rows.a, w })
+  const rowBAt = rowB(layout)
+  /** The FX panel's two rules span the panel, however wide the face makes it. */
+  const fxRule = { x: 1090.5 - (rowBAt.fx.w - 159.5) / 2, w: rowBAt.fx.w }
+  /** The narrow face's one modulator, at the full width; the wide face's three sit where they were measured. */
+  const modulatorAt = narrow ? { x: 0, y: rows.modulators, w: NARROW.w } : undefined
+  /** How far the routing sources move left on the narrow face, to sit centred. */
+  const sourceShift = narrow ? SOURCE_SPAN.from - (NARROW.w - (SOURCE_SPAN.to - SOURCE_SPAN.from)) / 2 : 0
 
   /**
    * Assigning a modulator the reference's way: pick up its handle in the routing bar and drop it
@@ -614,9 +632,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
    * modulator's own panel does the same job for a keyboard.
    */
   const [assigning, setAssigning] = useState<Source | { id: string; kind: 'm'; macro: number } | null>(null)
-  const [page, setPage] = useState(0)
-  /** The LFOs the page shows, and the slot of the three each takes. */
-  const lfosOnPage = page === 0 ? [] : [0, 1, 2].map((slot) => ({ index: (page - 1) * 3 + slot, slot }))
+  /** The source whose modulator is on show: with its two neighbours on the wide face, alone on the narrow. */
+  const [shown, setShown] = useState(0)
+  const page = Math.floor(shown / 3)
+  /** The modulators on show, each with its slot of the three; the narrow face deals one, in the first. */
+  const modulators = narrow ? [{ source: shown, slot: 0 }] : [0, 1, 2].map((slot) => ({ source: page * 3 + slot, slot }))
   const ghostRef = useRef<HTMLSpanElement | null>(null)
   const follow = (event: { clientX: number; clientY: number }) => {
     const plate = plateRef.current?.getBoundingClientRect()
@@ -654,7 +674,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect
       if (!rect || !rect.width || !rect.height) return
-      setScale(Math.min(rect.width / PLATE.w, rect.height / PLATE.h))
+      setFit(fitPlate(rect.width, rect.height))
     })
     observer.observe(stage)
     return () => observer.disconnect()
@@ -744,22 +764,25 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   )
 
   return (
-    <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} style={{ '--fp-scale': scale } as CSSProperties}>
-      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
+    <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} data-layout={layout} style={{ '--fp-scale': scale } as CSSProperties}>
+      <div className="fp-sizer" style={{ width: face.w * scale, height: face.h * scale }}>
+      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: face.w, height: face.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band ═══ */}
         <Origin.Provider value={{ x: 0, y: 0 }}>
-          <div className="fp-band" role="group" aria-label="Macros" style={{ left: 0, top: 0, width: PLATE.w, height: 53 }}>
+          <div className="fp-band" role="group" aria-label="Macros" style={{ left: 0, top: 0, width: face.w, height: rows.band }}>
             <Text x={5} y={19.5} align="left" kind="bold">Seed</Text>
             <Box x={40} y={12} w={62} h={16.5} onClick={() => onChange('seed', Math.floor(Math.random() * 10000))} label={`Seed ${seed}; click for another`}>{seed}</Box>
             {macros.map((macro, index) => {
-              const cx = 258 + 64.25 * index
+              // Sixteen in a row on the wide face; two rows of eight, at the same pitch, on the narrow.
+              const cx = narrow ? 160 + 64.25 * (index % 8) : 258 + 64.25 * index
+              const dy = narrow ? 53 * Math.floor(index / 8) : 0
               return (
                 <span key={index} className="fp-macro" data-wired={macro.id ? '' : undefined}>
                   <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={-1}
                     aria-label={`Drag macro ${index + 1} onto a control to assign it${macro.id ? `; double-click to free it from ${macro.label}` : ''}`}
                     data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
-                    style={{ left: cx - 28.3, top: 19.5 - 13 * CAP, fontSize: 13 }}
+                    style={{ left: cx - 28.3, top: 19.5 + dy - 13 * CAP, fontSize: 13 }}
                     onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
                     onPointerMove={assigning?.kind === 'm' && assigning.macro === index ? follow : undefined}
                     onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}
@@ -767,18 +790,17 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                     {index + 1}
                   </span>
                   {macro.id
-                    ? <Knob ctx={ctx} x={cx} y={25} id={macro.id} label={macro.label} size="macro" />
-                    : <span className="fp-knob-empty" data-size="macro" style={{ left: cx, top: 25 }} aria-hidden="true"><Ring /></span>}
-                  {macro.label ? <Text x={cx} y={40.5} kind="macro">{macro.label}</Text> : null}
+                    ? <Knob ctx={ctx} x={cx} y={25 + dy} id={macro.id} label={macro.label} size="macro" />
+                    : <span className="fp-knob-empty" data-size="macro" style={{ left: cx, top: 25 + dy }} aria-hidden="true"><Ring /></span>}
+                  {macro.label ? <Text x={cx} y={40.5 + dy} kind="macro">{macro.label}</Text> : null}
                 </span>
               )
             })}
           </div>
-          <Line x={0} y={52.5} w={PLATE.w} h={1.5} />
         </Origin.Provider>
 
         {/* ═══ Main row ═══ */}
-        <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare">
+        <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare" place={rowA(0, 67)}>
           <Text x={32} y={59.5} kind="title">Pitch</Text>
           <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
           <Text x={32} y={104}>Arp Ratio</Text>
@@ -791,7 +813,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={31.5} y={298.7} id="duration" label="Time" tone="light" />
         </Panel>
 
-        <Panel x={68} y={54} w={515} h={288} label="Oscillators">
+        <Panel x={68} y={54} w={515} h={288} label="Oscillators" place={rowA(68, 515)}>
           {/* the head */}
           {wavePicker(0, 149.5)}
           <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
@@ -838,7 +860,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
         </Panel>
 
-        <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise">
+        <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise" place={rowA(599.5, 95)}>
           <span role="tablist" aria-label="Noise layer" className="fp-tabs">
             <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1">1</Badge>
             <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2">2</Badge>
@@ -856,7 +878,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={663} y={306.7} id={L(3, 'pitch.start')} label="Noise 2 pitch" size="sm" tone="light" />
         </Panel>
 
-        <Panel x={696.5} y={54} w={159} h={288} label="Body">
+        <Panel x={696.5} y={54} w={159} h={288} label="Body" place={rowBAt.body}>
           <Badge x={707.5} y={65} kind="circle">B</Badge>
           <Text x={775.8} y={59.5} kind="title">Body</Text>
           <Text x={731.3} y={83}>Partials</Text>
@@ -872,7 +894,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="Ring" />
         </Panel>
 
-        <Panel x={857} y={54} w={160} h={288} label="Filter">
+        <Panel x={857} y={54} w={160} h={288} label="Filter" place={rowBAt.filter}>
           <span role="radiogroup" aria-label="Filter mode">
             <Badge x={868.5} y={65.5} kind="circle">A</Badge>
             <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Low</Text>
@@ -895,7 +917,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
         </Panel>
 
-        <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare">
+        <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare" place={rowBAt.amp}>
           <Text x={1053.5} y={60} kind="title">Amp</Text>
           <Text x={1053.5} y={83.5}>Level</Text>
           <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
@@ -907,7 +929,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1053.6} y={318} id="fx.tone" label="Tone" tone="light" />
         </Panel>
 
-        <Panel x={1090.5} y={54} w={159.5} h={288} label="FX">
+        <Panel x={1090.5} y={54} w={159.5} h={288} label="FX" place={rowBAt.fx}>
           <Badge x={1100.5} y={65} kind="square">X</Badge>
           <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
           <Text x={1118} y={80}>Rate</Text>
@@ -916,7 +938,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
           <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
           <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
-          <Line x={1090.5} y={143} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+          <Line x={fxRule.x} y={143} w={fxRule.w} h={0.5} colour="var(--fp-rule-light)" />
           <Badge x={1100.5} y={154} kind="square">Y</Badge>
           <Text x={1110} y={149} align="left" kind="title">Delay</Text>
           <Text x={1118} y={172.5}>Time</Text>
@@ -925,7 +947,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
           <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
           <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
-          <Line x={1090.5} y={232} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+          <Line x={fxRule.x} y={232} w={fxRule.w} h={0.5} colour="var(--fp-rule-light)" />
           <Badge x={1100.5} y={243} kind="square">Z</Badge>
           <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
           <Text x={1118} y={261}>Size</Text>
@@ -935,16 +957,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Reverb mix" />
           <Knob ctx={ctx} x={1222} y={298.8} id="fx.reverbDamping" label="Reverb damping" size="sm" />
         </Panel>
-        <Origin.Provider value={{ x: 0, y: 0 }}>
-          <Line x={0} y={342} w={PLATE.w} h={1.5} />
-        </Origin.Provider>
 
-        {/* ═══ Routing bar: the sources, three of them shown below at a time ═══ */}
-        <Origin.Provider value={{ x: 0, y: 343.5 }}>
-          <div className="fp-routing" role="group" aria-label="Routing bar" style={{ left: 0, top: 343.5, width: PLATE.w, height: 39 }}>
-            <span className="fp-sources__box" style={{ left: PAGE_BOX[page], top: 364 - 343.5 }} aria-hidden="true" />
+        {/* ═══ Routing bar: the sources; the wide face shows three modulators below it, the narrow one ═══ */}
+        <Origin.Provider value={{ x: sourceShift, y: 343.5 }}>
+          <div className="fp-routing" role="group" aria-label="Routing bar" style={{ left: 0, top: rows.routing, width: face.w, height: 39 }}>
+            <span className="fp-sources__box" aria-hidden="true"
+              style={narrow ? { left: (SOURCES[shown]?.x ?? SOURCE_SPAN.from) - sourceShift - 16, width: 34, top: 364 - 343.5 } : { left: PAGE_BOX[page], width: 116.5, top: 364 - 343.5 }} />
             <ul className="fp-sources" role="list" aria-label="Routing">
-              {SOURCES.map((source) => (
+              {SOURCES.map((source, index) => (
                 <li key={source.id} className="fp-source" data-kind={source.kind} data-live="">
                   {held(source) ? (
                     <Grab x={source.x} y={352.6} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id}
@@ -954,19 +974,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                   ) : (
                     <Icon x={source.x} y={352.6} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
                   )}
-                  <Text x={source.x + 1} y={367.5} kind="source" onClick={() => setPage(source.page)} label={`Show modulator ${source.id}`}>{source.id}</Text>
+                  <Text x={source.x + 1} y={367.5} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`}>{source.id}</Text>
                 </li>
               ))}
             </ul>
           </div>
         </Origin.Provider>
-        <Origin.Provider value={{ x: 0, y: 0 }}>
-          <Line x={0} y={382.5} w={PLATE.w} h={1.5} />
-        </Origin.Provider>
-
-        {/* ═══ Modulators: three of nine at a time, the page the routing bar chose ═══ */}
-        {page === 0 ? (
-          <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
+        {/* ═══ Modulators: three of nine at a time, the trio the routing bar chose; one on the narrow face ═══ */}
+        {modulators.some((entry) => entry.source === 0) ? (
+          <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope" place={modulatorAt}>
             <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
             <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
             <Text x={70.9} y={413.5}>Shape</Text>
@@ -999,8 +1015,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </Panel>
 
         ) : null}
-        {page === 0 ? [0, 1].map((index) => {
-          const slot = index + 1
+        {modulators.filter((entry) => entry.source === 1 || entry.source === 2).map(({ source, slot }) => {
+          const index = source - 1
           const o = 418.3 * slot
           const px = SLOT_X[slot] ?? 0
           const id = (tail: string) => `envelopes[${index}].${tail}`
@@ -1008,7 +1024,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           const on = read(ctx, id('enabled')) !== false
           const Y = (local: number) => 384 + local
           return (
-            <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`}>
+            <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`} place={modulatorAt}>
               <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
               <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
               <Text x={70.9 + o} y={Y(29.5)}>Shape</Text>
@@ -1040,8 +1056,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               </Block>
             </Panel>
           )
-        }) : null}
-        {lfosOnPage.map(({ index, slot }) => {
+        })}
+        {modulators.filter((entry) => entry.source >= 3).map(({ source, slot }) => {
+          const index = source - 3
           const o = 418.3 * slot
           const px = SLOT_X[slot] ?? 0
           const pw = slot === 0 ? 413.5 : 417.5
@@ -1052,7 +1069,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           const cycles = readNum(ctx, id('rate'), 5) * duration
           const Y = (local: number) => 384 + local
           return (
-            <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`}>
+            <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`} place={modulatorAt}>
               <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 4}</Text>
               <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
               {/* the left column: how fast, and whether at all */}
@@ -1078,20 +1095,22 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             </Panel>
           )
         })}
+        {/* The rules between the bands, and between the modulators when there are three */}
         <Origin.Provider value={{ x: 0, y: 0 }}>
-          <Line x={413.5} y={384} w={1} h={288} colour="var(--fp-hairline)" />
-          <Line x={832} y={384} w={1} h={288} colour="var(--fp-hairline)" />
-          <Line x={0} y={672} w={PLATE.w} h={1} />
+          {rows.rules.map(([y, h]) => <Line key={y} x={0} y={y} w={face.w} h={h} />)}
+          {narrow ? null : <Line x={413.5} y={384} w={1} h={288} />}
+          {narrow ? null : <Line x={832} y={384} w={1} h={288} />}
         </Origin.Provider>
 
         {/* ═══ The strip of kept sounds ═══ */}
         <Origin.Provider value={{ x: 0, y: 673 }}>
-          <div className="fp-strip" role="group" aria-label="Kept sounds" style={{ left: 0, top: 673, width: PLATE.w, height: 23 }}>
+          <div className="fp-strip" role="group" aria-label="Kept sounds" style={{ left: 0, top: rows.strip, width: face.w, height: 23 }}>
             <Icon x={14.75} y={684.25} w={17.5} h={14.5}><DinIcon /></Icon>
             {Array.from({ length: 12 }, (_, index) => {
               const slot = slots?.[index]
-              const x = index === 0 ? 168 : 255.5 + 90.5 * (index - 1)
-              const w = index === 0 ? 84 : 89.5
+              // Twelve at the reference's widths, or twelve narrower: they only ever show a digit.
+              const x = narrow ? 40 + 54.5 * index : index === 0 ? 168 : 255.5 + 90.5 * (index - 1)
+              const w = narrow ? 53.5 : index === 0 ? 84 : 89.5
               return (
                 <button type="button" key={index} className="fp-slot" data-filled={slot ? '' : undefined} data-active={slot?.active || undefined}
                   style={{ left: x, top: 2, width: w, height: 18.5 }} disabled={!slot} aria-label={slot ? `Kept sound ${index + 1}: ${slot.name}` : `Empty slot ${index + 1}`} onClick={slot?.onPick}>
@@ -1101,6 +1120,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             })}
           </div>
         </Origin.Provider>
+      </div>
       </div>
     </div>
   )
