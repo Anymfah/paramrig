@@ -167,6 +167,27 @@ export type Lfo = {
   target: string
 }
 
+/**
+ * An envelope that is not the amplifier's: a shape that happens once, on the patch's own clock,
+ * pointed at something the way an LFO is. Depth runs both ways, because a sweep that closes a
+ * filter is as common as one that opens it.
+ */
+export type ModEnvelope = {
+  enabled: boolean
+  /** Seconds before it starts. */
+  delay: number
+  attack: number
+  hold: number
+  decay: number
+  sustain: number
+  release: number
+  curve: number
+  /** −1..1, scaled by whatever it is pointed at. */
+  depth: number
+  /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
+  target: string
+}
+
 export type MasterSettings = {
   gain: number
   /** 0..1 of soft clipping. */
@@ -182,6 +203,7 @@ export type AudioPatch = {
   seed: number
   layers: Layer[]
   lfos: Lfo[]
+  envelopes: ModEnvelope[]
   fx: FxSettings
   master: MasterSettings
 }

@@ -178,3 +178,20 @@ describe('sanitizeAudioRig', () => {
     expect(sanitizeAudioRig('a rig, honest')).toBeUndefined()
   })
 })
+
+describe('the free envelopes on the rig', () => {
+  it('parse like the LFOs, and refuse an index the patch does not have', () => {
+    expect(parseAudioProperty('envelopes[1].depth')).toMatchObject({ kind: 'envelope', index: 1, field: 'depth' })
+    expect(parseAudioProperty('envelopes[2].depth')).toBeNull()
+    expect(parseAudioProperty('envelopes[0].nothing')).toBeNull()
+    expect(AUDIO_PROPERTY_PATHS.some((entry) => entry.property === 'envelopes[i].target')).toBe(true)
+  })
+
+  it('read and write through the same path a binding uses', () => {
+    const bind = (property: string) => ({ id: 'b', property, parameterId: 'p' })
+    const patch = defaultPatch()
+    const written = applyAudioBinding(patch, bind('envelopes[0].depth'), -0.25, () => 0)
+    expect(currentAudioValue(written, 'envelopes[0].depth')).toBe(-0.25)
+    expect(currentAudioValue(patch, 'envelopes[0].depth')).toBe(patch.envelopes[0]?.depth)
+  })
+})

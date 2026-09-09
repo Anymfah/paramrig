@@ -1,5 +1,5 @@
 import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
-import { LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
+import { LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
 import { AUDIO_FIELDS, applyAudioBinding, currentAudioValue, parameterForAudioProperty, parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import type { AudioPatch } from '@/audio/types'
@@ -32,10 +32,10 @@ export const BOARD_CATEGORIES: InspectorCategory[] = [
 ]
 
 /** The modulators get their own view, so they are their own set of columns. */
-export const MODULATION_CATEGORIES: InspectorCategory[] = Array.from(
-  { length: LFO_COUNT },
-  (_, index) => ({ id: `lfo${index}`, label: `LFO ${index + 1}` }),
-)
+export const MODULATION_CATEGORIES: InspectorCategory[] = [
+  ...Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => ({ id: `env${index}`, label: `Envelope ${index + 2}` })),
+  ...Array.from({ length: LFO_COUNT }, (_, index) => ({ id: `lfo${index}`, label: `LFO ${index + 1}` })),
+]
 
 const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'shaper', 'resonator', 'amp']
 
@@ -50,6 +50,7 @@ export function boardGroups(): ParamGroup[] {
   ).flat()
   return [
     ...layers,
+    ...Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => ({ id: `env${index}.all`, label: `Envelope ${index + 2}`, tab: `env${index}` })),
     ...Array.from({ length: LFO_COUNT }, (_, index) => ({ id: `lfo${index}.all`, label: `LFO ${index + 1}`, tab: `lfo${index}` })),
     { id: 'mix.patch', label: 'Patch', tab: 'mix' },
     { id: 'mix.fx', label: 'Effects', tab: 'mix' },
@@ -70,8 +71,12 @@ export function boardPaths(): { property: string; group: string }[] {
   const lfos = Array.from({ length: LFO_COUNT }, (_, index) =>
     Object.keys(AUDIO_FIELDS.lfo).map((field) => ({ property: `lfos[${index}].${field}`, group: `lfo${index}.all` })),
   ).flat()
+  const envelopes = Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) =>
+    Object.keys(AUDIO_FIELDS.envelope).map((field) => ({ property: `envelopes[${index}].${field}`, group: `env${index}.all` })),
+  ).flat()
   return [
     ...layers,
+    ...envelopes,
     ...lfos,
     ...Object.keys(AUDIO_FIELDS.patch).map((field) => ({ property: field, group: 'mix.patch' })),
     ...Object.keys(AUDIO_FIELDS.fx).map((field) => ({ property: `fx.${field}`, group: 'mix.fx' })),

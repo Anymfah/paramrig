@@ -1,4 +1,4 @@
-import { LAYER_COUNT } from '@/audio/fields'
+import { LAYER_COUNT, MOD_ENVELOPE_COUNT, LFO_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
 import { defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
 import { coin } from '@/audio/presets'
@@ -65,5 +65,20 @@ describe('sanitizeAudioPatch', () => {
 describe('silentLayer', () => {
   it('is a layer that is switched off', () => {
     expect(silentLayer().enabled).toBe(false)
+  })
+})
+
+describe('the free envelopes', () => {
+  it('are always there, off and pointed at nothing, however old the patch', () => {
+    const read = sanitizeAudioPatch({ version: 1, duration: 0.5 })
+    expect(read.envelopes).toHaveLength(MOD_ENVELOPE_COUNT)
+    expect(read.envelopes.every((envelope) => !envelope.enabled && envelope.target === 'off')).toBe(true)
+    expect(read.lfos).toHaveLength(LFO_COUNT)
+  })
+
+  it('keep what a patch says about them', () => {
+    const written = makePatch(0.5, [], {}, {}, 1, [], [{ enabled: true, target: 'layers[1].cutoff', depth: -0.4 }])
+    const read = sanitizeAudioPatch(JSON.parse(JSON.stringify(written)))
+    expect(read.envelopes[0]).toMatchObject({ enabled: true, target: 'layers[1].cutoff', depth: -0.4 })
   })
 })

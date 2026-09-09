@@ -209,3 +209,47 @@ describe('renderPatch', () => {
     expect(Math.abs(at44 - at48)).toBeLessThan(0.12)
   })
 })
+
+/** Zero crossings a second over a stretch of the sound: a stand-in for its pitch. */
+function pitchOf(samples: Float32Array, rate: number, from: number, to: number): number {
+  let crossings = 0
+  for (let i = Math.round(from * rate) + 1; i < Math.round(to * rate); i += 1) {
+    if (((samples[i] ?? 0) >= 0) !== ((samples[i - 1] ?? 0) >= 0)) crossings += 1
+  }
+  return crossings / (to - from) / 2
+}
+
+describe('modulation envelopes', () => {
+  const tone = () => makePatch(1, [makeLayer({ gain: 0.5, source: { kind: 'tone', wave: 'sine' }, pitch: { start: 440 }, amp: { attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001 } })])
+
+  it('lifts a pitch it is pointed at while it is up, and not before its delay', () => {
+    const still = render(tone())
+    const swept = render({ ...tone(), envelopes: [{ enabled: true, delay: 0.5, attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001, curve: 2, depth: 1, target: 'layers[0].pitch' }] })
+    // Before the delay the two agree; after it the envelope holds the pitch an octave up.
+    expect(Math.abs(pitchOf(swept, SAMPLE_RATE, 0.1, 0.4) - pitchOf(still, SAMPLE_RATE, 0.1, 0.4))).toBeLessThan(20)
+    expect(pitchOf(swept, SAMPLE_RATE, 0.6, 0.9) / pitchOf(still, SAMPLE_RATE, 0.6, 0.9)).toBeCloseTo(2, 0)
+  })
+
+  it('pulls the other way at a negative depth', () => {
+    const still = render(tone())
+    const down = render({ ...tone(), envelopes: [{ enabled: true, delay: 0, attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001, curve: 2, depth: -1, target: 'layers[0].pitch' }] })
+    expect(pitchOf(down, SAMPLE_RATE, 0.2, 0.8) / pitchOf(still, SAMPLE_RATE, 0.2, 0.8)).toBeCloseTo(0.5, 1)
+  })
+
+  it('adds up with another source on the same destination', () => {
+    const one = { enabled: true, delay: 0, attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001, curve: 2, depth: 0.5, target: 'layers[0].pitch' }
+    const single = render({ ...tone(), envelopes: [one] })
+    const both = render({ ...tone(), envelopes: [one, { ...one }] })
+    const still = render(tone())
+    expect(pitchOf(single, SAMPLE_RATE, 0.2, 0.8) / pitchOf(still, SAMPLE_RATE, 0.2, 0.8)).toBeCloseTo(Math.SQRT2, 1)
+    expect(pitchOf(both, SAMPLE_RATE, 0.2, 0.8) / pitchOf(still, SAMPLE_RATE, 0.2, 0.8)).toBeCloseTo(2, 1)
+  })
+
+  it('does nothing while it is off, or pointed at nothing', () => {
+    const still = render(tone())
+    const off = render({ ...tone(), envelopes: [{ enabled: false, delay: 0, attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001, curve: 2, depth: 1, target: 'layers[0].pitch' }] })
+    const nowhere = render({ ...tone(), envelopes: [{ enabled: true, delay: 0, attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001, curve: 2, depth: 1, target: 'off' }] })
+    expect(off).toEqual(still)
+    expect(nowhere).toEqual(still)
+  })
+})

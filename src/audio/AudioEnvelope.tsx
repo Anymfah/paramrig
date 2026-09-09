@@ -29,7 +29,7 @@ const SAMPLES = 120
 
 const ms = (seconds: number) => `${Math.round(seconds * 1000)} ms`
 
-export function AudioEnvelope({ layer, values, duration, onChange, onGestureStart, onGestureEnd, height = 88, pad = PAD }: {
+export function AudioEnvelope({ layer, values, duration, onChange, onGestureStart, onGestureEnd, height = 88, pad = PAD, prefix, offsetId, name }: {
   layer: number
   values: Record<string, ParamValue>
   duration: number
@@ -39,14 +39,24 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
   /** The face-plate draws the plot at the reference's size, sixty pixels with a pixel of margin. */
   height?: number
   pad?: number
+  /**
+   * Where the stages live. A layer's amp envelope by default; a free envelope hands its own
+   * fields, the field that delays it, and what to call it to a screen reader.
+   */
+  prefix?: string
+  offsetId?: string
+  name?: string
 }) {
+  const root = prefix ?? `layers[${layer}].amp`
+  const delayId = offsetId ?? `layers[${layer}].offset`
+  const called = name ?? `layer ${layer + 1}`
   const hostRef = useRef<HTMLDivElement | null>(null)
   // Only the width is measured. The height is fixed because the plot is one line of a column and
   // has to keep its place in the rhythm, not grow with whatever sits under it.
   const [width, setWidth] = useState(240)
   const dragRef = useRef<Handle | null>(null)
 
-  const offsetValue = values[`layers[${layer}].offset`]
+  const offsetValue = values[delayId]
   const offset = typeof offsetValue === 'number' ? offsetValue : 0
   const life = Math.max(0.02, duration - offset)
 
@@ -54,14 +64,14 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
   // callback on every render too.
   const amp = useMemo<AmpSettings>(() => {
     const read = (field: string, fallback: number) => {
-      const value = values[`layers[${layer}].amp.${field}`]
+      const value = values[`${root}.${field}`]
       return typeof value === 'number' ? value : fallback
     }
     return {
       attack: read('attack', 0), hold: read('hold', 0), decay: read('decay', 0.1),
       sustain: read('sustain', 0), release: read('release', 0.05), curve: read('curve', 2),
     }
-  }, [layer, values])
+  }, [root, values])
   const fitted = fitEnvelope(amp, life)
 
   useEffect(() => {
@@ -133,12 +143,12 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
     }
 
     for (const id of order) {
-      if (stages[id] !== amp[id]) onChange(`layers[${layer}].amp.${id}`, stages[id])
+      if (stages[id] !== amp[id]) onChange(`${root}.${id}`, stages[id])
     }
     if (handle === 'decay' && level !== null) {
-      onChange(`layers[${layer}].amp.sustain`, Math.min(1, Math.max(0, level)))
+      onChange(`${root}.sustain`, Math.min(1, Math.max(0, level)))
     }
-  }, [amp, layer, life, onChange])
+  }, [amp, root, life, onChange])
 
   const fromPointer = (event: React.PointerEvent<SVGSVGElement>, handle: Handle) => {
     const rect = event.currentTarget.getBoundingClientRect()
@@ -158,7 +168,7 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
     }
     if (handle === 'decay' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault()
-      onChange(`layers[${layer}].amp.sustain`, Math.min(1, Math.max(0, amp.sustain + (event.key === 'ArrowUp' ? 0.05 : -0.05))))
+      onChange(`${root}.sustain`, Math.min(1, Math.max(0, amp.sustain + (event.key === 'ArrowUp' ? 0.05 : -0.05))))
     }
   }
 
@@ -202,7 +212,7 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
             className="envelope__handle"
             role="slider"
             tabIndex={0}
-            aria-label={`${label}, layer ${layer + 1}`}
+            aria-label={`${label}, ${called}`}
             aria-valuetext={spots[id].text}
             onKeyDown={(event) => nudge(id, event)}
           >

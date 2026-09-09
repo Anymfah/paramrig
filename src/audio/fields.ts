@@ -160,7 +160,9 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
 
 /** How many oscillator copies a layer may run, and how many modulators a patch carries. */
 export const MAX_VOICES = 5
-export const LFO_COUNT = 2
+export const LFO_COUNT = 6
+/** The free envelopes, beside the amplifier's: the reference's second and third modulator slots. */
+export const MOD_ENVELOPE_COUNT = 2
 
 /** How many layers an instrument has. Every table below is built from it. */
 export const LAYER_COUNT = 4
@@ -195,9 +197,23 @@ export const LFO_FIELDS: Record<string, FieldSpec> = {
  * freshly exposed control takes its bounds from it, and the patch reader clamps against it — so a
  * field's range is written once and four things cannot disagree about it.
  */
+export const ENVELOPE_FIELDS: Record<string, FieldSpec> = {
+  enabled: { type: 'boolean', label: 'Enabled' },
+  delay: num('Delay', 0, 1, 0.001, SECONDS),
+  attack: num('Attack', 0, 2, 0.001, SECONDS),
+  hold: num('Hold', 0, 2, 0.001, SECONDS),
+  decay: num('Decay', 0, 2, 0.001, SECONDS),
+  sustain: num('Sustain', 0, 1),
+  release: num('Release', 0, 2, 0.001, SECONDS),
+  curve: num('Envelope curve', 0.25, 6, 0.05),
+  depth: num('Depth', -1, 1),
+  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+}
+
 export const AUDIO_FIELDS = {
   patch: PATCH_FIELDS,
   lfo: LFO_FIELDS,
+  envelope: ENVELOPE_FIELDS,
   fx: FX_FIELDS,
   master: MASTER_FIELDS,
 } as const

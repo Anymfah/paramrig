@@ -3,7 +3,7 @@ import { createFilter, filterSample } from './filter.ts'
 import { createNoise, waveAt } from './osc.ts'
 import { createShaper, shapeSample } from './shaper.ts'
 import { curveAt } from './curve.ts'
-import { envelopeAt, fitEnvelope } from './envelope.ts'
+import { envelopeAt, fitEnvelope, type FittedEnvelope } from './envelope.ts'
 import { applyFx } from './space.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
@@ -24,7 +24,14 @@ import { createModal, modalSample } from './modal.ts'
 /** Two milliseconds of ramp in, so a layer that opens on a full-amplitude sample does not tick. */
 const FADE_IN_SECONDS = 0.002
 
-type Modulator = { lfo: AudioPatch['lfos'][number]; destination: LfoDestination; state: LfoState; random: () => number }
+/**
+ * Something pointed at a layer's parameter: an LFO with its own noise stream, or a free envelope
+ * fitted to what is left of the patch after its delay. Several may point at one destination, and
+ * their swings add.
+ */
+type Modulator =
+  | { kind: 'lfo'; lfo: AudioPatch['lfos'][number]; destination: LfoDestination; state: LfoState; random: () => number }
+  | { kind: 'envelope'; envelope: AudioPatch['envelopes'][number]; destination: LfoDestination; fitted: FittedEnvelope; life: number }
 
 /** Equal power, so a sound swept across the field does not dip in the middle. */
 function pan(position: number): { left: number; right: number } {
@@ -80,11 +87,11 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   const fmDepth = layer.source.fmIndex / (Math.PI * 2)
   const still = pan(layer.pan)
 
-  const find = (destination: LfoDestination) => modulators.find((entry) => entry.destination === destination)
-  const pitchLfo = find('pitch')
-  const cutoffLfo = find('cutoff')
-  const widthLfo = find('pulseWidth')
-  const gainLfo = find('gain')
+  const on = (destination: LfoDestination) => modulators.filter((entry) => entry.destination === destination)
+  const pitchLfo = on('pitch')
+  const cutoffLfo = on('cutoff')
+  const widthLfo = on('pulseWidth')
+  const gainLfo = on('gain')
 
   for (let i = start; i < end; i += 1) {
     const t = (i - start) / sampleRate
@@ -93,7 +100,9 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     // Modulators run on the patch's clock, so two layers pointed at one of them move together
     // even when one of them starts late.
     const clock = i / sampleRate
-    const swing = (entry: Modulator | undefined) => (entry ? lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth : 0)
+    const swing = (entries: Modulator[]) => entries.reduce((sum, entry) => sum + (entry.kind === 'lfo'
+      ? lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
+      : envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth), 0)
 
     const vibrato = layer.pitch.vibratoDepth * Math.sin(2 * Math.PI * layer.pitch.vibratoRate * t)
     const slide = layer.pitch.slide * curveAt(layer.pitch.slideCurve, x)
@@ -173,16 +182,24 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
   const length = Math.max(1, Math.round(Math.max(0.001, patch.duration) * sampleRate))
   const dry: Stereo = { left: new Float32Array(length), right: new Float32Array(length) }
 
-  const wired = patch.lfos.flatMap((lfo, index) => {
-    const target = lfo.enabled ? readLfoTarget(lfo.target) : null
-    if (!target) return []
-    // Its own stream, so a noise modulator is reproducible and independent of the layers'.
-    const random = streamFor(patch.seed, 100 + index)
-    return [{ ...target, lfo, state: createLfoState(random), random }]
-  })
+  const wired: (Modulator & { layer: number })[] = [
+    ...patch.lfos.flatMap((lfo, index) => {
+      const target = lfo.enabled ? readLfoTarget(lfo.target) : null
+      if (!target) return []
+      // Its own stream, so a noise modulator is reproducible and independent of the layers'.
+      const random = streamFor(patch.seed, 100 + index)
+      return [{ kind: 'lfo' as const, ...target, lfo, state: createLfoState(random), random }]
+    }),
+    ...patch.envelopes.flatMap((envelope) => {
+      const target = envelope.enabled ? readLfoTarget(envelope.target) : null
+      if (!target) return []
+      const life = Math.max(0.001, patch.duration - Math.max(0, envelope.delay))
+      return [{ kind: 'envelope' as const, ...target, envelope, fitted: fitEnvelope(envelope, life), life }]
+    }),
+  ]
   patch.layers.forEach((layer, index) => renderLayer(
     layer, patch, index, dry, sampleRate,
-    wired.filter((entry) => entry.layer === index).map(({ lfo, destination, state, random }) => ({ lfo, destination, state, random })),
+    wired.filter((entry) => entry.layer === index),
   ))
 
   const wet = applyFx(dry, patch.fx, sampleRate)

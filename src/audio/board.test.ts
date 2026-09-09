@@ -51,3 +51,12 @@ describe('the board', () => {
     expect(setBoardValue(before, 'layers[0].nope', 1)).toBe(before)
   })
 })
+
+describe('the free envelopes on the board', () => {
+  it('have their fields on the board, in their own groups', () => {
+    const paths = boardPaths()
+    expect(paths.some((entry) => entry.property === 'envelopes[0].target' && entry.group === 'env0.all')).toBe(true)
+    expect(paths.some((entry) => entry.property === 'envelopes[1].depth')).toBe(true)
+    expect(boardGroups().some((group) => group.id === 'env1.all')).toBe(true)
+  })
+})
