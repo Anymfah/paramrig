@@ -6,7 +6,7 @@ import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
 import { LFO_COUNT, MOD_ENVELOPE_COUNT } from '@/audio/fields'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
-import { DEAL, FACES, fitPlate, type Item, type Layout } from '@/audio/faces'
+import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
 
 /**
  * The face-plate, transcribed from the reference at its own scale.
@@ -102,17 +102,16 @@ function useAt() {
   return (x: number, y: number): CSSProperties => ({ left: x - origin.x, top: y - origin.y })
 }
 
-function Panel({ x, y, w, h, label, tone, order, grow, gap, children }: {
+function Panel({ x, y, w, h, label, tone, gap, children }: {
   x: number; y: number; w: number; h: number; label: string; tone?: 'panel' | 'noise' | 'bare'
-  /** Where the face puts it in the body's row, whether it fills its line, and the gap before it. */
-  order?: number; grow?: boolean; gap?: number; children: ReactNode
+  /** The gap before it in its row, as the reference measures it. */
+  gap?: number; children: ReactNode
 }) {
-  // A flex item at the size it was measured at, and no wider unless the face stretches its line —
-  // then it grows in step with its neighbours and centres what it holds, which keeps the
-  // coordinates it was measured at.
+  // A flex item at the size it was measured at, which grows with its row in proportion to its
+  // width and centres what it holds; inside, every control keeps the coordinates it was measured at.
   return (
     <Origin.Provider value={{ x, y }}>
-      <section className="fp-panel" data-tone={tone ?? 'panel'} aria-label={label} style={{ order, flex: `${grow ? w : 0} 0 ${w}px`, marginInlineStart: gap, height: h }}>
+      <section className="fp-panel" data-tone={tone ?? 'panel'} aria-label={label} style={{ flex: `${w} 1 ${w}px`, marginInlineStart: gap }}>
         <div className="fp-panel__body" style={{ width: w, height: h }}>{children}</div>
       </section>
     </Origin.Provider>
@@ -616,16 +615,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   // The stage fits the plate to the room it has, as the plugin's window zoom does.
   const stageRef = useRef<HTMLDivElement | null>(null)
   const plateRef = useRef<HTMLDivElement | null>(null)
-  const [fit, setFit] = useState<{ layout: Layout; scale: number }>({ layout: 'wide', scale: 1 })
-  const { layout, scale } = fit
+  /** The room the stage gives the plate; nothing until it is measured, which is the reference's size. */
+  const [room, setRoom] = useState({ w: 0, h: 0 })
+  const { layout, scale } = room.w && room.h ? fitPlate(room.w, room.h) : { layout: 'wide' as Layout, scale: 1 }
   /** A folded face: the macros in two rows, one modulator at a time, the strip's slots sharing the width. */
   const folded = layout !== 'wide'
   const face = FACES[layout]
-  const dealt = DEAL[layout]
-  /** What the face tells a body item: its place in the row, and whether it fills its line. */
-  const item = (key: Item) => ({ order: dealt.order[key], grow: dealt.grow.includes(key) })
-  /** The plate's height as the rows come to it, for the stage's scroll; the face's own until measured. */
-  const [plateHeight, setPlateHeight] = useState(0)
+  const rows = DEAL[layout]
+  const box = plateBox(layout, scale, room)
   /** The seed's block before the first macro; a shorter one on a face too narrow for the reference's. */
   const lead = Math.min(217.5, face.w - 514 - 10)
 
@@ -674,18 +671,13 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   }
   useEffect(() => {
     const stage = stageRef.current
-    const plate = plateRef.current
-    if (!stage || !plate || typeof ResizeObserver === 'undefined') return
+    if (!stage || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const rect = entry.contentRect
-        if (!rect.width || !rect.height) continue
-        if (entry.target === stage) setFit(fitPlate(rect.width, rect.height))
-        else setPlateHeight(rect.height)
-      }
+      const rect = entries[0]?.contentRect
+      if (!rect || !rect.width || !rect.height) return
+      setRoom({ w: rect.width, h: rect.height })
     })
     observer.observe(stage)
-    observer.observe(plate)
     return () => observer.disconnect()
   }, [])
 
@@ -772,10 +764,322 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     </>
   )
 
+  /** The body's items, each at its measured size, for the face to deal into rows. */
+  const panels: Record<Exclude<Item, 'modulators'>, ReactNode> = {
+    pitch: (
+    <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare">
+      <Text x={32} y={59.5} kind="title">Pitch</Text>
+      <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
+      <Text x={32} y={104}>Arp Ratio</Text>
+      <Knob ctx={ctx} x={32} y={137} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
+      <Text x={32} y={156}>Arp At</Text>
+      <Knob ctx={ctx} x={32} y={189} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
+      <Text x={32} y={208}>Detune</Text>
+      <Knob ctx={ctx} x={32} y={241} id={L(f, 'source.detune')} label="Detune" size="sm" />
+      <Text x={31.8} y={261}>Time</Text>
+      <Knob ctx={ctx} x={31.5} y={298.7} id="duration" label="Time" tone="light" />
+    </Panel>
+    ),
+    osc: (
+    <Panel x={68} y={54} w={515} h={288} label="Oscillators" gap={1}>
+      {/* the head */}
+      {wavePicker(0, 149.5)}
+      <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
+        <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1">1</Badge>
+        <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2">2</Badge>
+      </span>
+      <Text x={324} y={60} kind="title">Osc</Text>
+      {wavePicker(1, 391.2)}
+      <Line x={325} y={54} w={1} h={215.5} colour="var(--fp-hairline)" />
+      {/* oscillator 1 */}
+      <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
+      {sideColumn(0, 104)}
+      <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} />} />
+      <Text x={166.9} y={184}>Width</Text>
+      <Text x={240.7} y={184.5}>Slide</Text>
+      <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
+      <Knob ctx={ctx} x={240.7} y={226.2} id={L(0, 'pitch.slide')} label="Slide" />
+      <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
+      {/* oscillator 2 */}
+      <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
+      <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} />} />
+      <Text x={409.3} y={184}>Width</Text>
+      <Text x={482} y={184.5}>Slide</Text>
+      <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
+      <Knob ctx={ctx} x={482} y={226.3} id={L(1, 'pitch.slide')} label="Slide" />
+      <Readout x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} label="Oscillator 2 pitch" edit={pitchEdit(L(1, 'pitch.start'))} />
+      {sideColumn(1, 547.5)}
+      {/* the foot, with its notched rim: phase modulation between the two */}
+      <svg className="fp-osc-foot" viewBox="0 0 515 14" style={{ left: 0, top: 203, width: 515, height: 14 }} aria-hidden="true">
+        <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" style={{ stroke: 'var(--fp-hairline)' }} strokeWidth="1" />
+        <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
+      </svg>
+      <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
+      <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
+      <Icon x={204.6} y={314.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
+      <Text x={277.2} y={281}>PM1</Text>
+      <Text x={325.5} y={282}>Fall</Text>
+      <Text x={373.8} y={281}>PM2</Text>
+      <Knob ctx={ctx} x={277.2} y={313.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
+      <Knob ctx={ctx} x={325.5} y={314} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
+      <Knob ctx={ctx} x={373.8} y={313.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
+      <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
+      <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
+      <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
+    </Panel>
+    ),
+    noise: (
+    <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise" gap={16.5}>
+      <span role="tablist" aria-label="Noise layer" className="fp-tabs">
+        <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1">1</Badge>
+        <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2">2</Badge>
+      </span>
+      <Text x={639} y={59.5} kind="title">Noise</Text>
+      <Fader ctx={ctx} x={615} top={87.5} id={L(2, 'gain')} label="Noise 1 level" kind="noise" />
+      <Fader ctx={ctx} x={663} top={87.5} id={L(3, 'gain')} label="Noise 2 level" kind="noise" />
+      <Text x={614.7} y={204} u onClick={() => cycleColour(2)} label={`Noise 1 colour: ${colourName(2)}`}>{colourName(2)}</Text>
+      <Text x={661.8} y={204.5} u onClick={() => cycleColour(3)} label={`Noise 2 colour: ${colourName(3)}`}>{colourName(3)}</Text>
+      <Icon x={614.8} y={239.2} w={38} h={29.5}><NoiseBurst seed={1} colour={read(ctx, L(2, 'source.colour'))} /></Icon>
+      <Icon x={663.2} y={239} w={38} h={29.5}><NoiseBurst seed={2} colour={read(ctx, L(3, 'source.colour'))} /></Icon>
+      <Text x={614.9} y={273}>Pitch</Text>
+      <Text x={663} y={273}>Pitch</Text>
+      <Knob ctx={ctx} x={614.9} y={306.7} id={L(2, 'pitch.start')} label="Noise 1 pitch" size="sm" tone="light" />
+      <Knob ctx={ctx} x={663} y={306.7} id={L(3, 'pitch.start')} label="Noise 2 pitch" size="sm" tone="light" />
+    </Panel>
+    ),
+    body: (
+    <Panel x={696.5} y={54} w={159} h={288} label="Body" gap={2}>
+      <Badge x={707.5} y={65} kind="circle">B</Badge>
+      <Text x={775.8} y={59.5} kind="title">Body</Text>
+      <Text x={731.3} y={83}>Partials</Text>
+      <Knob ctx={ctx} x={731.5} y={121.6} id={L(f, 'resonator.partials')} label="Partials" size="sm" />
+      <Readout x={788} base={96.5} mark="note" value={semitones(readNum(ctx, L(f, 'resonator.frequency'), 440))} label="Body pitch" edit={pitchEdit(L(f, 'resonator.frequency'))} />
+      <Text x={819} y={104}>Spread</Text>
+      <Knob ctx={ctx} x={819} y={138} id={L(f, 'resonator.spread')} label="Spread" size="sm" />
+      <Text x={777} y={168.5}>Amount</Text>
+      <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="Amount" />
+      <Text x={739.9} y={257}>Freq</Text>
+      <Text x={811.4} y={257}>Ring</Text>
+      <Knob ctx={ctx} x={739.9} y={298.4} id={L(f, 'resonator.frequency')} label="Freq" />
+      <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="Ring" />
+    </Panel>
+    ),
+    filter: (
+    <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
+      <span role="radiogroup" aria-label="Filter mode">
+        <Badge x={868.5} y={65.5} kind="circle">A</Badge>
+        <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Low</Text>
+        <Badge x={921} y={65.5} kind="circle">B</Badge>
+        <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')}>High</Text>
+        <Badge x={973.5} y={65.5} kind="circle">C</Badge>
+        <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')}>Band</Text>
+      </span>
+      <Text x={900.5} y={79.5}>Cutoff</Text>
+      <Text x={972.4} y={80}>Reso</Text>
+      <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
+      <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
+      <Text x={900.2} y={167.5}>Env</Text>
+      <Text x={972.7} y={168.5}>Drive</Text>
+      <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
+      <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
+      <Text x={892.6} y={275}>Bits</Text>
+      <Text x={980.7} y={273.5}>Crush</Text>
+      <Knob ctx={ctx} x={892.6} y={306.9} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
+      <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
+    </Panel>
+    ),
+    amp: (
+    <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare" gap={1.5}>
+      <Text x={1053.5} y={60} kind="title">Amp</Text>
+      <Text x={1053.5} y={83.5}>Level</Text>
+      <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
+      <Text x={1053.5} y={160.5}>Width</Text>
+      <Knob ctx={ctx} x={1053.3} y={198} id="fx.width" label="Width" tone="light" />
+      <Text x={1053.5} y={224.5}>Limit</Text>
+      <Knob ctx={ctx} x={1053.6} y={262} id="master.limiter" label="Limit" tone="light" />
+      <Text x={1053.5} y={280.5}>Tone</Text>
+      <Knob ctx={ctx} x={1053.6} y={318} id="fx.tone" label="Tone" tone="light" />
+    </Panel>
+    ),
+    fx: (
+    <Panel x={1090.5} y={54} w={159.5} h={288} label="FX" gap={1.5}>
+      <Badge x={1100.5} y={65} kind="square">X</Badge>
+      <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
+      <Text x={1118} y={80}>Rate</Text>
+      <Text x={1169.5} y={80}>Mix</Text>
+      <Text x={1222} y={80}>Depth</Text>
+      <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
+      <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
+      <Line x={1090.5} y={143} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+      <Badge x={1100.5} y={154} kind="square">Y</Badge>
+      <Text x={1110} y={149} align="left" kind="title">Delay</Text>
+      <Text x={1118} y={172.5}>Time</Text>
+      <Text x={1169.5} y={172.5}>Mix</Text>
+      <Text x={1222} y={172.5}>Feed</Text>
+      <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
+      <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
+      <Line x={1090.5} y={232} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+      <Badge x={1100.5} y={243} kind="square">Z</Badge>
+      <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
+      <Text x={1118} y={261}>Size</Text>
+      <Text x={1169.5} y={261}>Mix</Text>
+      <Text x={1222} y={261}>Damp</Text>
+      <Knob ctx={ctx} x={1117.8} y={298.8} id="fx.reverbSize" label="Reverb size" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Reverb mix" />
+      <Knob ctx={ctx} x={1222} y={298.8} id="fx.reverbDamping" label="Reverb damping" size="sm" />
+    </Panel>
+    ),
+  }
+  /** The routing bar: the sources, three by three; the wide face shows a trio below it, a folded face one. */
+  const routingBar = (
+    <div className="fp-routing" role="group" aria-label="Routing bar">
+      <Origin.Provider value={{ x: 0, y: 0 }}>
+        <ul className="fp-sources" role="list" aria-label="Routing">
+          <span className="fp-sources__box" aria-hidden="true"
+            style={folded ? { left: SOURCE_AT(shown) - 17, width: 34 } : { left: 4.125 + 161 * page, width: 116.5 }} />
+          {SOURCES.map((source, index) => (
+            <li key={source.id} className="fp-source" data-kind={source.kind} data-live="" style={{ marginInlineStart: index % 3 === 0 && index > 0 ? 40.25 : 0 }}>
+              {held(source) ? (
+                <Grab x={20.125} y={9.1} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id}
+                  onPointerDown={pickUp(source)} onPointerMove={assigning?.id === source.id ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
+                  <MoveIcon />
+                </Grab>
+              ) : (
+                <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
+              )}
+              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`}>{source.id}</Text>
+            </li>
+          ))}
+        </ul>
+      </Origin.Provider>
+    </div>
+  )
+  const modulatorPanels = (
+    <>
+      {/* ═══ Modulators: three of nine at a time, the trio the routing bar chose; one on a folded face ═══ */}
+      {modulators.some((entry) => entry.source === 0) ? (
+        <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
+          <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
+          <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
+          <Text x={70.9} y={413.5}>Shape</Text>
+          <Text x={120.8} y={413.5}>Pan</Text>
+          <Text x={209} y={413.5}>Spread</Text>
+          <Text x={257.5} y={413.5}>Sustain</Text>
+          <Text x={370.5} y={413}>Env Level</Text>
+          <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
+          <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
+          <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
+          <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
+          <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
+          <Bracket x0={40} x1={151} top={474} mid={486.5} tip={500} width={8} />
+          <Bracket x0={177.5} x1={287.5} top={474} mid={486.5} tip={500} width={11.5} />
+          <Text x={96} y={496}>A</Text>
+          <Text x={232.4} y={495.5}>D</Text>
+          <Text x={368.6} y={495.5}>R</Text>
+          <Text x={27.6} y={510}>Delay</Text>
+          <Text x={164.8} y={510}>Hold</Text>
+          <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
+          <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
+          <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
+          <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
+          <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
+          <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
+          <Text x={40.4} y={592} u>Gate</Text>
+          <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
+            <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+          </Block>
+        </Panel>
+
+      ) : null}
+      {modulators.filter((entry) => entry.source === 1 || entry.source === 2).map(({ source, slot }) => {
+        const index = source - 1
+        const o = 418.3 * slot
+        const px = SLOT_X[slot] ?? 0
+        const id = (tail: string) => `envelopes[${index}].${tail}`
+        const target = ctx.byId.get(id('target'))
+        const on = read(ctx, id('enabled')) !== false
+        const Y = (local: number) => 384 + local
+        return (
+          <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`} gap={SLOT_GAP[slot]}>
+            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
+            <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
+            <Text x={70.9 + o} y={Y(29.5)}>Shape</Text>
+            <Text x={257.5 + o} y={Y(29.5)}>Sustain</Text>
+            <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
+            <Knob ctx={ctx} x={71.7 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
+            <Knob ctx={ctx} x={256.4 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
+            <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
+            <Text x={96 + o} y={Y(116)}>A</Text>
+            <Text x={232.4 + o} y={Y(115.5)}>D</Text>
+            <Text x={368.6 + o} y={Y(115.5)}>R</Text>
+            <Text x={27.6 + o} y={Y(126)}>Delay</Text>
+            <Text x={164.8 + o} y={Y(126)}>Hold</Text>
+            <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
+            <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
+            <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
+            <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
+            <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
+            <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
+            <Text x={38.4 + o} y={Y(208)} u>Target</Text>
+            <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5}>
+              {target ? (
+                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+              ) : null}
+            </Block>
+            <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
+            <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on}>
+              <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+            </Block>
+          </Panel>
+        )
+      })}
+      {modulators.filter((entry) => entry.source >= 3).map(({ source, slot }) => {
+        const index = source - 3
+        const o = 418.3 * slot
+        const px = SLOT_X[slot] ?? 0
+        const pw = slot === 0 ? 413.5 : 417.5
+        const id = (tail: string) => `lfos[${index}].${tail}`
+        const target = ctx.byId.get(id('target'))
+        const on = read(ctx, id('enabled')) !== false
+        const shape = read(ctx, id('shape'))
+        const cycles = readNum(ctx, id('rate'), 5) * duration
+        const Y = (local: number) => 384 + local
+        return (
+          <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`} gap={SLOT_GAP[slot]}>
+            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 4}</Text>
+            <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
+            {/* the left column: how fast, and whether at all */}
+            <Text x={36.5 + o} y={Y(104)}>Rate</Text>
+            <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
+            <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
+            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`}>On</Box>
+            {/* the wheel */}
+            <Text x={193 + o} y={Y(30)}>Shape</Text>
+            <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
+            <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
+            {/* the right column: how much, and from where in the cycle */}
+            <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
+            <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
+            <Text x={351.5 + o} y={Y(164)}>Phase</Text>
+            <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
+            {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
+            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>
+              {target ? (
+                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+              ) : null}
+            </Block>
+          </Panel>
+        )
+      })}
+    </>
+  )
+
   return (
     <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} data-layout={layout} style={{ '--fp-scale': scale } as CSSProperties}>
-      <div className="fp-sizer" style={{ width: face.w * scale, height: (plateHeight || face.h) * scale }}>
-      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: face.w, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
+      <div className="fp-sizer" style={{ width: box.w * scale, height: box.h * scale }}>
+      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band: the seed, then the macros in two groups of eight that wrap as units ═══ */}
         <div className="fp-band" role="group" aria-label="Macros">
@@ -793,6 +1097,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                     const index = half * 8 + at
                     return (
                       <span key={index} className="fp-macro" data-wired={macro.id ? '' : undefined}>
+                      <span className="fp-macro__box">
                         <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={-1}
                           aria-label={`Drag macro ${index + 1} onto a control to assign it${macro.id ? `; double-click to free it from ${macro.label}` : ''}`}
                           data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
@@ -808,6 +1113,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                           : <span className="fp-knob-empty" data-size="macro" style={{ left: 40.5, top: 25 }} aria-hidden="true"><Ring /></span>}
                         {macro.label ? <Text x={40.5} y={40.5} kind="macro">{macro.label}</Text> : null}
                       </span>
+                      </span>
                     )
                   })}
                 </div>
@@ -816,311 +1122,22 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </Origin.Provider>
         </div>
 
-        {/* ═══ The body: the panels, the routing bar and the modulators, in the order the face deals them ═══ */}
-        <div className="fp-body">
-        <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare" {...item('pitch')}>
-          <Text x={32} y={59.5} kind="title">Pitch</Text>
-          <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
-          <Text x={32} y={104}>Arp Ratio</Text>
-          <Knob ctx={ctx} x={32} y={137} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
-          <Text x={32} y={156}>Arp At</Text>
-          <Knob ctx={ctx} x={32} y={189} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
-          <Text x={32} y={208}>Detune</Text>
-          <Knob ctx={ctx} x={32} y={241} id={L(f, 'source.detune')} label="Detune" size="sm" />
-          <Text x={31.8} y={261}>Time</Text>
-          <Knob ctx={ctx} x={31.5} y={298.7} id="duration" label="Time" tone="light" />
-        </Panel>
-
-        <Panel x={68} y={54} w={515} h={288} label="Oscillators" gap={1} {...item('osc')}>
-          {/* the head */}
-          {wavePicker(0, 149.5)}
-          <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
-            <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1">1</Badge>
-            <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2">2</Badge>
-          </span>
-          <Text x={324} y={60} kind="title">Osc</Text>
-          {wavePicker(1, 391.2)}
-          <Line x={325} y={54} w={1} h={215.5} colour="var(--fp-hairline)" />
-          {/* oscillator 1 */}
-          <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
-          {sideColumn(0, 104)}
-          <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} />} />
-          <Text x={166.9} y={184}>Width</Text>
-          <Text x={240.7} y={184.5}>Slide</Text>
-          <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
-          <Knob ctx={ctx} x={240.7} y={226.2} id={L(0, 'pitch.slide')} label="Slide" />
-          <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
-          {/* oscillator 2 */}
-          <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
-          <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} />} />
-          <Text x={409.3} y={184}>Width</Text>
-          <Text x={482} y={184.5}>Slide</Text>
-          <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
-          <Knob ctx={ctx} x={482} y={226.3} id={L(1, 'pitch.slide')} label="Slide" />
-          <Readout x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} label="Oscillator 2 pitch" edit={pitchEdit(L(1, 'pitch.start'))} />
-          {sideColumn(1, 547.5)}
-          {/* the foot, with its notched rim: phase modulation between the two */}
-          <svg className="fp-osc-foot" viewBox="0 0 515 14" style={{ left: 0, top: 203, width: 515, height: 14 }} aria-hidden="true">
-            <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" style={{ stroke: 'var(--fp-hairline)' }} strokeWidth="1" />
-            <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
-          </svg>
-          <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
-          <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
-          <Icon x={204.6} y={314.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
-          <Text x={277.2} y={281}>PM1</Text>
-          <Text x={325.5} y={282}>Fall</Text>
-          <Text x={373.8} y={281}>PM2</Text>
-          <Knob ctx={ctx} x={277.2} y={313.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
-          <Knob ctx={ctx} x={325.5} y={314} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
-          <Knob ctx={ctx} x={373.8} y={313.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
-          <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
-          <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
-          <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
-        </Panel>
-
-        <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise" gap={16.5} {...item('noise')}>
-          <span role="tablist" aria-label="Noise layer" className="fp-tabs">
-            <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1">1</Badge>
-            <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2">2</Badge>
-          </span>
-          <Text x={639} y={59.5} kind="title">Noise</Text>
-          <Fader ctx={ctx} x={615} top={87.5} id={L(2, 'gain')} label="Noise 1 level" kind="noise" />
-          <Fader ctx={ctx} x={663} top={87.5} id={L(3, 'gain')} label="Noise 2 level" kind="noise" />
-          <Text x={614.7} y={204} u onClick={() => cycleColour(2)} label={`Noise 1 colour: ${colourName(2)}`}>{colourName(2)}</Text>
-          <Text x={661.8} y={204.5} u onClick={() => cycleColour(3)} label={`Noise 2 colour: ${colourName(3)}`}>{colourName(3)}</Text>
-          <Icon x={614.8} y={239.2} w={38} h={29.5}><NoiseBurst seed={1} colour={read(ctx, L(2, 'source.colour'))} /></Icon>
-          <Icon x={663.2} y={239} w={38} h={29.5}><NoiseBurst seed={2} colour={read(ctx, L(3, 'source.colour'))} /></Icon>
-          <Text x={614.9} y={273}>Pitch</Text>
-          <Text x={663} y={273}>Pitch</Text>
-          <Knob ctx={ctx} x={614.9} y={306.7} id={L(2, 'pitch.start')} label="Noise 1 pitch" size="sm" tone="light" />
-          <Knob ctx={ctx} x={663} y={306.7} id={L(3, 'pitch.start')} label="Noise 2 pitch" size="sm" tone="light" />
-        </Panel>
-
-        <Panel x={696.5} y={54} w={159} h={288} label="Body" gap={2} {...item('body')}>
-          <Badge x={707.5} y={65} kind="circle">B</Badge>
-          <Text x={775.8} y={59.5} kind="title">Body</Text>
-          <Text x={731.3} y={83}>Partials</Text>
-          <Knob ctx={ctx} x={731.5} y={121.6} id={L(f, 'resonator.partials')} label="Partials" size="sm" />
-          <Readout x={788} base={96.5} mark="note" value={semitones(readNum(ctx, L(f, 'resonator.frequency'), 440))} label="Body pitch" edit={pitchEdit(L(f, 'resonator.frequency'))} />
-          <Text x={819} y={104}>Spread</Text>
-          <Knob ctx={ctx} x={819} y={138} id={L(f, 'resonator.spread')} label="Spread" size="sm" />
-          <Text x={777} y={168.5}>Amount</Text>
-          <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="Amount" />
-          <Text x={739.9} y={257}>Freq</Text>
-          <Text x={811.4} y={257}>Ring</Text>
-          <Knob ctx={ctx} x={739.9} y={298.4} id={L(f, 'resonator.frequency')} label="Freq" />
-          <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="Ring" />
-        </Panel>
-
-        <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5} {...item('filter')}>
-          <span role="radiogroup" aria-label="Filter mode">
-            <Badge x={868.5} y={65.5} kind="circle">A</Badge>
-            <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Low</Text>
-            <Badge x={921} y={65.5} kind="circle">B</Badge>
-            <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')}>High</Text>
-            <Badge x={973.5} y={65.5} kind="circle">C</Badge>
-            <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')}>Band</Text>
-          </span>
-          <Text x={900.5} y={79.5}>Cutoff</Text>
-          <Text x={972.4} y={80}>Reso</Text>
-          <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
-          <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
-          <Text x={900.2} y={167.5}>Env</Text>
-          <Text x={972.7} y={168.5}>Drive</Text>
-          <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
-          <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
-          <Text x={892.6} y={275}>Bits</Text>
-          <Text x={980.7} y={273.5}>Crush</Text>
-          <Knob ctx={ctx} x={892.6} y={306.9} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
-          <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
-        </Panel>
-
-        <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare" gap={1.5} {...item('amp')}>
-          <Text x={1053.5} y={60} kind="title">Amp</Text>
-          <Text x={1053.5} y={83.5}>Level</Text>
-          <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
-          <Text x={1053.5} y={160.5}>Width</Text>
-          <Knob ctx={ctx} x={1053.3} y={198} id="fx.width" label="Width" tone="light" />
-          <Text x={1053.5} y={224.5}>Limit</Text>
-          <Knob ctx={ctx} x={1053.6} y={262} id="master.limiter" label="Limit" tone="light" />
-          <Text x={1053.5} y={280.5}>Tone</Text>
-          <Knob ctx={ctx} x={1053.6} y={318} id="fx.tone" label="Tone" tone="light" />
-        </Panel>
-
-        <Panel x={1090.5} y={54} w={159.5} h={288} label="FX" gap={1.5} {...item('fx')}>
-          <Badge x={1100.5} y={65} kind="square">X</Badge>
-          <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
-          <Text x={1118} y={80}>Rate</Text>
-          <Text x={1169.5} y={80}>Mix</Text>
-          <Text x={1222} y={80}>Depth</Text>
-          <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
-          <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
-          <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
-          <Line x={1090.5} y={143} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-          <Badge x={1100.5} y={154} kind="square">Y</Badge>
-          <Text x={1110} y={149} align="left" kind="title">Delay</Text>
-          <Text x={1118} y={172.5}>Time</Text>
-          <Text x={1169.5} y={172.5}>Mix</Text>
-          <Text x={1222} y={172.5}>Feed</Text>
-          <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
-          <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
-          <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
-          <Line x={1090.5} y={232} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-          <Badge x={1100.5} y={243} kind="square">Z</Badge>
-          <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
-          <Text x={1118} y={261}>Size</Text>
-          <Text x={1169.5} y={261}>Mix</Text>
-          <Text x={1222} y={261}>Damp</Text>
-          <Knob ctx={ctx} x={1117.8} y={298.8} id="fx.reverbSize" label="Reverb size" size="sm" />
-          <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Reverb mix" />
-          <Knob ctx={ctx} x={1222} y={298.8} id="fx.reverbDamping" label="Reverb damping" size="sm" />
-        </Panel>
-
-        {/* ═══ Routing bar: the sources, three by three; the wide face shows a trio below, a folded face one ═══ */}
-        <div className="fp-routing" role="group" aria-label="Routing bar" style={{ order: dealt.order.routing }}>
-          <Origin.Provider value={{ x: 0, y: 0 }}>
-            <ul className="fp-sources" role="list" aria-label="Routing">
-              <span className="fp-sources__box" aria-hidden="true"
-                style={folded ? { left: SOURCE_AT(shown) - 17, width: 34 } : { left: 4.125 + 161 * page, width: 116.5 }} />
-              {SOURCES.map((source, index) => (
-                <li key={source.id} className="fp-source" data-kind={source.kind} data-live="" style={{ marginInlineStart: index % 3 === 0 && index > 0 ? 40.25 : 0 }}>
-                  {held(source) ? (
-                    <Grab x={20.125} y={9.1} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id}
-                      onPointerDown={pickUp(source)} onPointerMove={assigning?.id === source.id ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
-                      <MoveIcon />
-                    </Grab>
-                  ) : (
-                    <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
-                  )}
-                  <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`}>{source.id}</Text>
-                </li>
-              ))}
-            </ul>
-          </Origin.Provider>
-        </div>
-        {dealt.rules.map((order) => <span key={order} className="fp-rule" style={{ order }} aria-hidden="true" />)}
-
-        {/* ═══ Modulators: three of nine at a time, the trio the routing bar chose; one on a folded face ═══ */}
-        {modulators.some((entry) => entry.source === 0) ? (
-          <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope" {...item('modulators')}>
-            <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
-            <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
-            <Text x={70.9} y={413.5}>Shape</Text>
-            <Text x={120.8} y={413.5}>Pan</Text>
-            <Text x={209} y={413.5}>Spread</Text>
-            <Text x={257.5} y={413.5}>Sustain</Text>
-            <Text x={370.5} y={413}>Env Level</Text>
-            <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
-            <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
-            <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
-            <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
-            <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
-            <Bracket x0={40} x1={151} top={474} mid={486.5} tip={500} width={8} />
-            <Bracket x0={177.5} x1={287.5} top={474} mid={486.5} tip={500} width={11.5} />
-            <Text x={96} y={496}>A</Text>
-            <Text x={232.4} y={495.5}>D</Text>
-            <Text x={368.6} y={495.5}>R</Text>
-            <Text x={27.6} y={510}>Delay</Text>
-            <Text x={164.8} y={510}>Hold</Text>
-            <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
-            <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
-            <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
-            <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
-            <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
-            <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
-            <Text x={40.4} y={592} u>Gate</Text>
-            <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
-              <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
-            </Block>
-          </Panel>
-
-        ) : null}
-        {modulators.filter((entry) => entry.source === 1 || entry.source === 2).map(({ source, slot }) => {
-          const index = source - 1
-          const o = 418.3 * slot
-          const px = SLOT_X[slot] ?? 0
-          const id = (tail: string) => `envelopes[${index}].${tail}`
-          const target = ctx.byId.get(id('target'))
-          const on = read(ctx, id('enabled')) !== false
-          const Y = (local: number) => 384 + local
-          return (
-            <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`} gap={SLOT_GAP[slot]} {...item('modulators')}>
-              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
-              <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
-              <Text x={70.9 + o} y={Y(29.5)}>Shape</Text>
-              <Text x={257.5 + o} y={Y(29.5)}>Sustain</Text>
-              <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
-              <Knob ctx={ctx} x={71.7 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
-              <Knob ctx={ctx} x={256.4 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
-              <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
-              <Text x={96 + o} y={Y(116)}>A</Text>
-              <Text x={232.4 + o} y={Y(115.5)}>D</Text>
-              <Text x={368.6 + o} y={Y(115.5)}>R</Text>
-              <Text x={27.6 + o} y={Y(126)}>Delay</Text>
-              <Text x={164.8 + o} y={Y(126)}>Hold</Text>
-              <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
-              <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
-              <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
-              <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
-              <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
-              <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
-              <Text x={38.4 + o} y={Y(208)} u>Target</Text>
-              <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5}>
-                {target ? (
-                  <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-                ) : null}
-              </Block>
-              <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
-              <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on}>
-                <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
-              </Block>
-            </Panel>
-          )
-        })}
-        {modulators.filter((entry) => entry.source >= 3).map(({ source, slot }) => {
-          const index = source - 3
-          const o = 418.3 * slot
-          const px = SLOT_X[slot] ?? 0
-          const pw = slot === 0 ? 413.5 : 417.5
-          const id = (tail: string) => `lfos[${index}].${tail}`
-          const target = ctx.byId.get(id('target'))
-          const on = read(ctx, id('enabled')) !== false
-          const shape = read(ctx, id('shape'))
-          const cycles = readNum(ctx, id('rate'), 5) * duration
-          const Y = (local: number) => 384 + local
-          return (
-            <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`} gap={SLOT_GAP[slot]} {...item('modulators')}>
-              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 4}</Text>
-              <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
-              {/* the left column: how fast, and whether at all */}
-              <Text x={36.5 + o} y={Y(104)}>Rate</Text>
-              <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
-              <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
-              <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`}>On</Box>
-              {/* the wheel */}
-              <Text x={193 + o} y={Y(30)}>Shape</Text>
-              <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
-              <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
-              {/* the right column: how much, and from where in the cycle */}
-              <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
-              <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
-              <Text x={351.5 + o} y={Y(164)}>Phase</Text>
-              <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
-              {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
-              <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>
-                {target ? (
-                  <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-                ) : null}
-              </Block>
-            </Panel>
-          )
-        })}
-        </div>
+        {/* ═══ The body: the panels and the routing bar, in the rows the face deals, a rule between two ═══ */}
+        {rows.map((row, index) => (
+          <Fragment key={index}>
+            {index > 0 ? <span className="fp-rule" aria-hidden="true" /> : null}
+            {row === 'routing' ? routingBar : (
+              <div className="fp-row">
+                {row.map((key) => <Fragment key={key}>{key === 'modulators' ? modulatorPanels : panels[key]}</Fragment>)}
+              </div>
+            )}
+          </Fragment>
+        ))}
 
         {/* ═══ The strip of kept sounds: twelve slots at the reference's widths, or sharing the face's ═══ */}
         <div className="fp-strip" role="group" aria-label="Kept sounds">
           <Origin.Provider value={{ x: 0, y: 0 }}>
-            <span className="fp-strip__din" style={{ width: folded ? 40 : 168 }}>
+            <span className="fp-strip__din" style={{ flex: folded ? '0 0 40px' : '168 1 168px' }}>
               <Icon x={14.75} y={11.25} w={17.5} h={14.5}><DinIcon /></Icon>
             </span>
           </Origin.Provider>
@@ -1128,7 +1145,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             const slot = slots?.[index]
             return (
               <button type="button" key={index} className="fp-slot" data-filled={slot ? '' : undefined} data-active={slot?.active || undefined}
-                style={folded ? { flex: '1 1 0', marginInlineStart: 1 } : { flex: `0 0 ${index === 0 ? 84 : 89.5}px`, marginInlineStart: index === 0 ? 0 : index === 1 ? 3.5 : 1 }}
+                style={folded ? { flex: '1 1 0', marginInlineStart: 1 } : { flex: `${index === 0 ? 84 : 89.5} 1 ${index === 0 ? 84 : 89.5}px`, marginInlineStart: index === 0 ? 0 : index === 1 ? 3.5 : 1 }}
                 disabled={!slot} aria-label={slot ? `Kept sound ${index + 1}: ${slot.name}` : `Empty slot ${index + 1}`} onClick={slot?.onPick}>
                 {index + 1}
               </button>

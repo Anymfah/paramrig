@@ -1382,7 +1382,8 @@
   --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
   --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
   --fp-plot-fill: #394963; --fp-plot-line: #4675bf; --fp-wheel: #2a2a2a; --fp-wheel-hover: #333333; --fp-wheel-top: #3b3b3b;
-  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e; --fp-readout-hover: #9c9d9d;
+  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e; --fp-readout-hover: #9c9d9d; --fp-box-on-text: #1e1e1e;
+  --fp-knob-shadow: 0 5px 9px -2px rgba(0, 0, 0, 0.6); --fp-knob-light: rgba(255, 255, 255, 0.08); --fp-tip: #101010; --fp-tip-text: #d4d4d4;
   --fp-font: 'Roboto', var(--font-sans);
   --fp-stretch: 97%;
   --fp-text-scale: 1;
@@ -1394,20 +1395,28 @@
  * set in its own face. Geometry, anatomy and idiom are untouched; only the values change.
  */
 .fp-stage[data-skin='paramrig'] {
-  --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: var(--surface-inset); --fp-hairline: var(--carbon); --fp-line: var(--rule);
+  /*
+   * ParamRig's own look, in the app's tokens and nothing else, so it follows the theme: what is a
+   * light disc on the dark plate is a dark disc on the light one, and every rim, rule and shadow
+   * is mixed from the surfaces and the text of whichever theme is on.
+   */
+  --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: color-mix(in srgb, var(--surface-inset) 85%, var(--carbon)); --fp-hairline: var(--border-hairline); --fp-line: var(--rule);
   --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--text-muted); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted); --fp-readout-hover: var(--text-primary);
-  --fp-box: var(--surface-overlay); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 80%, var(--chalk)); --fp-box-on-hover: var(--accent-hover);
-  --fp-badge: var(--stone); --fp-badge-text: var(--carbon); --fp-badge-off: var(--rule); --fp-badge-hover: var(--text-muted); --fp-badge-edge: var(--chalk);
-  --fp-knob-top: #2f3836; --fp-knob-bottom: #161b1a; --fp-knob-rim: var(--carbon); --fp-hand: var(--accent); --fp-ring: var(--rule); --fp-ring-dark: var(--rule);
-  --fp-hero: var(--surface-overlay); --fp-hero-edge: #343d3a; --fp-hero-rim: var(--carbon); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
-  --fp-macro-top: #34403c; --fp-macro-bottom: #1a2120; --fp-macro-hand: var(--accent);
-  --fp-light-top: var(--stone); --fp-light-bottom: #97a29e; --fp-light-hand: var(--carbon);
-  --fp-groove-edge: var(--carbon); --fp-red: var(--warning); --fp-tray: var(--surface-overlay);
-  --fp-src-p: var(--warning); --fp-src-e: #8fb4c9; --fp-src-l: var(--success); --fp-src-l-edge: #6f9d8a; --fp-src-t: #b8a3cf; --fp-src-v: var(--danger);
+  --fp-box: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-on-text: var(--text-on-accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 65%, var(--text-primary)); --fp-box-on-hover: var(--accent-hover);
+  --fp-badge: var(--text-secondary); --fp-badge-text: var(--surface); --fp-badge-off: color-mix(in srgb, var(--text-muted) 45%, var(--surface)); --fp-badge-hover: var(--text-muted); --fp-badge-edge: var(--text-primary);
+  --fp-edge: color-mix(in srgb, var(--carbon) 60%, var(--surface-raised));
+  --fp-knob-top: var(--surface-overlay); --fp-knob-bottom: var(--surface-raised); --fp-knob-rim: var(--fp-edge); --fp-hand: var(--accent); --fp-ring: color-mix(in srgb, var(--text-muted) 45%, var(--surface)); --fp-ring-dark: color-mix(in srgb, var(--text-muted) 45%, var(--surface));
+  --fp-hero: var(--surface-overlay); --fp-hero-edge: color-mix(in srgb, var(--surface-overlay) 86%, var(--text-primary)); --fp-hero-rim: var(--fp-edge); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
+  --fp-macro-top: var(--surface-overlay); --fp-macro-bottom: var(--surface-raised); --fp-macro-hand: var(--accent);
+  --fp-light-top: var(--text-secondary); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 72%, var(--surface)); --fp-light-hand: var(--surface);
+  --fp-groove-edge: var(--fp-edge); --fp-red: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
+  --fp-src-p: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-src-e: color-mix(in srgb, var(--accent) 85%, var(--text-secondary)); --fp-src-l: color-mix(in srgb, var(--success) 65%, var(--text-primary)); --fp-src-l-edge: color-mix(in srgb, var(--success) 65%, var(--text-primary)); --fp-src-t: color-mix(in srgb, var(--danger) 65%, var(--text-primary)); --fp-src-v: color-mix(in srgb, var(--danger) 65%, var(--text-primary));
   --fp-slot: var(--surface-overlay); --fp-slot-edge: var(--border-strong); --fp-slot-open: var(--surface-raised); --fp-slot-filled: var(--surface-inset);
-  --fp-amber: var(--warning); --fp-amber-dim: color-mix(in srgb, var(--warning) 70%, var(--surface)); --fp-amber-bright: var(--accent);
+  --fp-amber: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-amber-dim: color-mix(in srgb, var(--warning) 45%, var(--text-muted)); --fp-amber-bright: var(--accent);
   --fp-plot-fill: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); --fp-plot-line: var(--accent); --fp-wheel: var(--surface); --fp-wheel-hover: var(--surface-overlay); --fp-wheel-top: var(--surface-overlay);
-  --fp-icon: var(--stone); --fp-icon-cut: var(--carbon); --fp-bracket: var(--rule);
+  --fp-icon: var(--text-secondary); --fp-icon-cut: var(--surface-raised); --fp-bracket: var(--rule);
+  --fp-knob-shadow: 0 5px 9px -2px color-mix(in srgb, var(--carbon) 55%, transparent);
+  --fp-knob-light: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --fp-font: var(--font-sans);
   --fp-stretch: 100%;
   /* Public Sans runs wider than the reference's condensed Roboto: a touch smaller keeps neighbouring
@@ -1415,14 +1424,19 @@
   --fp-text-scale: 0.95;
   --fp-read-scale: 0.9;
 }
+/* On the light theme a knob casts a lighter shadow, as everything in the app does. */
+:root[data-theme='light'] .fp-stage[data-skin='paramrig'] { --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent); }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .fp-stage[data-skin='paramrig'] { --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent); }
+}
 .fp-stage[data-skin='paramrig'] .fp-read { letter-spacing: -0.03em; }
 /* The app's look draws its knobs by its own tokens: one light from above, the dark of the surfaces below. */
 .fp-stage[data-skin='paramrig'] .fp-knob[data-size='hero'] .fp-knob__body {
-  background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-hairline) 100%);
-  box-shadow: 0 0 0 1px var(--fp-hairline), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 7px 12px -3px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-edge) 100%);
+  box-shadow: 0 0 0 1px var(--fp-edge), inset 0 1px 0 var(--fp-knob-light), inset 0 -1px 0 color-mix(in srgb, var(--carbon) 35%, transparent), var(--fp-knob-shadow);
 }
-/* A macro's number on a light knob: dark, or it is lost against the disc. */
-.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--carbon); }
+/* A macro's number on a light knob reads in the plate's ground colour: dark on the dark theme's light disc, light on the light theme's dark one. */
+.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--surface); }
 
 @font-face {
   font-family: 'Roboto';
@@ -1480,22 +1494,26 @@
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /*
- * The plate is a column of flex rows; the body's items — the panels, the routing bar, the
- * modulators — wrap where the face's width makes them, in the order the face gives them
- * (faces.ts). Inside a panel nothing flows: its controls are absolute at their measured
- * coordinates, in a body of the measured width that sits centred when the panel has grown.
+ * The plate is a column of flex rows — the macro band, the body's rows, the strip — and fills its
+ * room: every row grows with the room's height in proportion to its own, every panel in a row
+ * with the row's width in proportion to its own, and each centres what it holds (faces.ts deals
+ * the panels into rows). Inside a panel nothing flows: its controls are absolute at their
+ * measured coordinates, in a body of the measured size. At the reference's own size nothing has
+ * anything to grow into, and the plate is the reference to the pixel.
  */
-.fp-band { display: flex; flex-wrap: wrap; align-items: flex-start; border-block-end: 1px solid var(--fp-hairline); }
-.fp-band__seed, .fp-band__lead { position: relative; flex: none; block-size: 53px; }
-.fp-band__group { display: flex; flex: none; inline-size: 514px; block-size: 53px; }
-.fp-body { display: flex; flex-wrap: wrap; align-content: flex-start; }
-.fp-rule { flex: 0 0 100%; block-size: 1.5px; background: var(--fp-hairline); }
-.fp-panel { position: relative; }
-.fp-panel__body { position: relative; margin-inline: auto; }
-.fp-routing { position: relative; flex: 0 0 100%; display: flex; justify-content: center; block-size: 39px; }
-.fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 497.875px; }
-.fp-strip { display: flex; block-size: 24px; border-block-start: 1px solid var(--fp-hairline); }
-.fp-strip__din { position: relative; flex: none; block-size: 23px; }
+.fp-band { display: flex; flex-wrap: wrap; align-items: center; align-content: center; flex: 54 1 54px; padding-inline-end: 4.5px; border-block-end: 1px solid var(--fp-hairline); }
+.fp-band__seed, .fp-band__lead { position: relative; flex: 217.5 1 217.5px; block-size: 53px; }
+.fp-band__group { display: flex; flex: 514 1 514px; block-size: 53px; }
+.fp-macro { position: relative; display: flex; justify-content: center; flex: 1 1 64.25px; block-size: 53px; }
+.fp-macro__box { position: relative; flex: none; inline-size: 64.25px; block-size: 53px; }
+.fp-row { display: flex; flex: 288 1 288px; }
+.fp-rule { flex: none; block-size: 1.5px; background: var(--fp-hairline); }
+.fp-panel { position: relative; display: flex; align-items: center; justify-content: center; }
+.fp-panel__body { position: relative; flex: none; }
+.fp-routing { position: relative; display: flex; align-items: center; justify-content: center; flex: 39 1 39px; }
+.fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 39.83%; }
+.fp-strip { display: flex; align-items: flex-start; flex: 24 1 24px; border-block-start: 1px solid var(--fp-hairline); }
+.fp-strip__din { position: relative; block-size: 23px; }
 
 /* Panels: the grey ones carry a black hairline down each side; the dark ones are the ground itself. */
 .fp-panel { background: var(--fp-panel); box-shadow: -1px 0 0 var(--fp-hairline), 1px 0 0 var(--fp-hairline); }
@@ -1574,7 +1592,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   translate: -50% -50%;
   border-radius: 50%;
   background: linear-gradient(var(--top), var(--bottom));
-  box-shadow: 0 0 0 1px var(--rim), inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 5px 9px -2px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 1px var(--rim), inset 0 1px 0 var(--fp-knob-light), var(--fp-knob-shadow);
 }
 .fp-knob[data-size='hero'] .fp-knob__body {
   background: radial-gradient(circle, #3a3c3e 0 87.5%, #414345 88.5% 98.5%, #2c2c2e 99%);
@@ -1617,8 +1635,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inset-inline-start: 50%;
   translate: -50% 2px;
   padding: 1px 5px;
-  color: var(--fp-text-hover);
-  background: var(--fp-knob-rim);
+  color: var(--fp-tip-text);
+  background: var(--fp-tip);
   border: 1px solid var(--fp-slot);
   border-radius: 2px;
   font-size: 10px;
@@ -1684,7 +1702,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   overflow: hidden;
 }
 .fp-box[data-align='right'] { text-align: end; padding-inline-end: 4px; }
-.fp-box[data-selected] { background: var(--fp-box-on); }
+.fp-box[data-selected] { background: var(--fp-box-on); color: var(--fp-box-on-text); }
 button.fp-box { cursor: pointer; touch-action: manipulation; }
 button.fp-box:hover { background: var(--fp-box-hover); }
 button.fp-box[data-selected]:hover { background: var(--fp-box-on-hover); }
@@ -1754,10 +1772,9 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-wheel i { position: absolute; inset-inline: 2px; block-size: 2px; background: var(--fp-badge); border-radius: 1px; }
 .fp-at { inline-size: 17px; block-size: 17px; translate: -50% -50%; border-radius: 50%; background: var(--fp-slot-open); box-shadow: 0 0 0 1px var(--fp-knob-rim); }
 .fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: var(--fp-dim); }
-.fp-macro { position: relative; flex: none; inline-size: 64.25px; block-size: 53px; }
 
 /* The routing bar: the two page tabs, then the modulation sources in their colours. */
-.fp-sources { position: relative; display: flex; list-style: none; margin: 0; padding: 0; }
+.fp-sources { position: relative; display: flex; block-size: 39px; list-style: none; margin: 0; padding: 0; }
 .fp-source { position: relative; flex: none; inline-size: 40.25px; block-size: 39px; }
 .fp-sources__box { inset-block-start: 20.5px; block-size: 18px; border-radius: 3px; background: var(--fp-tray); }
 .fp-source[data-kind='p'] .fp-text { color: var(--fp-src-p); }

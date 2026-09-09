@@ -16,19 +16,23 @@ export type AudioTab = 'sound' | 'controls'
 
 export const AUDIO_TABS: AudioTab[] = ['sound', 'controls']
 
-/** The plate's look: the reference's, or ParamRig's own. */
+/** The plate's look: ParamRig's own, or the reference's it was transcribed from. */
 export type AudioSkin = 'reference' | 'paramrig'
 
-/** Whether a change plays itself, and which look the plate wears. Set once and kept: ways of working. */
-type AudioExtra = { autoPlay: boolean; skin: AudioSkin }
+/**
+ * Whether a change plays itself, and which look the plate wears. Set once and kept: ways of
+ * working. The look is stored as `look`: it was `skin` while the reference was the default, and
+ * that default was written along with every other preference, so the old name is left to lapse.
+ */
+type AudioExtra = { autoPlay: boolean; look: AudioSkin }
 
 const store = inspectorPrefsStore<AudioTab, AudioExtra>({
   key: 'paramrig.audio-inspector.v1',
   tabs: AUDIO_TABS,
   defaultTab: 'sound',
   extra: {
-    empty: { autoPlay: true, skin: 'paramrig' },
-    parse: (value) => ({ autoPlay: value.autoPlay !== false, skin: value.skin === 'reference' ? 'reference' : 'paramrig' }),
+    empty: { autoPlay: true, look: 'paramrig' },
+    parse: (value) => ({ autoPlay: value.autoPlay !== false, look: value.look === 'reference' ? 'reference' : 'paramrig' }),
   },
 })
 
@@ -68,6 +72,6 @@ export function withAutoPlay(prefs: AudioPrefs, autoPlay: boolean): AudioPrefs {
   return { ...prefs, autoPlay }
 }
 
-export function withSkin(prefs: AudioPrefs, skin: AudioSkin): AudioPrefs {
-  return { ...prefs, skin }
+export function withSkin(prefs: AudioPrefs, look: AudioSkin): AudioPrefs {
+  return { ...prefs, look }
 }

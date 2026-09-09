@@ -72,7 +72,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [future, setFuture] = useState<AudioPatch[]>([])
   const [notice, setNotice] = useState('')
   const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
-  const [skin, setSkin] = useState<AudioSkin>(() => readAudioPrefs().skin)
+  const [skin, setSkin] = useState<AudioSkin>(() => readAudioPrefs().look)
   // Nothing is written until something is changed, or opening a bundled example would stamp a new
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)

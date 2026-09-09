@@ -1,20 +1,20 @@
 /**
  * The faces of the face-plate.
  *
- * The plate is a column of flex rows — the macro band, the body, the strip — and the body's items
- * are the seven panels, the routing bar and the modulators, each at the size it was measured at.
- * A face is an order for those items and a width for the row: the row wraps where the browser
- * finds it must, and a panel that is told to grow shares its line's spare width with its
- * neighbours, in step with their widths, and centres what it holds. Nothing inside a panel moves
- * between the faces: every control keeps the coordinates it was measured at, and a panel placed
- * elsewhere carries them with it. A folded face is the wide one folded, not a second transcription.
+ * The plate is a column of flex rows — the macro band, the body's rows, the strip — and a row is
+ * a flex row of panels, each at the size it was measured at. A face is a deal of the panels into
+ * rows and a width for the plate. The plate fills its room: the rows share the room's height in
+ * proportion to their own, the panels in a row share its width in proportion to theirs, and each
+ * centres what it holds. Nothing inside a panel moves between the faces: every control keeps the
+ * coordinates it was measured at, and a panel dealt elsewhere carries them with it. A folded face
+ * is the wide one folded, not a second transcription.
  *
  * The wide face is the reference's: one row of seven panels, the routing bar, three modulators
- * side by side. The medium one, for a room a little taller than the reference is wide, wraps the
+ * side by side. The medium one, for a room a little taller than the reference is wide, cuts the
  * row after the body and deals the filter, the amp, the effects and one modulator across a second
- * line, the routing bar between the two. The narrow one, for a room taller than it is wide, wraps
- * after the noise, deals the four panels that stood right of it across a line of their own, and
- * gives the one modulator a line under the routing bar. The macros wrap into two rows of eight on
+ * row, the routing bar between the two. The narrow one, for a room taller than it is wide, cuts
+ * after the noise, deals the four panels that stood right of it across a row of their own, and
+ * gives the one modulator a row under the routing bar. The macros wrap into two rows of eight on
  * both, and the strip's slots share whatever width the face has.
  */
 
@@ -28,38 +28,57 @@ export const FACES: Record<Layout, { w: number; h: number }> = {
 /** The reference's face, which everything is measured on. */
 export const PLATE = FACES.wide
 
-/** The body's items, in the order the reference has them. */
-export type Item = 'pitch' | 'osc' | 'noise' | 'body' | 'filter' | 'amp' | 'fx' | 'routing' | 'modulators'
+/** The body's items: the seven panels, and the modulators on show — three on the wide face, one on a folded one. */
+export type Item = 'pitch' | 'osc' | 'noise' | 'body' | 'filter' | 'amp' | 'fx' | 'modulators'
+/** A row of the body: panels side by side, or the routing bar. */
+export type Row = Item[] | 'routing'
 /**
- * How a face deals the body: the order of its items, which of them grow to fill their line, and
- * the orders at which a rule takes a line of its own between two others.
+ * How a face deals the body into rows. Every row of panels is as tall as the reference's, and
+ * grows with the room in the same proportion as every other; a rule lies between two rows.
  */
-export const DEAL: Record<Layout, { order: Record<Item, number>; grow: Item[]; rules: number[] }> = {
-  wide: { order: { pitch: 1, osc: 1, noise: 1, body: 1, filter: 1, amp: 1, fx: 1, routing: 3, modulators: 5 }, grow: [], rules: [2, 4] },
-  medium: { order: { pitch: 1, osc: 1, noise: 1, body: 1, routing: 3, filter: 5, amp: 5, fx: 5, modulators: 5 }, grow: ['filter', 'amp', 'fx', 'modulators'], rules: [2, 4] },
-  narrow: { order: { pitch: 1, osc: 1, noise: 1, body: 3, filter: 3, amp: 3, fx: 3, routing: 5, modulators: 7 }, grow: ['body', 'filter', 'amp', 'fx', 'modulators'], rules: [2, 4, 6] },
+export const DEAL: Record<Layout, Row[]> = {
+  wide: [['pitch', 'osc', 'noise', 'body', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
+  medium: [['pitch', 'osc', 'noise', 'body'], 'routing', ['filter', 'amp', 'fx', 'modulators']],
+  narrow: [['pitch', 'osc', 'noise'], ['body', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
+}
+
+/**
+ * The box the plate lays itself out in: the room at the face's scale, and never less than the
+ * face. The rows and the panels share whatever the room has beyond the face, so the plate fills
+ * it; a room too small for the face at that scale leaves the face its size, and the stage scrolls.
+ */
+export function plateBox(layout: Layout, scale: number, room: { w: number; h: number }): { w: number; h: number } {
+  const face = FACES[layout]
+  return { w: Math.max(face.w, room.w / scale), h: Math.max(face.h, room.h / scale) }
 }
 
 /** Below this scale a face cannot be read; the plate keeps its size and the room scrolls instead. */
 export const FOLD = 0.75
-/** At this scale the wide face is kept whatever another face would gain: it shows the most. */
+/** From this scale the wide face is kept when it fills the room nearly as well as another: it shows the most. */
 export const KEEP = 0.9
 
+/** How well a face at a scale fills a room: the share of the room it covers, weighed by how readable it is. */
+function fill(layout: Layout, scale: number, width: number, height: number): number {
+  const face = FACES[layout]
+  return (face.w * scale * face.h * scale) / (width * height) * Math.min(1, scale)
+}
+
 /**
- * Which face a room gets, and at what scale. The wide face while it can be read comfortably: it
- * shows the most, and fitted whole it is what the plugin's own window zoom gives. Otherwise the
- * face that fits the room whole at the largest scale, if any of them can still be read there.
- * When none can, the plate keeps a readable size and the room scrolls: the wide face where the
- * room is merely short, then the medium, then the narrow fitted to a narrow room's width.
+ * Which face a room gets, and at what scale. Each face is fitted whole; the one that fills the
+ * room best wins, and the wide face — which shows the most — is kept whenever it reads
+ * comfortably and fills nearly as well. When no face can be read fitted whole, the plate keeps a
+ * readable size and the room scrolls: the wide face where the room is merely short, then the
+ * medium, then the narrow fitted to a narrow room's width.
  */
 export function fitPlate(width: number, height: number): { layout: Layout; scale: number } {
   const whole = (layout: Layout) => Math.min(width / FACES[layout].w, height / FACES[layout].h)
-  const wide = whole('wide')
-  if (wide >= KEEP) return { layout: 'wide', scale: wide }
-  const best = (['wide', 'medium', 'narrow'] as const)
-    .map((layout) => ({ layout, scale: whole(layout) }))
-    .reduce((kept, next) => (next.scale > kept.scale ? next : kept))
-  if (best.scale >= FOLD) return best
+  const fitted = (['wide', 'medium', 'narrow'] as const)
+    .map((layout) => ({ layout, scale: whole(layout), fill: fill(layout, whole(layout), width, height) }))
+    .filter((face) => face.scale >= FOLD)
+  const best = fitted.reduce<(typeof fitted)[number] | null>((kept, next) => (!kept || next.fill > kept.fill ? next : kept), null)
+  const wide = fitted.find((face) => face.layout === 'wide')
+  if (best && wide && wide.scale >= KEEP && wide.fill >= best.fill - 0.1) return { layout: 'wide', scale: wide.scale }
+  if (best) return { layout: best.layout, scale: best.scale }
   for (const layout of ['wide', 'medium'] as const) {
     if (width / FACES[layout].w >= FOLD) return { layout, scale: Math.min(1, width / FACES[layout].w) }
   }
