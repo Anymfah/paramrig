@@ -14,7 +14,7 @@ import type { ParameterDef } from '@/rigs/types'
  * dark pointer. Every number here is a measurement in CSS pixels; the plate places the knob by its
  * centre and the arc's diameter is the box.
  */
-export type KnobSize = 'hero' | 'std' | 'sm' | 'macro'
+export type KnobSize = 'hero' | 'mid' | 'std' | 'sm' | 'macro'
 export type KnobTone = 'dark' | 'light' | 'cool'
 
 /** A modulator pointed at the control: its colour, how far it swings, and where to write a new swing. */

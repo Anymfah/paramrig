@@ -3,7 +3,6 @@ import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/AudioKnob'
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
-import { AudioLfoShape } from '@/audio/AudioLfoShape'
 import { ParameterField } from '@/ui/ParameterField'
 import { LFO_COUNT } from '@/audio/fields'
 
@@ -150,10 +149,11 @@ function OptionKnob({ ctx, x, y, id, label, options, size = 'sm' }: { ctx: Ctx; 
   const at = useAt()
   const current = read(ctx, id)
   const index = Math.max(0, options.indexOf(typeof current === 'string' ? current : ''))
-  const param: Num = { kind: 'number', id, label, group: '', min: 0, max: options.length - 1, step: 1, defaultValue: 0 }
+  // Half a step of room either side, so the hand points at the middle of a sector rather than its edge.
+  const param: Num = { kind: 'number', id, label, group: '', min: -0.5, max: options.length - 0.5, step: 1, defaultValue: 0 }
   return (
     <AudioKnob param={param} value={index} size={size} style={at(x, y)}
-      onChange={(next) => ctx.onChange(id, options[Math.round(next)] ?? options[0] ?? '')}
+      onChange={(next) => ctx.onChange(id, options[Math.min(options.length - 1, Math.max(0, Math.round(next)))] ?? options[0] ?? '')}
       onGestureStart={ctx.onGestureStart} onGestureEnd={ctx.onGestureEnd} />
   )
 }
@@ -373,6 +373,55 @@ const DinIcon = () => (
   </svg>
 )
 
+/**
+ * The Switcher LFO's shape wheel: a band of waveforms round a central dial, the chosen one lit in
+ * the source's green with a line from the dial to it. The reference spreads sixteen shapes round
+ * its band; this engine has five, so five sectors share the same two hundred and seventy degrees.
+ */
+const WHEEL = { r1: 72, r2: 102, span: 270, start: 135 }
+const LFO_SHAPES = ['sine', 'triangle', 'square', 'saw', 'noise'] as const
+const LFO_GLYPH: Record<string, string> = {
+  sine: 'M-7 0 C-5 -6 -2 -6 0 0 S5 6 7 0',
+  triangle: 'M-7 3 L-3.5 -4 L3.5 4 L7 -3',
+  square: 'M-7 3 V-4 H0 V4 H7 V-3',
+  saw: 'M-7 3 L-1 -4 V3 L6 -4',
+  noise: 'M-7 1 L-5 -4 L-3 3 L-1 -2 L1 4 L3 -3 L5 2 L7 -1',
+}
+const polar = (r: number, deg: number) => {
+  const rad = (deg * Math.PI) / 180
+  return `${(r * Math.cos(rad)).toFixed(2)} ${(r * Math.sin(rad)).toFixed(2)}`
+}
+function ShapeWheel({ x, y, value, label, onPick }: { x: number; y: number; value: string; label: string; onPick: (shape: string) => void }) {
+  const at = useAt()
+  const { r1, r2, span, start } = WHEEL
+  const step = span / LFO_SHAPES.length
+  const chosen = Math.max(0, LFO_SHAPES.indexOf(value as typeof LFO_SHAPES[number]))
+  const mid = start + step * (chosen + 0.5)
+  return (
+    <svg className="fp-shapes" viewBox={`${-r2 - 1} ${-r2 - 1} ${2 * r2 + 2} ${2 * r2 + 2}`} style={{ ...at(x, y), width: 2 * r2 + 2, height: 2 * r2 + 2 }} role="radiogroup" aria-label={label}>
+      {LFO_SHAPES.map((shape, index) => {
+        const a0 = start + step * index
+        const a1 = a0 + step
+        const centre = a0 + step / 2
+        const d = `M${polar(r2, a0)} A${r2} ${r2} 0 0 1 ${polar(r2, a1)} L${polar(r1, a1)} A${r1} ${r1} 0 0 0 ${polar(r1, a0)} Z`
+        return (
+          <g key={shape} className="fp-shapes__sector" data-chosen={index === chosen || undefined} role="radio" aria-checked={index === chosen} aria-label={shape} tabIndex={-1} onClick={() => onPick(shape)}>
+            <path className="fp-shapes__band" d={d} />
+            <path className="fp-shapes__glyph" d={LFO_GLYPH[shape]} transform={`translate(${polar((r1 + r2) / 2, centre).replace(' ', ',')}) rotate(${centre - 270})`} />
+          </g>
+        )
+      })}
+      {LFO_SHAPES.map((_, index) => index > 0 ? <path key={index} className="fp-shapes__rule" d={`M${polar(r1, start + step * index)} L${polar(r2, start + step * index)}`} /> : null)}
+      <path className="fp-shapes__pointer" d={`M${polar(26, mid)} L${polar(r1 - 2, mid)}`} />
+      <circle className="fp-shapes__dot" cx={Number(polar(26, mid).split(' ')[0])} cy={Number(polar(26, mid).split(' ')[1])} r="2.2" />
+    </svg>
+  )
+}
+/** A small drawing of a fall-and-rise curve, as the reference marks its Fall/Rise dial. */
+const CurveMark = () => (
+  <svg viewBox="0 0 30 10" style={{ width: 30, height: 10 }}><path d="M1 9 V1 H14 V9 H29" fill="none" stroke="#8a8a8a" strokeWidth="1" /></svg>
+)
+
 /** The thin bracket that gathers two dials towards the name of the stage they shape. */
 function Bracket({ x0, x1, top, mid, tip, width }: { x0: number; x1: number; top: number; mid: number; tip: number; width: number }) {
   const at = useAt()
@@ -415,8 +464,6 @@ const SOURCES: { id: string; kind: 'p' | 'e' | 'l' | 't' | 'v'; x: number; lfo?:
   { id: 'T1', kind: 't', x: 1001 }, { id: 'T2', kind: 't', x: 1041.5 }, { id: 'T3', kind: 't', x: 1081.8 }, { id: 'T4', kind: 't', x: 1122 },
   { id: 'VR', kind: 'v', x: 1202.3 },
 ]
-
-const LFO_SHAPES = ['sine', 'triangle', 'square', 'saw', 'noise'] as const
 
 export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots }: {
   parameters: ParameterDef[]
@@ -801,27 +848,41 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           const id = (tail: string) => `lfos[${index}].${tail}`
           const target = ctx.byId.get(id('target'))
           const on = read(ctx, id('enabled')) !== false
+          const shape = read(ctx, id('shape'))
+          const Y = (local: number) => 384 + local
           return (
             <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`}>
-              <Text x={2.5 + o} y={389.5} align="left" kind="title">Modulator {index + 2}</Text>
-              <Text x={203.3 + o} y={389} kind="title" u onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} ${on ? 'on' : 'off'}`}>Switcher LFO</Text>
-              <Text x={70.9 + o} y={413.5}>Shape</Text>
-              <Text x={120.8 + o} y={413.5}>Delay</Text>
-              <Text x={368.6 + o} y={413}>LFO Level</Text>
-              <OptionKnob ctx={ctx} x={71.7 + o} y={451.6} id={id('shape')} label="Shape" options={LFO_SHAPES} />
-              <Knob ctx={ctx} x={119.6 + o} y={450.9} id={id('phase')} label="Delay" size="sm" />
-              <Knob ctx={ctx} x={369.1 + o} y={450.8} id={id('depth')} label="LFO Level" tone="light" />
-              <Text x={96 + o} y={500}>Rate</Text>
-              <Knob ctx={ctx} x={96 + o} y={539.4} id={id('rate')} label="Rate" />
-              <Line x={px} y={583.5} w={pw} h={1} colour="#282828" />
-              <Text x={38.4 + o} y={592} u>Target</Text>
-              <Block className="fp-target" x={10 + o} y={609} w={105} h={14.5}>
+              <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
+              <Text x={203.3 + o} y={Y(5)} kind="title" u onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} ${on ? 'on' : 'off'}`}>Switcher LFO</Text>
+              {/* the left column: how it runs */}
+              <Icon x={19.25 + o} y={Y(35.25)} w={18.5} h={10.5}><Pill curve="vel" /></Icon>
+              <Text x={31 + o} y={Y(30)} align="left">Rate</Text>
+              <Text x={36.5 + o} y={Y(55)} u>Free</Text>
+              <Text x={36.5 + o} y={Y(108)}>Rate</Text>
+              <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
+              <Text x={36.5 + o} y={Y(208)} u>Loop</Text>
+              <Text x={36.5 + o} y={Y(232)} u>Midi</Text>
+              <Box x={5 + o} y={Y(252)} w={62.5}>Mono</Box>
+              {/* the wheel */}
+              <Text x={193 + o} y={Y(30)}>Shape</Text>
+              <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
+              <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
+              {/* the right column: how much, and when */}
+              <Text x={351.5 + o} y={Y(30)}>LFO Level</Text>
+              <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
+              <Box x={325 + o} y={Y(105)} w={52} h={16} selected>Bi</Box>
+              <Box x={325 + o} y={Y(121)} w={52} h={16}>Uni</Box>
+              <Box x={325 + o} y={Y(137)} w={52} h={16}>Uni Z</Box>
+              <Text x={351.5 + o} y={Y(168)}>Delay</Text>
+              <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Delay" size="sm" />
+              <Text x={351.5 + o} y={Y(218)}>Fall/Rise</Text>
+              <Knob ctx={ctx} x={351.5 + o} y={Y(238)} id="" label="Fall/Rise" size="sm" inert={0.5} />
+              <Icon x={351.5 + o} y={Y(264)} w={30} h={10}><CurveMark /></Icon>
+              {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
+              <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>
                 {target ? (
                   <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
                 ) : null}
-              </Block>
-              <Block className="fp-plot" x={125 + o} y={596.5} w={274} h={60} off={!on}>
-                <AudioLfoShape index={index} values={values} duration={duration} />
               </Block>
             </Panel>
           )

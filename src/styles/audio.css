@@ -676,47 +676,6 @@
 }
 
 
-/* ---- The modulators ------------------------------------------------------------------------ */
-
-.lfo-shape {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.lfo-shape svg {
-  inline-size: 100%;
-  block-size: 3.5rem;
-  background: var(--surface-inset);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-sm);
-}
-
-.lfo-shape[data-idle] svg {
-  opacity: 0.4;
-}
-
-.lfo-shape__mid {
-  stroke: var(--border-default);
-  stroke-width: 1;
-  vector-effect: non-scaling-stroke;
-}
-
-.lfo-shape__line {
-  fill: none;
-  stroke: var(--section, var(--accent));
-  stroke-width: 1.75;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-}
-
-.lfo-shape__read {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-}
-
 /* ---- The sound browser --------------------------------------------------------------------- */
 
 .sound-browser {
@@ -1421,7 +1380,7 @@
   user-select: none;
 }
 .fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
-.fp-band, .fp-panel, .fp-routing, .fp-strip, .fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box, .fp-slot { position: absolute; }
+.fp-band, .fp-panel, .fp-routing, .fp-strip, .fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box, .fp-slot { position: absolute; }
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /* Panels: the grey ones carry a black hairline down each side; the dark ones are the ground itself. */
@@ -1473,6 +1432,9 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 .fp-knob[data-size='std'], .fp-knob-empty[data-size='std'] { --ring: 57px; --d: 29px; --hand-w: 3.5px; --hand-h: 8.5px; }
 .fp-knob[data-size='sm'], .fp-knob-empty[data-size='sm'] { --ring: 38.5px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; }
+/* The dial at the heart of the shape wheel: the wheel is its arc, so it draws none of its own. */
+.fp-knob[data-size='mid'] { --ring: 45px; --d: 45px; --hand-w: 3.5px; --hand-h: 10px; --top: #53555a; --bottom: #3a393e; }
+.fp-knob[data-size='mid'] .fp-knob__track { display: none; }
 .fp-knob[data-size='hero'] { --ring: 96px; --d: 66px; --hand-w: 3.5px; --hand-h: 5px; --hand: #eae1ca; --ringc: #535353; }
 .fp-knob[data-size='macro'], .fp-knob-empty[data-size='macro'] { --ring: 26px; --d: 21px; --hand-w: 2.5px; --hand-h: 6px; --hand: #e9e9e9; --ringc: #545454; --top: #5c5c5c; --bottom: #3c3c3c; --rim: #202020; }
 .fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: #a8a7a6; --bottom: #6c6b68; --rim: #141414; --hand: #0e0e0e; --ringc: #494949; }
@@ -1638,6 +1600,19 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-tabs { display: contents; }
 
 .fp-icon { translate: -50% -50%; display: block; line-height: 0; }
+
+/* The Switcher LFO's shape wheel. */
+.fp-shapes { position: absolute; translate: -50% -50%; overflow: visible; }
+.fp-shapes__sector { cursor: pointer; }
+.fp-shapes__band { fill: #2a2a2a; stroke: #1e1e1e; stroke-width: 1; }
+.fp-shapes__sector:hover .fp-shapes__band { fill: #333333; }
+.fp-shapes__sector[data-chosen] .fp-shapes__band { fill: #7bc21a; stroke: #5f9a12; }
+.fp-shapes__glyph { fill: none; stroke: #9a9a9a; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.fp-shapes__sector[data-chosen] .fp-shapes__glyph { stroke: #1e1e1e; stroke-width: 1.6; }
+.fp-shapes__rule { stroke: #1e1e1e; stroke-width: 1; }
+.fp-shapes__pointer { stroke: #7bc21a; stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.fp-shapes__dot { fill: #7bc21a; pointer-events: none; }
+.fp-shapes__sector:focus-visible .fp-shapes__band { stroke: var(--focus-ring); stroke-width: 2; }
 .fp-icon svg { display: block; }
 .fp-line { display: block; }
 
@@ -1708,13 +1683,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope__line { stroke: #4675bf; stroke-width: 1.5; }
 .fp-plot .envelope__dot { display: none; }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
-.fp-plot .envelope__read, .fp-plot .lfo-shape__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.fp-plot .lfo-shape { display: block; gap: 0; }
-.fp-plot .lfo-shape svg { display: block; inline-size: 100%; block-size: 60px; background: transparent; border: 0; border-radius: 0; opacity: 1; }
-.fp-plot .lfo-shape__mid { stroke: #4675bf; stroke-width: 1; }
-.fp-plot .lfo-shape__line { stroke: #4675bf; stroke-width: 1.5; }
-.fp-plot .lfo-shape__fill { fill: #394963; stroke: none; }
-.lfo-shape__fill { fill: none; }
+.fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* The LFO's target, in the box style, where the reference keeps its gate options. */
 .fp-target { inline-size: 105px; }
