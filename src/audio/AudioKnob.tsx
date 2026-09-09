@@ -17,7 +17,7 @@ import type { ParameterDef } from '@/rigs/types'
 export type KnobSize = 'hero' | 'std' | 'sm' | 'macro'
 export type KnobTone = 'dark' | 'light' | 'cool'
 
-export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, onGestureStart, onGestureEnd }: {
+export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
@@ -30,6 +30,8 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   style?: CSSProperties
   /** Drawn where the reference draws it and wired to nothing; says so, and takes no gesture. */
   inert?: boolean
+  /** Two dots at the ends of the arc: the reference's mark for a bipolar range. */
+  dots?: boolean
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }) {
@@ -81,6 +83,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       role={inert ? 'img' : 'slider'}
       tabIndex={inert ? -1 : 0}
       data-inert={inert || undefined}
+      data-dots={dots || undefined}
       aria-label={inert ? `${param.label}, not wired` : param.label || param.id}
       aria-valuemin={inert ? undefined : param.min}
       aria-valuemax={inert ? undefined : param.max}

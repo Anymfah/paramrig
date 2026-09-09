@@ -1416,6 +1416,7 @@
   color: #a5a39a;
   font-family: 'Roboto', var(--font-sans);
   font-size: 13px;
+  font-stretch: 97%;
   line-height: 1;
   user-select: none;
 }
@@ -1477,6 +1478,9 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: #a8a7a6; --bottom: #6c6b68; --rim: #141414; --hand: #0e0e0e; --ringc: #494949; }
 .fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: #a3a2a0; --bottom: #6e6d6a; --ringc: #3a3a3a; }
 .fp-knob[data-inert] { cursor: default; }
+.fp-knob[data-dots]::before, .fp-knob[data-dots]::after { content: ''; position: absolute; inline-size: 2.5px; block-size: 2.5px; border-radius: 50%; background: #6e6e6e; inset-block-start: calc(85.36% - 1.25px); }
+.fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
+.fp-knob[data-dots]::after { inset-inline-start: calc(85.36% - 1.25px); }
 .fp-knob__ring { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; display: block; }
 .fp-knob__ring path { fill: none; stroke: var(--ringc); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fp-knob__body {
@@ -1586,17 +1590,18 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 /* The quiet grey box: mid grey, dark text, a pixel of radius; lighter when it is the chosen one. */
 .fp-box {
   margin: 0;
-  padding: 0 4px;
+  padding: 0 1px;
   border: 0;
   background: #545454;
   border-radius: 2px;
   color: #1e1e1e;
   font: 400 11px/1 'Roboto', var(--font-sans);
+  font-stretch: 97%;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
 }
-.fp-box[data-align='right'] { text-align: end; }
+.fp-box[data-align='right'] { text-align: end; padding-inline-end: 4px; }
 .fp-box[data-selected] { background: #9a9a9a; }
 button.fp-box { cursor: pointer; touch-action: manipulation; }
 button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
@@ -1692,12 +1697,15 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 
 /* The LFO's target, in the box style, where the reference keeps its gate options. */
 .fp-target { inline-size: 105px; }
-.fp-target .control { margin: 0; padding: 0; min-inline-size: 0; }
+.fp-target .control { display: block; margin: 0; padding: 0; inline-size: 105px; min-inline-size: 0; }
+.fp-target .control__aside, .fp-target .field-reset { display: none; }
+.fp-target .control--select[data-modified] .select-trigger__value { margin-inline-end: 0; }
 .fp-target .select-trigger {
   display: flex;
   align-items: center;
   gap: 3px;
   inline-size: 105px;
+  max-inline-size: 105px;
   min-block-size: 0;
   block-size: 14.5px;
   margin: 0;
