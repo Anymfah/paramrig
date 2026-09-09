@@ -19,7 +19,7 @@ import { monoSum, renderPatch } from '@/audio/dsp/render'
 import { useTransport } from '@/audio/useTransport'
 import { layerProfiles } from '@/audio/profiles'
 import { disposePlayback, playbackRate } from '@/audio/playback'
-import { readAudioPrefs, withAutoPlay, writeAudioPrefs, type AudioMode } from '@/audio/prefs'
+import { readAudioPrefs, withAutoPlay, withSkin, writeAudioPrefs, type AudioMode, type AudioSkin } from '@/audio/prefs'
 import { PRESETS } from '@/audio/presets'
 import { mutatePatch, randomPatch } from '@/audio/shuffle'
 import type { AudioPatch } from '@/audio/types'
@@ -72,6 +72,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [future, setFuture] = useState<AudioPatch[]>([])
   const [notice, setNotice] = useState('')
   const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
+  const [skin, setSkin] = useState<AudioSkin>(() => readAudioPrefs().skin)
   // Nothing is written until something is changed, or opening a bundled example would stamp a new
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
@@ -338,6 +339,20 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             </button>
           ))}
         </div>
+        <Tooltip content={skin === 'reference' ? 'Wearing the reference look; switch to ParamRig\'s' : 'Wearing ParamRig\'s look; switch to the reference\'s'}>
+          <Button
+            variant="quiet"
+            size="sm"
+            aria-pressed={skin === 'paramrig'}
+            onClick={() => {
+              const next: AudioSkin = skin === 'reference' ? 'paramrig' : 'reference'
+              setSkin(next)
+              writeAudioPrefs(withSkin(readAudioPrefs(), next))
+            }}
+          >
+            {skin === 'reference' ? 'Look: reference' : 'Look: ParamRig'}
+          </Button>
+        </Tooltip>
         <div className="audio-bar__history">
           <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
             <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
@@ -373,6 +388,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onGestureEnd={ended}
                 rig={rig}
                 onRig={(next) => { setRig(next); setDirty(true) }}
+                skin={skin}
                 slots={snapshots.slice(0, 12).map((snapshot) => ({
                   name: snapshot.name,
                   active: snapshot.id === preset,

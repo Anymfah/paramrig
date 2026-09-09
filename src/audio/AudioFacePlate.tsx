@@ -61,7 +61,7 @@ const readNum = (ctx: Ctx, id: string, fallback = 0) => {
 /* ── Modulation ──────────────────────────────────────────────────────────────────────────────── */
 
 /** The colour of each kind of source, as the reference paints its buttons. */
-const SOURCE_COLOUR = { p: '#efa807', e: '#4576c4', l: '#6fb904', t: '#8d52a4', v: '#d0708b', m: '#eb292f' } as const
+const SOURCE_COLOUR = { p: 'var(--fp-src-p)', e: 'var(--fp-src-e)', l: 'var(--fp-src-l)', t: 'var(--fp-src-t)', v: 'var(--fp-src-v)', m: 'var(--fp-red)' } as const
 
 /** The modulation target a parameter stands for, when an LFO may be pointed at it. */
 const targetOf = (id: string): string | undefined => {
@@ -222,7 +222,7 @@ function Block({ x, y, w, h, className, off, children }: { x: number; y: number;
 }
 
 /** A hairline, placed by its top-left corner. */
-function Line({ x, y, w, h = 1, colour = '#000' }: { x: number; y: number; w: number; h?: number; colour?: string }) {
+function Line({ x, y, w, h = 1, colour = 'var(--fp-hairline)' }: { x: number; y: number; w: number; h?: number; colour?: string }) {
   const at = useAt()
   return <span className="fp-line" style={{ ...at(x, y), width: w, height: h, background: colour }} aria-hidden="true" />
 }
@@ -280,12 +280,12 @@ function Readout({ x, base, mark, value, label, edit }: { x: number; base: numbe
     <span className="fp-read__anchor">
       {mark === 'note' ? (
         <svg className="fp-read__mark" viewBox="0 0 6 12" style={{ left: 0, top: -12, width: 6, height: 12 }}>
-          <path d="M4.5 0.2h1.1v9.4h-1.1z" fill="#8a8a8a" /><ellipse cx="2.95" cy="9.85" rx="3" ry="2.05" transform="rotate(-28 2.95 9.85)" fill="#8a8a8a" />
+          <path d="M4.5 0.2h1.1v9.4h-1.1z" style={{ fill: 'var(--fp-rule)' }} /><ellipse cx="2.95" cy="9.85" rx="3" ry="2.05" transform="rotate(-28 2.95 9.85)" style={{ fill: 'var(--fp-rule)' }} />
         </svg>
       ) : null}
       {mark === 'ratio' ? (
         <svg className="fp-read__mark" viewBox="0 0 12 11" style={{ left: 0, top: -11.5, width: 12, height: 11 }}>
-          <circle cx="2.6" cy="2.6" r="2.1" fill="#8a8a8a" /><circle cx="9.4" cy="8.4" r="2.1" fill="#8a8a8a" /><path d="M1.2 10.2 10.8 0.8" stroke="#8a8a8a" strokeWidth="1.6" strokeLinecap="round" />
+          <circle cx="2.6" cy="2.6" r="2.1" style={{ fill: 'var(--fp-rule)' }} /><circle cx="9.4" cy="8.4" r="2.1" style={{ fill: 'var(--fp-rule)' }} /><path d="M1.2 10.2 10.8 0.8" style={{ stroke: 'var(--fp-rule)' }} strokeWidth="1.6" strokeLinecap="round" />
         </svg>
       ) : null}
       {mark !== 'none' ? <i className="fp-read__u" style={{ left: -0.5, top: 0.5, width: mark === 'ratio' ? 13 : 9.5 }} /> : null}
@@ -362,8 +362,8 @@ function WaveDisc({ wave }: { wave: Wave }) {
     : 'M5 17.5 C9 8 14 8 17.5 17.5 S26 27 30 17.5'
   return (
     <svg viewBox="0 0 35 35" style={{ width: 35, height: 35 }}>
-      <circle cx="17.5" cy="17.5" r="17.5" fill="#9a9a9a" />
-      <path d={d} fill="none" stroke="#2b2b2b" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="17.5" cy="17.5" r="17.5" style={{ fill: 'var(--fp-icon)' }} />
+      <path d={d} fill="none" style={{ stroke: 'var(--fp-icon-cut)' }} strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -389,20 +389,20 @@ function NoiseBurst({ seed, colour }: { seed: number; colour: unknown }) {
   }
   return (
     <svg viewBox="0 0 38 29.5" style={{ width: 38, height: 29.5 }}>
-      <path d={bars.join('')} fill="none" stroke="#9a9a9a" strokeWidth={colour === 'metallic' ? '0.9' : '0.5'} />
+      <path d={bars.join('')} fill="none" style={{ stroke: 'var(--fp-icon)' }} strokeWidth={colour === 'metallic' ? '0.9' : '0.5'} />
     </svg>
   )
 }
 const MoveIcon = () => (
   <svg viewBox="0 0 17.5 14.5" style={{ width: 17.5, height: 14.5 }}>
-    <path d="M8.75 1v12.5M2 7.25h13.5" stroke="#6a6a6a" strokeWidth="1.5" />
-    <path d="M8.75 0 l2.4 3 h-4.8z M8.75 14.5 l2.4 -3 h-4.8z M1 7.25 l3 -2.4 v4.8z M16.5 7.25 l-3 -2.4 v4.8z" fill="#6a6a6a" />
+    <path d="M8.75 1v12.5M2 7.25h13.5" style={{ stroke: 'var(--fp-dim)' }} strokeWidth="1.5" />
+    <path d="M8.75 0 l2.4 3 h-4.8z M8.75 14.5 l2.4 -3 h-4.8z M1 7.25 l3 -2.4 v4.8z M16.5 7.25 l-3 -2.4 v4.8z" style={{ fill: 'var(--fp-dim)' }} />
   </svg>
 )
 const DinIcon = () => (
   <svg viewBox="0 0 17.5 14.5" style={{ width: 17.5, height: 14.5 }}>
-    <path d="M8.75 0 a7.25 7.25 0 1 1 -0.01 0 z M6.5 13.6 h4.5 l-1 -2.2 h-2.5 z" fill="#eba806" fillRule="evenodd" />
-    <circle cx="8.75" cy="3.4" r="1.1" fill="#262626" /><circle cx="5" cy="4.6" r="1.1" fill="#262626" /><circle cx="12.5" cy="4.6" r="1.1" fill="#262626" /><circle cx="3.6" cy="8.4" r="1.1" fill="#262626" /><circle cx="13.9" cy="8.4" r="1.1" fill="#262626" />
+    <path d="M8.75 0 a7.25 7.25 0 1 1 -0.01 0 z M6.5 13.6 h4.5 l-1 -2.2 h-2.5 z" style={{ fill: 'var(--fp-amber)' }} fillRule="evenodd" />
+    <circle cx="8.75" cy="3.4" r="1.1" style={{ fill: 'var(--fp-ground)' }} /><circle cx="5" cy="4.6" r="1.1" style={{ fill: 'var(--fp-ground)' }} /><circle cx="12.5" cy="4.6" r="1.1" style={{ fill: 'var(--fp-ground)' }} /><circle cx="3.6" cy="8.4" r="1.1" style={{ fill: 'var(--fp-ground)' }} /><circle cx="13.9" cy="8.4" r="1.1" style={{ fill: 'var(--fp-ground)' }} />
   </svg>
 )
 
@@ -462,8 +462,8 @@ function Bracket({ x0, x1, top, mid, tip, width }: { x0: number; x1: number; top
   const rel = (x: number) => x - left
   return (
     <svg className="fp-bracket" style={{ ...at(left, top), width: w, height: h }} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <path d={`M${rel(x0)} 0 V${mid - top} L${rel(centre - gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
-      <path d={`M${rel(x1)} 0 V${mid - top} L${rel(centre + gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
+      <path d={`M${rel(x0)} 0 V${mid - top} L${rel(centre - gap)} ${tip - top}`} fill="none" style={{ stroke: 'var(--fp-bracket)' }} strokeWidth="1" />
+      <path d={`M${rel(x1)} 0 V${mid - top} L${rel(centre + gap)} ${tip - top}`} fill="none" style={{ stroke: 'var(--fp-bracket)' }} strokeWidth="1" />
     </svg>
   )
 }
@@ -544,7 +544,7 @@ const macroLabel = (property: string) => {
   return layer ? `${label} ${Number(layer[1]) + 1}` : label
 }
 
-export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots, rig, onRig }: {
+export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots, rig, onRig, skin }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
@@ -556,6 +556,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   /** The document's rig, which the macro band shows and edits. */
   rig?: AudioRig
   onRig?: (next: AudioRig) => void
+  /** The look the plate wears: the reference's, or ParamRig's own. */
+  skin?: 'reference' | 'paramrig'
 }) {
   const [focus, setFocus] = useState(0)
   const macros = macrosOf(rig)
@@ -742,7 +744,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   )
 
   return (
-    <div className="fp-stage" ref={stageRef} style={{ '--fp-scale': scale } as CSSProperties}>
+    <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} style={{ '--fp-scale': scale } as CSSProperties}>
       <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band ═══ */}
@@ -798,7 +800,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </span>
           <Text x={324} y={60} kind="title">Osc</Text>
           {wavePicker(1, 391.2)}
-          <Line x={325} y={54} w={1} h={215.5} colour="#050505" />
+          <Line x={325} y={54} w={1} h={215.5} colour="var(--fp-hairline)" />
           {/* oscillator 1 */}
           <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
           {sideColumn(0, 104)}
@@ -819,8 +821,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           {sideColumn(1, 547.5)}
           {/* the foot, with its notched rim: phase modulation between the two */}
           <svg className="fp-osc-foot" viewBox="0 0 515 14" style={{ left: 0, top: 203, width: 515, height: 14 }} aria-hidden="true">
-            <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" stroke="#000" strokeWidth="1" />
-            <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" stroke="#161616" strokeWidth="1" />
+            <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" style={{ stroke: 'var(--fp-hairline)' }} strokeWidth="1" />
+            <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
           </svg>
           <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
           <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
@@ -914,7 +916,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
           <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
           <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
-          <Line x={1090.5} y={143} w={159.5} h={0.5} colour="#989897" />
+          <Line x={1090.5} y={143} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
           <Badge x={1100.5} y={154} kind="square">Y</Badge>
           <Text x={1110} y={149} align="left" kind="title">Delay</Text>
           <Text x={1118} y={172.5}>Time</Text>
@@ -923,7 +925,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
           <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
           <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
-          <Line x={1090.5} y={232} w={159.5} h={0.5} colour="#989897" />
+          <Line x={1090.5} y={232} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
           <Badge x={1100.5} y={243} kind="square">Z</Badge>
           <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
           <Text x={1118} y={261}>Size</Text>
@@ -989,7 +991,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
             <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
             <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
-            <Line x={0} y={583.5} w={413.5} h={1} colour="#282828" />
+            <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
             <Text x={40.4} y={592} u>Gate</Text>
             <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
               <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
@@ -1025,7 +1027,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
               <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
               <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
-              <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="#282828" />
+              <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
               <Text x={38.4 + o} y={Y(208)} u>Target</Text>
               <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5}>
                 {target ? (
@@ -1077,8 +1079,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           )
         })}
         <Origin.Provider value={{ x: 0, y: 0 }}>
-          <Line x={413.5} y={384} w={1} h={288} colour="#050505" />
-          <Line x={832} y={384} w={1} h={288} colour="#050505" />
+          <Line x={413.5} y={384} w={1} h={288} colour="var(--fp-hairline)" />
+          <Line x={832} y={384} w={1} h={288} colour="var(--fp-hairline)" />
           <Line x={0} y={672} w={PLATE.w} h={1} />
         </Origin.Provider>
 

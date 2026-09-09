@@ -1338,9 +1338,51 @@
 
 /* ---- The face-plate, at the reference's own coordinates ---------------------------------------
  *
- * The reference sets its labels in Roboto, and a transcription at the pixel needs the same face or
- * every word is a different width. Self-hosted, one variable file, the latin range only.
+ * Every colour the plate uses is a token on its stage, so a second look — ParamRig's own — is a
+ * second set of values and nothing else. The defaults are the reference's, measured.
  */
+.fp-stage {
+  --fp-ground: #262626; --fp-panel: #323232; --fp-panel-dark: #242424; --fp-hairline: #050505; --fp-line: #282828;
+  --fp-text: #a5a39a; --fp-title: #a7a7a7; --fp-text-bright: #c0c1bd; --fp-text-hover: #d4d4d4; --fp-dim: #838383; --fp-rule: #8a8a8a; --fp-rule-light: #989897; --fp-readout: #7d7e7e;
+  --fp-box: #545454; --fp-box-text: #1e1e1e; --fp-box-on: #9a9a9a; --fp-box-hover: #626262; --fp-box-on-hover: #a6a6a6;
+  --fp-badge: #999999; --fp-badge-text: #111111; --fp-badge-off: #6a6a6a; --fp-badge-hover: #7e7e7e; --fp-badge-edge: #b8b8b8;
+  --fp-knob-top: #53555a; --fp-knob-bottom: #3c3b40; --fp-knob-rim: #101010; --fp-hand: #c4c2bf; --fp-ring: #505050; --fp-ring-dark: #494949;
+  --fp-hero: #3a3c3e; --fp-hero-edge: #414345; --fp-hero-rim: #2c2c2e; --fp-hero-hand: #eae1ca; --fp-face: #a7a7a7;
+  --fp-macro-top: #5c5c5c; --fp-macro-bottom: #3c3c3c; --fp-macro-hand: #e9e9e9;
+  --fp-light-top: #a8a7a6; --fp-light-bottom: #6c6b68; --fp-light-hand: #0e0e0e;
+  --fp-groove-edge: #151515; --fp-red: #db282d; --fp-tray: #404040;
+  --fp-src-p: #efa807; --fp-src-e: #4576c4; --fp-src-l: #6fb904; --fp-src-l-edge: #5f9a12; --fp-src-t: #8d52a4; --fp-src-v: #d0708b;
+  --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
+  --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
+  --fp-plot-fill: #394963; --fp-plot-line: #4675bf; --fp-wheel: #2a2a2a; --fp-wheel-hover: #333333; --fp-wheel-top: #3b3b3b;
+  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b;
+  --fp-font: 'Roboto', var(--font-sans);
+  --fp-stretch: 97%;
+}
+
+/*
+ * ParamRig's own look: the same plate in the workbench's mineral greys and its emerald accent,
+ * set in its own face. Geometry, anatomy and idiom are untouched; only the values change.
+ */
+.fp-stage[data-skin='paramrig'] {
+  --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: var(--surface-inset); --fp-hairline: var(--carbon); --fp-line: var(--rule);
+  --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--rule); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted);
+  --fp-box: var(--surface-overlay); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 80%, var(--chalk)); --fp-box-on-hover: var(--accent-hover);
+  --fp-badge: var(--stone); --fp-badge-text: var(--carbon); --fp-badge-off: var(--rule); --fp-badge-hover: var(--text-muted); --fp-badge-edge: var(--chalk);
+  --fp-knob-top: #2f3836; --fp-knob-bottom: #161b1a; --fp-knob-rim: var(--carbon); --fp-hand: var(--accent); --fp-ring: var(--rule); --fp-ring-dark: var(--rule);
+  --fp-hero: var(--surface-overlay); --fp-hero-edge: #343d3a; --fp-hero-rim: var(--carbon); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
+  --fp-macro-top: #34403c; --fp-macro-bottom: #1a2120; --fp-macro-hand: var(--accent);
+  --fp-light-top: var(--chalk); --fp-light-bottom: var(--stone); --fp-light-hand: var(--carbon);
+  --fp-groove-edge: var(--carbon); --fp-red: var(--warning); --fp-tray: var(--surface-overlay);
+  --fp-src-p: var(--warning); --fp-src-e: #8fb4c9; --fp-src-l: var(--success); --fp-src-l-edge: #6f9d8a; --fp-src-t: #b8a3cf; --fp-src-v: var(--danger);
+  --fp-slot: var(--surface-overlay); --fp-slot-edge: var(--border-strong); --fp-slot-open: var(--surface-raised); --fp-slot-filled: var(--surface-inset);
+  --fp-amber: var(--warning); --fp-amber-dim: color-mix(in srgb, var(--warning) 70%, var(--surface)); --fp-amber-bright: var(--accent);
+  --fp-plot-fill: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); --fp-plot-line: var(--accent); --fp-wheel: var(--surface); --fp-wheel-hover: var(--surface-overlay); --fp-wheel-top: var(--surface-overlay);
+  --fp-icon: var(--stone); --fp-icon-cut: var(--carbon); --fp-bracket: var(--rule);
+  --fp-font: var(--font-sans);
+  --fp-stretch: 100%;
+}
+
 @font-face {
   font-family: 'Roboto';
   src: url('/fonts/Roboto.woff2') format('woff2');
@@ -1362,7 +1404,7 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden;
-  background: #262626;
+  background: var(--fp-ground);
 }
 .fp {
   position: absolute;
@@ -1371,11 +1413,11 @@
   translate: -50% 0;
   transform: scale(var(--fp-scale, 1));
   transform-origin: 50% 0;
-  background: #262626;
-  color: #a5a39a;
-  font-family: 'Roboto', var(--font-sans);
+  background: var(--fp-ground);
+  color: var(--fp-text);
+  font-family: var(--fp-font);
   font-size: 13px;
-  font-stretch: 97%;
+  font-stretch: var(--fp-stretch);
   line-height: 1;
   user-select: none;
 }
@@ -1384,8 +1426,8 @@
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /* Panels: the grey ones carry a black hairline down each side; the dark ones are the ground itself. */
-.fp-panel { background: #323232; box-shadow: -1px 0 0 #050505, 1px 0 0 #050505; }
-.fp-panel[data-tone='noise'] { background: #242424; box-shadow: none; }
+.fp-panel { background: var(--fp-panel); box-shadow: -1px 0 0 var(--fp-hairline), 1px 0 0 var(--fp-hairline); }
+.fp-panel[data-tone='noise'] { background: var(--fp-panel-dark); box-shadow: none; }
 .fp-panel[data-tone='bare'] { background: transparent; box-shadow: none; }
 
 /* Words. Placed by the top of their capitals; Roboto 13 in the reference's greys. */
@@ -1397,23 +1439,23 @@
   font: inherit;
   line-height: 1;
   white-space: nowrap;
-  color: #a5a39a;
+  color: var(--fp-text);
   cursor: default;
 }
 .fp-text[data-align='center'] { translate: -50% 0; }
 .fp-text[data-align='right'] { translate: -100% 0; }
-.fp-text[data-kind='title'] { color: #a7a7a7; }
-.fp-text[data-kind='bold'] { font-weight: 700; color: #a8a8a8; }
-.fp-text[data-kind='macro'] { color: #c0c1bd; }
-.fp-text[data-kind='digit'] { font-weight: 700; color: #a2a3a2; }
-.fp-macro[data-wired] .fp-text[data-kind='digit'] { color: #eb292f; }
-.fp-text[data-kind='dim'] { color: #838383; }
-.fp-text[data-kind='dim'][style*='font-size: 11px'] { color: #767676; }
+.fp-text[data-kind='title'] { color: var(--fp-title); }
+.fp-text[data-kind='bold'] { font-weight: 700; color: var(--fp-title); }
+.fp-text[data-kind='macro'] { color: var(--fp-text-bright); }
+.fp-text[data-kind='digit'] { font-weight: 700; color: var(--fp-dim); }
+.fp-macro[data-wired] .fp-text[data-kind='digit'] { color: var(--fp-red); }
+.fp-text[data-kind='dim'] { color: var(--fp-dim); }
+.fp-text[data-kind='dim'][style*='font-size: 11px'] { color: var(--fp-dim); }
 .fp-text[data-kind='source'] { font-weight: 700; }
-.fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: #8a8a8a; }
+.fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: var(--fp-rule); }
 button.fp-text { cursor: pointer; touch-action: manipulation; }
-button.fp-text:hover { color: #d4d4d4; }
-button.fp-text[aria-checked='true'] { color: #d0d0d0; }
+button.fp-text:hover { color: var(--fp-text-hover); }
+button.fp-text[aria-checked='true'] { color: var(--fp-text-hover); }
 button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
 /*
@@ -1427,19 +1469,19 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inline-size: var(--ring);
   block-size: var(--ring);
   border-radius: 50%;
-  --top: #53555a; --bottom: #3c3b40; --rim: #101010; --hand: #c4c2bf; --ringc: #505050;
+  --top: var(--fp-knob-top); --bottom: var(--fp-knob-bottom); --rim: var(--fp-knob-rim); --hand: var(--fp-hand); --ringc: var(--fp-ring);
 }
 .fp-knob { cursor: ns-resize; touch-action: none; outline: none; }
 .fp-knob:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 .fp-knob[data-size='std'], .fp-knob-empty[data-size='std'] { --ring: 57px; --d: 29px; --hand-w: 3.5px; --hand-h: 8.5px; }
 .fp-knob[data-size='sm'], .fp-knob-empty[data-size='sm'] { --ring: 38.5px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; }
 /* The dial at the heart of the shape wheel: the wheel is its arc, so it draws none of its own. */
-.fp-knob[data-size='mid'] { --ring: 45px; --d: 45px; --hand-w: 3.5px; --hand-h: 10px; --top: #53555a; --bottom: #3a393e; }
+.fp-knob[data-size='mid'] { --ring: 45px; --d: 45px; --hand-w: 3.5px; --hand-h: 10px; --top: var(--fp-knob-top); --bottom: var(--fp-knob-bottom); }
 .fp-knob[data-size='mid'] .fp-knob__track { display: none; }
-.fp-knob[data-size='hero'] { --ring: 96px; --d: 66px; --hand-w: 3.5px; --hand-h: 5px; --hand: #eae1ca; --ringc: #535353; }
-.fp-knob[data-size='macro'], .fp-knob-empty[data-size='macro'] { --ring: 26px; --d: 21px; --hand-w: 2.5px; --hand-h: 6px; --hand: #e9e9e9; --ringc: #545454; --top: #5c5c5c; --bottom: #3c3c3c; --rim: #202020; }
-.fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: #a8a7a6; --bottom: #6c6b68; --rim: #141414; --hand: #0e0e0e; --ringc: #494949; }
-.fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: #a3a2a0; --bottom: #6e6d6a; --ringc: #3a3a3a; }
+.fp-knob[data-size='hero'] { --ring: 96px; --d: 66px; --hand-w: 3.5px; --hand-h: 5px; --hand: var(--fp-hero-hand); --ringc: var(--fp-ring); }
+.fp-knob[data-size='macro'], .fp-knob-empty[data-size='macro'] { --ring: 26px; --d: 21px; --hand-w: 2.5px; --hand-h: 6px; --hand: var(--fp-macro-hand); --ringc: var(--fp-box); --top: var(--fp-macro-top); --bottom: var(--fp-macro-bottom); --rim: var(--fp-knob-rim); }
+.fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --rim: var(--fp-knob-rim); --hand: var(--fp-light-hand); --ringc: var(--fp-ring-dark); }
+.fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --ringc: var(--fp-slot); }
 .fp-knob[data-inert] { cursor: default; }
 .fp-knob[data-dots]::before, .fp-knob[data-dots]::after { content: ''; position: absolute; inline-size: 2.5px; block-size: 2.5px; border-radius: 50%; background: #6e6e6e; inset-block-start: calc(85.36% - 1.25px); }
 .fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
@@ -1485,7 +1527,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inline-size: 46px;
   block-size: 23px;
   translate: -50% calc(-50% + 1.5px);
-  color: #a7a7a7;
+  color: var(--fp-title);
 }
 .fp-waveglyph { display: block; inline-size: 100%; block-size: 100%; overflow: visible; }
 .fp-knob__digit {
@@ -1493,8 +1535,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inset-inline-start: 50%;
   inset-block-start: 50%;
   translate: -50% -50%;
-  color: #db282d;
-  font: 700 12px/1 'Roboto', var(--font-sans);
+  color: var(--fp-red);
+  font: 700 12px/1 var(--fp-font);
 }
 .fp-knob[data-size='hero'] .fp-knob__digit { inset-block-start: calc(50% + 21px); }
 .fp-knob__value {
@@ -1503,9 +1545,9 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inset-inline-start: 50%;
   translate: -50% 2px;
   padding: 1px 5px;
-  color: #f2f2f2;
-  background: #141414;
-  border: 1px solid #3a3a3a;
+  color: var(--fp-text-hover);
+  background: var(--fp-knob-rim);
+  border: 1px solid var(--fp-slot);
   border-radius: 2px;
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -1527,8 +1569,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   block-size: 75px;
   translate: -50% 0;
   border-radius: 3px;
-  background: #1e1e1e;
-  box-shadow: inset 0 0 0 1px #141414;
+  background: var(--fp-box-text);
+  box-shadow: inset 0 0 0 1px var(--fp-knob-rim);
 }
 .fp-fader__handle {
   position: absolute;
@@ -1540,19 +1582,19 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: linear-gradient(#585b5f, #333436);
-  box-shadow: 0 0 0 1px #0d0d0c, 0 3px 5px rgba(0, 0, 0, 0.5);
-  color: #e1272c;
-  font: 700 9.5px/1 'Roboto', var(--font-sans);
+  background: linear-gradient(var(--fp-knob-top), var(--fp-knob-bottom));
+  box-shadow: 0 0 0 1px var(--fp-knob-rim), 0 3px 5px rgba(0, 0, 0, 0.5);
+  color: var(--fp-red);
+  font: 700 9.5px/1 var(--fp-font);
 }
 .fp-fader[data-kind='noise'] { block-size: 79.5px; }
-.fp-fader[data-kind='noise'] .fp-fader__track { inline-size: 5px; block-size: 66px; border-radius: 2.5px; background: #1e1e1e; box-shadow: inset 0 0 0 1px #151515; }
+.fp-fader[data-kind='noise'] .fp-fader__track { inline-size: 5px; block-size: 66px; border-radius: 2.5px; background: var(--fp-box-text); box-shadow: inset 0 0 0 1px var(--fp-groove-edge); }
 .fp-fader[data-kind='noise'] .fp-fader__handle {
   inset-block-start: calc(7.5px + (1 - var(--fill, 0)) * 72px);
   inline-size: 16px;
   block-size: 16px;
-  background: radial-gradient(circle, #111 0 2.3px, transparent 2.7px), linear-gradient(#9a9997, #737270);
-  box-shadow: 0 0 0 1px #101011, 0 3px 5px rgba(0, 0, 0, 0.5);
+  background: radial-gradient(circle, var(--fp-badge-text) 0 2.3px, transparent 2.7px), linear-gradient(var(--fp-light-top), var(--fp-light-bottom));
+  box-shadow: 0 0 0 1px var(--fp-knob-rim), 0 3px 5px rgba(0, 0, 0, 0.5);
 }
 
 /* The quiet grey box: mid grey, dark text, a pixel of radius; lighter when it is the chosen one. */
@@ -1560,20 +1602,20 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   margin: 0;
   padding: 0 1px;
   border: 0;
-  background: #545454;
+  background: var(--fp-box);
   border-radius: 2px;
-  color: #1e1e1e;
-  font: 400 11px/1 'Roboto', var(--font-sans);
-  font-stretch: 97%;
+  color: var(--fp-box-text);
+  font: 400 11px/1 var(--fp-font);
+  font-stretch: var(--fp-stretch);
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
 }
 .fp-box[data-align='right'] { text-align: end; padding-inline-end: 4px; }
-.fp-box[data-selected] { background: #9a9a9a; }
+.fp-box[data-selected] { background: var(--fp-box-on); }
 button.fp-box { cursor: pointer; touch-action: manipulation; }
-button.fp-box:hover { background: #626262; }
-button.fp-box[data-selected]:hover { background: #a6a6a6; }
+button.fp-box:hover { background: var(--fp-box-hover); }
+button.fp-box[data-selected]:hover { background: var(--fp-box-on-hover); }
 button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 
 /* The light-grey markers: hexagon, circle, square, and the serrated square of a noise generator. */
@@ -1584,19 +1626,19 @@ button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offs
   margin: 0;
   padding: 0;
   border: 0;
-  background: #999;
-  color: #111;
-  font: 700 11px/1 'Roboto', var(--font-sans);
+  background: var(--fp-badge);
+  color: var(--fp-badge-text);
+  font: 700 11px/1 var(--fp-font);
 }
 .fp-badge[data-kind='hex'] { inline-size: 18px; block-size: 16px; clip-path: polygon(24% 0, 76% 0, 100% 50%, 76% 100%, 24% 100%, 0 50%); }
 .fp-badge[data-kind='circle'] { inline-size: 16px; block-size: 16px; border-radius: 50%; font-size: 11px; }
-.fp-badge[data-kind='square'] { inline-size: 11px; block-size: 11px; font-size: 9px; box-shadow: inset 0 0 0 0.5px #b8b8b8; }
+.fp-badge[data-kind='square'] { inline-size: 11px; block-size: 11px; font-size: 9px; box-shadow: inset 0 0 0 0.5px var(--fp-badge-edge); }
 .fp-badge[data-kind='noise'] { inline-size: 18px; block-size: 17px; border-radius: 1.5px; clip-path: polygon(0 0, 100% 0, 100% 36%, 87% 36%, 87% 62%, 100% 62%, 100% 100%, 0 100%, 0 62%, 13% 62%, 13% 36%, 0 36%); }
 button.fp-badge { cursor: pointer; touch-action: manipulation; }
-.fp-badge[role='tab'] { background: #6a6a6a; color: #1c1c1c; }
-.fp-badge[role='tab'][aria-selected='true'] { background: #999; color: #111; }
-.fp-badge[role='tab']:hover { background: #7e7e7e; }
-.fp-badge[role='tab'][aria-selected='true']:hover { background: #a8a8a8; }
+.fp-badge[role='tab'] { background: var(--fp-badge-off); color: var(--fp-badge-text); }
+.fp-badge[role='tab'][aria-selected='true'] { background: var(--fp-badge); color: var(--fp-badge-text); }
+.fp-badge[role='tab']:hover { background: var(--fp-badge-hover); }
+.fp-badge[role='tab'][aria-selected='true']:hover { background: var(--fp-title); }
 .fp-badge:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 .fp-tabs { display: contents; }
 
@@ -1605,20 +1647,20 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 /* The Switcher LFO's shape wheel. */
 .fp-shapes { position: absolute; translate: -50% -50%; overflow: visible; }
 .fp-shapes__sector { cursor: pointer; }
-.fp-shapes__band { fill: #2a2a2a; stroke: #1e1e1e; stroke-width: 1; }
-.fp-shapes__sector:hover .fp-shapes__band { fill: #333333; }
-.fp-shapes__sector[data-chosen] .fp-shapes__band { fill: #7bc21a; stroke: #5f9a12; }
-.fp-shapes__glyph { fill: none; stroke: #9a9a9a; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
-.fp-shapes__sector[data-chosen] .fp-shapes__glyph { stroke: #1e1e1e; stroke-width: 1.6; }
-.fp-shapes__rule { stroke: #1e1e1e; stroke-width: 1; }
-.fp-shapes__pointer { stroke: #7bc21a; stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
-.fp-shapes__dot { fill: #7bc21a; pointer-events: none; }
+.fp-shapes__band { fill: var(--fp-wheel); stroke: var(--fp-box-text); stroke-width: 1; }
+.fp-shapes__sector:hover .fp-shapes__band { fill: var(--fp-wheel-hover); }
+.fp-shapes__sector[data-chosen] .fp-shapes__band { fill: var(--fp-src-l); stroke: var(--fp-src-l-edge); }
+.fp-shapes__glyph { fill: none; stroke: var(--fp-box-on); stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.fp-shapes__sector[data-chosen] .fp-shapes__glyph { stroke: var(--fp-box-text); stroke-width: 1.6; }
+.fp-shapes__rule { stroke: var(--fp-box-text); stroke-width: 1; }
+.fp-shapes__pointer { stroke: var(--fp-src-l); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.fp-shapes__dot { fill: var(--fp-src-l); pointer-events: none; }
 .fp-shapes__sector:focus-visible .fp-shapes__band { stroke: var(--focus-ring); stroke-width: 2; }
 .fp-icon svg { display: block; }
 .fp-line { display: block; }
 
 /* The big readout: a mark, the whole part tall, the decimals small, one baseline. */
-.fp-read { color: #7d7e7e; font-family: 'Roboto', var(--font-sans); font-stretch: 75%; font-weight: 700; line-height: 1; }
+.fp-read { color: var(--fp-readout); font-family: var(--fp-font); font-stretch: 75%; font-weight: 700; line-height: 1; }
 .fp-read__anchor { position: absolute; inset: 0 auto auto 0; }
 .fp-read[data-edit] .fp-read__anchor { inset: 14px auto auto 2px; }
 .fp-read__anchor > * { position: absolute; white-space: nowrap; }
@@ -1627,36 +1669,36 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-read[data-edit]:hover { color: #9c9d9d; }
 .fp-read[data-edit]:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 /* The global `svg { max-width: 100% }` would cap the mark at its zero-width anchor. */
-.fp-read__mark { fill: #8a8a8a; color: #8a8a8a; display: block; max-inline-size: none; }
-.fp-read__u { display: block; block-size: 0.5px; background: #8a8a8a; }
+.fp-read__mark { fill: var(--fp-rule); color: var(--fp-rule); display: block; max-inline-size: none; }
+.fp-read__u { display: block; block-size: 0.5px; background: var(--fp-rule); }
 .fp-read__row { display: flex; align-items: baseline; }
 .fp-read__big { position: static; font-size: 17.6px; font-weight: 700; font-style: normal; margin-inline-end: 1.7px; }
-.fp-read__dot { position: static; display: block; inline-size: 1.5px; block-size: 1.5px; background: #7d7e7e; margin-inline-end: 2.8px; }
+.fp-read__dot { position: static; display: block; inline-size: 1.5px; block-size: 1.5px; background: var(--fp-readout); margin-inline-end: 2.8px; }
 .fp-read__small { position: static; }
 .fp-read__small { font-size: 12.7px; font-weight: 700; }
 
 /* Pitch-bend and mod wheels and aftertouch, drawn as the reference draws its own. */
-.fp-wheel { inline-size: 17px; block-size: 26.5px; border-radius: 2.5px; background: linear-gradient(#3b3b3b, #2a2a2a); box-shadow: 0 0 0 1px #171717; }
-.fp-wheel i { position: absolute; inset-inline: 2px; block-size: 2px; background: #ababab; border-radius: 1px; }
-.fp-at { inline-size: 17px; block-size: 17px; translate: -50% -50%; border-radius: 50%; background: #2e2e2e; box-shadow: 0 0 0 1px #171717; }
-.fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: #7f7e7f; }
+.fp-wheel { inline-size: 17px; block-size: 26.5px; border-radius: 2.5px; background: linear-gradient(var(--fp-wheel-top), var(--fp-wheel)); box-shadow: 0 0 0 1px var(--fp-knob-rim); }
+.fp-wheel i { position: absolute; inset-inline: 2px; block-size: 2px; background: var(--fp-badge); border-radius: 1px; }
+.fp-at { inline-size: 17px; block-size: 17px; translate: -50% -50%; border-radius: 50%; background: var(--fp-slot-open); box-shadow: 0 0 0 1px var(--fp-knob-rim); }
+.fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: var(--fp-dim); }
 .fp-macro { display: contents; }
 
 /* The routing bar: the two page tabs, then the modulation sources in their colours. */
 .fp-sources { list-style: none; margin: 0; padding: 0; display: contents; }
 .fp-source { display: contents; }
-.fp-sources__box { inline-size: 116.5px; block-size: 18px; border-radius: 3px; background: #404040; }
-.fp-source[data-kind='p'] .fp-text { color: #efa807; }
-.fp-source[data-kind='e'] .fp-text { color: #4576c4; }
-.fp-source[data-kind='l'] .fp-text { color: #6fb904; }
-.fp-source[data-kind='t'] .fp-text { color: #8d52a4; }
-.fp-source[data-kind='v'] .fp-text { color: #d0708b; }
+.fp-sources__box { inline-size: 116.5px; block-size: 18px; border-radius: 3px; background: var(--fp-tray); }
+.fp-source[data-kind='p'] .fp-text { color: var(--fp-src-p); }
+.fp-source[data-kind='e'] .fp-text { color: var(--fp-src-e); }
+.fp-source[data-kind='l'] .fp-text { color: var(--fp-src-l); }
+.fp-source[data-kind='t'] .fp-text { color: var(--fp-src-t); }
+.fp-source[data-kind='v'] .fp-text { color: var(--fp-src-v); }
 .fp-source__grab { cursor: grab; touch-action: none; }
 .fp-source__grab[data-held] { cursor: grabbing; }
 .fp-source__grab:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 .fp-source__fixed { cursor: not-allowed; }
 /* While a modulator is held: its name rides the pointer, and every control that could take it lights up. */
-.fp-ghost { position: absolute; z-index: 10; display: none; padding: 2px 5px; border-radius: 3px; background: #404040; color: var(--assign, #6fb904); font: 700 13px/1 'Roboto', var(--font-sans); pointer-events: none; }
+.fp-ghost { position: absolute; z-index: 10; display: none; padding: 2px 5px; border-radius: 3px; background: var(--fp-tray); color: var(--assign, var(--fp-src-l)); font: 700 13px/1 var(--fp-font); pointer-events: none; }
 .fp[data-assigning] .fp-ghost { display: block; }
 .fp[data-assigning='source'] .fp-knob[data-target] .fp-knob__track { stroke: var(--assign); opacity: 0.6; }
 .fp[data-assigning='source'] .fp-knob[data-target]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
@@ -1674,16 +1716,16 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   margin: 0;
   padding: 0 0 0 6.5px;
   border: 0;
-  background: #282828;
-  color: #bb860e;
-  font: 400 13px/21.5px 'Roboto', var(--font-sans);
+  background: var(--fp-line);
+  color: var(--fp-amber-dim);
+  font: 400 13px/21.5px var(--fp-font);
   text-align: start;
   cursor: default;
 }
-.fp-slot { box-shadow: -1.5px 0 0 #050505; }
-.fp-slot[data-filled] { background: #121212; cursor: pointer; }
-.fp-slot[data-filled]:hover { background: #1e1e1e; color: #e0a00c; }
-.fp-slot[data-active] { background: #262626; box-shadow: -1.5px 0 0 #050505, 0 0 0 2px #db9d09; color: #f2aa07; }
+.fp-slot { box-shadow: -1.5px 0 0 var(--fp-hairline); }
+.fp-slot[data-filled] { background: var(--fp-slot-filled); cursor: pointer; }
+.fp-slot[data-filled]:hover { background: var(--fp-box-text); color: var(--fp-amber-bright); }
+.fp-slot[data-active] { background: var(--fp-ground); box-shadow: -1.5px 0 0 var(--fp-hairline), 0 0 0 2px var(--fp-amber); color: var(--fp-amber-bright); }
 .fp-slot:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 3px; }
 
 /* The plots, in the reference's blue, without the chrome the standalone versions carry. */
@@ -1692,8 +1734,8 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope { display: block; gap: 0; }
 .fp-plot .envelope__plot { display: block; background: transparent; border: 0; border-radius: 0; }
 .fp-plot .envelope__floor { display: none; }
-.fp-plot .envelope__fill { fill: #394963; }
-.fp-plot .envelope__line { stroke: #4675bf; stroke-width: 1.5; }
+.fp-plot .envelope__fill { fill: var(--fp-plot-fill); }
+.fp-plot .envelope__line { stroke: var(--fp-plot-line); stroke-width: 1.5; }
 .fp-plot .envelope__dot { display: none; }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
 .fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1715,9 +1757,9 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   padding: 0 3px 0 4px;
   border: 0;
   border-radius: 2px;
-  background: #545454;
-  color: #1e1e1e;
-  font: 400 11px/1 'Roboto', var(--font-sans);
+  background: var(--fp-box);
+  color: var(--fp-box-text);
+  font: 400 11px/1 var(--fp-font);
   cursor: pointer;
 }
 .fp-target .select-trigger__label { display: none; }
@@ -1738,11 +1780,11 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   inline-size: 24.5px;
   block-size: 14.5px;
   border-radius: 2px;
-  background: #3a3a3a;
-  box-shadow: 0 0 0 1px #4a4a4a;
-  color: var(--slot, #8a8a8a);
-  font: 400 10.5px/1 'Roboto', var(--font-sans);
-  font-stretch: 97%;
+  background: var(--fp-slot);
+  box-shadow: 0 0 0 1px var(--fp-slot-edge);
+  color: var(--slot, var(--fp-rule));
+  font: 400 10.5px/1 var(--fp-font);
+  font-stretch: var(--fp-stretch);
   cursor: ns-resize;
   touch-action: none;
   pointer-events: auto;
@@ -1751,7 +1793,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-fader__slot { inset-block-start: calc(100% + 1px); }
 .fp-knob[data-mod] .fp-knob__slot, .fp-fader[data-mod] .fp-fader__slot { display: grid; box-shadow: 0 0 0 1px var(--slot); }
 .fp[data-assigning='source'] .fp-knob[data-target] .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target] .fp-fader__slot,
-.fp[data-assigning='macro'] .fp-knob[data-property] .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property] .fp-fader__slot { display: grid; background: #2e2e2e; box-shadow: 0 0 0 1px var(--assign); }
+.fp[data-assigning='macro'] .fp-knob[data-property] .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property] .fp-fader__slot { display: grid; background: var(--fp-slot-open); box-shadow: 0 0 0 1px var(--assign); }
 .fp[data-assigning='source'] .fp-knob[data-target]:hover .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target]:hover .fp-fader__slot,
-.fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, #2e2e2e); box-shadow: 0 0 0 1.5px var(--assign); }
+.fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, var(--fp-slot-open)); box-shadow: 0 0 0 1.5px var(--assign); }
 .fp-knob[data-size='macro'] .fp-knob__slot { display: none; }

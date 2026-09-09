@@ -16,16 +16,19 @@ export type AudioTab = 'sound' | 'controls'
 
 export const AUDIO_TABS: AudioTab[] = ['sound', 'controls']
 
-/** Whether a change plays itself. Set once and kept, because it is a way of working. */
-type AudioExtra = { autoPlay: boolean }
+/** The plate's look: the reference's, or ParamRig's own. */
+export type AudioSkin = 'reference' | 'paramrig'
+
+/** Whether a change plays itself, and which look the plate wears. Set once and kept: ways of working. */
+type AudioExtra = { autoPlay: boolean; skin: AudioSkin }
 
 const store = inspectorPrefsStore<AudioTab, AudioExtra>({
   key: 'paramrig.audio-inspector.v1',
   tabs: AUDIO_TABS,
   defaultTab: 'sound',
   extra: {
-    empty: { autoPlay: true },
-    parse: (value) => ({ autoPlay: value.autoPlay !== false }),
+    empty: { autoPlay: true, skin: 'reference' },
+    parse: (value) => ({ autoPlay: value.autoPlay !== false, skin: value.skin === 'paramrig' ? 'paramrig' : 'reference' }),
   },
 })
 
@@ -63,4 +66,8 @@ export function isOpen(prefs: AudioPrefs, sectionId: string, defaultOpen = true)
 
 export function withAutoPlay(prefs: AudioPrefs, autoPlay: boolean): AudioPrefs {
   return { ...prefs, autoPlay }
+}
+
+export function withSkin(prefs: AudioPrefs, skin: AudioSkin): AudioPrefs {
+  return { ...prefs, skin }
 }
