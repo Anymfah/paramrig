@@ -29,7 +29,7 @@ describe('AudioEditorPage', () => {
   it('lays the panels across the window in the reference order', () => {
     open(arcadeCoin().id)
     const plate = screen.getByRole('group', { name: 'Face-plate' })
-    for (const panel of ['Pitch', 'Oscillators', 'Noise', 'Comb', 'Filter', 'Amp', 'FX']) {
+    for (const panel of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX']) {
       expect(within(plate).getByRole('region', { name: panel })).toBeInTheDocument()
     }
     expect(within(plate).getByRole('group', { name: 'Macros' })).toBeInTheDocument()
@@ -44,7 +44,7 @@ describe('AudioEditorPage', () => {
     const oscillators = screen.getByRole('tablist', { name: 'Oscillator layer' })
     expect(within(oscillators).getByRole('tab', { name: 'Oscillator 1', selected: true })).toBeInTheDocument()
     const filter = screen.getByRole('region', { name: 'Filter' })
-    const cutoff = () => within(filter).getByRole('slider', { name: 'Pitch' })
+    const cutoff = () => within(filter).getByRole('slider', { name: 'Cutoff' })
     const before = cutoff().getAttribute('aria-valuenow')
     await user.click(within(oscillators).getByRole('tab', { name: 'Oscillator 2' }))
     expect(within(oscillators).getByRole('tab', { name: 'Oscillator 2', selected: true })).toBeInTheDocument()
@@ -93,10 +93,11 @@ describe('AudioEditorPage', () => {
       expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
       expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
     }
-    // The routing bar lists the reference's sources; ours are the envelope and the two LFOs.
+    // The routing bar lists this engine's sources — the envelope and the two LFOs — and says where each points.
     const routing = screen.getByRole('list', { name: 'Routing' })
-    expect(within(routing).getAllByRole('listitem')).toHaveLength(17)
+    expect(within(routing).getAllByRole('listitem')).toHaveLength(3)
     for (const live of ['E1', 'L2', 'L3']) expect(within(routing).getByText(live)).toBeInTheDocument()
+    expect(screen.getByText('L2 · unassigned')).toBeInTheDocument()
   })
 
   /**
@@ -106,7 +107,7 @@ describe('AudioEditorPage', () => {
   it('assigns a modulator by dropping its handle on a control', () => {
     open(arcadeCoin().id)
     const filter = screen.getByRole('region', { name: 'Filter' })
-    const cutoff = within(filter).getByRole('slider', { name: 'Pitch' })
+    const cutoff = within(filter).getByRole('slider', { name: 'Cutoff' })
     expect(cutoff).toHaveAttribute('data-target', 'layers[0].cutoff')
     expect(cutoff.querySelector('.fp-knob__mod')).toBeNull()
     const handle = screen.getByRole('button', { name: 'Drag L2 onto a control to modulate it' })
@@ -135,12 +136,12 @@ describe('AudioEditorPage', () => {
   it('switches a source on and off from its own panel head', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
-    // The reference's ART column, given the job: Hard is a tone, Neutral is noise, Nobody is silence.
-    const second = screen.getByRole('radiogroup', { name: 'Oscillator 2 mode' })
-    expect(within(second).getByRole('radio', { name: 'Nobody' })).toHaveAttribute('aria-checked', 'true')
-    await user.click(within(second).getByRole('radio', { name: 'Hard' }))
-    expect(within(second).getByRole('radio', { name: 'Hard' })).toHaveAttribute('aria-checked', 'true')
-    expect(within(second).getByRole('radio', { name: 'Nobody' })).toHaveAttribute('aria-checked', 'false')
+    // The source column: a tone, noise, or nothing at all.
+    const second = screen.getByRole('radiogroup', { name: 'Oscillator 2 source' })
+    expect(within(second).getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(second).getByRole('radio', { name: 'Tone' }))
+    expect(within(second).getByRole('radio', { name: 'Tone' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(second).getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'false')
   })
 
   it('puts the waveform in the transport with the numbers that describe it', () => {

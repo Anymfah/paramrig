@@ -131,7 +131,7 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
       value={typeof current === 'number' ? current : parameter.min}
       size={size}
       tone={tone}
-      digit={digit}
+      digit={digit ?? macroDigit(id)}
       face={face}
       target={target}
       mod={modOf(ctx, target)}
@@ -165,19 +165,19 @@ function Fader({ ctx, x, top, id, label, kind, digit }: { ctx: Ctx; x: number; t
   const current = read(ctx, id)
   const target = targetOf(id)
   return (
-    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit} target={target} mod={modOf(ctx, target)} style={at(x, top)}
+    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit ?? macroDigit(id)} target={target} mod={modOf(ctx, target)} style={at(x, top)}
       onChange={(next) => ctx.onChange(id, next)} onGestureStart={ctx.onGestureStart} onGestureEnd={ctx.onGestureEnd} />
   )
 }
 
 /** The reference's quiet grey box: mid-grey, dark text, a pixel of radius. Lighter when chosen. */
-function Box({ x, y, w, h = 14.5, align = 'center', selected, onClick, label, checked, children }: {
-  x: number; y: number; w: number; h?: number; align?: 'center' | 'right'; selected?: boolean; onClick?: () => void; label?: string; checked?: boolean; children: ReactNode
+function Box({ x, y, w, h = 14.5, align = 'center', selected, onClick, label, checked, pressed, children }: {
+  x: number; y: number; w: number; h?: number; align?: 'center' | 'right'; selected?: boolean; onClick?: () => void; label?: string; checked?: boolean; pressed?: boolean; children: ReactNode
 }) {
   const at = useAt()
   const style = { ...at(x, y), width: w, height: h, lineHeight: `${h}px` }
   if (onClick) {
-    return <button type="button" className="fp-box" data-align={align} data-selected={selected || undefined} role={checked === undefined ? undefined : 'radio'} aria-checked={checked} aria-label={label} style={style} onClick={onClick}>{children}</button>
+    return <button type="button" className="fp-box" data-align={align} data-selected={selected || undefined} role={checked === undefined ? undefined : 'radio'} aria-checked={checked} aria-pressed={pressed} aria-label={label} style={style} onClick={onClick}>{children}</button>
   }
   return <span className="fp-box" data-align={align} data-selected={selected || undefined} style={style}>{children}</span>
 }
@@ -227,19 +227,35 @@ function Icon({ x, y, w, h, children, className }: { x: number; y: number; w: nu
   return <span className={`fp-icon${className ? ` ${className}` : ''}`} style={{ ...at(x, y), width: w, height: h }} aria-hidden="true">{children}</span>
 }
 
+/** How a readout edits its number: the reference's, dragged up and down, doubled-clicked to reset. */
+type Edit = {
+  get: () => number
+  set: (next: number) => void
+  reset: () => void
+  perPx: number
+  step: number
+  min: number
+  max: number
+  text: (value: number) => string
+}
+
 /**
- * The reference's big readout: a note or a ratio sign, then the integer part in tall condensed
+ * The reference's big readout: a note or a ratio sign, then the whole part in tall condensed
  * figures and the three decimals smaller, all on one baseline. Placed by the mark's left edge and
- * the baseline.
+ * the baseline. Given an edit, it is a control: a vertical drag moves the number, a double-click
+ * puts it back, and the arrow keys step it.
  */
-function Readout({ x, base, mark, value }: { x: number; base: number; mark: 'note' | 'ratio' | 'none'; value: number }) {
+function Readout({ x, base, mark, value, label, edit }: { x: number; base: number; mark: 'note' | 'ratio' | 'none'; value: number; label?: string; edit?: Edit }) {
   const at = useAt()
+  const origin = useRef({ y: 0, start: 0 })
+  const dragging = useRef(false)
   const negative = value < 0
   const whole = Math.floor(Math.abs(value) + 0.0005)
   const frac = Math.round((Math.abs(value) - whole) * 1000) % 1000
   const shift = mark === 'ratio' ? 3 : 0
-  return (
-    <span className="fp-read" style={at(x, base)} aria-hidden="true">
+  const clamp = (next: number) => Math.min(edit?.max ?? next, Math.max(edit?.min ?? next, next))
+  const figures = (
+    <span className="fp-read__anchor">
       {mark === 'note' ? (
         <svg className="fp-read__mark" viewBox="0 0 6 12" style={{ left: 0, top: -12, width: 6, height: 12 }}>
           <path d="M4.5 0.2h1.1v9.4h-1.1z" fill="#8a8a8a" /><ellipse cx="2.95" cy="9.85" rx="3" ry="2.05" transform="rotate(-28 2.95 9.85)" fill="#8a8a8a" />
@@ -257,6 +273,40 @@ function Readout({ x, base, mark, value }: { x: number; base: number; mark: 'not
         <small className="fp-read__small">{String(frac).padStart(3, '0')}</small>
       </span>
     </span>
+  )
+  if (!edit) return <span className="fp-read" style={at(x, base)} aria-hidden="true">{figures}</span>
+  return (
+    <div
+      className="fp-read"
+      data-edit=""
+      role="slider"
+      tabIndex={0}
+      aria-label={label}
+      aria-valuemin={edit.min}
+      aria-valuemax={edit.max}
+      aria-valuenow={Number(value.toFixed(3))}
+      aria-valuetext={edit.text(value)}
+      style={{ ...at(x - 2, base - 14), width: 66 + shift, height: 17 }}
+      onPointerDown={(event) => {
+        if (event.button && event.button !== 0) return
+        event.currentTarget.setPointerCapture?.(event.pointerId)
+        dragging.current = true
+        origin.current = { y: event.clientY, start: edit.get() }
+      }}
+      onPointerMove={(event) => { if (dragging.current) edit.set(clamp(origin.current.start + (origin.current.y - event.clientY) * edit.perPx)) }}
+      onPointerUp={(event) => { if (!dragging.current) return; dragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId) }}
+      onPointerCancel={() => { dragging.current = false }}
+      onDoubleClick={edit.reset}
+      onKeyDown={(event) => {
+        const forward = event.key === 'ArrowUp' || event.key === 'ArrowRight'
+        const back = event.key === 'ArrowDown' || event.key === 'ArrowLeft'
+        if (!forward && !back) return
+        event.preventDefault()
+        edit.set(clamp(edit.get() + (forward ? 1 : -1) * edit.step * (event.shiftKey ? 0.1 : 1)))
+      }}
+    >
+      {figures}
+    </div>
   )
 }
 
@@ -296,70 +346,31 @@ function WaveDisc({ wave }: { wave: Wave }) {
   )
 }
 
-/** The reference's ART flask: a cap, a neck, a body, a wave in the body. */
-const Flask = () => (
-  <svg viewBox="0 0 38 35" style={{ width: 38, height: 35 }}>
-    <rect x="13" y="0" width="12" height="4" rx="2" fill="#9a9a9a" />
-    <rect x="15.5" y="3" width="7" height="8" fill="#9a9a9a" />
-    <path d="M15.5 10.5 L3.5 31 a2.6 2.6 0 0 0 2.3 4 H32.2 a2.6 2.6 0 0 0 2.3 -4 L22.5 10.5 Z" fill="#9a9a9a" />
-    <path d="M9 27 l3 -4.5 l3 7 l3 -9 l3 8 l3 -5.5 l3 4" fill="none" stroke="#2b2b2b" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
-  </svg>
-)
-/** Hardsync's three teeth. */
-const Teeth = () => (
-  <svg viewBox="0 0 38 34" style={{ width: 38, height: 34 }}>
-    <path d="M0 34 V13 L11.5 34 Z M12.5 34 V0 L24.5 34 Z M25.5 34 V15 L38 34 Z" fill="#9a9a9a" />
-  </svg>
-)
-/** The comb's exciter: a disc with an arch in it. */
-const Bell = () => (
-  <svg viewBox="0 0 38 35" style={{ width: 38, height: 35 }}>
-    <circle cx="19" cy="17.5" r="17.5" fill="#9a9a9a" />
-    <path d="M10 28 V19 a9 9.5 0 0 1 18 0 V28 Z" fill="#2b2b2b" />
-    <path d="M14 28 V20 a5 5.5 0 0 1 10 0 V28 Z" fill="#9a9a9a" />
-  </svg>
-)
-/** A burst of noise, drawn as the reference draws it: dense spikes, louder in the middle. */
-function NoiseBurst({ seed }: { seed: number }) {
+/**
+ * A burst of noise, drawn as the reference draws it: dense spikes, louder in the middle. Its
+ * colour shows in the drawing — white even, pink leaning low and slow, metallic sparse and tall.
+ */
+function NoiseBurst({ seed, colour }: { seed: number; colour: unknown }) {
   let state = seed * 7919 + 13
   const rnd = () => { state = (state * 1103515245 + 12345) & 0x7fffffff; return state / 0x7fffffff }
   const bars: string[] = []
-  for (let index = 0; index <= 75; index += 1) {
-    const x = 0.25 + index * 0.5
-    const env = Math.sin(((index + 0.5) / 76) * Math.PI) * 0.5 + 0.5
-    const up = (0.25 + rnd() * 0.75) * 14.5 * env
-    const down = (0.25 + rnd() * 0.75) * 14.5 * env
+  const count = colour === 'metallic' ? 25 : 76
+  let slow = 0.5
+  for (let index = 0; index <= count; index += 1) {
+    const x = 0.25 + (index / count) * 37.5
+    const env = Math.sin(((index + 0.5) / (count + 1)) * Math.PI) * 0.5 + 0.5
+    slow = slow * 0.7 + rnd() * 0.3
+    const amp = colour === 'pink' ? 0.35 + slow * 0.65 : 0.25 + rnd() * 0.75
+    const up = amp * 14.5 * env
+    const down = (colour === 'pink' ? 0.35 + slow * 0.65 : 0.25 + rnd() * 0.75) * 14.5 * env
     bars.push(`M${x.toFixed(2)} ${(14.75 - up).toFixed(1)}V${(14.75 + down).toFixed(1)}`)
   }
   return (
     <svg viewBox="0 0 38 29.5" style={{ width: 38, height: 29.5 }}>
-      <path d={bars.join('')} fill="none" stroke="#9a9a9a" strokeWidth="0.5" />
+      <path d={bars.join('')} fill="none" stroke="#9a9a9a" strokeWidth={colour === 'metallic' ? '0.9' : '0.5'} />
     </svg>
   )
 }
-const Plus = () => (
-  <svg viewBox="0 0 13 13" style={{ width: 13, height: 13 }}>
-    <circle cx="6.5" cy="6.5" r="6.5" fill="#9a9a9a" /><path d="M3 6.5h7M6.5 3v7" stroke="#262626" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-)
-const Pill = ({ curve }: { curve: 'vel' | 'fb' }) => (
-  <svg viewBox="0 0 18.5 10.5" style={{ width: 18.5, height: 10.5 }}>
-    <rect x="0" y="0" width="18.5" height="10.5" rx="5.25" fill="#555" />
-    <path d={curve === 'vel' ? 'M4 8 Q7 2.8 15 2.8' : 'M4 8 H7.5 L11 3 H15'} fill="none" stroke="#1e1e1e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-)
-const Slash = () => (
-  <svg viewBox="0 0 6 8" style={{ width: 6, height: 8 }}><path d="M0.8 7.2 5.2 0.8" stroke="#9a9a9a" strokeWidth="1.5" strokeLinecap="round" /></svg>
-)
-const MenuIcon = () => (
-  <svg viewBox="0 0 17 9" style={{ width: 17, height: 9 }}><path d="M0 0.75h17M0 4.5h17M0 8.25h17" stroke="#767676" strokeWidth="1.5" /></svg>
-)
-const RoutingIcon = () => (
-  <svg viewBox="0 0 16 12" style={{ width: 16, height: 12 }}>
-    <path d="M2 2 L12 6 L2 10" fill="none" stroke="#767676" strokeWidth="1" />
-    <rect x="0" y="0" width="4" height="4" fill="#767676" /><rect x="0" y="8" width="4" height="4" fill="#767676" /><rect x="12" y="4" width="4" height="4" fill="#767676" />
-  </svg>
-)
 const MoveIcon = () => (
   <svg viewBox="0 0 17.5 14.5" style={{ width: 17.5, height: 14.5 }}>
     <path d="M8.75 1v12.5M2 7.25h13.5" stroke="#6a6a6a" strokeWidth="1.5" />
@@ -417,52 +428,43 @@ function ShapeWheel({ x, y, value, label, onPick }: { x: number; y: number; valu
     </svg>
   )
 }
-/** A small drawing of a fall-and-rise curve, as the reference marks its Fall/Rise dial. */
-const CurveMark = () => (
-  <svg viewBox="0 0 30 10" style={{ width: 30, height: 10 }}><path d="M1 9 V1 H14 V9 H29" fill="none" stroke="#8a8a8a" strokeWidth="1" /></svg>
-)
-
-/** The thin bracket that gathers two dials towards the name of the stage they shape. */
-function Bracket({ x0, x1, top, mid, tip, width }: { x0: number; x1: number; top: number; mid: number; tip: number; width: number }) {
-  const at = useAt()
-  const left = Math.min(x0, x1) - 1
-  const w = Math.abs(x1 - x0) + 2
-  const h = tip - top + 1
-  const centre = (x0 + x1) / 2
-  const gap = width / 2 + 5
-  const rel = (x: number) => x - left
-  return (
-    <svg className="fp-bracket" style={{ ...at(left, top), width: w, height: h }} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-      <path d={`M${rel(x0)} 0 V${mid - top} L${rel(centre - gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
-      <path d={`M${rel(x1)} 0 V${mid - top} L${rel(centre + gap)} ${tip - top}`} fill="none" stroke="#4e4e4e" strokeWidth="1" />
-    </svg>
-  )
-}
 
 /* ── The plate ───────────────────────────────────────────────────────────────────────────────── */
 
-/** The sixteen macros. Which are wired follows the reference's own patch: 1–4 and 7–8. */
-const MACROS: { label: string; id?: string }[] = [
+/**
+ * The sixteen macros, every one wired: the reference's first eight as it names them, then the
+ * eight this engine reaches for next. A dial a macro drives wears its number in red.
+ */
+const MACROS: { label: string; id: string }[] = [
   { label: 'Pos1', id: 'layers[0].pitch.start' },
   { label: 'Level1', id: 'layers[0].gain' },
   { label: 'Pos2', id: 'layers[1].pitch.start' },
   { label: 'Level2', id: 'layers[1].gain' },
-  { label: '' }, { label: '' },
+  { label: 'Cutoff', id: 'layers[0].filter.cutoff' },
+  { label: 'Reso', id: 'layers[0].filter.resonance' },
   { label: 'Attack', id: 'layers[0].amp.attack' },
   { label: 'Release', id: 'layers[0].amp.release' },
-  { label: '' }, { label: '' }, { label: '' }, { label: '' }, { label: '' }, { label: '' }, { label: '' }, { label: '' },
+  { label: 'Drive', id: 'layers[0].shaper.drive' },
+  { label: 'Body', id: 'layers[0].resonator.frequency' },
+  { label: 'Ring', id: 'layers[0].resonator.decay' },
+  { label: 'Delay', id: 'fx.delayMix' },
+  { label: 'Verb', id: 'fx.reverbMix' },
+  { label: 'Width', id: 'fx.width' },
+  { label: 'Limit', id: 'master.limiter' },
+  { label: 'Fade', id: 'master.fadeOut' },
 ]
+const macroDigit = (id: string) => {
+  const index = MACROS.findIndex((macro) => macro.id === id)
+  return index < 0 ? undefined : index + 1
+}
 
 /** Hertz as the reference's semitone readout: distance from A4, to the thousandth. */
 const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
+const hertz = (st: number) => 440 * Math.pow(2, st / 12)
 
-const SOURCES: { id: string; kind: 'p' | 'e' | 'l' | 't' | 'v'; x: number; lfo?: number; fixed?: boolean }[] = [
-  { id: 'P1', kind: 'p', x: 357.4 }, { id: 'P2', kind: 'p', x: 397.8 }, { id: 'P3', kind: 'p', x: 438.1 },
-  { id: 'E1', kind: 'e', x: 518, fixed: true }, { id: 'L2', kind: 'l', x: 558.5, lfo: 0 }, { id: 'L3', kind: 'l', x: 598.8, lfo: 1 },
-  { id: 'L4', kind: 'l', x: 679.3 }, { id: 'L5', kind: 'l', x: 719.5 }, { id: 'L6', kind: 'l', x: 759.7 },
-  { id: 'E7', kind: 'e', x: 840 }, { id: 'L8', kind: 'l', x: 880.3 }, { id: 'L9', kind: 'l', x: 920.6 },
-  { id: 'T1', kind: 't', x: 1001 }, { id: 'T2', kind: 't', x: 1041.5 }, { id: 'T3', kind: 't', x: 1081.8 }, { id: 'T4', kind: 't', x: 1122 },
-  { id: 'VR', kind: 'v', x: 1202.3 },
+/** The routing bar's sources: the amp envelope, fixed to its layer, and the two LFOs. */
+const SOURCES: { id: string; kind: 'e' | 'l'; x: number; lfo?: number }[] = [
+  { id: 'E1', kind: 'e', x: 518 }, { id: 'L2', kind: 'l', x: 558.5, lfo: 0 }, { id: 'L3', kind: 'l', x: 598.8, lfo: 1 },
 ]
 
 export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots }: {
@@ -532,16 +534,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     return () => observer.disconnect()
   }, [])
 
-  /** The ART column of an oscillator: Hard is a tone, Neutral is noise, Nobody is silence. */
-  const art = (index: number) => {
+  /** An oscillator's source column: a tone, noise, or nothing at all. */
+  const source = (index: number) => {
     const enabled = read(ctx, L(index, 'enabled')) !== false
-    const kind = read(ctx, L(index, 'source.kind'))
-    return !enabled ? 'nobody' : kind === 'noise' ? 'neutral' : 'hard'
+    return !enabled ? 'off' : read(ctx, L(index, 'source.kind')) === 'noise' ? 'noise' : 'tone'
   }
-  const setArt = (index: number, mode: 'hard' | 'neutral' | 'nobody') => {
-    if (mode === 'nobody') { onChange(L(index, 'enabled'), false); return }
+  const setSource = (index: number, mode: 'tone' | 'noise' | 'off') => {
+    if (mode === 'off') { onChange(L(index, 'enabled'), false); return }
     if (read(ctx, L(index, 'enabled')) === false) onChange(L(index, 'enabled'), true)
-    onChange(L(index, 'source.kind'), mode === 'hard' ? 'tone' : 'noise')
+    onChange(L(index, 'source.kind'), mode)
   }
   const filterKind = read(ctx, L(f, 'filter.kind'))
   const setFilter = (kind: string) => onChange(L(f, 'filter.kind'), filterKind === kind ? 'off' : kind)
@@ -559,6 +560,70 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     onChange(L(index, 'source.wave'), WAVES[(WAVES.indexOf(wave) + 1) % WAVES.length] ?? 'sine')
   }
 
+  /** A pitch readout edits its parameter in semitones, whatever the parameter counts in. */
+  const pitchEdit = (id: string): Edit | undefined => {
+    const parameter = num(ctx, id)
+    if (!parameter) return undefined
+    return {
+      get: () => semitones(readNum(ctx, id, 440)),
+      set: (st) => onChange(id, Math.min(parameter.max, Math.max(parameter.min, Math.round(hertz(st))))),
+      reset: () => onChange(id, parameter.defaultValue),
+      perPx: 0.1, step: 1, min: semitones(parameter.min), max: semitones(parameter.max),
+      text: (st) => `${st.toFixed(2)} semitones, ${Math.round(hertz(st))} Hz`,
+    }
+  }
+  const ratioEdit = (id: string): Edit | undefined => {
+    const parameter = num(ctx, id)
+    if (!parameter) return undefined
+    return {
+      get: () => readNum(ctx, id, 1),
+      set: (next) => onChange(id, Number(next.toFixed(3))),
+      reset: () => onChange(id, parameter.defaultValue),
+      perPx: 0.01, step: 0.05, min: parameter.min, max: parameter.max,
+      text: (ratio) => `ratio ${ratio.toFixed(3)}`,
+    }
+  }
+  const targetName = (index: number) => {
+    const parameter = ctx.byId.get(`lfos[${index}].target`)
+    const current = read(ctx, `lfos[${index}].target`)
+    if (!parameter || parameter.kind !== 'select') return 'unassigned'
+    const option = parameter.options.find((entry) => entry.value === current)
+    return option && option.value !== 'off' ? option.label : 'unassigned'
+  }
+  const seed = readNum(ctx, 'seed', 0)
+
+  /** The wave picker at the head of an oscillator: the four waves of the table, the chosen one lit. */
+  const wavePicker = (index: number, left: number) => {
+    const wave = waveOf(read(ctx, L(index, 'source.wave')))
+    const widths = { sine: 25, triangle: 16, saw: 24, square: 18 }
+    let x = left
+    return (
+      <span role="radiogroup" aria-label={`Oscillator ${index + 1} wave`}>
+        {WAVES.map((entry) => {
+          const here = x
+          x += widths[entry] + 9
+          return <Text key={entry} x={here} y={60} align="left" kind="title" u={entry === wave} checked={entry === wave} onClick={() => onChange(L(index, 'source.wave'), entry)}>{WAVE_NAMES[entry]}</Text>
+        })}
+      </span>
+    )
+  }
+
+  /** An oscillator's side column: jitter, the source, the unison voices. Mirrored for the second. */
+  const sideColumn = (index: number, cx: number) => (
+    <>
+      <Text x={cx} y={98}>Jitter</Text>
+      <Knob ctx={ctx} x={cx} y={131} id={L(index, 'pitch.jitter')} label="Jitter" size="sm" />
+      <Text x={cx} y={154}>Source</Text>
+      <span role="radiogroup" aria-label={`Oscillator ${index + 1} source`}>
+        <Text x={cx} y={167} u checked={source(index) === 'tone'} onClick={() => setSource(index, 'tone')}>Tone</Text>
+        <Text x={cx} y={181} u checked={source(index) === 'noise'} onClick={() => setSource(index, 'noise')}>Noise</Text>
+        <Text x={cx} y={195} u checked={source(index) === 'off'} onClick={() => setSource(index, 'off')}>Off</Text>
+      </span>
+      <Text x={cx} y={210}>Voices</Text>
+      <Knob ctx={ctx} x={cx} y={242.5} id={L(index, 'source.voices')} label="Voices" size="sm" />
+    </>
+  )
+
   return (
     <div className="fp-stage" ref={stageRef} style={{ '--fp-scale': scale } as CSSProperties}>
       <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-assigning={assigning === null ? undefined : ''} style={{ width: PLATE.w, height: PLATE.h, '--assign': SOURCE_COLOUR.l } as CSSProperties}>
@@ -566,21 +631,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         {/* ═══ Macro band ═══ */}
         <Origin.Provider value={{ x: 0, y: 0 }}>
           <div className="fp-band" role="group" aria-label="Macros" style={{ left: 0, top: 0, width: PLATE.w, height: 53 }}>
-            <Text x={5} y={19.5} align="left" kind="bold">PB</Text>
-            <span className="fp-wheel" style={{ left: 31, top: 11 }} aria-hidden="true"><i style={{ top: 12 }} /></span>
-            <Text x={72.5} y={19.5} align="left" kind="bold">M</Text>
-            <span className="fp-wheel" style={{ left: 95, top: 11 }} aria-hidden="true"><i style={{ top: 22.5 }} /></span>
-            <Text x={136} y={19.5} align="left" kind="bold">AT</Text>
-            <span className="fp-at" style={{ left: 168.3, top: 24.8 }} aria-hidden="true" />
+            <Text x={5} y={19.5} align="left" kind="bold">Seed</Text>
+            <Box x={40} y={12} w={62} h={16.5} onClick={() => onChange('seed', Math.floor(Math.random() * 10000))} label={`Seed ${seed}; click for another`}>{seed}</Box>
             {MACROS.map((macro, index) => {
               const cx = 258 + 64.25 * index
               return (
-                <span key={index} className="fp-macro" data-wired={macro.id ? '' : undefined}>
+                <span key={index} className="fp-macro" data-wired="">
                   <Text x={cx - 28.3} y={19.5} kind="digit">{index + 1}</Text>
-                  {macro.id
-                    ? <Knob ctx={ctx} x={cx} y={25} id={macro.id} label={macro.label} size="macro" />
-                    : <span className="fp-knob-empty" data-size="macro" style={{ left: cx, top: 25 }} aria-hidden="true"><Ring /></span>}
-                  {macro.label ? <Text x={cx} y={40.5} kind="macro">{macro.label}</Text> : null}
+                  <Knob ctx={ctx} x={cx} y={25} id={macro.id} label={macro.label} size="macro" />
+                  <Text x={cx} y={40.5} kind="macro">{macro.label}</Text>
                 </span>
               )
             })}
@@ -591,85 +650,62 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         {/* ═══ Main row ═══ */}
         <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare">
           <Text x={32} y={59.5} kind="title">Pitch</Text>
-          <Readout x={0} base={96.5} mark="none" value={duration} />
-          <Box x={10.5} y={106.5} w={41} align="right">0.00</Box>
-          <Box x={10.5} y={122.5} w={41} align="right">0.00</Box>
-          <Box x={12.5} y={214} w={39} h={16.5}>Glide</Box>
+          <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
+          <Text x={32} y={104}>Arp Ratio</Text>
+          <Knob ctx={ctx} x={32} y={137} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
+          <Text x={32} y={156}>Arp At</Text>
+          <Knob ctx={ctx} x={32} y={189} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
+          <Text x={32} y={208}>Detune</Text>
+          <Knob ctx={ctx} x={32} y={241} id={L(f, 'source.detune')} label="Detune" size="sm" />
           <Text x={31.8} y={261}>Time</Text>
           <Knob ctx={ctx} x={31.5} y={298.7} id="duration" label="Time" tone="light" />
         </Panel>
 
         <Panel x={68} y={54} w={515} h={288} label="Oscillators">
           {/* the head */}
-          <Text x={204.5} y={60} kind="title" u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>Sin-Tri-Saw-SQ</Text>
+          {wavePicker(0, 149.5)}
           <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
             <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1">1</Badge>
             <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2">2</Badge>
           </span>
-          <Text x={324} y={60} kind="title">Wavetable</Text>
-          <Text x={446.2} y={60} kind="title" u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>SQ-Sin-Saw</Text>
+          <Text x={324} y={60} kind="title">Osc</Text>
+          {wavePicker(1, 391.2)}
           <Line x={325} y={54} w={1} h={215.5} colour="#050505" />
           {/* oscillator 1 */}
-          <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} />
-          <Box x={83} y={106.5} w={40.5} align="right">0.00</Box>
-          <Box x={83} y={122.5} w={40.5} align="right">0.00</Box>
-          <Text x={104.2} y={148.5} u>ART</Text>
-          <Icon x={104} y={182} w={38} h={35}><Flask /></Icon>
-          <span role="radiogroup" aria-label="Oscillator 1 mode">
-            <Text x={103.2} y={203.5} u checked={art(0) === 'hard'} onClick={() => setArt(0, 'hard')}>Hard</Text>
-            <Text x={104.9} y={220} u checked={art(0) === 'neutral'} onClick={() => setArt(0, 'neutral')}>Neutral</Text>
-            <Text x={105.4} y={235} u checked={art(0) === 'nobody'} onClick={() => setArt(0, 'nobody')}>Nobody</Text>
-          </span>
-          <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" digit={1} face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} />} />
+          <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
+          {sideColumn(0, 104)}
+          <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} />} />
           <Text x={166.9} y={184}>Width</Text>
-          <Text x={240.7} y={184.5}>Pitch</Text>
+          <Text x={240.7} y={184.5}>Slide</Text>
           <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
-          <Knob ctx={ctx} x={240.7} y={226.2} id={L(0, 'pitch.slide')} label="Pitch" />
-          <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" digit={2} />
-          <Box x={286} y={203} w={24.5}>PM1</Box>
-          <Box x={286} y={219} w={24.5}>Aux</Box>
-          <Box x={286} y={235} w={24.5}>PM2</Box>
+          <Knob ctx={ctx} x={240.7} y={226.2} id={L(0, 'pitch.slide')} label="Slide" />
+          <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
           {/* oscillator 2 */}
-          <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" digit={4} />
-          <Box x={340.5} y={203} w={24.5}>PM1</Box>
-          <Box x={340.5} y={219} w={24.5}>Aux</Box>
-          <Box x={340.5} y={235} w={24.5}>PM2</Box>
-          <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" digit={3} face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} />} />
-          <Text x={409.3} y={184}>2nd Lev</Text>
-          <Text x={482} y={184.5}>Ratio</Text>
-          <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.detune')} label="2nd Lev" />
-          <Knob ctx={ctx} x={482} y={226.3} id={L(1, 'source.fmRatio')} label="Ratio" />
-          <Readout x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} />
-          <Box x={525.5} y={106.5} w={40.5} align="right">0.00</Box>
-          <Box x={525.5} y={122.5} w={40.5} align="right">0.00</Box>
-          <Text x={547.5} y={147} u>Hardsync</Text>
-          <Icon x={547} y={182} w={38} h={34}><Teeth /></Icon>
-          <span role="radiogroup" aria-label="Oscillator 2 mode">
-            <Text x={546.2} y={204.5} u checked={art(1) === 'hard'} onClick={() => setArt(1, 'hard')}>Hard</Text>
-            <Text x={547.8} y={220} u checked={art(1) === 'neutral'} onClick={() => setArt(1, 'neutral')}>Neutral</Text>
-            <Text x={548} y={235} u checked={art(1) === 'nobody'} onClick={() => setArt(1, 'nobody')}>Nobody</Text>
-          </span>
-          {/* the foot, with its notched rim */}
+          <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
+          <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} />} />
+          <Text x={409.3} y={184}>Width</Text>
+          <Text x={482} y={184.5}>Slide</Text>
+          <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
+          <Knob ctx={ctx} x={482} y={226.3} id={L(1, 'pitch.slide')} label="Slide" />
+          <Readout x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} label="Oscillator 2 pitch" edit={pitchEdit(L(1, 'pitch.start'))} />
+          {sideColumn(1, 547.5)}
+          {/* the foot, with its notched rim: phase modulation between the two */}
           <svg className="fp-osc-foot" viewBox="0 0 515 14" style={{ left: 0, top: 203, width: 515, height: 14 }} aria-hidden="true">
             <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" stroke="#000" strokeWidth="1" />
             <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" stroke="#161616" strokeWidth="1" />
           </svg>
-          <Readout x={70.5} base={281} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} />
-          <Box x={83} y={291.5} w={40.5} align="right">0.00</Box>
-          <Box x={83} y={307.5} w={40.5} align="right">0.00</Box>
+          <Readout x={70.5} base={281} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
           <Text x={203.8} y={272} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
           <Icon x={204.6} y={306.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
           <Text x={277.2} y={273}>PM1</Text>
-          <Text x={325.5} y={274}>Aux</Text>
+          <Text x={325.5} y={274}>Fall</Text>
           <Text x={373.8} y={273}>PM2</Text>
           <Knob ctx={ctx} x={277.2} y={305.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
-          <Knob ctx={ctx} x={325.5} y={306} id={L(0, 'source.fmFall')} label="Aux" size="sm" />
+          <Knob ctx={ctx} x={325.5} y={306} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
           <Knob ctx={ctx} x={373.8} y={305.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
           <Text x={447.3} y={272} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
           <Icon x={445.9} y={306.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
-          <Readout x={512.5} base={281} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} />
-          <Box x={525.5} y={291.5} w={40.5} align="right">0.00</Box>
-          <Box x={525.5} y={307.5} w={40.5} align="right">0.00</Box>
+          <Readout x={512.5} base={281} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
         </Panel>
 
         <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise">
@@ -682,121 +718,119 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Fader ctx={ctx} x={663} top={87.5} id={L(3, 'gain')} label="Noise 2 level" kind="noise" />
           <Text x={614.7} y={204} u onClick={() => cycleColour(2)} label={`Noise 1 colour: ${colourName(2)}`}>{colourName(2)}</Text>
           <Text x={661.8} y={204.5} u onClick={() => cycleColour(3)} label={`Noise 2 colour: ${colourName(3)}`}>{colourName(3)}</Text>
-          <Icon x={614.8} y={239.2} w={38} h={29.5}><NoiseBurst seed={1} /></Icon>
-          <Icon x={663.2} y={239} w={38} h={29.5}><NoiseBurst seed={2} /></Icon>
-          <Icon x={591.5} y={278} w={6} h={8}><Slash /></Icon>
-          <Line x={588} y={284.5} w={7} h={0.5} colour="#8a8a8a" />
-          <Text x={614} y={273}>Pitch</Text>
-          <Icon x={638.5} y={278} w={6} h={8}><Slash /></Icon>
-          <Line x={635} y={284.5} w={7} h={0.5} colour="#8a8a8a" />
-          <Text x={662} y={273}>Pitch</Text>
+          <Icon x={614.8} y={239.2} w={38} h={29.5}><NoiseBurst seed={1} colour={read(ctx, L(2, 'source.colour'))} /></Icon>
+          <Icon x={663.2} y={239} w={38} h={29.5}><NoiseBurst seed={2} colour={read(ctx, L(3, 'source.colour'))} /></Icon>
+          <Text x={614.9} y={273}>Pitch</Text>
+          <Text x={663} y={273}>Pitch</Text>
           <Knob ctx={ctx} x={614.9} y={306.7} id={L(2, 'pitch.start')} label="Noise 1 pitch" size="sm" tone="light" />
           <Knob ctx={ctx} x={663} y={306.7} id={L(3, 'pitch.start')} label="Noise 2 pitch" size="sm" tone="light" />
         </Panel>
 
-        <Panel x={696.5} y={54} w={159} h={288} label="Comb">
-          <Badge x={707.5} y={65} kind="circle">F</Badge>
-          <Text x={775.8} y={59.5} kind="title" u>Comb</Text>
-          <Text x={731.3} y={83} u>Exciter</Text>
-          <Icon x={731.5} y={121.6} w={38} h={35}><Bell /></Icon>
-          <Readout x={788} base={96.5} mark="note" value={semitones(readNum(ctx, L(f, 'resonator.frequency'), 440))} />
-          <Box x={799} y={106.5} w={40.5} align="right">0.00</Box>
-          <Box x={799} y={122.5} w={40.5} align="right">0.00</Box>
-          <Box x={748.5} y={150.5} w={55} selected={readNum(ctx, L(f, 'resonator.amount')) > 0}>FBW</Box>
-          <Text x={777} y={168.5}>FB</Text>
-          <Icon x={803.9} y={174.7} w={13} h={13}><Plus /></Icon>
-          <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="FB" />
-          <Text x={739.9} y={257}>AP Freq</Text>
-          <Text x={811.4} y={257}>LP Freq</Text>
-          <Knob ctx={ctx} x={739.9} y={298.4} id={L(f, 'resonator.frequency')} label="AP Freq" />
-          <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="LP Freq" />
+        <Panel x={696.5} y={54} w={159} h={288} label="Body">
+          <Badge x={707.5} y={65} kind="circle">B</Badge>
+          <Text x={775.8} y={59.5} kind="title">Body</Text>
+          <Text x={731.3} y={83}>Partials</Text>
+          <Knob ctx={ctx} x={731.5} y={121.6} id={L(f, 'resonator.partials')} label="Partials" size="sm" />
+          <Readout x={788} base={96.5} mark="note" value={semitones(readNum(ctx, L(f, 'resonator.frequency'), 440))} label="Body pitch" edit={pitchEdit(L(f, 'resonator.frequency'))} />
+          <Text x={819} y={104}>Spread</Text>
+          <Knob ctx={ctx} x={819} y={138} id={L(f, 'resonator.spread')} label="Spread" size="sm" />
+          <Text x={777} y={168.5}>Amount</Text>
+          <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="Amount" />
+          <Text x={739.9} y={257}>Freq</Text>
+          <Text x={811.4} y={257}>Ring</Text>
+          <Knob ctx={ctx} x={739.9} y={298.4} id={L(f, 'resonator.frequency')} label="Freq" />
+          <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="Ring" />
         </Panel>
 
         <Panel x={857} y={54} w={160} h={288} label="Filter">
           <span role="radiogroup" aria-label="Filter mode">
             <Badge x={868.5} y={65.5} kind="circle">A</Badge>
-            <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Fold</Text>
+            <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Low</Text>
             <Badge x={921} y={65.5} kind="circle">B</Badge>
-            <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')}>ANM</Text>
+            <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')}>High</Text>
             <Badge x={973.5} y={65.5} kind="circle">C</Badge>
-            <Text x={985.5} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')}>RM</Text>
+            <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')}>Band</Text>
           </span>
-          <Text x={900.5} y={79.5}>Pitch</Text>
-          <Text x={972.4} y={80}>Mix</Text>
-          <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Pitch" />
-          <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Mix" />
-          <Text x={900} y={171.5}>FB</Text>
-          <Icon x={922.5} y={178} w={13} h={13}><Plus /></Icon>
-          <Text x={972.7} y={172.5}>Smear</Text>
-          <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="FB" />
-          <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Smear" />
-          <Text x={894.5} y={275}>Amount</Text>
-          <Box x={921.5} y={299.5} w={30.5}>Fast</Box>
-          <Text x={981.5} y={273.5}>Rate</Text>
-          <Knob ctx={ctx} x={892.6} y={306.9} id={L(f, 'shaper.bitDepth')} label="Amount" size="sm" />
-          <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Rate" size="sm" />
+          <Text x={900.5} y={79.5}>Cutoff</Text>
+          <Text x={972.4} y={80}>Reso</Text>
+          <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
+          <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
+          <Text x={900.2} y={171.5}>Env</Text>
+          <Text x={972.7} y={172.5}>Drive</Text>
+          <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
+          <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
+          <Text x={892.6} y={275}>Bits</Text>
+          <Text x={980.7} y={273.5}>Crush</Text>
+          <Knob ctx={ctx} x={892.6} y={306.9} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
+          <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
         </Panel>
 
         <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare">
           <Text x={1053.5} y={60} kind="title">Amp</Text>
           <Text x={1053.5} y={83.5}>Level</Text>
-          <Knob ctx={ctx} x={1053} y={120.9} id="master.gain" label="Level" tone="light" />
-          <Text x={1052.4} y={172.5}>Pan</Text>
-          <Knob ctx={ctx} x={1053.3} y={210} id="fx.width" label="Pan" tone="light" />
-          <Text x={1054.5} y={261}>FB</Text>
-          <Icon x={1073.75} y={266.25} w={18.5} h={10.5}><Pill curve="fb" /></Icon>
-          <Knob ctx={ctx} x={1053.6} y={297.9} id="master.limiter" label="FB" tone="light" />
+          <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
+          <Text x={1053.5} y={160.5}>Width</Text>
+          <Knob ctx={ctx} x={1053.3} y={198} id="fx.width" label="Width" tone="light" />
+          <Text x={1053.5} y={224.5}>Limit</Text>
+          <Knob ctx={ctx} x={1053.6} y={262} id="master.limiter" label="Limit" tone="light" />
+          <Text x={1053.5} y={280.5}>Tone</Text>
+          <Knob ctx={ctx} x={1053.6} y={318} id="fx.tone" label="Tone" tone="light" />
         </Panel>
 
         <Panel x={1090.5} y={54} w={159.5} h={288} label="FX">
           <Badge x={1100.5} y={65} kind="square">X</Badge>
-          <Text x={1112} y={60} align="left" kind="title">QCho</Text>
-          <Badge x={1152.5} y={65} kind="square">Y</Badge>
-          <Text x={1163.5} y={60} align="left" kind="title">Verb</Text>
-          <Badge x={1205} y={65} kind="square">Z</Badge>
-          <Text x={1216} y={60} align="left" kind="title" u>EQ</Text>
-          <Line x={1090.5} y={165.5} w={159.5} h={0.5} colour="#989897" />
-          <Line x={1090.5} y={254} w={159.5} h={0.5} colour="#989897" />
-          <Text x={1118} y={84}>Freq</Text>
-          <Text x={1169.5} y={84}>Hi Gain</Text>
-          <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Freq" size="sm" />
-          <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Hi Gain" />
-          <Text x={1118} y={172.5}>Freq</Text>
-          <Text x={1168} y={172}>Mid Gain</Text>
-          <Text x={1222.3} y={173}>Q</Text>
-          <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Freq" size="sm" />
-          <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Mid Gain" />
-          <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Q" size="sm" />
-          <Text x={1170.2} y={261}>Low Gain</Text>
-          <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Low Gain" />
+          <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
+          <Text x={1118} y={84}>Rate</Text>
+          <Text x={1169.5} y={84}>Mix</Text>
+          <Text x={1222} y={84}>Depth</Text>
+          <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
+          <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
+          <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
+          <Line x={1090.5} y={143} w={159.5} h={0.5} colour="#989897" />
+          <Badge x={1100.5} y={154} kind="square">Y</Badge>
+          <Text x={1110} y={149} align="left" kind="title">Delay</Text>
+          <Text x={1118} y={172.5}>Time</Text>
+          <Text x={1169.5} y={172.5}>Mix</Text>
+          <Text x={1222} y={172.5}>Feed</Text>
+          <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
+          <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
+          <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
+          <Line x={1090.5} y={232} w={159.5} h={0.5} colour="#989897" />
+          <Badge x={1100.5} y={243} kind="square">Z</Badge>
+          <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
+          <Text x={1118} y={261}>Size</Text>
+          <Text x={1169.5} y={261}>Mix</Text>
+          <Text x={1222} y={261}>Damp</Text>
+          <Knob ctx={ctx} x={1117.8} y={298.8} id="fx.reverbSize" label="Reverb size" size="sm" />
+          <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Reverb mix" />
+          <Knob ctx={ctx} x={1222} y={298.8} id="fx.reverbDamping" label="Reverb damping" size="sm" />
         </Panel>
         <Origin.Provider value={{ x: 0, y: 0 }}>
           <Line x={0} y={342} w={PLATE.w} h={1.5} />
         </Origin.Provider>
 
-        {/* ═══ Routing bar ═══ */}
+        {/* ═══ Routing bar: the sources, and where each is pointed ═══ */}
         <Origin.Provider value={{ x: 0, y: 343.5 }}>
           <div className="fp-routing" role="group" aria-label="Routing bar" style={{ left: 0, top: 343.5, width: PLATE.w, height: 39 }}>
-            <Icon x={40.75} y={373} w={17} h={9}><MenuIcon /></Icon>
-            <Text x={65} y={367.5} align="left" kind="dim">Voice</Text>
-            <Icon x={177.25} y={373} w={16} h={12}><RoutingIcon /></Icon>
-            <Text x={196.5} y={367.5} align="left" kind="dim">Routing</Text>
             <span className="fp-sources__box" style={{ left: 502, top: 364 - 343.5 }} aria-hidden="true" />
             <ul className="fp-sources" role="list" aria-label="Routing">
               {SOURCES.map((source) => (
-                <li key={source.id} className="fp-source" data-kind={source.kind} data-live={source.lfo !== undefined || source.fixed || undefined}>
+                <li key={source.id} className="fp-source" data-kind={source.kind} data-live="">
                   {source.lfo !== undefined ? (
                     <Grab x={source.x} y={352.6} label={`Drag ${source.id} onto a control to modulate it`} held={assigning === source.lfo}
                       onPointerDown={pickUp(source.lfo)} onPointerMove={assigning === source.lfo ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
                       <MoveIcon />
                     </Grab>
                   ) : (
-                    <Icon x={source.x} y={352.6} w={17.5} h={14.5} className={source.fixed ? 'fp-source__fixed' : undefined}><MoveIcon /></Icon>
+                    <Icon x={source.x} y={352.6} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
                   )}
                   <Text x={source.x + 1} y={367.5} kind="source">{source.id}</Text>
                 </li>
               ))}
             </ul>
+            <Text x={640} y={367.5} align="left" kind="dim">E1 · amp</Text>
+            <Text x={790} y={367.5} align="left" kind="dim">L2 · {targetName(0)}</Text>
+            <Text x={980} y={367.5} align="left" kind="dim">L3 · {targetName(1)}</Text>
           </div>
         </Origin.Provider>
         <Origin.Provider value={{ x: 0, y: 0 }}>
@@ -808,32 +842,25 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
           <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
           <Text x={70.9} y={413.5}>Shape</Text>
-          <Text x={120.8} y={413.5}>Peak</Text>
-          <Text x={209} y={413.5}>Shape</Text>
+          <Text x={120.8} y={413.5}>Pan</Text>
+          <Text x={209} y={413.5}>Spread</Text>
           <Text x={257.5} y={413.5}>Sustain</Text>
-          <Icon x={305.75} y={429.25} w={18.5} h={10.5}><Pill curve="vel" /></Icon>
-          <Text x={315} y={423.5} align="left">Vel</Text>
           <Text x={370.5} y={413}>Env Level</Text>
           <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
-          <Knob ctx={ctx} x={119.6} y={450.9} id="" label="Peak" size="sm" inert={0.62} />
-          <Knob ctx={ctx} x={208.5} y={451.7} id="" label="Shape" size="sm" inert={0.5} />
+          <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
+          <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
           <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
-          <Knob ctx={ctx} x={317.5} y={450.8} id="" label="Vel" size="sm" inert={0.2} dots />
           <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
-          <Bracket x0={40} x1={151} top={474} mid={486.5} tip={500} width={8} />
-          <Bracket x0={177.5} x1={287.5} top={474} mid={486.5} tip={500} width={11.5} />
           <Text x={96} y={500}>A</Text>
           <Text x={232.4} y={499.5}>D</Text>
           <Text x={368.6} y={499.5}>R</Text>
           <Text x={27.6} y={510}>Delay</Text>
           <Text x={164.8} y={510}>Hold</Text>
-          <Text x={300.9} y={510}>Hold</Text>
           <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
-          <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" digit={f === 0 ? 7 : undefined} />
+          <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
           <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
           <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
-          <Knob ctx={ctx} x={301.4} y={547.1} id="" label="Hold" size="sm" inert={0.2} />
-          <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" digit={f === 0 ? 8 : undefined} />
+          <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
           <Line x={0} y={583.5} w={413.5} h={1} colour="#282828" />
           <Text x={40.4} y={592} u>Gate</Text>
           <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
@@ -849,35 +876,26 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           const target = ctx.byId.get(id('target'))
           const on = read(ctx, id('enabled')) !== false
           const shape = read(ctx, id('shape'))
+          const cycles = readNum(ctx, id('rate'), 5) * duration
           const Y = (local: number) => 384 + local
           return (
             <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`}>
               <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
-              <Text x={203.3 + o} y={Y(5)} kind="title" u onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} ${on ? 'on' : 'off'}`}>Switcher LFO</Text>
-              {/* the left column: how it runs */}
-              <Icon x={19.25 + o} y={Y(35.25)} w={18.5} h={10.5}><Pill curve="vel" /></Icon>
-              <Text x={31 + o} y={Y(30)} align="left">Rate</Text>
-              <Text x={36.5 + o} y={Y(55)} u>Free</Text>
+              <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
+              {/* the left column: how fast, and whether at all */}
               <Text x={36.5 + o} y={Y(108)}>Rate</Text>
               <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
-              <Text x={36.5 + o} y={Y(208)} u>Loop</Text>
-              <Text x={36.5 + o} y={Y(232)} u>Midi</Text>
-              <Box x={5 + o} y={Y(252)} w={62.5}>Mono</Box>
+              <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
+              <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
               {/* the wheel */}
               <Text x={193 + o} y={Y(30)}>Shape</Text>
               <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
               <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
-              {/* the right column: how much, and when */}
+              {/* the right column: how much, and from where in the cycle */}
               <Text x={351.5 + o} y={Y(30)}>LFO Level</Text>
               <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
-              <Box x={325 + o} y={Y(105)} w={52} h={16} selected>Bi</Box>
-              <Box x={325 + o} y={Y(121)} w={52} h={16}>Uni</Box>
-              <Box x={325 + o} y={Y(137)} w={52} h={16}>Uni Z</Box>
-              <Text x={351.5 + o} y={Y(168)}>Delay</Text>
-              <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Delay" size="sm" />
-              <Text x={351.5 + o} y={Y(218)}>Fall/Rise</Text>
-              <Knob ctx={ctx} x={351.5 + o} y={Y(238)} id="" label="Fall/Rise" size="sm" inert={0.5} />
-              <Icon x={351.5 + o} y={Y(264)} w={30} h={10}><CurveMark /></Icon>
+              <Text x={351.5 + o} y={Y(168)}>Phase</Text>
+              <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
               {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
               <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>
                 {target ? (

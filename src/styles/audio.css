@@ -1408,6 +1408,7 @@
 .fp-text[data-kind='digit'] { font-weight: 700; color: #a2a3a2; }
 .fp-macro[data-wired] .fp-text[data-kind='digit'] { color: #eb292f; }
 .fp-text[data-kind='dim'] { color: #838383; }
+.fp-text[data-kind='dim'][style*='font-size: 11px'] { color: #767676; }
 .fp-text[data-kind='source'] { font-weight: 700; }
 .fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: #8a8a8a; }
 button.fp-text { cursor: pointer; touch-action: manipulation; }
@@ -1618,7 +1619,13 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 
 /* The big readout: a mark, the whole part tall, the decimals small, one baseline. */
 .fp-read { color: #7d7e7e; font-family: 'Roboto', var(--font-sans); font-stretch: 75%; font-weight: 700; line-height: 1; }
-.fp-read > * { position: absolute; white-space: nowrap; }
+.fp-read__anchor { position: absolute; inset: 0 auto auto 0; }
+.fp-read[data-edit] .fp-read__anchor { inset: 14px auto auto 2px; }
+.fp-read__anchor > * { position: absolute; white-space: nowrap; }
+/* A readout that edits: dragged up and down, as the reference's are. */
+.fp-read[data-edit] { cursor: ns-resize; touch-action: none; outline: none; border-radius: 2px; }
+.fp-read[data-edit]:hover { color: #9c9d9d; }
+.fp-read[data-edit]:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 /* The global `svg { max-width: 100% }` would cap the mark at its zero-width anchor. */
 .fp-read__mark { fill: #8a8a8a; color: #8a8a8a; display: block; max-inline-size: none; }
 .fp-read__u { display: block; block-size: 0.5px; background: #8a8a8a; }
