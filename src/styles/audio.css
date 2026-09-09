@@ -1355,7 +1355,7 @@
   --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
   --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
   --fp-plot-fill: #394963; --fp-plot-line: #4675bf; --fp-wheel: #2a2a2a; --fp-wheel-hover: #333333; --fp-wheel-top: #3b3b3b;
-  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b;
+  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e;
   --fp-font: 'Roboto', var(--font-sans);
   --fp-stretch: 97%;
 }
