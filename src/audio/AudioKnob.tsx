@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { ParameterDef } from '@/rigs/types'
 
 /**
@@ -13,11 +13,13 @@ import type { ParameterDef } from '@/rigs/types'
  *
  * The gesture is the shared dial's: drag up or down, Shift to refine, double-click to reset.
  */
-export function AudioKnob({ param, value, onChange, size = 'md', onGestureStart, onGestureEnd }: {
+export function AudioKnob({ param, value, onChange, size = 'md', face, onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
   size?: 'lg' | 'md' | 'sm'
+  /** Drawn inside the dial, under the pointer — the reference's oscillator dials show their wave. */
+  face?: ReactNode
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }) {
@@ -88,6 +90,7 @@ export function AudioKnob({ param, value, onChange, size = 'md', onGestureStart,
         }}
       >
         <span className="audio-knob__arc" aria-hidden="true" />
+        {face ? <span className="audio-knob__face" aria-hidden="true">{face}</span> : null}
         <span className="audio-knob__hand" aria-hidden="true" />
       </div>
       <output className="audio-knob__value" aria-hidden="true">{shown}</output>

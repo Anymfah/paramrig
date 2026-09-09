@@ -52,7 +52,22 @@ const num = (ctx: Ctx, id: string): Num | null => {
 }
 const read = (ctx: Ctx, id: string) => ctx.values[id] ?? ctx.byId.get(id)?.defaultValue
 
-function Knob({ ctx, id, label, size = 'md', tone }: { ctx: Ctx; id: string; label: string; size?: 'lg' | 'md' | 'sm' | 'xs'; tone?: 'light' }) {
+/** The shape a source makes, as the reference draws it on the face of its oscillator dial. */
+function WaveGlyph({ kind, wave }: { kind: unknown; wave: unknown }) {
+  const d = kind === 'noise'
+    ? 'M2 10 L5 4 L8 15 L11 7 L14 13 L17 3 L20 12 L23 8 L26 16 L29 5 L32 11 L35 6 L38 10'
+    : wave === 'triangle' ? 'M2 10 L11 2 L29 18 L38 10'
+    : wave === 'saw' ? 'M2 10 L2 2 L20 18 L20 2 L38 18 L38 10'
+    : wave === 'square' ? 'M2 10 L2 2 L20 2 L20 18 L38 18 L38 10'
+    : 'M2 10 C8 -2 14 -2 20 10 S32 22 38 10'
+  return (
+    <svg viewBox="0 0 40 20" className="fp-waveglyph">
+      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function Knob({ ctx, id, label, size = 'md', tone, face }: { ctx: Ctx; id: string; label: string; size?: 'lg' | 'md' | 'sm' | 'xs'; tone?: 'light'; face?: ReactNode }) {
   const parameter = num(ctx, id)
   if (!parameter) return <span className="fp-knob-gap" data-size={size} />
   const current = read(ctx, id)
@@ -62,6 +77,7 @@ function Knob({ ctx, id, label, size = 'md', tone }: { ctx: Ctx; id: string; lab
         param={{ ...parameter, label }}
         value={typeof current === 'number' ? current : parameter.min}
         size={size === 'xs' ? 'sm' : size}
+        face={face}
         onChange={(next) => ctx.onChange(id, next)}
         onGestureStart={ctx.onGestureStart}
         onGestureEnd={ctx.onGestureEnd}
@@ -207,7 +223,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                     </div>
                   ) : null}
                   <div className="fp-osc__mid">
-                    <span className="fp-osc__hero"><Knob ctx={ctx} id={L(index, 'pitch.start')} label="" size="lg" /><span className="fp-badge fp-badge--red fp-badge--onknob">{index === 0 ? 1 : 3}</span></span>
+                    <span className="fp-osc__hero">
+                      <Knob ctx={ctx} id={L(index, 'pitch.start')} label="" size="lg" face={<WaveGlyph kind={value(L(index, 'source.kind'))} wave={value(L(index, 'source.wave'))} />} />
+                      <span className="fp-badge fp-badge--red fp-badge--onknob">{index === 0 ? 1 : 3}</span>
+                    </span>
                     <span className="fp-row">
                       <Knob ctx={ctx} id={L(index, index === 0 ? 'source.pulseWidth' : 'source.detune')} label={index === 0 ? 'Width' : '2nd Lev'} size="md" />
                       <Knob ctx={ctx} id={L(index, index === 0 ? 'pitch.slide' : 'source.fmRatio')} label={index === 0 ? 'Pitch' : 'Ratio'} size="md" />
