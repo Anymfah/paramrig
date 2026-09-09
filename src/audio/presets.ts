@@ -105,8 +105,61 @@ export function uiClick(): AudioPatch {
       pitch: { start: 2300, slide: -12, slideCurve: EASE_OUT, jitter: 20 },
       amp: { attack: 0.0005, hold: 0, decay: 0.03, sustain: 0, release: 0.015, curve: 2.6 },
     }),
-  ], { tone: 0.3, width: 0.6 }, { gain: 0.885 })
+  ], { tone: 0.3, width: 0.6 }, { gain: 0.9775 })
 }
+
+/**
+ * Four digital sparks, not a click. The file this is taken from sold itself as a small menu
+ * select; what it actually is is one object struck four times — the same band of air, the same
+ * 16 kHz needle — in a hundred and twenty milliseconds. Three different bodies was the wrong
+ * picture: it made three different clicks.
+ *
+ * Each layer is white noise in a 5–6 kHz band, with a light 16 kHz ring on top. A 36 ms delay
+ * reprints each strike once: the first reprint is the debris the original also has, the third
+ * reprint is the fourth tick. Feedback stays low so a fifth never arrives.
+ */
+export function sparkBurst(): AudioPatch {
+  return patch(0.3, [
+    makeLayer({
+      gain: 1.05,
+      spread: 0.7,
+      offset: 0.019,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'bandpass', cutoff: 5600, resonance: 0.13 },
+      resonator: { amount: 0.26, frequency: 16000, spread: 0.08, decay: 0.016, partials: 2 },
+      amp: { attack: 0.0003, hold: 0.0045, decay: 0.006, sustain: 0, release: 0.002, curve: 2.7 },
+    }),
+    makeLayer({
+      gain: 1.5,
+      spread: 0.78,
+      offset: 0.066,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'bandpass', cutoff: 6000, resonance: 0.12, envAmount: 0.5, envCurve: EASE_OUT },
+      resonator: { amount: 0.3, frequency: 16000, spread: 0.08, decay: 0.012, partials: 2 },
+      amp: { attack: 0.0002, hold: 0.001, decay: 0.003, sustain: 0, release: 0.0012, curve: 3.1 },
+    }),
+    makeLayer({
+      gain: 1.2,
+      spread: 0.84,
+      offset: 0.104,
+      source: { kind: 'noise', colour: 'white' },
+      filter: { kind: 'bandpass', cutoff: 5800, resonance: 0.12 },
+      resonator: { amount: 0.3, frequency: 16000, spread: 0.1, decay: 0.012, partials: 2 },
+      shaper: { drive: 0.03, bitDepth: 12, crush: 0 },
+      amp: { attack: 0.0002, hold: 0.0008, decay: 0.0028, sustain: 0, release: 0.001, curve: 3.2 },
+    }),
+  ], {
+    delayTime: 0.036,
+    delayFeedback: 0.1,
+    delayMix: 0.62,
+    reverbMix: 0.06,
+    reverbSize: 0.12,
+    reverbDamping: 0.88,
+    tone: 0.2,
+    width: 0.7,
+  }, { gain: 2.286, fadeOut: 0.014 })
+}
+
 /** Rising, and a step up near the end so it reads as an arrival rather than a ramp. */
 export function powerup(): AudioPatch {
   return patch(0.6, [
@@ -910,13 +963,10 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'hit', label: 'Hit', group: 'Arcade', build: hit },
 
   { id: 'ui-click', label: 'UI click', group: 'Interface', build: uiClick },
+  { id: 'spark-burst', label: 'Spark burst', group: 'Interface', build: sparkBurst },
   { id: 'interface', label: 'Confirm', group: 'Interface', build: interfaceConfirm },
-  { id: 'alert', label: 'Alert', group: 'Interface', build: alert },
   { id: 'lock-on', label: 'Lock on', group: 'Interface', build: lockOn },
   { id: 'data-burst', label: 'Data burst', group: 'Interface', build: dataBurst },
-  { id: 'select', label: 'Select', group: 'Interface', build: select },
-  { id: 'toggle', label: 'Toggle', group: 'Interface', build: toggle },
-  { id: 'dismiss', label: 'Dismiss', group: 'Interface', build: dismiss },
   { id: 'crystal', label: 'Crystal', group: 'Interface', build: crystal },
 
   { id: 'impact', label: 'Impact', group: 'Impact', build: impact },
