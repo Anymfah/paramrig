@@ -202,7 +202,8 @@ describe('AudioEditorPage', () => {
     for (const handle of ['Attack, layer 1', 'Hold, layer 1', 'Decay and sustain, layer 1', 'Release, layer 1']) {
       expect(within(layer).getByRole('slider', { name: handle })).toBeInTheDocument()
     }
-    expect(within(layer).getByLabelText('Envelope curve')).toBeInTheDocument()
+    // The curve dial wears the reference's name, Shape, rather than the field's.
+    expect(within(layer).getByRole('slider', { name: 'Shape' })).toBeInTheDocument()
   })
 
   it('reads the envelope out in numbers beside the shape', () => {

@@ -313,14 +313,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <section className="fp-mod" aria-label="Amp envelope" style={{ '--section': LAYER_COLOURS[f] } as CSSProperties}>
           <h2 className="fp-mod__title">Modulator 1 <span className="fp-mod__name">Amp-Envelope</span><Pick ctx={ctx} name="Envelope" /></h2>
           <div className="fp-mod__knobs">
-            {(() => {
-              const curve = ctx.byId.get(L(f, 'amp.curve'))
-              return curve ? (
-                <span className="fp-shape">
-                  <ParameterField param={curve} value={value(L(f, 'amp.curve')) ?? curve.defaultValue} onChange={(next) => onChange(L(f, 'amp.curve'), next)} {...gesture} />
-                </span>
-              ) : null
-            })()}
+            <Knob ctx={ctx} id={L(f, 'amp.curve')} label="Shape" size="sm" />
             <Knob ctx={ctx} id={L(f, 'amp.attack')} label="A" size="md" />
             <Knob ctx={ctx} id={L(f, 'amp.hold')} label="Hold" size="sm" />
             <Knob ctx={ctx} id={L(f, 'amp.decay')} label="D" size="md" />
