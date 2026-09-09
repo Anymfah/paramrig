@@ -1377,7 +1377,7 @@
   --fp-hero: #3a3c3e; --fp-hero-edge: #414345; --fp-hero-rim: #2c2c2e; --fp-hero-hand: #eae1ca; --fp-face: #a7a7a7;
   --fp-macro-top: #5c5c5c; --fp-macro-bottom: #3c3c3c; --fp-macro-hand: #e9e9e9;
   --fp-light-top: #a8a7a6; --fp-light-bottom: #6c6b68; --fp-light-hand: #0e0e0e;
-  --fp-groove-edge: #151515; --fp-red: #db282d; --fp-tray: #404040;
+  --fp-groove: #1e1e1e; --fp-groove-edge: #151515; --fp-red: #db282d; --fp-tray: #404040;
   --fp-src-p: #efa807; --fp-src-e: #4576c4; --fp-src-l: #6fb904; --fp-src-l-edge: #5f9a12; --fp-src-t: #8d52a4; --fp-src-v: #d0708b;
   --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
   --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
@@ -1409,7 +1409,7 @@
   --fp-hero: var(--surface-overlay); --fp-hero-edge: color-mix(in srgb, var(--surface-overlay) 86%, var(--text-primary)); --fp-hero-rim: var(--fp-edge); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
   --fp-macro-top: var(--surface-overlay); --fp-macro-bottom: var(--surface-raised); --fp-macro-hand: var(--accent);
   --fp-light-top: var(--text-secondary); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 72%, var(--surface)); --fp-light-hand: var(--surface);
-  --fp-groove-edge: var(--fp-edge); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
+  --fp-groove: color-mix(in srgb, var(--carbon) 35%, var(--surface)); --fp-groove-edge: var(--fp-edge); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
   /* The colours that mean something keep their hue whatever the look: a macro's red, an envelope's blue, an LFO's green, the strip's amber. */
   --fp-red: #e5484d; --fp-red-on-light: #e5484d;
   --fp-src-p: #efa807; --fp-src-e: #5b8def; --fp-src-l: #7ccf5a; --fp-src-l-edge: #5fae3f; --fp-src-t: #b07bd6; --fp-src-v: #e07a95;
@@ -1675,7 +1675,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   block-size: 75px;
   translate: -50% 0;
   border-radius: 3px;
-  background: var(--fp-box-text);
+  background: var(--fp-groove);
   box-shadow: inset 0 0 0 1px var(--fp-knob-rim);
 }
 .fp-fader__handle {
@@ -1694,7 +1694,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   font: 700 9.5px/1 var(--fp-font);
 }
 .fp-fader[data-kind='noise'] { block-size: 79.5px; }
-.fp-fader[data-kind='noise'] .fp-fader__track { inline-size: 5px; block-size: 66px; border-radius: 2.5px; background: var(--fp-box-text); box-shadow: inset 0 0 0 1px var(--fp-groove-edge); }
+.fp-fader[data-kind='noise'] .fp-fader__track { inline-size: 5px; block-size: 66px; border-radius: 2.5px; background: var(--fp-groove); box-shadow: inset 0 0 0 1px var(--fp-groove-edge); }
 .fp-fader[data-kind='noise'] .fp-fader__handle {
   inset-block-start: calc(7.5px + (1 - var(--fill, 0)) * 72px);
   inline-size: 16px;
@@ -1846,6 +1846,29 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope__dot { display: none; }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
 .fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/*
+ * A row of modes — the filter's three — spread across its panel rather than placed at three
+ * measured points: the reference's font is condensed and ours is not, so fixed points put uneven
+ * gaps between the pairs. The badge and its word are one control, which is also a bigger target.
+ */
+.fp-modes { position: absolute; display: flex; align-items: center; justify-content: space-between; block-size: 16px; }
+.fp-modes .fp-badge, .fp-modes .fp-text { position: static; translate: none; }
+.fp-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fp-mode .fp-text { color: var(--fp-title); }
+.fp-mode:hover .fp-text, .fp-mode[aria-checked='true'] .fp-text { color: var(--fp-text-hover); }
+.fp-mode:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
 /* The performer's row: bars drawn with the pointer, the read line over them in the performer's colour. */
 .fp-pattern { overflow: hidden; background: var(--fp-wheel); }

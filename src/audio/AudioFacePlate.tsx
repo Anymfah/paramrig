@@ -8,6 +8,7 @@ import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
 import { LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
+import { waveAt } from '@/audio/dsp/osc'
 import type { PerformerShape } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
 import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
@@ -260,6 +261,28 @@ function Badge({ x, y, kind, selected, onClick, label, tab, hint, children }: {
   return <span className="fp-badge" data-kind={kind} style={at(x, y)} aria-hidden="true">{children}</span>
 }
 
+/**
+ * A row of modes — a badge and its word, each pair one control — spread evenly across the width
+ * it is given. The reference places its three at three measured points, which comes out even only
+ * in the reference's own condensed face; ours left a wider gap on one side than the other.
+ */
+function Modes({ x, y, w, label, options }: {
+  x: number; y: number; w: number; label: string
+  options: { badge: string; word: string; on: boolean; onPick: () => void; hint: string }[]
+}) {
+  const at = useAt()
+  return (
+    <span className="fp-modes" role="radiogroup" aria-label={label} style={{ ...at(x, y - 8), width: w }}>
+      {options.map((option) => (
+        <button type="button" key={option.word} className="fp-mode" role="radio" aria-checked={option.on} aria-label={option.word} data-hint={option.hint} onClick={option.onPick}>
+          <span className="fp-badge" data-kind="circle" aria-hidden="true">{option.badge}</span>
+          <span className="fp-text" data-kind="title" data-u={option.on || undefined} aria-hidden="true">{option.word}</span>
+        </button>
+      ))}
+    </span>
+  )
+}
+
 /** A positioned block, placed by its top-left corner in plate coordinates. */
 function Block({ x, y, w, h, className, off, hint, children }: { x: number; y: number; w: number; h: number; className: string; off?: boolean; hint?: string; children: ReactNode }) {
   const at = useAt()
@@ -385,14 +408,37 @@ type Wave = typeof WAVES[number]
 const WAVE_NAMES: Record<string, string> = { sine: 'Sine', triangle: 'Tri', saw: 'Saw', square: 'SQ' }
 const waveOf = (value: unknown): Wave => (typeof value === 'string' && (WAVES as readonly string[]).includes(value) ? value as Wave : 'sine')
 
-/** The wave on the face of a hero dial: one thin light line across the body. */
-function WaveGlyph({ kind, wave }: { kind: unknown; wave: unknown }) {
+/**
+ * The wave on the face of a hero dial: a slice of the oscillator, drawn by the function that
+ * renders it.
+ *
+ * The reference shows a wavetable here and morphs it as its position knob turns. This shows the
+ * real thing instead: a fixed window of the sound, so the pitch dial it sits on changes how many
+ * cycles fall in the window, Width changes the duty of a pulse, and PM and the ratio bend the
+ * shape — every one of them a parameter the renderer reads, drawn here by `waveAt`, the function
+ * the renderer reads it with. It is not a picture of a wave; it is the wave.
+ */
+function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: number, fmRatio: number): string {
+  const points = 220
+  const steps: string[] = []
+  for (let at = 0; at <= points; at += 1) {
+    const along = at / points
+    const phase = along * cycles + (fmIndex / (Math.PI * 2)) * Math.sin(2 * Math.PI * fmRatio * along * cycles)
+    const value = waveAt(wave, phase - Math.floor(phase), 0, pulseWidth)
+    steps.push(`${at === 0 ? 'M' : 'L'}${(1 + along * 44).toFixed(2)} ${(11.5 - value * 9.5).toFixed(2)}`)
+  }
+  return steps.join(' ')
+}
+
+/** How much of the sound the glyph shows: an octave of pitch is a doubling of the cycles in it. */
+const cyclesAt = (pitch: number) => Math.min(8, Math.max(0.5, pitch / 220))
+
+function WaveGlyph({ kind, wave, pulseWidth = 0.5, pitch = 440, fmIndex = 0, fmRatio = 1 }: {
+  kind: unknown; wave: unknown; pulseWidth?: number; pitch?: number; fmIndex?: number; fmRatio?: number
+}) {
   const d = kind === 'noise'
     ? 'M1 11 L4 4 L7 16 L10 7 L13 14 L16 3 L19 13 L22 8 L25 17 L28 5 L31 12 L34 6 L37 15 L40 9 L43 11'
-    : wave === 'triangle' ? 'M1 11.5 L12 2 L34 21 L45 11.5'
-    : wave === 'saw' ? 'M1 15 L11 11 L11 2 L45 14 L45 11.5'
-    : wave === 'square' ? 'M1 11.5 L1 2 L23 2 L23 21 L45 21 L45 11.5'
-    : 'M1 11.5 C8 -3 16 -3 23 11.5 S38 26 45 11.5'
+    : wavePath(waveOf(wave), pulseWidth, cyclesAt(pitch), fmIndex, fmRatio)
   return (
     <svg viewBox="0 0 46 23" className="fp-waveglyph">
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -823,13 +869,13 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={32} y={59.5} kind="title">Pitch</Text>
       <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
       <Text x={32} y={104}>Arp Ratio</Text>
-      <Knob ctx={ctx} x={32} y={137} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
-      <Text x={32} y={156}>Arp At</Text>
-      <Knob ctx={ctx} x={32} y={189} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
-      <Text x={32} y={208}>Detune</Text>
-      <Knob ctx={ctx} x={32} y={241} id={L(f, 'source.detune')} label="Detune" size="sm" />
-      <Text x={31.8} y={261}>Time</Text>
-      <Knob ctx={ctx} x={31.5} y={298.7} id="duration" label="Time" tone="light" />
+      <Knob ctx={ctx} x={32} y={138} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
+      <Text x={32} y={160}>Arp At</Text>
+      <Knob ctx={ctx} x={32} y={194} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
+      <Text x={32} y={216}>Detune</Text>
+      <Knob ctx={ctx} x={32} y={250} id={L(f, 'source.detune')} label="Detune" size="sm" />
+      <Text x={31.8} y={272}>Time</Text>
+      <Knob ctx={ctx} x={31.5} y={306} id="duration" label="Time" tone="light" />
     </Panel>
     ),
     osc: (
@@ -846,7 +892,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {/* oscillator 1 */}
       <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
       {sideColumn(0, 104)}
-      <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} />} />
+      <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} />} />
       <Text x={166.9} y={184}>Width</Text>
       <Text x={240.7} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
@@ -854,7 +900,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
       {/* oscillator 2 */}
       <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
-      <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} />} />
+      <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(1, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(1, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(1, 'source.fmRatio'), 1)} />} />
       <Text x={409.3} y={184}>Width</Text>
       <Text x={482} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
@@ -910,22 +956,19 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Knob ctx={ctx} x={819} y={138} id={L(f, 'resonator.spread')} label="Spread" size="sm" />
       <Text x={777} y={168.5}>Amount</Text>
       <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="Amount" />
-      <Text x={739.9} y={257}>Freq</Text>
-      <Text x={811.4} y={257}>Ring</Text>
-      <Knob ctx={ctx} x={739.9} y={298.4} id={L(f, 'resonator.frequency')} label="Freq" />
-      <Knob ctx={ctx} x={811.4} y={298.4} id={L(f, 'resonator.decay')} label="Ring" />
+      <Text x={739.9} y={263.6}>Freq</Text>
+      <Text x={811.4} y={263.6}>Ring</Text>
+      <Knob ctx={ctx} x={739.9} y={305} id={L(f, 'resonator.frequency')} label="Freq" />
+      <Knob ctx={ctx} x={811.4} y={305} id={L(f, 'resonator.decay')} label="Ring" />
     </Panel>
     ),
     filter: (
     <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
-      <span role="radiogroup" aria-label="Filter mode">
-        <Badge x={868.5} y={65.5} kind="circle">A</Badge>
-        <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')} hint="A low-pass filter: darkens. Click again for no filter.">Low</Text>
-        <Badge x={921} y={65.5} kind="circle">B</Badge>
-        <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')} hint="A high-pass filter: thins. Click again for no filter.">High</Text>
-        <Badge x={973.5} y={65.5} kind="circle">C</Badge>
-        <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')} hint="A band-pass filter: keeps a band around the cutoff. Click again for no filter.">Band</Text>
-      </span>
+      <Modes x={860.5} y={65.5} w={153} label="Filter mode" options={[
+        { badge: 'A', word: 'Low', on: filterKind === 'lowpass', onPick: () => setFilter('lowpass'), hint: 'A low-pass filter: darkens. Click again for no filter.' },
+        { badge: 'B', word: 'High', on: filterKind === 'highpass', onPick: () => setFilter('highpass'), hint: 'A high-pass filter: thins. Click again for no filter.' },
+        { badge: 'C', word: 'Band', on: filterKind === 'bandpass', onPick: () => setFilter('bandpass'), hint: 'A band-pass filter: keeps a band around the cutoff. Click again for no filter.' },
+      ]} />
       <Text x={900.5} y={79.5}>Cutoff</Text>
       <Text x={972.4} y={80}>Reso</Text>
       <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
@@ -934,10 +977,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={972.7} y={168.5}>Drive</Text>
       <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
       <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
-      <Text x={892.6} y={275}>Bits</Text>
-      <Text x={980.7} y={273.5}>Crush</Text>
-      <Knob ctx={ctx} x={892.6} y={306.9} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
-      <Knob ctx={ctx} x={980.7} y={306.8} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
+      <Text x={892.6} y={282.1}>Bits</Text>
+      <Text x={980.7} y={280.7}>Crush</Text>
+      <Knob ctx={ctx} x={892.6} y={314} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
+      <Knob ctx={ctx} x={980.7} y={314} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
     </Panel>
     ),
     amp: (
@@ -945,42 +988,42 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={1053.5} y={60} kind="title">Amp</Text>
       <Text x={1053.5} y={83.5}>Level</Text>
       <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
-      <Text x={1053.5} y={160.5}>Width</Text>
-      <Knob ctx={ctx} x={1053.3} y={198} id="fx.width" label="Width" tone="light" />
-      <Text x={1053.5} y={224.5}>Limit</Text>
-      <Knob ctx={ctx} x={1053.6} y={262} id="master.limiter" label="Limit" tone="light" />
-      <Text x={1053.5} y={280.5}>Tone</Text>
-      <Knob ctx={ctx} x={1053.6} y={318} id="fx.tone" label="Tone" tone="light" />
+      <Text x={1053.5} y={145.5}>Width</Text>
+      <Knob ctx={ctx} x={1053.3} y={183} id="fx.width" label="Width" tone="light" />
+      <Text x={1053.5} y={207.5}>Limit</Text>
+      <Knob ctx={ctx} x={1053.6} y={245} id="master.limiter" label="Limit" tone="light" />
+      <Text x={1053.5} y={269.5}>Tone</Text>
+      <Knob ctx={ctx} x={1053.6} y={307} id="fx.tone" label="Tone" tone="light" />
     </Panel>
     ),
     fx: (
     <Panel x={1090.5} y={54} w={159.5} h={288} label="FX" gap={1.5}>
       <Badge x={1100.5} y={65} kind="square">X</Badge>
       <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
-      <Text x={1118} y={80}>Rate</Text>
-      <Text x={1169.5} y={80}>Mix</Text>
-      <Text x={1222} y={80}>Depth</Text>
-      <Knob ctx={ctx} x={1117.8} y={122} id="fx.flangerRate" label="Flanger rate" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={122} id="fx.flangerMix" label="Flanger mix" />
-      <Knob ctx={ctx} x={1222} y={122} id="fx.flangerDepth" label="Flanger depth" size="sm" />
-      <Line x={1090.5} y={143} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-      <Badge x={1100.5} y={154} kind="square">Y</Badge>
-      <Text x={1110} y={149} align="left" kind="title">Delay</Text>
-      <Text x={1118} y={172.5}>Time</Text>
-      <Text x={1169.5} y={172.5}>Mix</Text>
-      <Text x={1222} y={172.5}>Feed</Text>
-      <Knob ctx={ctx} x={1117.8} y={210.4} id="fx.delayTime" label="Delay time" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={210.3} id="fx.delayMix" label="Delay mix" />
-      <Knob ctx={ctx} x={1222} y={210.4} id="fx.delayFeedback" label="Delay feedback" size="sm" />
-      <Line x={1090.5} y={232} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-      <Badge x={1100.5} y={243} kind="square">Z</Badge>
-      <Text x={1110} y={238} align="left" kind="title">Reverb</Text>
-      <Text x={1118} y={261}>Size</Text>
-      <Text x={1169.5} y={261}>Mix</Text>
-      <Text x={1222} y={261}>Damp</Text>
-      <Knob ctx={ctx} x={1117.8} y={298.8} id="fx.reverbSize" label="Reverb size" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={298.8} id="fx.reverbMix" label="Reverb mix" />
-      <Knob ctx={ctx} x={1222} y={298.8} id="fx.reverbDamping" label="Reverb damping" size="sm" />
+      <Text x={1118} y={78}>Rate</Text>
+      <Text x={1169.5} y={78}>Mix</Text>
+      <Text x={1222} y={78}>Depth</Text>
+      <Knob ctx={ctx} x={1117.8} y={116} id="fx.flangerRate" label="Flanger rate" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={116} id="fx.flangerMix" label="Flanger mix" />
+      <Knob ctx={ctx} x={1222} y={116} id="fx.flangerDepth" label="Flanger depth" size="sm" />
+      <Line x={1090.5} y={150} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+      <Badge x={1100.5} y={161} kind="square">Y</Badge>
+      <Text x={1110} y={156} align="left" kind="title">Delay</Text>
+      <Text x={1118} y={174}>Time</Text>
+      <Text x={1169.5} y={174}>Mix</Text>
+      <Text x={1222} y={174}>Feed</Text>
+      <Knob ctx={ctx} x={1117.8} y={212} id="fx.delayTime" label="Delay time" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={212} id="fx.delayMix" label="Delay mix" />
+      <Knob ctx={ctx} x={1222} y={212} id="fx.delayFeedback" label="Delay feedback" size="sm" />
+      <Line x={1090.5} y={246} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
+      <Badge x={1100.5} y={257} kind="square">Z</Badge>
+      <Text x={1110} y={252} align="left" kind="title">Reverb</Text>
+      <Text x={1118} y={270}>Size</Text>
+      <Text x={1169.5} y={270}>Mix</Text>
+      <Text x={1222} y={270}>Damp</Text>
+      <Knob ctx={ctx} x={1117.8} y={308} id="fx.reverbSize" label="Reverb size" size="sm" />
+      <Knob ctx={ctx} x={1169.9} y={308} id="fx.reverbMix" label="Reverb mix" />
+      <Knob ctx={ctx} x={1222} y={308} id="fx.reverbDamping" label="Reverb damping" size="sm" />
     </Panel>
     ),
   }
@@ -1102,11 +1145,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`} gap={SLOT_GAP[slot]}>
             <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
             <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
-            <Text x={70.9 + o} y={Y(29.5)}>Shape</Text>
-            <Text x={257.5 + o} y={Y(29.5)}>Sustain</Text>
+            <Text x={95.65 + o} y={Y(29.5)}>Shape</Text>
+            <Text x={232.45 + o} y={Y(29.5)}>Sustain</Text>
             <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
-            <Knob ctx={ctx} x={71.7 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
-            <Knob ctx={ctx} x={256.4 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
+            <Knob ctx={ctx} x={95.65 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
+            <Knob ctx={ctx} x={232.45 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
             <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
             <Text x={96 + o} y={Y(116)}>A</Text>
             <Text x={232.4 + o} y={Y(115.5)}>D</Text>
@@ -1125,7 +1168,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                 <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
               ) : null}
             </Block>
-            <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+            <Box x={10 + o} y={Y(246)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
             <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
               <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
             </Block>
