@@ -1685,3 +1685,30 @@
 .fp .audio-fader__fill { background: #666; opacity: 1; }
 .fp .audio-fader__value { color: var(--fp-text); font-size: 0.625rem; }
 .fp .audio-fader__label { display: none; }
+
+/*
+ * The envelope's curve, where the reference has its Shape dial. The shared curve control is an
+ * inspector row — preset grid, exact coordinates, a head — and the plate wants the drawn curve
+ * alone, at a dial's footprint. Same trim the stages had; scoped to the plate.
+ */
+.fp-shape { display: inline-flex; flex-direction: column; align-items: center; gap: 0.125rem; }
+.fp-shape .control--curve .curve-presets,
+.fp-shape .control--curve .curve-field__exact,
+.fp-shape .control--curve .control__head > *:not(.curve-field__canvas):not(svg) { display: none; }
+.fp-shape .control--curve { inline-size: 3rem; }
+.fp-shape .control--curve .control__head { block-size: auto; padding: 0; }
+.fp-shape .control--curve svg,
+.fp-shape .control--curve canvas { inline-size: 3rem; block-size: 2.2rem; }
+.fp-shape::after { content: 'Shape'; color: var(--fp-text); font-size: 0.6875rem; line-height: 1.1; }
+
+/* The two LFOs in the reference's second and third modulator slots. */
+.fp-mod[data-off] { opacity: 0.55; }
+.fp-mod__title .fp-toggle { margin-inline-start: auto; }
+.fp-mod__shape { display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
+.fp-mod__shape .fp-choice__item { min-inline-size: 1.4rem; text-align: center; font-size: 0.8rem; line-height: 1; padding-block: 0.2rem; }
+.fp-mod__target { display: flex; flex-direction: column; gap: 0.25rem; min-inline-size: 7rem; }
+.fp-mod__target .control { min-inline-size: 0; }
+.fp-mod__target .control__label,
+.fp-mod__target label { display: none; }
+.fp-mod__display .audio-lfo-shape,
+.fp-mod__display > svg { block-size: 100%; min-block-size: 3rem; }

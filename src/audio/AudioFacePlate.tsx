@@ -3,6 +3,7 @@ import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { AudioKnob } from '@/audio/AudioKnob'
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
+import { AudioLfoShape } from '@/audio/AudioLfoShape'
 import { ParameterField } from '@/ui/ParameterField'
 import { LAYER_COLOURS } from '@/audio/profiles'
 import { LAYER_COUNT } from '@/audio/fields'
@@ -332,14 +333,36 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} {...gesture} />
           </div>
         </section>
-        <section className="fp-mod" aria-label="Modulation envelope">
-          <h2 className="fp-mod__title">Modulator 2 <span className="fp-mod__name">Modulation Envelope</span></h2>
-          <p className="fp-mod__empty">Not in this instrument yet. Its slot is drawn so the panel keeps the reference's shape.</p>
-        </section>
-        <section className="fp-mod" aria-label="Exciter envelope">
-          <h2 className="fp-mod__title">Modulator 3 <span className="fp-mod__name">Exciter Envelope</span></h2>
-          <p className="fp-mod__empty">Not in this instrument yet.</p>
-        </section>
+        {[0, 1].map((index) => {
+          const id = (tail: string) => `lfos[${index}].${tail}`
+          const target = ctx.byId.get(id('target'))
+          return (
+            <section className="fp-mod" key={index} aria-label={`LFO ${index + 1}`} data-off={value(id('enabled')) === false || undefined}>
+              <h2 className="fp-mod__title">
+                Modulator {index + 2} <span className="fp-mod__name">Switcher LFO</span>
+                <Toggle ctx={ctx} id={id('enabled')} label="On" />
+              </h2>
+              <div className="fp-mod__knobs">
+                <Knob ctx={ctx} id={id('rate')} label="Rate" size="md" />
+                <span className="fp-mod__shape">
+                  <span className="fp-label">Shape</span>
+                  <Choice ctx={ctx} id={id('shape')} options={[{ value: 'sine', label: '∿' }, { value: 'triangle', label: '⋀' }, { value: 'square', label: '⊓' }, { value: 'saw', label: '⋰' }, { value: 'noise', label: '?' }]} />
+                </span>
+                <Knob ctx={ctx} id={id('phase')} label="Delay" size="sm" />
+                <Knob ctx={ctx} id={id('depth')} label="LFO Level" size="md" tone="light" />
+              </div>
+              <div className="fp-mod__display">
+                <span className="fp-mod__target">
+                  <span className="fp-label fp-label--u">Target</span>
+                  {target ? (
+                    <ParameterField param={target} value={value(id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+                  ) : null}
+                </span>
+                <AudioLfoShape index={index} values={values} duration={duration} />
+              </div>
+            </section>
+          )
+        })}
       </div>
     </div>
   )
