@@ -1409,10 +1409,12 @@
   --fp-hero: var(--surface-overlay); --fp-hero-edge: color-mix(in srgb, var(--surface-overlay) 86%, var(--text-primary)); --fp-hero-rim: var(--fp-edge); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
   --fp-macro-top: var(--surface-overlay); --fp-macro-bottom: var(--surface-raised); --fp-macro-hand: var(--accent);
   --fp-light-top: var(--text-secondary); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 72%, var(--surface)); --fp-light-hand: var(--surface);
-  --fp-groove-edge: var(--fp-edge); --fp-red: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
-  --fp-src-p: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-src-e: color-mix(in srgb, var(--accent) 85%, var(--text-secondary)); --fp-src-l: color-mix(in srgb, var(--success) 65%, var(--text-primary)); --fp-src-l-edge: color-mix(in srgb, var(--success) 65%, var(--text-primary)); --fp-src-t: color-mix(in srgb, var(--danger) 65%, var(--text-primary)); --fp-src-v: color-mix(in srgb, var(--danger) 65%, var(--text-primary));
+  --fp-groove-edge: var(--fp-edge); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
+  /* The colours that mean something keep their hue whatever the look: a macro's red, an envelope's blue, an LFO's green, the strip's amber. */
+  --fp-red: #e5484d; --fp-red-on-light: #e5484d;
+  --fp-src-p: #efa807; --fp-src-e: #5b8def; --fp-src-l: #7ccf5a; --fp-src-l-edge: #5fae3f; --fp-src-t: #b07bd6; --fp-src-v: #e07a95;
   --fp-slot: var(--surface-overlay); --fp-slot-edge: var(--border-strong); --fp-slot-open: var(--surface-raised); --fp-slot-filled: var(--surface-inset);
-  --fp-amber: color-mix(in srgb, var(--warning) 60%, var(--text-primary)); --fp-amber-dim: color-mix(in srgb, var(--warning) 45%, var(--text-muted)); --fp-amber-bright: var(--accent);
+  --fp-amber: #e0a020; --fp-amber-dim: #b7851a; --fp-amber-bright: #f2b038;
   --fp-plot-fill: color-mix(in srgb, var(--accent) 18%, var(--surface-raised)); --fp-plot-line: var(--accent); --fp-wheel: var(--surface); --fp-wheel-hover: var(--surface-overlay); --fp-wheel-top: var(--surface-overlay);
   --fp-icon: var(--text-secondary); --fp-icon-cut: var(--surface-raised); --fp-bracket: var(--rule);
   --fp-knob-shadow: 0 5px 9px -2px color-mix(in srgb, var(--carbon) 55%, transparent);
@@ -1424,10 +1426,18 @@
   --fp-text-scale: 0.95;
   --fp-read-scale: 0.9;
 }
-/* On the light theme a knob casts a lighter shadow, as everything in the app does. */
-:root[data-theme='light'] .fp-stage[data-skin='paramrig'] { --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent); }
+/* On the light theme a knob casts a lighter shadow, as everything in the app does, and the meaningful colours deepen to read on chalk; the light knobs are dark there, so a macro's number on one is a light red. */
+:root[data-theme='light'] .fp-stage[data-skin='paramrig'] {
+  --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent);
+  --fp-red: #c8232a; --fp-red-on-light: #ffb4a8; --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; --fp-src-l-edge: #35801a; --fp-src-t: #8a4fb5; --fp-src-v: #c2456a;
+  --fp-amber: #b8860b; --fp-amber-dim: #9a6f08; --fp-amber-bright: #d99a12;
+}
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) .fp-stage[data-skin='paramrig'] { --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent); }
+  :root:not([data-theme='dark']) .fp-stage[data-skin='paramrig'] {
+    --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent);
+    --fp-red: #c8232a; --fp-red-on-light: #ffb4a8; --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; --fp-src-l-edge: #35801a; --fp-src-t: #8a4fb5; --fp-src-v: #c2456a;
+    --fp-amber: #b8860b; --fp-amber-dim: #9a6f08; --fp-amber-bright: #d99a12;
+  }
 }
 .fp-stage[data-skin='paramrig'] .fp-read { letter-spacing: -0.03em; }
 /* The app's look draws its knobs by its own tokens: one light from above, the dark of the surfaces below. */
@@ -1435,8 +1445,8 @@
   background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-edge) 100%);
   box-shadow: 0 0 0 1px var(--fp-edge), inset 0 1px 0 var(--fp-knob-light), inset 0 -1px 0 color-mix(in srgb, var(--carbon) 35%, transparent), var(--fp-knob-shadow);
 }
-/* A macro's number on a light knob reads in the plate's ground colour: dark on the dark theme's light disc, light on the light theme's dark one. */
-.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--surface); }
+/* A macro's number stays red on a light knob too; on the light theme those knobs are dark, and the red is a light one. */
+.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--fp-red-on-light); }
 
 @font-face {
   font-family: 'Roboto';
@@ -1576,7 +1586,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob[data-dots]::before, .fp-knob[data-dots]::after { content: ''; position: absolute; inline-size: 2.5px; block-size: 2.5px; border-radius: 50%; background: #6e6e6e; inset-block-start: calc(85.36% - 1.25px); }
 .fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
 .fp-knob[data-dots]::after { inset-inline-start: calc(85.36% - 1.25px); }
-.fp-knob__ring { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; display: block; }
+/* The arc runs on the ring's own edge; without visible overflow the outer half of its stroke is cut flat. */
+.fp-knob__ring { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; display: block; overflow: visible; }
 .fp-knob__track { fill: none; stroke: var(--ringc); stroke-width: 1; vector-effect: non-scaling-stroke; }
 /* A modulator on the control: a coloured stretch of the arc either side of the value, and the arc
    itself becomes a handle for how far it swings. */
