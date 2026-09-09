@@ -73,17 +73,16 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
   })
 
-  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
-    const user = userEvent.setup()
+  it('says what a modulator is doing, and that it is doing it to nothing yet', () => {
     open(arcadeCoin().id)
-    await user.click(screen.getByRole('tab', { name: 'Modulation' }))
-    const drawer = screen.getByRole('region', { name: 'Modulation' })
-    // Both modulators are on screen now rather than one at a time, so both say it.
-    expect(within(drawer).getAllByText('Not assigned')).toHaveLength(2)
-    expect(within(drawer).getAllByText('Target')).toHaveLength(2)
-    expect(within(drawer).getAllByText('Depth')).toHaveLength(2)
+    // The LFOs sit in the reference's second and third modulator slots, on the plate itself.
+    for (const name of ['LFO 1', 'LFO 2']) {
+      const panel = screen.getByRole('region', { name })
+      expect(within(panel).getByText('Target')).toBeInTheDocument()
+      expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
+    }
     // The routing bar answers the across-the-room question without opening anything.
-    const routing = within(drawer).getByRole('list', { name: 'Routing' })
+    const routing = screen.getByRole('list', { name: 'Routing' })
     expect(within(routing).getAllByRole('listitem')).toHaveLength(2)
     expect(within(routing).getAllByText('not assigned')).toHaveLength(2)
   })

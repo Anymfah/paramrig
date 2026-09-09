@@ -1,5 +1,7 @@
 import { memo } from 'react'
 import { NavRailHead } from '@/shell/NavRailHead'
+import { WaveformView } from '@/audio/WaveformView'
+import type { RadialLayer } from '@/rigs/extended-types'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
@@ -16,13 +18,19 @@ import type { AudioPatch } from '@/audio/types'
  * The grid of waveform cards is still its own view. This is for reaching a sound you can name;
  * that is for not knowing and looking.
  */
-function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate }: {
+function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wave }: {
   current: string
   snapshots: AudioSnapshot[]
   compact: boolean
   inert: boolean
   onPatch: (patch: AudioPatch, id: string) => void
   onNavigate: () => void
+  /**
+   * The waveform, at the foot of the rail. The reference keeps its top bar to one row and has no
+   * picture of the sound at all; this one keeps the picture, but out of the bar and in the column
+   * that belongs to the document, where it does not cost the face-plate a pixel of height.
+   */
+  wave?: { samples: Float32Array; head: number | null; profiles: RadialLayer[]; label: string }
 }) {
   const choose = (patch: AudioPatch, id: string) => {
     onPatch(patch, id)
@@ -31,6 +39,7 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate }: 
   return (
     <nav className="nav-rail audio-library scroll-area" aria-label="Sounds" data-compact={compact || undefined} inert={inert}>
       <NavRailHead compact={compact} noun="sounds" onNavigate={onNavigate} />
+      <div className="audio-library__scroll scroll-area">
       {snapshots.length > 0 ? (
         <div className="audio-library__group">
           <h3 className="audio-library__title">Saved</h3>
@@ -69,6 +78,12 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate }: 
           </ul>
         </div>
       ))}
+      </div>
+      {wave && !compact ? (
+        <div className="audio-library__wave" aria-label="Waveform">
+          <WaveformView samples={wave.samples} label={wave.label} head={wave.head} profiles={wave.profiles} />
+        </div>
+      ) : null}
     </nav>
   )
 }

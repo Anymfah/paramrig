@@ -2,15 +2,16 @@ import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } fr
 import type { ParameterDef } from '@/rigs/types'
 
 /**
- * A knob as a face-plate has one: a dial, its value, its name, and nothing else.
+ * A knob as the reference face-plate draws one.
  *
- * The shared number controller stacks a full inspector row above a dial — label, editable input,
- * reset button, units menu — because in an inspector the value is the task. Squeezing that into a
- * fifty-pixel cell with CSS got the height down and made the type collide, which is the tell that
- * the component was answering a different question. This one is built for the cell it lives in.
+ * Its anatomy, read off a 2000-pixel capture: the name above the dial; a dark body with a soft
+ * highlight and a hairline rim; a thin grey arc standing a little off the body, its swept portion
+ * only slightly lighter and never coloured unless a modulator is pointed at the control; a white
+ * pointer from a third of the radius to the edge; and no number under it — values live in the
+ * readouts at a panel's head, and appear here only while the knob is being used. The first version
+ * put value and name below and an accent-coloured arc around, which is what "still dirty" meant.
  *
- * The gesture is the same one the shared dial teaches, so nothing has to be relearned: drag up or
- * down, hold Shift for precision, double-click to go back to what a new patch has.
+ * The gesture is the shared dial's: drag up or down, Shift to refine, double-click to reset.
  */
 export function AudioKnob({ param, value, onChange, size = 'md', onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
@@ -58,16 +59,16 @@ export function AudioKnob({ param, value, onChange, size = 'md', onGestureStart,
     onGestureEnd?.()
   }
 
-  /** Two significant places on a fine control, none on a coarse one — a jitter of 12.00 cents reads worse than 12. */
   const shown = param.step >= 1 ? value.toFixed(0) : value >= 1000 ? value.toFixed(0) : value.toFixed(2)
 
   return (
     <div className="audio-knob" data-size={size}>
+      {param.label ? <span className="audio-knob__label">{param.label}</span> : null}
       <div
         className="audio-knob__dial"
         role="slider"
         tabIndex={0}
-        aria-label={param.label}
+        aria-label={param.label || param.id}
         aria-valuemin={param.min}
         aria-valuemax={param.max}
         aria-valuenow={value}
@@ -86,10 +87,10 @@ export function AudioKnob({ param, value, onChange, size = 'md', onGestureStart,
           onChange(fromFraction(fraction + (forward ? 1 : -1) * (event.shiftKey ? 0.002 : 0.02)))
         }}
       >
+        <span className="audio-knob__arc" aria-hidden="true" />
         <span className="audio-knob__hand" aria-hidden="true" />
       </div>
-      <output className="audio-knob__value">{shown}</output>
-      <span className="audio-knob__label">{param.label}</span>
+      <output className="audio-knob__value" aria-hidden="true">{shown}</output>
     </div>
   )
 }

@@ -8,14 +8,15 @@ import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioFacePlate } from '@/audio/AudioFacePlate'
-import { AudioDrawer } from '@/audio/AudioDrawer'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioSoundList } from '@/audio/AudioSoundList'
 import { AudioTransport } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
-import { renderPatch } from '@/audio/dsp/render'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
+import { useTransport } from '@/audio/useTransport'
+import { layerProfiles } from '@/audio/profiles'
 import { disposePlayback, playbackRate } from '@/audio/playback'
 import { readAudioPrefs, withAutoPlay, writeAudioPrefs, type AudioMode } from '@/audio/prefs'
 import { PRESETS } from '@/audio/presets'
@@ -34,10 +35,9 @@ const EMPTY = { left: new Float32Array(0), right: new Float32Array(0) }
  * it moves in two places you could not occupy at once. It is a drawer under the instrument now, on
  * screen while you work, the way every synthesiser worth copying arranges it.
  */
-type ViewId = 'instrument' | 'modulation' | 'sounds'
+type ViewId = 'instrument' | 'sounds'
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'instrument', label: 'Instrument' },
-  { id: 'modulation', label: 'Modulation' },
   { id: 'sounds', label: 'Sounds' },
 ]
 
@@ -95,6 +95,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
    */
   const [heard, setHeard] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
   const samples = useMemo(() => (heard ? renderPatch(heard, rate) : EMPTY), [heard, rate])
+  // Playback is owned here rather than in the transport, because the waveform in the rail needs
+  // the same playhead and two of these would be two audio pipelines. Above the early return, as
+  // every hook must be.
+  const transport = useTransport(samples, rate)
+  const mono = useMemo(() => monoSum(samples), [samples])
 
   useEffect(() => () => disposePlayback(), [])
 
@@ -241,6 +246,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }
 
   const exposed = loaded.rig?.parameters.length ?? 0
+  const shownPatch = heard ?? patch
   const began = () => { gestureRef.current = true; capturedRef.current = false }
   const ended = () => {
     gestureRef.current = false
@@ -263,58 +269,47 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           inert={inert}
           onNavigate={onNavigate}
           onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+          wave={{ samples: mono, head: transport.head, profiles: layerProfiles(shownPatch), label: loaded.name }}
         />
       )}
     >
       <h1 className="visually-hidden">{loaded.name}</h1>
-      <div className="workspace-toolbar">
-        <div className="workspace-toolbar__group">
-          <input
-            className="audio-name"
-            aria-label="Patch name"
-            value={name}
-            onChange={(event) => { setDirty(true); setName(event.target.value.slice(0, 120)) }}
-          />
-        </div>
-        <div className="workspace-toolbar__group">
-          <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
-            <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
-          </Tooltip>
-          <Tooltip content={future.length ? 'Redo (⌘⇧Z / Ctrl+Shift+Z)' : 'Nothing to redo'}>
-            <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
-          </Tooltip>
-        </div>
-        {exposed > 0 ? (
-          <div className="workspace-toolbar__group">
-            <Button variant="quiet" size="sm" onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>Tune</Button>
-          </div>
-        ) : null}
-      </div>
-      <AudioTransport
-        samples={samples}
-        sampleRate={rate}
-        name={loaded.name}
-        patch={heard ?? patch}
-        autoPlay={autoPlay}
-        onAutoPlay={setAuto}
-        tools={
-          <AudioSoundBar
-            current={preset}
-            snapshots={snapshots}
-            touched={touched}
-            onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
-            onRemove={forget}
-            onSnapshot={keep}
-            onOverwrite={overwrite}
-            onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
-            onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000))) }}
-          />
-        }
-      />
-      {/* Always in the tree so a screen reader keeps the live region, but no height until it has
-          something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
-      <p className="editor-notice" role="status" aria-label="Editor notice" data-empty={notice.length === 0}>{notice}</p>
-      <div className="audio-body" id="main" tabIndex={-1}>
+      {/*
+        One row, as the reference keeps its top bar. The name, the transport with the sound menu
+        as its tools, the two views, the history, and Tune — where there had been a toolbar, a
+        transport with the waveform in it, and a tab strip, stacked, at a hundred and eighty pixels
+        that the face-plate below needed more than they did.
+      */}
+      <div className="audio-bar">
+        <input
+          className="audio-name"
+          aria-label="Patch name"
+          value={name}
+          onChange={(event) => { setDirty(true); setName(event.target.value.slice(0, 120)) }}
+        />
+        <AudioTransport
+          compact
+          transport={transport}
+          samples={samples}
+          sampleRate={rate}
+          name={loaded.name}
+          patch={shownPatch}
+          autoPlay={autoPlay}
+          onAutoPlay={setAuto}
+          tools={
+            <AudioSoundBar
+              current={preset}
+              snapshots={snapshots}
+              touched={touched}
+              onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+              onRemove={forget}
+              onSnapshot={keep}
+              onOverwrite={overwrite}
+              onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
+              onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000))) }}
+            />
+          }
+        />
         <div className="audio-views" role="tablist" aria-label="Views">
           {VIEWS.map((entry) => (
             <button
@@ -340,17 +335,24 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             </button>
           ))}
         </div>
+        <div className="audio-bar__history">
+          <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
+            <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
+          </Tooltip>
+          <Tooltip content={future.length ? 'Redo (⌘⇧Z / Ctrl+Shift+Z)' : 'Nothing to redo'}>
+            <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
+          </Tooltip>
+        </div>
+        {exposed > 0 ? (
+          <Button variant="quiet" size="sm" onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>Tune</Button>
+        ) : null}
+      </div>
+      {/* Always in the tree so a screen reader keeps the live region, but no height until it has
+          something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
+      <p className="editor-notice" role="status" aria-label="Editor notice" data-empty={notice.length === 0}>{notice}</p>
+      <div className="audio-body" id="main" tabIndex={-1}>
         <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
-          {view === 'modulation' ? (
-            <AudioDrawer
-              parameters={parameters}
-              values={values}
-              duration={patch.duration}
-              onChange={change}
-              onGestureStart={began}
-              onGestureEnd={ended}
-            />
-          ) : view === 'sounds' ? (
+          {view === 'sounds' ? (
             <AudioPresetsView
               current={preset}
               snapshots={snapshots}

@@ -346,7 +346,6 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               </div>
               <div className="fp-mod__display">
                 <span className="fp-mod__target">
-                  <span className="fp-label fp-label--u">Target</span>
                   {target ? (
                     <ParameterField param={target} value={value(id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
                   ) : null}

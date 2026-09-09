@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useMemo, useState } from 'react'
+import { useTransport } from '@/audio/useTransport'
 import type { ParamValue } from '@/rigs/types'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { AudioTransport } from '@/audio/AudioTransport'
@@ -26,6 +27,7 @@ export function AudioRigPreview({ documentId, values, name }: {
   const patch = useMemo(() => (document ? resolveAudioValues(document, values) : null), [document, values])
   const shown = useDeferredValue(patch)
   const samples = useMemo(() => (shown ? renderPatch(shown, rate) : { left: new Float32Array(0), right: new Float32Array(0) }), [shown, rate])
+  const transport = useTransport(samples, rate)
   const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
 
   const setAuto = useCallback((next: boolean) => {
@@ -38,7 +40,7 @@ export function AudioRigPreview({ documentId, values, name }: {
   }
   return (
     <div className="audio-tune">
-      <AudioTransport samples={samples} sampleRate={rate} name={name} patch={shown ?? undefined} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      <AudioTransport transport={transport} samples={samples} sampleRate={rate} name={name} patch={shown ?? undefined} autoPlay={autoPlay} onAutoPlay={setAuto} />
     </div>
   )
 }

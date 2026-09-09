@@ -1333,77 +1333,120 @@
 .audio-stage[data-stage='root'] { min-inline-size: 7.5rem; }
 
 
-/* The knob cell, built for the cell rather than squeezed into it. */
+/*
+ * The knob, to the reference's anatomy.
+ *
+ * Name above. A dark body with a soft top-left highlight and a hairline rim, ringed by a thin
+ * grey arc that stands a few pixels off the body — track dark, swept portion only a little lighter,
+ * never coloured unless a modulator is pointed at the control. A white pointer from a third of the
+ * radius to the edge. No number under it: the value appears only while the knob is in use, and
+ * floats rather than reflows so the panel does not breathe when it does.
+ */
 .audio-knob {
-  display: flex;
+  --size: 2.2rem;
+  --track: #3a3a3a;
+  --sweep: #8c8c8c;
+  --body-hi: #4c4c4c;
+  --body: #363636;
+  --body-lo: #262626;
+  --rim: #565656;
+  --hand: #efefef;
+  position: relative;
+  display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.0625rem;
+  gap: 0.2rem;
   user-select: none;
+}
+.audio-knob[data-size='lg'] { --size: 4.4rem; }
+.audio-knob[data-size='sm'] { --size: 1.5rem; }
+
+.audio-knob__label {
+  max-inline-size: calc(var(--size) + 2.5rem);
+  color: var(--fp-text, #c9c9c9);
+  font-size: 0.6875rem;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .audio-knob__dial {
-  --size: 2.1rem;
   position: relative;
   inline-size: var(--size);
   block-size: var(--size);
   border-radius: 50%;
-  background: var(--surface-inset);
-  border: 1px solid var(--border-default);
+  background: radial-gradient(circle at 38% 32%, var(--body-hi), var(--body) 55%, var(--body-lo) 100%);
+  box-shadow: inset 0 0 0 1px var(--rim), 0 0 0 1px #171717, 0 1px 2px rgba(0, 0, 0, 0.7);
   cursor: ns-resize;
   touch-action: none;
-  transition: border-color var(--duration-fast) var(--ease-out);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
 }
+.audio-knob__dial:hover { --rim: #6a6a6a; }
+.audio-knob__dial:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 5px; }
 
-.audio-knob[data-size='lg'] .audio-knob__dial { --size: 2.9rem; }
-.audio-knob[data-size='sm'] .audio-knob__dial { --size: 1.6rem; }
-
-.audio-knob__dial:hover { border-color: var(--border-strong); }
-.audio-knob__dial:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-
-/* The arc reads the value from across the room; the hand reads it precisely. */
-.audio-knob__dial::before {
-  content: '';
+/* The arc stands off the body: a ring drawn outside, with a gap of roughly a tenth of the size. */
+.audio-knob__arc {
   position: absolute;
-  inset: -2px;
+  inset: calc(var(--size) * -0.16);
   border-radius: 50%;
-  background: conic-gradient(from 225deg, var(--section, var(--accent)) calc(var(--fraction, 0) * 270deg), transparent 0);
-  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
-  opacity: 0.9;
+  background: conic-gradient(from 225deg, var(--sweep) calc(var(--fraction, 0) * 270deg), var(--track) 0 270deg, transparent 0);
+  mask: radial-gradient(circle, transparent calc(50% - 2.5px), #000 calc(50% - 2.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 2.5px), #000 calc(50% - 2.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
   pointer-events: none;
+}
+.audio-knob[data-size='lg'] .audio-knob__arc {
+  mask: radial-gradient(circle, transparent calc(50% - 3.5px), #000 calc(50% - 3.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 3.5px), #000 calc(50% - 3.5px), #000 calc(50% - 0.5px), transparent calc(50% - 0.5px));
 }
 
 .audio-knob__hand {
   position: absolute;
   inset-inline-start: 50%;
-  inset-block-start: 12%;
+  inset-block-start: 9%;
   inline-size: 2px;
-  block-size: 34%;
+  block-size: 41%;
   margin-inline-start: -1px;
-  background: var(--text-primary);
+  background: var(--hand);
   border-radius: 1px;
-  transform-origin: 50% 115%;
+  transform-origin: 50% 100%;
   transform: rotate(var(--turn, 0deg));
   pointer-events: none;
 }
+.audio-knob[data-size='lg'] .audio-knob__hand { inline-size: 3px; margin-inline-start: -1.5px; }
 
+/* The value floats in only while the knob is in use. */
 .audio-knob__value {
-  color: var(--text-primary);
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-start: 50%;
+  transform: translate(-50%, 0.15rem);
+  padding: 0.0625rem 0.3rem;
+  color: #f2f2f2;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 2px;
   font-size: 0.625rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
-}
-
-.audio-knob__label {
-  max-inline-size: 100%;
-  color: var(--text-muted);
-  font-size: 0.5625rem;
-  line-height: 1.15;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  /* Absent rather than transparent: an absolutely-positioned box counts toward a panel's scroll
+     extent even at opacity zero, and it was reading as a 6 to 13 pixel overflow on every panel
+     whose last row was a knob. */
+  display: none;
+  pointer-events: none;
+  z-index: 2;
 }
+.audio-knob:hover .audio-knob__value,
+.audio-knob:focus-within .audio-knob__value { display: block; }
+
+/* The light finish the reference gives its amplifier and level dials. */
+.fp-knob[data-tone='light'] .audio-knob { --body-hi: #dcdcdc; --body: #bdbdbd; --body-lo: #8a8a8a; --rim: #e4e4e4; --hand: #202020; }
+
+/* Macros carry their name under the dial, as the reference's do; everything else above. */
+.fp-macro .audio-knob__label { order: 2; }
+.fp-macro .audio-knob { --size: 1.35rem; }
 
 .audio-slot[data-size='wide'] { grid-column: 1 / -1; }
 
@@ -1652,30 +1695,6 @@
 .fp-mod__display .audio-envelope { block-size: 100%; }
 .fp-mod__empty { margin: auto; color: var(--fp-dim); font-size: 0.6875rem; text-align: center; }
 
-/* ── Knobs and faders at the reference's sizes and in its finish ─────────── */
-.fp .audio-knob { gap: 0.125rem; }
-.fp .audio-knob__dial {
-  --size: 2.2rem;
-  background: radial-gradient(circle at 50% 35%, #454545, var(--fp-knob) 60%, #262626);
-  border: 1px solid var(--fp-knob-rim);
-  box-shadow: 0 0 0 1px #1a1a1a, 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-.fp .audio-knob[data-size='lg'] .audio-knob__dial { --size: 4.4rem; }
-.fp .audio-knob[data-size='sm'] .audio-knob__dial { --size: 1.6rem; }
-.fp .fp-macro .audio-knob__dial { --size: 1.35rem; }
-/* The arc is a plain grey track until a modulator is pointed at the control. */
-.fp .audio-knob__dial::before {
-  background: conic-gradient(from 225deg, #6a6a6a calc(var(--fraction, 0) * 270deg), #333 0 270deg, transparent 0);
-  inset: -3px;
-  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
-  opacity: 1;
-}
-.fp .audio-knob__hand { background: #eaeaea; inline-size: 2px; block-size: 36%; inset-block-start: 10%; }
-.fp .fp-knob[data-tone='light'] .audio-knob__dial { background: radial-gradient(circle at 50% 35%, #d2d2d2, var(--fp-knob-light) 60%, #8f8f8f); border-color: #d8d8d8; }
-.fp .fp-knob[data-tone='light'] .audio-knob__hand { background: #222; }
-.fp .audio-knob__value { color: var(--fp-text); font-size: 0.625rem; }
-.fp .audio-knob__label { color: var(--fp-text); font-size: 0.6875rem; }
-.fp .fp-macro .audio-knob__value { display: none; }
 .fp-knob-gap { display: inline-block; inline-size: 2.2rem; block-size: 2.2rem; }
 .fp-knob-gap--drawn { inline-size: 1.35rem; block-size: 1.35rem; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #3a3a3a, #262626); border: 1px solid #3a3a3a; }
 .fp-knob-gap[data-size='xs'] { inline-size: 1.35rem; block-size: 1.35rem; }
@@ -1695,6 +1714,47 @@
 .fp-mod__target { display: flex; flex-direction: column; gap: 0.25rem; min-inline-size: 7rem; }
 .fp-mod__target .control { min-inline-size: 0; }
 .fp-mod__target .control__label,
-.fp-mod__target label { display: none; }
+.fp-mod__target label { color: var(--fp-text); font-size: 0.6875rem; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--fp-dim); }
 .fp-mod__display .audio-lfo-shape,
 .fp-mod__display > svg { block-size: 100%; min-block-size: 3rem; }
+
+/*
+ * One bar, as the reference keeps its top row: everything that was stacked above the face-plate —
+ * a toolbar, the transport with the picture in it, a tab strip — in a single line of the height a
+ * control needs. The picture went to the foot of the rail.
+ */
+.audio-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: 3rem;
+  padding: 0 var(--space-3);
+  background: var(--surface-inset);
+  border-block-end: 1px solid var(--rule);
+}
+.audio-bar .audio-name { inline-size: 11rem; flex: none; }
+.audio-bar .audio-transport { flex: 1; min-inline-size: 0; }
+.audio-bar .audio-views { padding: 0; border: 0; }
+.audio-bar .audio-views button { min-block-size: 2rem; padding-inline: var(--space-3); }
+.audio-bar__history { display: flex; gap: var(--space-1); }
+
+/* The transport in one row: no picture, the four figures inline, the tools beside them. */
+.audio-transport[data-compact] { display: flex; align-items: center; gap: var(--space-3); padding: 0; background: transparent; border: 0; }
+.audio-transport[data-compact] .audio-transport__figures { display: flex; gap: var(--space-3); margin: 0; }
+.audio-transport[data-compact] .audio-transport__figures > div { display: flex; gap: 0.3rem; align-items: baseline; }
+.audio-transport[data-compact] .audio-transport__figures dt { font-size: 0.5625rem; }
+.audio-transport[data-compact] .audio-transport__figures dd { font-size: 0.6875rem; }
+.audio-transport[data-compact] .audio-transport__notice { display: none; }
+
+/* The picture at the foot of the rail: pinned, small, the list scrolling above it. The rail itself
+   no longer scrolls — ninety-two names scrolled the picture off the bottom — its list area does. */
+.audio-library { display: flex; flex-direction: column; overflow: hidden; padding: 0; gap: 0; }
+.audio-library__scroll { flex: 1; min-block-size: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-2); overflow-y: auto; }
+.audio-library__wave {
+  flex: none;
+  block-size: 4.5rem;
+  padding: var(--space-2);
+  background: var(--surface-inset);
+  border-block-start: 1px solid var(--rule);
+}
+.audio-library__wave canvas, .audio-library__wave svg { inline-size: 100%; block-size: 100%; }
