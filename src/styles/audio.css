@@ -1473,6 +1473,9 @@
   scrollbar-color: var(--scrollbar-thumb) transparent;
   background: var(--fp-ground);
 }
+/* The plate's hint sits where the app's tooltips sit, in their style, above the control and centred on it. */
+.fp-hint { translate: -50% -100%; }
+
 /* Everything on the plate that answers a pointer answers it in the app's own beat. */
 .fp button.fp-text, .fp .fp-box, .fp .fp-badge, .fp .fp-slot, .fp .fp-read[data-edit], .fp .fp-source__grab, .fp .fp-macro__grab, .fp .fp-knob__slot, .fp .fp-fader__slot {
   transition: color var(--duration-instant) var(--ease-out), background-color var(--duration-instant) var(--ease-out), box-shadow var(--duration-instant) var(--ease-out);
@@ -1852,6 +1855,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   align-items: center;
   gap: 3px;
   inline-size: 105px;
+  min-inline-size: 0;
   max-inline-size: 105px;
   min-block-size: 0;
   block-size: 14.5px;

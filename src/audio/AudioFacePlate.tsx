@@ -1,4 +1,6 @@
-import { Fragment, createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { tooltipDelay } from '@/ui/tooltipDelay'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/AudioKnob'
 import { AudioFader } from '@/audio/AudioFader'
@@ -93,6 +95,32 @@ const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
   return undefined
 }
 
+/* ── Hints ───────────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The line under the pointer. The plate's controls are drawn where the reference draws them and
+ * say no more than it does, which is nothing; so any of them can carry a `data-hint`, and the
+ * plate shows it — one floating line in the app's tooltip style, after the app's tooltip delay,
+ * over the control the pointer or the focus is on. The app's own Tooltip wraps its child in a
+ * span it measures, and a span around an absolutely placed control measures nothing.
+ */
+function Hint({ target }: { target: HTMLElement | null }) {
+  const [shown, setShown] = useState<{ left: number; top: number; text: string } | null>(null)
+  useLayoutEffect(() => {
+    if (!target) { setShown(null); return }
+    const timer = setTimeout(() => {
+      const rect = target.getBoundingClientRect()
+      setShown({ left: rect.left + rect.width / 2, top: rect.top, text: target.dataset.hint ?? '' })
+    }, tooltipDelay())
+    return () => clearTimeout(timer)
+  }, [target])
+  if (!shown || !shown.text || typeof document === 'undefined') return null
+  return createPortal(
+    <div role="tooltip" className="tt fp-hint" data-side="top" data-placed="" style={{ left: shown.left, top: shown.top - 8 }}>{shown.text}</div>,
+    document.body,
+  )
+}
+
 /* ── Placement ───────────────────────────────────────────────────────────────────────────────── */
 
 /** A panel's top-left corner on the plate, so its children can be placed in plate coordinates. */
@@ -119,22 +147,24 @@ function Panel({ x, y, w, h, label, tone, gap, children }: {
 }
 
 /** A word placed by the top of its capitals and, usually, its centre. */
-function Text({ x, y, size = 13, align = 'center', kind, u, onClick, checked, label, children }: {
+function Text({ x, y, size = 13, align = 'center', kind, u, onClick, checked, label, hint, children }: {
   x: number; y: number; size?: number; align?: 'center' | 'left' | 'right'
   kind?: 'label' | 'title' | 'bold' | 'macro' | 'digit' | 'dim' | 'source'
-  u?: boolean; onClick?: () => void; checked?: boolean; label?: string; children: ReactNode
+  u?: boolean; onClick?: () => void; checked?: boolean; label?: string
+  /** A line under the pointer that says what it does. */
+  hint?: string; children: ReactNode
 }) {
   const at = useAt()
   const style = { ...at(x, y - size * CAP), '--size': `${size}px` } as CSSProperties
   if (onClick) {
     return (
-      <button type="button" className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined}
+      <button type="button" className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined} data-hint={hint}
         role={checked === undefined ? undefined : 'radio'} aria-checked={checked} aria-label={label} style={style} onClick={onClick}>
         {children}
       </button>
     )
   }
-  return <span className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined} style={style}>{children}</span>
+  return <span className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined} data-hint={hint} style={style}>{children}</span>
 }
 
 function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, inert, dots }: {
@@ -201,32 +231,32 @@ function Fader({ ctx, x, top, id, label, kind, digit }: { ctx: Ctx; x: number; t
 }
 
 /** The reference's quiet grey box: mid-grey, dark text, a pixel of radius. Lighter when chosen. */
-function Box({ x, y, w, h = 14.5, align = 'center', selected, onClick, label, checked, pressed, children }: {
-  x: number; y: number; w: number; h?: number; align?: 'center' | 'right'; selected?: boolean; onClick?: () => void; label?: string; checked?: boolean; pressed?: boolean; children: ReactNode
+function Box({ x, y, w, h = 14.5, align = 'center', selected, onClick, label, checked, pressed, hint, children }: {
+  x: number; y: number; w: number; h?: number; align?: 'center' | 'right'; selected?: boolean; onClick?: () => void; label?: string; checked?: boolean; pressed?: boolean; hint?: string; children: ReactNode
 }) {
   const at = useAt()
   const style = { ...at(x, y), width: w, height: h, lineHeight: `${h}px` }
   if (onClick) {
-    return <button type="button" className="fp-box" data-align={align} data-selected={selected || undefined} role={checked === undefined ? undefined : 'radio'} aria-checked={checked} aria-pressed={pressed} aria-label={label} style={style} onClick={onClick}>{children}</button>
+    return <button type="button" className="fp-box" data-align={align} data-selected={selected || undefined} data-hint={hint} role={checked === undefined ? undefined : 'radio'} aria-checked={checked} aria-pressed={pressed} aria-label={label} style={style} onClick={onClick}>{children}</button>
   }
   return <span className="fp-box" data-align={align} data-selected={selected || undefined} style={style}>{children}</span>
 }
 
 /** The little light-grey markers: a hexagon, a circle, a square, or the serrated square of a noise generator. */
-function Badge({ x, y, kind, selected, onClick, label, tab, children }: {
-  x: number; y: number; kind: 'hex' | 'circle' | 'square' | 'noise'; selected?: boolean; onClick?: () => void; label?: string; tab?: boolean; children: ReactNode
+function Badge({ x, y, kind, selected, onClick, label, tab, hint, children }: {
+  x: number; y: number; kind: 'hex' | 'circle' | 'square' | 'noise'; selected?: boolean; onClick?: () => void; label?: string; tab?: boolean; hint?: string; children: ReactNode
 }) {
   const at = useAt()
   if (onClick) {
-    return <button type="button" className="fp-badge" data-kind={kind} data-selected={selected || undefined} role={tab ? 'tab' : undefined} aria-selected={tab ? selected : undefined} aria-label={label} style={at(x, y)} onClick={onClick}>{children}</button>
+    return <button type="button" className="fp-badge" data-kind={kind} data-selected={selected || undefined} data-hint={hint} role={tab ? 'tab' : undefined} aria-selected={tab ? selected : undefined} aria-label={label} style={at(x, y)} onClick={onClick}>{children}</button>
   }
   return <span className="fp-badge" data-kind={kind} style={at(x, y)} aria-hidden="true">{children}</span>
 }
 
 /** A positioned block, placed by its top-left corner in plate coordinates. */
-function Block({ x, y, w, h, className, off, children }: { x: number; y: number; w: number; h: number; className: string; off?: boolean; children: ReactNode }) {
+function Block({ x, y, w, h, className, off, hint, children }: { x: number; y: number; w: number; h: number; className: string; off?: boolean; hint?: string; children: ReactNode }) {
   const at = useAt()
-  return <div className={className} style={{ ...at(x, y), width: w, height: h }} data-off={off || undefined}>{children}</div>
+  return <div className={className} style={{ ...at(x, y), width: w, height: h }} data-off={off || undefined} data-hint={hint}>{children}</div>
 }
 
 /** A hairline, placed by its top-left corner. */
@@ -236,8 +266,8 @@ function Line({ x, y, w, h = 1, colour = 'var(--fp-hairline)' }: { x: number; y:
 }
 
 /** A modulator's handle in the routing bar: picked up with the pointer and dropped on a control. */
-function Grab({ x, y, label, held, children, ...handlers }: {
-  x: number; y: number; label: string; held?: boolean; children: ReactNode
+function Grab({ x, y, label, held, hint, children, ...handlers }: {
+  x: number; y: number; label: string; held?: boolean; hint?: string; children: ReactNode
   onPointerDown: (event: React.PointerEvent<HTMLElement>) => void
   onPointerMove?: (event: React.PointerEvent<HTMLElement>) => void
   onPointerUp: (event: React.PointerEvent<HTMLElement>) => void
@@ -245,16 +275,16 @@ function Grab({ x, y, label, held, children, ...handlers }: {
 }) {
   const at = useAt()
   return (
-    <span className="fp-icon fp-source__grab" role="button" tabIndex={-1} aria-label={label} data-held={held || undefined} style={{ ...at(x, y), width: 17.5, height: 14.5 }} {...handlers}>
+    <span className="fp-icon fp-source__grab" role="button" tabIndex={-1} aria-label={label} data-held={held || undefined} data-hint={hint} style={{ ...at(x, y), width: 17.5, height: 14.5 }} {...handlers}>
       {children}
     </span>
   )
 }
 
 /** An icon placed by its centre. */
-function Icon({ x, y, w, h, children, className }: { x: number; y: number; w: number; h: number; children: ReactNode; className?: string }) {
+function Icon({ x, y, w, h, children, className, hint }: { x: number; y: number; w: number; h: number; children: ReactNode; className?: string; hint?: string }) {
   const at = useAt()
-  return <span className={`fp-icon${className ? ` ${className}` : ''}`} style={{ ...at(x, y), width: w, height: h }} aria-hidden="true">{children}</span>
+  return <span className={`fp-icon${className ? ` ${className}` : ''}`} style={{ ...at(x, y), width: w, height: h }} data-hint={hint} aria-hidden="true">{children}</span>
 }
 
 /** How a readout edits its number: the reference's, dragged up and down, doubled-clicked to reset. */
@@ -308,6 +338,7 @@ function Readout({ x, base, mark, value, label, edit }: { x: number; base: numbe
   return (
     <div
       className="fp-read"
+      data-hint="Drag up and down to set it; hold Shift for fine steps; double-click to reset."
       data-edit=""
       role="slider"
       tabIndex={0}
@@ -633,6 +664,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
    * modulator's own panel does the same job for a keyboard.
    */
   const [assigning, setAssigning] = useState<Source | { id: string; kind: 'm'; macro: number } | null>(null)
+  /** The control whose hint is due: the pointer's or the focus's, whichever came last. */
+  const [hinted, setHinted] = useState<HTMLElement | null>(null)
+  const hintOf = (node: EventTarget | null) => ((node as HTMLElement | null)?.closest?.('[data-hint]') as HTMLElement | null) ?? null
+  const hintFrom = (event: SyntheticEvent) => setHinted(hintOf(event.target))
   /** The source whose modulator is on show: with its two neighbours on the wide face, alone on the narrow. */
   const [shown, setShown] = useState(0)
   const page = Math.floor(shown / 3)
@@ -785,8 +820,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {/* the head */}
       {wavePicker(0, 149.5)}
       <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
-        <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1">1</Badge>
-        <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2">2</Badge>
+        <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1" hint="Edit oscillator 1: the pitch, body, filter and amp envelope panels follow the lit layer.">1</Badge>
+        <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2" hint="Edit oscillator 2: the pitch, body, filter and amp envelope panels follow the lit layer.">2</Badge>
       </span>
       <Text x={324} y={60} kind="title">Osc</Text>
       {wavePicker(1, 391.2)}
@@ -815,7 +850,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
       </svg>
       <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
-      <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
+      <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
       <Icon x={204.6} y={314.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} /></Icon>
       <Text x={277.2} y={281}>PM1</Text>
       <Text x={325.5} y={282}>Fall</Text>
@@ -823,7 +858,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Knob ctx={ctx} x={277.2} y={313.9} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
       <Knob ctx={ctx} x={325.5} y={314} id={L(0, 'source.fmFall')} label="Fall" size="sm" />
       <Knob ctx={ctx} x={373.8} y={313.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
-      <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`}>{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
+      <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
       <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} /></Icon>
       <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
     </Panel>
@@ -831,14 +866,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     noise: (
     <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise" gap={16.5}>
       <span role="tablist" aria-label="Noise layer" className="fp-tabs">
-        <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1">1</Badge>
-        <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2">2</Badge>
+        <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1" hint="Edit noise 1: the pitch, body, filter and amp envelope panels follow the lit layer.">1</Badge>
+        <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2" hint="Edit noise 2: the pitch, body, filter and amp envelope panels follow the lit layer.">2</Badge>
       </span>
       <Text x={639} y={59.5} kind="title">Noise</Text>
       <Fader ctx={ctx} x={615} top={87.5} id={L(2, 'gain')} label="Noise 1 level" kind="noise" />
       <Fader ctx={ctx} x={663} top={87.5} id={L(3, 'gain')} label="Noise 2 level" kind="noise" />
-      <Text x={614.7} y={204} u onClick={() => cycleColour(2)} label={`Noise 1 colour: ${colourName(2)}`}>{colourName(2)}</Text>
-      <Text x={661.8} y={204.5} u onClick={() => cycleColour(3)} label={`Noise 2 colour: ${colourName(3)}`}>{colourName(3)}</Text>
+      <Text x={614.7} y={204} u onClick={() => cycleColour(2)} label={`Noise 1 colour: ${colourName(2)}`} hint="The noise colour: white, pink or metallic. Click to step to the next.">{colourName(2)}</Text>
+      <Text x={661.8} y={204.5} u onClick={() => cycleColour(3)} label={`Noise 2 colour: ${colourName(3)}`} hint="The noise colour: white, pink or metallic. Click to step to the next.">{colourName(3)}</Text>
       <Icon x={614.8} y={239.2} w={38} h={29.5}><NoiseBurst seed={1} colour={read(ctx, L(2, 'source.colour'))} /></Icon>
       <Icon x={663.2} y={239} w={38} h={29.5}><NoiseBurst seed={2} colour={read(ctx, L(3, 'source.colour'))} /></Icon>
       <Text x={614.9} y={273}>Pitch</Text>
@@ -868,11 +903,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
       <span role="radiogroup" aria-label="Filter mode">
         <Badge x={868.5} y={65.5} kind="circle">A</Badge>
-        <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')}>Low</Text>
+        <Text x={881} y={60} align="left" kind="title" u={filterKind === 'lowpass'} checked={filterKind === 'lowpass'} onClick={() => setFilter('lowpass')} hint="A low-pass filter: darkens. Click again for no filter.">Low</Text>
         <Badge x={921} y={65.5} kind="circle">B</Badge>
-        <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')}>High</Text>
+        <Text x={932.5} y={60} align="left" kind="title" u={filterKind === 'highpass'} checked={filterKind === 'highpass'} onClick={() => setFilter('highpass')} hint="A high-pass filter: thins. Click again for no filter.">High</Text>
         <Badge x={973.5} y={65.5} kind="circle">C</Badge>
-        <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')}>Band</Text>
+        <Text x={984} y={60} align="left" kind="title" u={filterKind === 'bandpass'} checked={filterKind === 'bandpass'} onClick={() => setFilter('bandpass')} hint="A band-pass filter: keeps a band around the cutoff. Click again for no filter.">Band</Text>
       </span>
       <Text x={900.5} y={79.5}>Cutoff</Text>
       <Text x={972.4} y={80}>Reso</Text>
@@ -942,14 +977,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           {SOURCES.map((source, index) => (
             <li key={source.id} className="fp-source" data-kind={source.kind} data-live="" style={{ marginInlineStart: index % 3 === 0 && index > 0 ? 40.25 : 0 }}>
               {held(source) ? (
-                <Grab x={20.125} y={9.1} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id}
+                <Grab x={20.125} y={9.1} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id} hint={`Drag ${source.id} onto a knob or fader to modulate it. The ones that can take it light up.`}
                   onPointerDown={pickUp(source)} onPointerMove={assigning?.id === source.id ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
                   <MoveIcon />
                 </Grab>
               ) : (
-                <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed"><MoveIcon /></Icon>
+                <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed" hint="E1 is the amp envelope: it shapes the layer's level and stays put."><MoveIcon /></Icon>
               )}
-              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`}>{source.id}</Text>
+              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`} hint={source.kind === 'e' ? `Show envelope ${source.id} below.` : `Show LFO ${source.id} below.`}>{source.id}</Text>
             </li>
           ))}
         </ul>
@@ -987,7 +1022,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
           <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
           <Text x={40.4} y={592} u>Gate</Text>
-          <Block className="fp-plot" x={82} y={595.5} w={318} h={62}>
+          <Block className="fp-plot" x={82} y={595.5} w={318} h={62} hint="The layer's level over time. Drag the handles: attack, hold, decay and sustain, release.">
             <AudioEnvelope layer={f} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
           </Block>
         </Panel>
@@ -1023,13 +1058,13 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
             <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
             <Text x={38.4 + o} y={Y(208)} u>Target</Text>
-            <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5}>
+            <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5} hint="What this envelope moves. Pick a target here, or drag the handle above onto a control.">
               {target ? (
                 <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
               ) : null}
             </Block>
-            <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`}>On</Box>
-            <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on}>
+            <Box x={10 + o} y={Y(246)} w={105} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+            <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
               <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
             </Block>
           </Panel>
@@ -1054,7 +1089,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Text x={36.5 + o} y={Y(104)}>Rate</Text>
             <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
             <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
-            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`}>On</Box>
+            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
             {/* the wheel */}
             <Text x={193 + o} y={Y(30)}>Shape</Text>
             <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
@@ -1065,7 +1100,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Text x={351.5 + o} y={Y(164)}>Phase</Text>
             <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
             {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
-            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5}>
+            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
               {target ? (
                 <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
               ) : null}
@@ -1079,14 +1114,17 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   return (
     <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} data-layout={layout} style={{ '--fp-scale': scale } as CSSProperties}>
       <div className="fp-sizer" style={{ width: box.w * scale, height: box.h * scale }}>
-      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}>
+      <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}
+        onPointerOver={hintFrom} onPointerOut={(event) => { const next = hintOf(event.relatedTarget); if (next !== hinted) setHinted(next) }}
+        onPointerDown={() => setHinted(null)} onFocus={hintFrom} onBlur={() => setHinted(null)}>
+        <Hint target={hinted} />
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band: the seed, then the macros in two groups of eight that wrap as units ═══ */}
         <div className="fp-band" role="group" aria-label="Macros">
           <Origin.Provider value={{ x: 0, y: 0 }}>
             <div className="fp-band__seed" style={{ width: lead }}>
               <Text x={5} y={19.5} align="left" kind="bold">Seed</Text>
-              <Box x={40} y={12} w={62} h={16.5} onClick={() => onChange('seed', Math.floor(Math.random() * 10000))} label={`Seed ${seed}; click for another`}>{seed}</Box>
+              <Box x={40} y={12} w={62} h={16.5} onClick={() => onChange('seed', Math.floor(Math.random() * 10000))} label={`Seed ${seed}; click for another`} hint="The seed of the noise and the jitter. Click for another.">{seed}</Box>
             </div>
             {[0, 1].map((half) => (
               <Fragment key={half}>
@@ -1100,6 +1138,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                       <span className="fp-macro__box">
                         <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={-1}
                           aria-label={`Drag macro ${index + 1} onto a control to assign it${macro.id ? `; double-click to free it from ${macro.label}` : ''}`}
+                          data-hint={macro.id ? `Macro ${index + 1} turns ${macro.label}. Drag the number onto another control to move it; double-click to free it.` : `Drag this number onto any knob or fader: macro ${index + 1} will turn it, and the patch exposes it.`}
                           data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
                           style={{ left: 40.5 - 28.3, top: 19.5 - 13 * CAP }}
                           onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
@@ -1146,7 +1185,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             return (
               <button type="button" key={index} className="fp-slot" data-filled={slot ? '' : undefined} data-active={slot?.active || undefined}
                 style={folded ? { flex: '1 1 0', marginInlineStart: 1 } : { flex: `${index === 0 ? 84 : 89.5} 1 ${index === 0 ? 84 : 89.5}px`, marginInlineStart: index === 0 ? 0 : index === 1 ? 3.5 : 1 }}
-                disabled={!slot} aria-label={slot ? `Kept sound ${index + 1}: ${slot.name}` : `Empty slot ${index + 1}`} onClick={slot?.onPick}>
+                disabled={!slot} aria-label={slot ? `Kept sound ${index + 1}: ${slot.name}` : `Empty slot ${index + 1}`} data-hint={slot ? `${slot.name}. Click to load this kept sound.` : 'Empty. The camera in the bar keeps the sound you have into the next free slot.'} onClick={slot?.onPick}>
                 {index + 1}
               </button>
             )
