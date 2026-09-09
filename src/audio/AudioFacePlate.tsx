@@ -130,6 +130,22 @@ function Readout({ ctx, id, digits = 3, unit }: { ctx: Ctx; id: string; digits?:
     </span>
   )
 }
+const WAVES = ['sine', 'triangle', 'saw', 'square'] as const
+const WAVE_NAMES: Record<string, string> = { sine: 'Sine', triangle: 'Tri', saw: 'Saw', square: 'SQ' }
+
+/** The reference shows the wave as a large icon with its name above; a click steps to the next. */
+function WavePick({ ctx, id }: { ctx: Ctx; id: string }) {
+  const current = read(ctx, id)
+  const wave = typeof current === 'string' && (WAVES as readonly string[]).includes(current) ? current : 'sine'
+  const next = WAVES[(WAVES.indexOf(wave as typeof WAVES[number]) + 1) % WAVES.length] ?? 'sine'
+  return (
+    <button type="button" className="fp-wavepick" aria-label={`Wave: ${WAVE_NAMES[wave]}. Next: ${WAVE_NAMES[next]}`} onClick={() => ctx.onChange(id, next)}>
+      <span className="fp-wavepick__name">{WAVE_NAMES[wave]}</span>
+      <span className="fp-wavepick__icon"><WaveGlyph kind="tone" wave={wave} /></span>
+    </button>
+  )
+}
+
 function Pick({ ctx, name }: { ctx: Ctx; name: string }) {
   return (
     <span className="fp-tabs" role="tablist" aria-label={`${name} layer`}>
@@ -176,7 +192,6 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   const gesture = { onGestureStart, onGestureEnd }
   const L = (index: number, tail: string) => `layers[${index}].${tail}`
   const f = focus
-  const waves = [{ value: 'sine', label: 'Sin' }, { value: 'triangle', label: 'Tri' }, { value: 'saw', label: 'Saw' }, { value: 'square', label: 'SQ' }]
 
   return (
     <div className="fp" role="group" aria-label="Face-plate">
@@ -234,7 +249,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                   </div>
                   <div className="fp-osc__side fp-osc__side--fader">
                     <Fader ctx={ctx} id={L(index, 'gain')} badge={index === 0 ? '2' : '4'} />
-                    <Choice ctx={ctx} id={L(index, 'source.wave')} vertical options={[{ value: 'sine', label: 'PM1' }, { value: 'triangle', label: 'Aux' }, { value: 'saw', label: 'PM2' }]} />
+                    <span className="fp-choice-box"><Choice ctx={ctx} id={L(index, 'source.wave')} vertical options={[{ value: 'sine', label: 'PM1' }, { value: 'triangle', label: 'Aux' }, { value: 'saw', label: 'PM2' }]} /></span>
                   </div>
                   {index === 1 ? (
                     <div className="fp-osc__side">
@@ -249,11 +264,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </div>
           <div className="fp-osc__foot">
             <span className="fp-readout-block fp-readout-block--inline"><output className="fp-readout fp-readout--main">1.000</output></span>
-            <span className="fp-wave"><Choice ctx={ctx} id={L(0, 'source.wave')} options={waves} /></span>
+            <WavePick ctx={ctx} id={L(0, 'source.wave')} />
             <Knob ctx={ctx} id={L(0, 'source.fmIndex')} label="PM1" size="sm" />
             <Knob ctx={ctx} id={L(0, 'source.fmFall')} label="Aux" size="sm" />
             <Knob ctx={ctx} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
-            <span className="fp-wave"><Choice ctx={ctx} id={L(1, 'source.wave')} options={waves} /></span>
+            <WavePick ctx={ctx} id={L(1, 'source.wave')} />
             <span className="fp-readout-block fp-readout-block--inline"><output className="fp-readout fp-readout--main">1.000</output></span>
           </div>
         </section>

@@ -1546,10 +1546,14 @@
 .fp-panel__title {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.375rem;
   margin: 0;
   color: var(--fp-title);
   font-size: 0.8125rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--fp-dim);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -1576,17 +1580,18 @@
 .fp-readout-block { display: flex; flex-direction: column; gap: 2px; }
 .fp-readout-block--inline { flex-direction: row; }
 .fp-readout {
-  padding: 0.0625rem 0.3rem;
-  color: var(--fp-text);
-  background: var(--fp-bg);
-  border: 1px solid var(--fp-line);
+  padding: 0 0.3rem;
+  color: var(--fp-readout);
+  background: #3a3a3a;
+  border: 0;
   border-radius: 2px;
-  font-size: 0.625rem;
+  font-size: 0.6875rem;
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
   text-align: end;
-  min-inline-size: 3rem;
+  min-inline-size: 3.2rem;
 }
-.fp-readout--main { color: var(--fp-readout); font-size: 1.0625rem; font-weight: 600; background: transparent; border: 0; text-align: start; }
+.fp-readout--main { color: var(--fp-readout); font-size: 1.0625rem; font-weight: 400; line-height: 1.1; background: transparent; padding-inline: 0; text-align: start; }
 .fp-readout--main small { margin-inline-start: 0.125rem; font-size: 0.6em; font-weight: 400; }
 
 .fp-row { display: flex; align-items: flex-start; justify-content: space-evenly; gap: 0.25rem; }
@@ -1596,23 +1601,28 @@
 .fp-center { display: flex; justify-content: center; }
 .fp-panel__foot { margin-block-start: auto; display: flex; flex-direction: column; align-items: center; gap: 0.25rem; }
 
-/* The reference's option buttons and toggles: flat, one lit. */
-.fp-choice { display: inline-flex; gap: 1px; flex-wrap: wrap; }
-.fp-choice[data-vertical] { flex-direction: column; }
+/*
+ * The reference's option groups are words, not pills: a column of plain labels with the chosen one
+ * underlined, the rest dimmer. Only the phase-modulation input group sits in a faint box.
+ */
+.fp-choice { display: inline-flex; gap: 0 0.5rem; flex-wrap: wrap; }
+.fp-choice[data-vertical] { flex-direction: column; gap: 0; }
 .fp-choice__item {
-  padding: 0.0625rem 0.35rem;
+  padding: 0 0.125rem;
   color: var(--fp-dim);
-  background: var(--fp-panel-2);
+  background: transparent;
   border: 0;
-  border-radius: 2px;
   font: inherit;
-  font-size: 0.6875rem;
-  line-height: 1.25;
+  font-size: 0.8125rem;
+  line-height: 1.3;
   text-align: start;
   cursor: pointer;
   touch-action: manipulation;
 }
-.fp-choice__item[aria-checked='true'] { color: var(--fp-text); background: var(--fp-line); text-decoration: underline; text-underline-offset: 2px; }
+.fp-choice__item:hover { color: var(--fp-text); }
+.fp-choice__item[aria-checked='true'] { color: var(--fp-text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fp-dim); }
+.fp-choice-box { display: inline-block; padding: 0.125rem 0.25rem; background: var(--fp-panel-2); border-radius: 2px; }
+.fp-choice-box .fp-choice__item { font-size: 0.75rem; line-height: 1.2; }
 .fp-choice__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
 
 .fp-toggle {
@@ -1766,10 +1776,34 @@
 /* The face of an oscillator dial: the wave the source makes, drawn under the pointer. */
 .audio-knob__face {
   position: absolute;
-  inset: 22%;
+  inset: 13%;
   display: grid;
   place-items: center;
   color: #c9c9c9;
   pointer-events: none;
 }
 .fp-waveglyph { inline-size: 100%; block-size: auto; overflow: visible; }
+.audio-knob__face .fp-waveglyph path { stroke-width: 1.3; }
+
+
+/* The fader's handle: a small round cap riding the track at the value, as the reference's does. */
+.audio-fader__handle {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-end: calc(var(--fill, 0) * 100%);
+  inline-size: 0.6rem;
+  block-size: 0.6rem;
+  transform: translate(-50%, 50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #cfcfcf 0 30%, #47474c 32%);
+  box-shadow: 0 0 0 1px #2d2d2d;
+  pointer-events: none;
+}
+.fp .audio-fader__fill { background: transparent; }
+
+/* The wave as an icon with its name above; the reference's PM row shows Sine and Tri this way. */
+.fp-wavepick { display: inline-flex; flex-direction: column; align-items: center; gap: 0.125rem; padding: 0; background: transparent; border: 0; color: var(--fp-text); cursor: pointer; touch-action: manipulation; }
+.fp-wavepick__name { font-size: 0.8125rem; line-height: 1.1; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--fp-dim); }
+.fp-wavepick__icon { inline-size: 2.6rem; block-size: 2.6rem; display: grid; place-items: center; border-radius: 50%; background: #c9c9c9; color: #303030; }
+.fp-wavepick__icon .fp-waveglyph { inline-size: 70%; }
+.fp-wavepick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

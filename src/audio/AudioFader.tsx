@@ -82,6 +82,7 @@ export function AudioFader({ param, value, onChange, onGestureStart, onGestureEn
         }}
       >
         <span className="audio-fader__fill" aria-hidden="true" />
+        <span className="audio-fader__handle" aria-hidden="true" />
       </div>
       <output className="audio-fader__value">{value.toFixed(param.step >= 1 ? 0 : 2)}</output>
       <span className="audio-fader__label">{param.label}</span>
