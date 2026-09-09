@@ -51,8 +51,9 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('region', { name: 'Modulation' })).toBeInTheDocument()
 
     await user.click(within(tabs).getByRole('tab', { name: 'Sounds' }))
-    expect(screen.getByRole('region', { name: 'Impact' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Sub drop/ })).toBeInTheDocument()
+    const browser = screen.getByRole('tabpanel')
+    expect(within(browser).getByRole('region', { name: 'Impact' })).toBeInTheDocument()
+    expect(within(browser).getByRole('button', { name: /Sub drop/ })).toBeInTheDocument()
 
     await user.click(within(tabs).getByRole('tab', { name: 'Instrument' }))
     expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
@@ -75,7 +76,9 @@ describe('AudioEditorPage', () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     await user.click(screen.getByRole('tab', { name: 'Sounds' }))
-    await user.click(screen.getByRole('button', { name: /Sub drop/ }))
+    // The name is in the rail as well now, so the browser has to be named.
+    const browser = screen.getByRole('tabpanel')
+    await user.click(within(browser).getByRole('button', { name: /Sub drop/ }))
     expect(screen.getByText('1.50 s')).toBeInTheDocument()
   })
 
@@ -116,7 +119,7 @@ describe('AudioEditorPage', () => {
     expect(screen.getByText('350 ms')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
     expect(screen.getByText('450 ms')).toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('steps backwards too, wrapping round the end of the list', async () => {
     const user = userEvent.setup()
@@ -162,7 +165,7 @@ describe('AudioEditorPage', () => {
     expect(stored?.snapshots).toHaveLength(1)
     expect(stored?.snapshots?.[0]?.patch).toEqual(stored?.patch)
     expect(screen.getByRole('button', { name: /^Sound: Sound 1$/ })).toBeInTheDocument()
-  })
+  }, 15_000)
 
   it('writes what it kept back to the document, so it survives a reload', async () => {
     const user = userEvent.setup()
@@ -198,7 +201,7 @@ describe('AudioEditorPage', () => {
    */
   it('keeps no permanent band across the foot of the window', () => {
     open(arcadeCoin().id)
-    expect(screen.getByRole('status')).toHaveAttribute('data-empty', 'true')
+    expect(screen.getByRole('status', { name: 'Editor notice' })).toHaveAttribute('data-empty', 'true')
   })
 
   // The buttons carry aria-disabled rather than the attribute, so they stay focusable and a

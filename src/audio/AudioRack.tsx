@@ -4,6 +4,7 @@ import { ParameterField } from '@/ui/ParameterField'
 import { boardGroups } from '@/audio/board'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { LAYER_COLOURS } from '@/audio/profiles'
+import { AudioFader } from '@/audio/AudioFader'
 
 /**
  * The instrument as a signal path rather than as a filing cabinet.
@@ -22,6 +23,31 @@ import { LAYER_COLOURS } from '@/audio/profiles'
  * A layer that is switched off collapses to its own switch. Three lanes of settings that make no
  * sound are three lanes of noise.
  */
+
+/**
+ * Not every control deserves the same amount of face-plate.
+ *
+ * A panel where everything is the same size is a panel with no hierarchy, and the eye has to read
+ * all of it to find the one knob that matters. Every hardware synthesiser sizes its controls by
+ * how often they are reached for: the frequency of a filter is a large dial, its resonance a
+ * smaller one beside it. These are the four sizes and which fields get them.
+ */
+const HERO = ['pitch.start', 'filter.cutoff', 'resonator.frequency', 'source.wave', 'lfos.rate']
+const SMALL = ['pan', 'spread', 'offset', 'jitter', 'phase', 'curve', 'partials', 'bitDepth', 'crush']
+
+/** A level is a height, so the quantities that answer "how much" get a fader instead of a dial. */
+const FADERS = ['gain', 'mix', 'amount', 'depth', 'drive', 'resonance']
+
+function sizeOf(id: string): 'lg' | 'md' | 'sm' {
+  if (HERO.some((tail) => id.endsWith(tail))) return 'lg'
+  if (SMALL.some((tail) => id.endsWith(tail))) return 'sm'
+  return 'md'
+}
+
+function isFader(id: string): boolean {
+  const field = id.split('.').pop() ?? ''
+  return FADERS.includes(field)
+}
 
 const STAGE_LABELS: Record<string, string> = {
   root: 'Level',
@@ -87,16 +113,33 @@ export function AudioRack({ categories, parameters, values, duration, onChange, 
                       />
                     ) : null}
                     <div className="audio-stage__fields">
-                      {shown.map((parameter) => (
-                        <ParameterField
-                          key={parameter.id}
-                          param={parameter}
-                          value={values[parameter.id] ?? parameter.defaultValue}
-                          onChange={(next) => onChange(parameter.id, next)}
-                          onGestureStart={onGestureStart}
-                          onGestureEnd={onGestureEnd}
-                        />
-                      ))}
+                      {shown.map((parameter) => {
+                        const current = values[parameter.id] ?? parameter.defaultValue
+                        if (parameter.kind === 'number' && isFader(parameter.id)) {
+                          return (
+                            <div className="audio-slot" data-size="fader" key={parameter.id}>
+                              <AudioFader
+                                param={parameter}
+                                value={typeof current === 'number' ? current : parameter.min}
+                                onChange={(next) => onChange(parameter.id, next)}
+                                onGestureStart={onGestureStart}
+                                onGestureEnd={onGestureEnd}
+                              />
+                            </div>
+                          )
+                        }
+                        return (
+                          <div className="audio-slot" data-size={sizeOf(parameter.id)} key={parameter.id}>
+                            <ParameterField
+                              param={parameter}
+                              value={current}
+                              onChange={(next) => onChange(parameter.id, next)}
+                              onGestureStart={onGestureStart}
+                              onGestureEnd={onGestureEnd}
+                            />
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )

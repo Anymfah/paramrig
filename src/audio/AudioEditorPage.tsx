@@ -10,6 +10,7 @@ import { Tooltip } from '@/ui/Tooltip'
 import { AudioRack } from '@/audio/AudioRack'
 import { AudioDrawer } from '@/audio/AudioDrawer'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
+import { AudioSoundList } from '@/audio/AudioSoundList'
 import { AudioTransport } from '@/audio/AudioTransport'
 import { BOARD_CATEGORIES, boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
@@ -49,6 +50,10 @@ const VIEWS: { id: ViewId; label: string }[] = [
  *
  * The buffer is deferred rather than re-synthesised on every frame of a drag. Turning a knob has
  * to feel like turning a knob, and the ear is not listening mid-drag anyway.
+ *
+ * The column on the left holds the library rather than the rig list, on the pattern the drawing
+ * and scene editors set: that column belongs to the document you have open, not to the ones you
+ * do not. Stepping through sounds while watching the panels change is how anyone finds one.
  */
 export function AudioEditorPage({ documentId, mode, onMode }: {
   documentId: string
@@ -243,7 +248,23 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }
 
   return (
-    <WorkspaceShell rigs={listRigs()} activeId={documentId} hideInspector mainLabel="Sound">
+    <WorkspaceShell
+      rigs={listRigs()}
+      activeId={documentId}
+      hideInspector
+      mainLabel="Sound"
+      navLabel="Sounds"
+      renderNavigation={({ compact, inert, onNavigate }) => (
+        <AudioSoundList
+          current={preset}
+          snapshots={snapshots}
+          compact={compact}
+          inert={inert}
+          onNavigate={onNavigate}
+          onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+        />
+      )}
+    >
       <h1 className="visually-hidden">{loaded.name}</h1>
       <div className="workspace-toolbar">
         <div className="workspace-toolbar__group">
@@ -291,7 +312,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
       />
       {/* Always in the tree so a screen reader keeps the live region, but no height until it has
           something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
-      <p className="editor-notice" role="status" data-empty={notice.length === 0}>{notice}</p>
+      <p className="editor-notice" role="status" aria-label="Editor notice" data-empty={notice.length === 0}>{notice}</p>
       <div className="audio-body" id="main" tabIndex={-1}>
         <div className="audio-views" role="tablist" aria-label="Views">
           {VIEWS.map((entry) => (

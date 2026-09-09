@@ -83,7 +83,7 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
         </button>
       </Tooltip>
       {silent ? (
-        <p className="audio-transport__notice" role="status">
+        <p className="audio-transport__notice" role="status" aria-label="Playback notice">
           This browser gives the page no audio device, so nothing can be played here.
         </p>
       ) : null}

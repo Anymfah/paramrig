@@ -847,8 +847,8 @@
 .audio-rack {
   display: flex;
   align-items: stretch;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-1);
+  padding: var(--space-2);
   overflow: auto;
   min-block-size: 0;
 }
@@ -856,7 +856,7 @@
 .audio-lane {
   --section: var(--accent);
   flex: 1 1 0;
-  min-inline-size: 15rem;
+  min-inline-size: 11rem;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--surface-raised);
@@ -905,7 +905,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  padding: var(--space-1) var(--space-2) var(--space-2);
   border-block-end: 1px solid var(--border-hairline);
 }
 
@@ -926,9 +926,102 @@
 /* Knobs sit in a grid, the way a panel of them does on a face-plate. */
 .audio-stage__fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
-  gap: var(--space-2) var(--space-1);
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  gap: var(--space-2) 0.25rem;
   align-items: start;
+  justify-items: center;
+}
+
+/*
+ * Four sizes, because a panel where everything is the same size has no hierarchy and the eye has
+ * to read all of it to find the one control that matters. The dial ships at eighty pixels, which
+ * is right for an inspector row and four times too much for a face-plate.
+ */
+.audio-slot {
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+.audio-slot[data-size='lg'] { grid-column: span 2; }
+
+.audio-stage .controller-dial,
+.audio-mod .controller-dial {
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+}
+
+.audio-slot[data-size='lg'] .controller-dial {
+  inline-size: 3.25rem;
+  block-size: 3.25rem;
+}
+
+.audio-slot[data-size='sm'] .controller-dial {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+}
+
+.audio-stage .dial-row,
+.audio-mod .dial-row {
+  gap: 0;
+  padding: 0;
+}
+
+/* A level is a height. */
+.audio-slot[data-size='fader'] { grid-row: span 2; }
+
+.audio-fader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+.audio-fader__track {
+  position: relative;
+  inline-size: 0.75rem;
+  block-size: 4.5rem;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xs);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+  overflow: hidden;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.audio-fader__track:hover,
+.audio-fader__track:focus-visible {
+  border-color: var(--border-strong);
+}
+
+.audio-fader__track:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.audio-fader__fill {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: calc(var(--fill, 0) * 100%);
+  background: var(--section, var(--accent));
+  opacity: 0.85;
+}
+
+.audio-fader__value {
+  color: var(--text-primary);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.audio-fader__label {
+  max-inline-size: 4rem;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 /*
@@ -1133,4 +1226,112 @@
   .audio-lane__off {
     writing-mode: horizontal-tb;
   }
+}
+
+/*
+ * The wave picker as a strip of faces rather than a stack of them.
+ *
+ * It ships as a grid of eighty-pixel cards with the name under each, which is right in an
+ * inspector where the list is the whole content of a section. Here it was four cards tall and ate
+ * the height of the panel it sits in — on a face-plate a waveform is recognised from a shape a
+ * centimetre across, and the word for it is redundant once you can see it.
+ */
+.audio-stage .choice-controller--visual {
+  grid-template-columns: repeat(auto-fit, minmax(1.75rem, 1fr));
+  gap: 2px;
+}
+
+.audio-stage .choice-controller--visual .choice-controller__option {
+  padding: 2px;
+}
+
+.audio-stage .choice-controller--visual .choice-controller__preview {
+  block-size: 1.5rem;
+}
+
+.audio-stage .choice-controller--visual .choice-controller__text {
+  display: none;
+}
+
+.audio-stage .choice-box > .choice-controller__label,
+.audio-stage .choice-box label {
+  font-size: 0.625rem;
+  color: var(--text-muted);
+}
+
+/* Selects and switches read as one line, not as a labelled block. */
+.audio-stage .control--select .select-field,
+.audio-stage .switch-field {
+  font-size: 0.6875rem;
+}
+
+
+/*
+ * The library beside the instrument. Names only: the waveform cards are the other view's job, and
+ * ninety of them down a rail would be ninety renders nobody asked for.
+ */
+.audio-library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
+  overflow-y: auto;
+}
+
+.audio-library__group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.audio-library__title {
+  margin: 0 0 var(--space-1) var(--space-2);
+  color: var(--text-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.audio-library__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audio-library__item {
+  inline-size: 100%;
+  min-block-size: 26px;
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+
+.audio-library__item:hover {
+  color: var(--text-primary);
+  background: var(--surface-raised);
+}
+
+.audio-library__item:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.audio-library__item[aria-current='true'] {
+  color: var(--text-primary);
+  background: var(--accent-subtle);
+}
+
+.audio-library[data-compact] .audio-library__title {
+  display: none;
 }
