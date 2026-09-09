@@ -1469,6 +1469,8 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden auto;
+  /* The rail's resize handle reaches sixteen pixels into the room; the plate starts past most of it. */
+  padding-inline-start: 12px;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
   background: var(--fp-ground);
@@ -1503,7 +1505,7 @@
   user-select: none;
 }
 .fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
-.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
+.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-pattern, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /*
@@ -1524,7 +1526,7 @@
 .fp-panel { position: relative; display: flex; align-items: center; justify-content: center; }
 .fp-panel__body { position: relative; flex: none; }
 .fp-routing { position: relative; display: flex; align-items: center; justify-content: center; flex: 39 1 39px; }
-.fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 39.83%; }
+.fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 26.95%; }
 .fp-strip { display: flex; align-items: flex-start; flex: 24 1 24px; border-block-start: 1px solid var(--fp-hairline); }
 .fp-strip__din { position: relative; block-size: 23px; }
 
@@ -1844,6 +1846,18 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope__dot { display: none; }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
 .fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The performer's row: bars drawn with the pointer, the read line over them in the performer's colour. */
+.fp-pattern { overflow: hidden; background: var(--fp-wheel); }
+.fp-pattern[data-off] { opacity: 0.45; }
+.pattern { position: relative; inline-size: 100%; block-size: 100%; }
+.pattern__plot { display: block; cursor: crosshair; touch-action: none; }
+.pattern__grid { stroke: var(--fp-line); stroke-width: 0.5; }
+.pattern__rest { stroke: var(--fp-rule-light); stroke-width: 1; stroke-dasharray: 3 3; }
+.pattern__step { fill: var(--fp-plot-fill); }
+.pattern__read { fill: none; stroke: var(--fp-src-p); stroke-width: 1.5; stroke-linejoin: round; pointer-events: none; }
+.pattern__key { position: absolute; inset-block: 0; pointer-events: none; }
+.pattern__key:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; pointer-events: auto; }
 
 /* The LFO's target, in the box style, where the reference keeps its gate options. */
 .fp-target { inline-size: 105px; }

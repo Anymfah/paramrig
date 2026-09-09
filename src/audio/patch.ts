@@ -1,6 +1,6 @@
-import { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, ModEnvelope, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, ModEnvelope, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -70,12 +70,35 @@ export function makeModEnvelope(input: Partial<ModEnvelope> = {}): ModEnvelope {
   return { enabled: false, delay: 0, attack: 0.01, hold: 0, decay: 0.2, sustain: 0, release: 0.05, curve: 2, depth: 0.5, target: 'off', ...input }
 }
 
+/** A row with nothing drawn on it. */
+export function makePattern(): number[] {
+  return Array.from({ length: STEP_COUNT }, () => 0)
+}
+
+/** A performer before anything is drawn on it: at rest, half strength, going nowhere. */
+export function makePerformer(input: Partial<Performer> = {}): Performer {
+  return { enabled: false, rate: 1, shape: 'step', bipolar: false, depth: 0.5, target: 'off', patterns: Array.from({ length: SCENE_COUNT }, makePattern), ...input }
+}
+
 /** Three layers, whatever was handed over, padded with silent ones. A patch always has three. */
-export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<Lfo>[] = [], envelopes: Partial<ModEnvelope>[] = []): AudioPatch {
+export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<Lfo>[] = [], envelopes: Partial<ModEnvelope>[] = [], performers: Partial<Performer>[] = []): AudioPatch {
   const three = Array.from({ length: LAYER_COUNT }, (_, index) => layers[index] ?? silentLayer())
   const modulators = Array.from({ length: LFO_COUNT }, (_, index) => makeLfo(lfos[index]))
   const shapes = Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => makeModEnvelope(envelopes[index]))
-  return { version: 1, duration, seed, layers: three, lfos: modulators, envelopes: shapes, fx: makeFx(fx), master: makeMaster(master) }
+  const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
+  return { version: 1, duration, seed, layers: three, lfos: modulators, envelopes: shapes, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
+}
+
+/** A performer's rows read back from anything: twelve of sixteen levels, each held to 0..1. */
+function readPatterns(value: unknown): number[][] {
+  const rows = Array.isArray(value) ? value : []
+  return Array.from({ length: SCENE_COUNT }, (_, scene) => {
+    const row = Array.isArray(rows[scene]) ? rows[scene] as unknown[] : []
+    return Array.from({ length: STEP_COUNT }, (_, step) => {
+      const level = row[step]
+      return typeof level === 'number' && Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0
+    })
+  })
 }
 
 /** What a new patch sounds like before anything is touched: one short blip, audible immediately. */
@@ -134,10 +157,12 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
   const rawLayers = Array.isArray(source.layers) ? source.layers : []
   const rawLfos = Array.isArray(source.lfos) ? source.lfos : []
   const rawEnvelopes = Array.isArray(source.envelopes) ? source.envelopes : []
+  const rawPerformers = Array.isArray(source.performers) ? source.performers : []
   return {
     version: 1,
     duration: typeof top.duration === 'number' ? top.duration : base.duration,
     seed: typeof top.seed === 'number' ? Math.round(top.seed) : base.seed,
+    scene: typeof top.scene === 'number' ? Math.round(top.scene) : 0,
     layers: Array.from({ length: LAYER_COUNT }, (_, index) =>
       (index < rawLayers.length ? readLayer(rawLayers[index], base.layers[index] ?? silentLayer()) : base.layers[index] ?? silentLayer())),
     lfos: Array.from({ length: LFO_COUNT }, (_, index) => (
@@ -146,6 +171,12 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
     envelopes: Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => (
       readSection(AUDIO_FIELDS.envelope, rawEnvelopes[index], makeModEnvelope() as unknown as Record<string, unknown>) as unknown as ModEnvelope
     )),
+    performers: Array.from({ length: PERFORMER_COUNT }, (_, index) => {
+      const raw = rawPerformers[index]
+      const fields = readSection(AUDIO_FIELDS.performer, raw, makePerformer() as unknown as Record<string, unknown>)
+      const patterns = readPatterns(raw && typeof raw === 'object' ? (raw as Record<string, unknown>).patterns : undefined)
+      return { ...fields, patterns } as unknown as Performer
+    }),
     fx: readSection(AUDIO_FIELDS.fx, source.fx, base.fx as unknown as Record<string, unknown>) as unknown as FxSettings,
     master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,
   }

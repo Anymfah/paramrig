@@ -52,6 +52,15 @@ describe('the board', () => {
   })
 })
 
+describe('the performers on the board', () => {
+  it('have their fields on the board, in their own groups, in front of the envelopes', () => {
+    const paths = boardPaths()
+    expect(paths.some((entry) => entry.property === 'performers[0].target' && entry.group === 'per0.all')).toBe(true)
+    expect(paths.findIndex((entry) => entry.property === 'performers[0].depth')).toBeLessThan(paths.findIndex((entry) => entry.property === 'envelopes[0].depth'))
+    expect(boardGroups().some((group) => group.id === 'per2.all')).toBe(true)
+  })
+})
+
 describe('the free envelopes on the board', () => {
   it('have their fields on the board, in their own groups', () => {
     const paths = boardPaths()

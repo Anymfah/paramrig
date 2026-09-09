@@ -132,6 +132,32 @@ describe('AudioEditorPage', () => {
     }
   })
 
+  it('has the three performers in front of the envelopes, each with a row to draw and a bar to pick the row', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    // The plate opens on the envelopes; the performers are a click away, first in the bar.
+    expect(screen.queryByRole('region', { name: 'Performer 1' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Show modulator P1' }))
+    for (const name of ['Performer 1', 'Performer 2', 'Performer 3']) expect(screen.getByRole('region', { name })).toBeInTheDocument()
+    const panel = screen.getByRole('region', { name: 'Performer 1' })
+    expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
+    expect(within(panel).getByRole('slider', { name: 'Level' })).toBeInTheDocument()
+    // A step drawn by the keyboard lands in the patch's row for the scene that plays.
+    const steps = within(within(panel).getByRole('group', { name: 'Performer 1 row 1' })).getAllByRole('slider')
+    expect(steps).toHaveLength(16)
+    fireEvent.keyDown(steps[2]!, { key: 'PageUp' })
+    expect(steps[2]).toHaveAttribute('aria-valuenow', '0.25')
+    // The bar picks the row: row four, empty, becomes the one the performers play.
+    expect(screen.getByRole('button', { name: 'Pattern 1' })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(screen.getByRole('button', { name: 'Pattern 4' }))
+    expect(screen.getByRole('button', { name: 'Pattern 4' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).toBeInTheDocument()
+    // Init clears the row on show.
+    fireEvent.keyDown(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider')[0]!, { key: 'End' })
+    await user.click(within(panel).getByRole('button', { name: 'Clear performer 1 row 4' }))
+    expect(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider')[0]).toHaveAttribute('aria-valuenow', '0')
+  })
+
   it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
@@ -147,7 +173,7 @@ describe('AudioEditorPage', () => {
     // The routing bar lists the reference's nine sources, all of them this engine's: the amp
     // envelope, two free envelopes, six LFOs. A name shows its trio of panels.
     const routing = screen.getByRole('list', { name: 'Routing' })
-    expect(within(routing).getAllByRole('listitem')).toHaveLength(9)
+    expect(within(routing).getAllByRole('listitem')).toHaveLength(12)
     for (const live of ['E1', 'E2', 'E3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9']) expect(within(routing).getByText(live)).toBeInTheDocument()
   })
 

@@ -42,9 +42,13 @@ export const TIME_UNITS = [
 const num = (label: string, min: number, max: number, step = 0.01, extra: Partial<FieldSpec> = {}): FieldSpec =>
   ({ type: 'number', label, min, max, step, ...extra })
 
+/** How many rows a performer keeps; the patch's scene picks one for all of them. */
+export const SCENE_COUNT = 12
+
 const PATCH_FIELDS: Record<string, FieldSpec> = {
   duration: num('Duration', 0.02, 4, 0.001, SECONDS),
   seed: num('Seed', 0, 9999, 1),
+  scene: num('Pattern', 0, SCENE_COUNT - 1, 1),
 }
 
 const LAYER_FIELDS: Record<string, FieldSpec> = {
@@ -163,6 +167,9 @@ export const MAX_VOICES = 5
 export const LFO_COUNT = 6
 /** The free envelopes, beside the amplifier's: the reference's second and third modulator slots. */
 export const MOD_ENVELOPE_COUNT = 2
+/** The performers, the reference's first three modulator slots, and how many steps a row has. */
+export const PERFORMER_COUNT = 3
+export const STEP_COUNT = 16
 
 /** How many layers an instrument has. Every table below is built from it. */
 export const LAYER_COUNT = 4
@@ -210,10 +217,20 @@ export const ENVELOPE_FIELDS: Record<string, FieldSpec> = {
   target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
 }
 
+export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
+  enabled: { type: 'boolean', label: 'Enabled' },
+  rate: num('Rate', 0.25, 8, 0.25, { unit: 'cycles' }),
+  shape: { type: 'option', label: 'Shape', options: ['step', 'line', 'curve'] },
+  bipolar: { type: 'boolean', label: 'Bipolar' },
+  depth: num('Depth', 0, 1),
+  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+}
+
 export const AUDIO_FIELDS = {
   patch: PATCH_FIELDS,
   lfo: LFO_FIELDS,
   envelope: ENVELOPE_FIELDS,
+  performer: PERFORMER_FIELDS,
   fx: FX_FIELDS,
   master: MASTER_FIELDS,
 } as const

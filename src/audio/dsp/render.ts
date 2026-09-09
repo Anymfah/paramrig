@@ -4,6 +4,7 @@ import { createNoise, waveAt } from './osc.ts'
 import { createShaper, shapeSample } from './shaper.ts'
 import { curveAt } from './curve.ts'
 import { envelopeAt, fitEnvelope, type FittedEnvelope } from './envelope.ts'
+import { performerAt } from './performer.ts'
 import { applyFx } from './space.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
@@ -25,13 +26,21 @@ import { createModal, modalSample } from './modal.ts'
 const FADE_IN_SECONDS = 0.002
 
 /**
- * Something pointed at a layer's parameter: an LFO with its own noise stream, or a free envelope
- * fitted to what is left of the patch after its delay. Several may point at one destination, and
- * their swings add.
+ * Something pointed at a layer's parameter: an LFO with its own noise stream, a free envelope
+ * fitted to what is left of the patch after its delay, or a performer with the row the patch's
+ * scene chose. Several may point at one destination, and their swings add.
  */
 type Modulator =
   | { kind: 'lfo'; lfo: AudioPatch['lfos'][number]; destination: LfoDestination; state: LfoState; random: () => number }
   | { kind: 'envelope'; envelope: AudioPatch['envelopes'][number]; destination: LfoDestination; fitted: FittedEnvelope; life: number }
+  | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; duration: number }
+
+/** A modulator's swing at a moment of the patch's clock, at its depth. */
+function swingAt(entry: Modulator, clock: number): number {
+  if (entry.kind === 'lfo') return lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
+  if (entry.kind === 'envelope') return envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth
+  return performerAt(entry.performer, entry.pattern, clock, entry.duration) * entry.performer.depth
+}
 
 /** Equal power, so a sound swept across the field does not dip in the middle. */
 function pan(position: number): { left: number; right: number } {
@@ -100,9 +109,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     // Modulators run on the patch's clock, so two layers pointed at one of them move together
     // even when one of them starts late.
     const clock = i / sampleRate
-    const swing = (entries: Modulator[]) => entries.reduce((sum, entry) => sum + (entry.kind === 'lfo'
-      ? lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
-      : envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth), 0)
+    const swing = (entries: Modulator[]) => entries.reduce((sum, entry) => sum + swingAt(entry, clock), 0)
 
     const vibrato = layer.pitch.vibratoDepth * Math.sin(2 * Math.PI * layer.pitch.vibratoRate * t)
     const slide = layer.pitch.slide * curveAt(layer.pitch.slideCurve, x)
@@ -195,6 +202,12 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
       if (!target) return []
       const life = Math.max(0.001, patch.duration - Math.max(0, envelope.delay))
       return [{ kind: 'envelope' as const, ...target, envelope, fitted: fitEnvelope(envelope, life), life }]
+    }),
+    ...patch.performers.flatMap((performer) => {
+      const target = performer.enabled ? readLfoTarget(performer.target) : null
+      if (!target) return []
+      const scene = Math.min(performer.patterns.length - 1, Math.max(0, Math.round(patch.scene)))
+      return [{ kind: 'performer' as const, ...target, performer, pattern: performer.patterns[scene] ?? [], duration: patch.duration }]
     }),
   ]
   patch.layers.forEach((layer, index) => renderLayer(

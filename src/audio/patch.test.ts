@@ -1,4 +1,4 @@
-import { LAYER_COUNT, MOD_ENVELOPE_COUNT, LFO_COUNT } from '@/audio/fields'
+import { LAYER_COUNT, MOD_ENVELOPE_COUNT, LFO_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
 import { defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
 import { coin } from '@/audio/presets'
@@ -65,6 +65,29 @@ describe('sanitizeAudioPatch', () => {
 describe('silentLayer', () => {
   it('is a layer that is switched off', () => {
     expect(silentLayer().enabled).toBe(false)
+  })
+})
+
+describe('the performers', () => {
+  it('are three, off and at rest, with twelve empty rows each, and the patch plays the first row', () => {
+    const read = sanitizeAudioPatch({})
+    expect(read.performers).toHaveLength(PERFORMER_COUNT)
+    expect(read.scene).toBe(0)
+    for (const performer of read.performers) {
+      expect(performer).toMatchObject({ enabled: false, target: 'off', shape: 'step', bipolar: false })
+      expect(performer.patterns).toHaveLength(SCENE_COUNT)
+      expect(performer.patterns.every((row) => row.length === STEP_COUNT && row.every((level) => level === 0))).toBe(true)
+    }
+  })
+
+  it('keep what a file drew, held to the floor and the top, and pad what it did not', () => {
+    const read = sanitizeAudioPatch({ scene: 4, performers: [{ enabled: true, target: 'layers[0].cutoff', shape: 'curve', bipolar: true, patterns: [[0.5, 2, -1, 'x']] }] })
+    expect(read.scene).toBe(4)
+    expect(read.performers[0]).toMatchObject({ enabled: true, target: 'layers[0].cutoff', shape: 'curve', bipolar: true })
+    expect(read.performers[0]?.patterns[0]?.slice(0, 4)).toEqual([0.5, 1, 0, 0])
+    expect(read.performers[0]?.patterns[0]).toHaveLength(STEP_COUNT)
+    expect(read.performers[0]?.patterns).toHaveLength(SCENE_COUNT)
+    expect(read.performers[1]?.enabled).toBe(false)
   })
 })
 

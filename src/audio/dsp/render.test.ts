@@ -219,6 +219,37 @@ function pitchOf(samples: Float32Array, rate: number, from: number, to: number):
   return crossings / (to - from) / 2
 }
 
+describe('performers', () => {
+  const tone = () => makePatch(1, [makeLayer({ gain: 0.5, source: { kind: 'tone', wave: 'sine' }, pitch: { start: 440 }, amp: { attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001 } })])
+  const square = Array.from({ length: 16 }, (_, at) => (at < 8 ? 1 : 0))
+  const flat = Array.from({ length: 16 }, () => 0)
+  const rows = (first: number[]) => Array.from({ length: 12 }, (_, scene) => (scene === 0 ? first : flat))
+
+  it('moves what it is pointed at by its row, over the length of the sound', () => {
+    const still = render(tone())
+    const drawn = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }] })
+    // The first half of the row is up: an octave. The second half is on the floor: no change.
+    expect(pitchOf(drawn, SAMPLE_RATE, 0.1, 0.4) / pitchOf(still, SAMPLE_RATE, 0.1, 0.4)).toBeCloseTo(2, 0)
+    expect(Math.abs(pitchOf(drawn, SAMPLE_RATE, 0.6, 0.9) - pitchOf(still, SAMPLE_RATE, 0.6, 0.9))).toBeLessThan(20)
+  })
+
+  it('plays the row the patch\'s scene names, and does nothing on an empty one', () => {
+    const patch = { ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }] }
+    const still = render(tone())
+    const other = render({ ...patch, scene: 3 })
+    expect(Math.abs(pitchOf(other, SAMPLE_RATE, 0.1, 0.4) - pitchOf(still, SAMPLE_RATE, 0.1, 0.4))).toBeLessThan(20)
+  })
+
+  it('rests at half height when bipolar, and pulls down below it', () => {
+    const half = Array.from({ length: 16 }, () => 0.5)
+    const still = render(tone())
+    const resting = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(half) }] })
+    expect(Math.abs(pitchOf(resting, SAMPLE_RATE, 0.2, 0.8) - pitchOf(still, SAMPLE_RATE, 0.2, 0.8))).toBeLessThan(20)
+    const down = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(flat) }] })
+    expect(pitchOf(down, SAMPLE_RATE, 0.2, 0.8) / pitchOf(still, SAMPLE_RATE, 0.2, 0.8)).toBeCloseTo(0.5, 1)
+  })
+})
+
 describe('modulation envelopes', () => {
   const tone = () => makePatch(1, [makeLayer({ gain: 0.5, source: { kind: 'tone', wave: 'sine' }, pitch: { start: 440 }, amp: { attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001 } })])
 

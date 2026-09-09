@@ -4,7 +4,7 @@ import { applyTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { LINEAR } from '@/audio/dsp/curve'
 import {
-  AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, LAYER_SECTIONS, TIME_UNITS,
+  AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
   type AudioPropertyType, type FieldSpec, type LayerSection,
 } from '@/audio/fields'
 import type { AudioPatch, Layer } from '@/audio/types'
@@ -37,6 +37,7 @@ export type AudioPath =
   | { kind: 'patch'; field: string; spec: FieldSpec }
   | { kind: 'lfo'; index: number; field: string; spec: FieldSpec }
   | { kind: 'envelope'; index: number; field: string; spec: FieldSpec }
+  | { kind: 'performer'; index: number; field: string; spec: FieldSpec }
   | { kind: 'layer'; index: number; section: LayerSection; field: string; spec: FieldSpec }
   | { kind: 'fx'; field: string; spec: FieldSpec }
   | { kind: 'master'; field: string; spec: FieldSpec }
@@ -77,6 +78,14 @@ export function parseAudioProperty(property: string): AudioPath | null {
     return spec ? { kind: 'envelope', index, field: envelope[2] ?? '', spec } : null
   }
 
+  const performer = /^performers\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
+  if (performer) {
+    const index = Number(performer[1])
+    if (!Number.isInteger(index) || index < 0 || index >= PERFORMER_COUNT) return null
+    const spec = AUDIO_FIELDS.performer[performer[2] ?? '']
+    return spec ? { kind: 'performer', index, field: performer[2] ?? '', spec } : null
+  }
+
   const fx = /^fx\.([A-Za-z]+)$/.exec(property)
   if (fx) {
     const spec = AUDIO_FIELDS.fx[fx[1] ?? '']
@@ -108,6 +117,7 @@ export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: Audi
   ),
   ...Object.entries(AUDIO_FIELDS.lfo).map(([field, spec]) => ({ property: `lfos[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.envelope).map(([field, spec]) => ({ property: `envelopes[i].${field}`, label: spec.label, type: spec.type })),
+  ...Object.entries(AUDIO_FIELDS.performer).map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.master).map(([field, spec]) => ({ property: `master.${field}`, label: spec.label, type: spec.type })),
 ]
@@ -169,6 +179,11 @@ export function applyAudioBinding(patch: AudioPatch, binding: AudioBinding, valu
     const envelope = patch.envelopes[path.index]
     if (!envelope) return patch
     return { ...patch, envelopes: patch.envelopes.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
+  }
+  if (path.kind === 'performer') {
+    const performer = patch.performers[path.index]
+    if (!performer) return patch
+    return { ...patch, performers: patch.performers.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
   }
   if (path.kind === 'fx') return { ...patch, fx: { ...patch.fx, [path.field]: next } }
   if (path.kind === 'master') return { ...patch, master: { ...patch.master, [path.field]: next } }
@@ -246,6 +261,10 @@ export function currentAudioValue(patch: AudioPatch, property: string): ParamVal
     const envelope = patch.envelopes[path.index]
     return envelope ? read(envelope, path.field) : null
   }
+  if (path.kind === 'performer') {
+    const performer = patch.performers[path.index]
+    return performer ? read(performer, path.field) : null
+  }
   if (path.kind === 'fx') return read(patch.fx, path.field)
   if (path.kind === 'master') return read(patch.master, path.field)
   const layer = patch.layers[path.index]
@@ -309,6 +328,8 @@ export function audioPropertyLabel(property: string): string {
   if (!path) return property
   if (path.kind === 'layer') return `Layer ${path.index + 1} · ${path.spec.label}`
   if (path.kind === 'lfo') return `LFO ${path.index + 1} · ${path.spec.label}`
+  if (path.kind === 'envelope') return `Envelope ${path.index + 2} · ${path.spec.label}`
+  if (path.kind === 'performer') return `Performer ${path.index + 1} · ${path.spec.label}`
   return path.spec.label
 }
 

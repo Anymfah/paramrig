@@ -179,6 +179,16 @@ describe('sanitizeAudioRig', () => {
   })
 })
 
+describe('the performers on the rig', () => {
+  it('parse their fields and refuse what is not there, and the scene is a field of the patch', () => {
+    expect(parseAudioProperty('performers[2].depth')).toMatchObject({ kind: 'performer', index: 2, field: 'depth' })
+    expect(parseAudioProperty('performers[3].depth')).toBeNull()
+    expect(parseAudioProperty('performers[0].patterns')).toBeNull()
+    expect(parseAudioProperty('scene')).toMatchObject({ kind: 'patch', field: 'scene' })
+    expect(AUDIO_PROPERTY_PATHS.some((entry) => entry.property === 'performers[i].target')).toBe(true)
+  })
+})
+
 describe('the free envelopes on the rig', () => {
   it('parse like the LFOs, and refuse an index the patch does not have', () => {
     expect(parseAudioProperty('envelopes[1].depth')).toMatchObject({ kind: 'envelope', index: 1, field: 'depth' })

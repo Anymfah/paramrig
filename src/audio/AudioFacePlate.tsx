@@ -6,7 +6,9 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { LFO_COUNT, MOD_ENVELOPE_COUNT } from '@/audio/fields'
+import { LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { AudioPattern } from '@/audio/AudioPattern'
+import type { PerformerShape } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
 import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
 
@@ -82,6 +84,11 @@ const targetOf = (id: string): string | undefined => {
  */
 const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
   if (!target) return undefined
+  for (let index = 0; index < PERFORMER_COUNT; index += 1) {
+    const id = `performers[${index}]`
+    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
+    return { colour: SOURCE_COLOUR.p, depth: readNum(ctx, `${id}.depth`), bipolar: read(ctx, `${id}.bipolar`) === true, onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
+  }
   for (let index = 0; index < MOD_ENVELOPE_COUNT; index += 1) {
     const id = `envelopes[${index}]`
     if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
@@ -539,8 +546,11 @@ const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 const hertz = (st: number) => 440 * Math.pow(2, st / 12)
 
 /** A modulation source of the routing bar: which slot it is, which page of panels shows it. */
-type Source = { id: string; kind: 'e' | 'l'; lfo?: number; envelope?: number }
+type Source = { id: string; kind: 'p' | 'e' | 'l'; lfo?: number; envelope?: number; performer?: number }
 const SOURCES: Source[] = [
+  { id: 'P1', kind: 'p', performer: 0 },
+  { id: 'P2', kind: 'p', performer: 1 },
+  { id: 'P3', kind: 'p', performer: 2 },
   { id: 'E1', kind: 'e' },
   { id: 'E2', kind: 'e', envelope: 0 },
   { id: 'E3', kind: 'e', envelope: 1 },
@@ -559,9 +569,12 @@ const SLOT_X = [0, 414.5, 832.5]
 const SLOT_GAP = [0, 1, 0.5]
 /** The slot a modulator's property path names, or null. */
 const held = (source: Source): { path: string; id: string } | null =>
-  source.lfo !== undefined ? { path: `lfos[${source.lfo}]`, id: source.id }
+  source.performer !== undefined ? { path: `performers[${source.performer}]`, id: source.id }
+  : source.lfo !== undefined ? { path: `lfos[${source.lfo}]`, id: source.id }
   : source.envelope !== undefined ? { path: `envelopes[${source.envelope}]`, id: source.id }
   : null
+/** The routing bar's first envelope: the plate opens on the envelopes, as it did before the performers stood in front of them. */
+const FIRST_ENVELOPE = SOURCES.findIndex((source) => source.kind === 'e')
 
 const MACRO_COUNT = 16
 const macroBindingId = (index: number) => `macro-${index + 1}`
@@ -585,7 +598,7 @@ const macroLabel = (property: string) => {
   return layer ? `${label} ${Number(layer[1]) + 1}` : label
 }
 
-export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, slots, rig, onRig, skin }: {
+export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, rig, onRig, skin }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
@@ -593,7 +606,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   onGestureStart?: () => void
   onGestureEnd?: () => void
   /** The strip of twelve along the foot: the document's kept sounds, one a slot. */
-  slots?: { name: string; active: boolean; onPick: () => void }[]
+  /** Each performer's twelve rows of sixteen levels, and how a row is redrawn. */
+  patterns?: number[][][]
+  onPattern?: (performer: number, scene: number, steps: number[]) => void
   /** The document's rig, which the macro band shows and edits. */
   rig?: AudioRig
   onRig?: (next: AudioRig) => void
@@ -669,8 +684,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   const hintOf = (node: EventTarget | null) => ((node as HTMLElement | null)?.closest?.('[data-hint]') as HTMLElement | null) ?? null
   const hintFrom = (event: SyntheticEvent) => setHinted(hintOf(event.target))
   /** The source whose modulator is on show: with its two neighbours on the wide face, alone on the narrow. */
-  const [shown, setShown] = useState(0)
+  const [shown, setShown] = useState(FIRST_ENVELOPE)
   const page = Math.floor(shown / 3)
+  /** Which row the performers play, held on the patch. */
+  const scene = Math.min(SCENE_COUNT - 1, Math.max(0, Math.round(readNum(ctx, 'scene', 0))))
   /** The modulators on show, each with its slot of the three; the narrow face deals one, in the first. */
   const modulators = folded ? [{ source: shown, slot: 0 }] : [0, 1, 2].map((slot) => ({ source: page * 3 + slot, slot }))
   const ghostRef = useRef<HTMLSpanElement | null>(null)
@@ -984,7 +1001,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               ) : (
                 <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed" hint="E1 is the amp envelope: it shapes the layer's level and stays put."><MoveIcon /></Icon>
               )}
-              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`} hint={source.kind === 'e' ? `Show envelope ${source.id} below.` : `Show LFO ${source.id} below.`}>{source.id}</Text>
+              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`} hint={source.kind === 'p' ? `Show performer ${source.id} below.` : source.kind === 'e' ? `Show envelope ${source.id} below.` : `Show LFO ${source.id} below.`}>{source.id}</Text>
             </li>
           ))}
         </ul>
@@ -994,7 +1011,52 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   const modulatorPanels = (
     <>
       {/* ═══ Modulators: three of nine at a time, the trio the routing bar chose; one on a folded face ═══ */}
-      {modulators.some((entry) => entry.source === 0) ? (
+      {modulators.filter((entry) => entry.source < FIRST_ENVELOPE).map(({ source, slot }) => {
+        const index = source
+        const o = 418.3 * slot
+        const px = SLOT_X[slot] ?? 0
+        const pw = slot === 0 ? 413.5 : 417.5
+        const id = (tail: string) => `performers[${index}].${tail}`
+        const target = ctx.byId.get(id('target'))
+        const on = read(ctx, id('enabled')) !== false
+        const shape = (read(ctx, id('shape')) ?? 'step') as PerformerShape
+        const bipolar = read(ctx, id('bipolar')) === true
+        const rate = readNum(ctx, id('rate'), 1)
+        const row = patterns?.[index]?.[scene] ?? Array.from({ length: STEP_COUNT }, () => 0)
+        const Y = (local: number) => 384 + local
+        const pickShape = (next: PerformerShape) => onChange(id('shape'), next)
+        return (
+          <Panel key={index} x={px} y={384} w={pw} h={288} label={`Performer ${index + 1}`} gap={SLOT_GAP[slot]}>
+            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 1}</Text>
+            <Text x={203.3 + o} y={Y(5)} kind="title">Performer</Text>
+            {/* the left column: how strong, how often, and whether at all */}
+            <Text x={36.5 + o} y={Y(26)}>Level</Text>
+            <Knob ctx={ctx} x={36 + o} y={Y(64)} id={id('depth')} label="Level" tone="light" />
+            <Text x={36.5 + o} y={Y(104)}>Rate</Text>
+            <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
+            <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{rate.toFixed(2)} cycles</Text>
+            <Box x={5 + o} y={Y(200)} w={62.5} onClick={() => onPattern?.(index, scene, Array.from({ length: STEP_COUNT }, () => 0))} label={`Clear performer ${index + 1} row ${scene + 1}`} hint="Clear this row: every step back to the floor.">Init</Box>
+            <Box x={5 + o} y={Y(222)} w={62.5} selected={bipolar} pressed={bipolar} onClick={() => onChange(id('bipolar'), !bipolar)} label={`Performer ${index + 1} bipolar`} hint={bipolar ? 'Bipolar: half height is rest, the row swings both ways. Click for unipolar.' : 'Unipolar: the floor is rest, the row only pushes. Click for bipolar.'}>{bipolar ? 'Bi' : 'Uni'}</Box>
+            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+            {/* the row, and how it is read */}
+            <span role="radiogroup" aria-label={`Performer ${index + 1} shape`}>
+              <Text x={172 + o} y={Y(30)} u={shape === 'step'} checked={shape === 'step'} onClick={() => pickShape('step')} hint="Each step held flat until the next.">Step</Text>
+              <Text x={218 + o} y={Y(30)} u={shape === 'line'} checked={shape === 'line'} onClick={() => pickShape('line')} hint="A straight line from each step to the next.">Line</Text>
+              <Text x={268 + o} y={Y(30)} u={shape === 'curve'} checked={shape === 'curve'} onClick={() => pickShape('curve')} hint="Eased from each step into the next.">Curve</Text>
+            </span>
+            <Block className="fp-pattern" x={82 + o} y={Y(44)} w={318} h={214} off={!on} hint={`Row ${scene + 1} of twelve: draw it with the pointer, from the floor to the top. The bar under the plate picks the row.`}>
+              <AudioPattern steps={row} shape={shape} bipolar={bipolar} width={318} height={214} name={`Performer ${index + 1} row ${scene + 1}`} onChange={(next) => onPattern?.(index, scene, next)} {...gesture} />
+            </Block>
+            {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
+            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this performer moves. Pick a target here, or drag the handle above onto a control.">
+              {target ? (
+                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+              ) : null}
+            </Block>
+          </Panel>
+        )
+      })}
+      {modulators.some((entry) => entry.source === FIRST_ENVELOPE) ? (
         <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
           <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
           <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
@@ -1028,8 +1090,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         </Panel>
 
       ) : null}
-      {modulators.filter((entry) => entry.source === 1 || entry.source === 2).map(({ source, slot }) => {
-        const index = source - 1
+      {modulators.filter((entry) => entry.source === FIRST_ENVELOPE + 1 || entry.source === FIRST_ENVELOPE + 2).map(({ source, slot }) => {
+        const index = source - FIRST_ENVELOPE - 1
         const o = 418.3 * slot
         const px = SLOT_X[slot] ?? 0
         const id = (tail: string) => `envelopes[${index}].${tail}`
@@ -1070,8 +1132,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </Panel>
         )
       })}
-      {modulators.filter((entry) => entry.source >= 3).map(({ source, slot }) => {
-        const index = source - 3
+      {modulators.filter((entry) => entry.source >= FIRST_ENVELOPE + 3).map(({ source, slot }) => {
+        const index = source - FIRST_ENVELOPE - 3
         const o = 418.3 * slot
         const px = SLOT_X[slot] ?? 0
         const pw = slot === 0 ? 413.5 : 417.5
@@ -1173,19 +1235,19 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </Fragment>
         ))}
 
-        {/* ═══ The strip of kept sounds: twelve slots at the reference's widths, or sharing the face's ═══ */}
-        <div className="fp-strip" role="group" aria-label="Kept sounds">
+        {/* ═══ The strip: the performers' twelve rows, the one they play lit, as the reference's bottom bar ═══ */}
+        <div className="fp-strip" role="group" aria-label="Patterns">
           <Origin.Provider value={{ x: 0, y: 0 }}>
             <span className="fp-strip__din" style={{ flex: folded ? '0 0 40px' : '168 1 168px' }}>
-              <Icon x={14.75} y={11.25} w={17.5} h={14.5}><DinIcon /></Icon>
+              <Icon x={14.75} y={11.25} w={17.5} h={14.5} hint="The performers' rows: twelve of them, one playing. A game can pick a different one at each trigger."><DinIcon /></Icon>
             </span>
           </Origin.Provider>
-          {Array.from({ length: 12 }, (_, index) => {
-            const slot = slots?.[index]
+          {Array.from({ length: SCENE_COUNT }, (_, index) => {
+            const drawn = patterns?.some((rows) => rows[index]?.some((level) => level > 0)) ?? false
             return (
-              <button type="button" key={index} className="fp-slot" data-filled={slot ? '' : undefined} data-active={slot?.active || undefined}
+              <button type="button" key={index} className="fp-slot" data-filled={drawn ? '' : undefined} data-active={scene === index || undefined} aria-pressed={scene === index}
                 style={folded ? { flex: '1 1 0', marginInlineStart: 1 } : { flex: `${index === 0 ? 84 : 89.5} 1 ${index === 0 ? 84 : 89.5}px`, marginInlineStart: index === 0 ? 0 : index === 1 ? 3.5 : 1 }}
-                disabled={!slot} aria-label={slot ? `Kept sound ${index + 1}: ${slot.name}` : `Empty slot ${index + 1}`} data-hint={slot ? `${slot.name}. Click to load this kept sound.` : 'Empty. The camera in the bar keeps the sound you have into the next free slot.'} onClick={slot?.onPick}>
+                aria-label={`Pattern ${index + 1}`} data-hint={scene === index ? `Row ${index + 1} is the one the performers play.` : drawn ? `Row ${index + 1} has something drawn on it. Click to play it.` : `Row ${index + 1} is empty. Click to play it, then draw on a performer.`} onClick={() => onChange('scene', index)}>
                 {index + 1}
               </button>
             )

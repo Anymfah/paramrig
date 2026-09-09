@@ -188,6 +188,30 @@ export type ModEnvelope = {
   target: string
 }
 
+export type PerformerShape = 'step' | 'line' | 'curve'
+
+/**
+ * A drawn movement: sixteen levels read over the sound's length, the reference's Performer.
+ * Twelve rows are kept, and the patch says which one every performer plays — its scene — so a
+ * game can pull a different row at each trigger, and a click heard two hundred times is not the
+ * same click two hundred times.
+ */
+export type Performer = {
+  enabled: boolean
+  /** Cycles of the row over the sound's length. */
+  rate: number
+  /** How the row is read between two steps: held, joined, or eased in and out. */
+  shape: PerformerShape
+  /** Bipolar: half height is rest and the swing runs both ways; otherwise the floor is rest. */
+  bipolar: boolean
+  /** 0..1, scaled by whatever it is pointed at. */
+  depth: number
+  /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
+  target: string
+  /** Twelve rows of sixteen levels, 0..1. */
+  patterns: number[][]
+}
+
 export type MasterSettings = {
   gain: number
   /** 0..1 of soft clipping. */
@@ -204,6 +228,9 @@ export type AudioPatch = {
   layers: Layer[]
   lfos: Lfo[]
   envelopes: ModEnvelope[]
+  performers: Performer[]
+  /** Which row every performer plays, 0..11. */
+  scene: number
   fx: FxSettings
   master: MasterSettings
 }

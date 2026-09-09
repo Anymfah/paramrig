@@ -159,6 +159,26 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!gestureRef.current) setHeard(next)
   }, [patch])
 
+  /** A performer's row redrawn: one drag is one undo step, as a knob's is. */
+  const paint = useCallback((performer: number, scene: number, steps: number[]) => {
+    const current = latest.current ?? patch
+    if (!current) return
+    setDirty(true)
+    setTouched(true)
+    if (!gestureRef.current || !capturedRef.current) {
+      capturedRef.current = true
+      setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+      setFuture([])
+    }
+    const next: AudioPatch = {
+      ...current,
+      performers: current.performers.map((entry, at) => (at === performer ? { ...entry, patterns: entry.patterns.map((row, index) => (index === scene ? steps : row)) } : entry)),
+    }
+    latest.current = next
+    setPatch(next)
+    if (!gestureRef.current) setHeard(next)
+  }, [patch])
+
   const undo = useCallback(() => {
     const previous = past[past.length - 1]
     const current = latest.current ?? patch
@@ -389,11 +409,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 rig={rig}
                 onRig={(next) => { setRig(next); setDirty(true) }}
                 skin={skin}
-                slots={snapshots.slice(0, 12).map((snapshot) => ({
-                  name: snapshot.name,
-                  active: snapshot.id === preset,
-                  onPick: () => { setPreset(snapshot.id); setTouched(false); commit({ ...snapshot.patch, seed: patch.seed }) },
-                }))}
+                patterns={patch.performers.map((performer) => performer.patterns)}
+                onPattern={paint}
               />
             </div>
           )}
