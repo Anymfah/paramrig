@@ -27,8 +27,8 @@ const store = inspectorPrefsStore<AudioTab, AudioExtra>({
   tabs: AUDIO_TABS,
   defaultTab: 'sound',
   extra: {
-    empty: { autoPlay: true, skin: 'reference' },
-    parse: (value) => ({ autoPlay: value.autoPlay !== false, skin: value.skin === 'paramrig' ? 'paramrig' : 'reference' }),
+    empty: { autoPlay: true, skin: 'paramrig' },
+    parse: (value) => ({ autoPlay: value.autoPlay !== false, skin: value.skin === 'reference' ? 'reference' : 'paramrig' }),
   },
 })
 

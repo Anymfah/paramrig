@@ -126,7 +126,7 @@ function Text({ x, y, size = 13, align = 'center', kind, u, onClick, checked, la
   u?: boolean; onClick?: () => void; checked?: boolean; label?: string; children: ReactNode
 }) {
   const at = useAt()
-  const style = { ...at(x, y - size * CAP), fontSize: size }
+  const style = { ...at(x, y - size * CAP), '--size': `${size}px` } as CSSProperties
   if (onClick) {
     return (
       <button type="button" className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined}
@@ -796,7 +796,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                         <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={-1}
                           aria-label={`Drag macro ${index + 1} onto a control to assign it${macro.id ? `; double-click to free it from ${macro.label}` : ''}`}
                           data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
-                          style={{ left: 40.5 - 28.3, top: 19.5 - 13 * CAP, fontSize: 13 }}
+                          style={{ left: 40.5 - 28.3, top: 19.5 - 13 * CAP }}
                           onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
                           onPointerMove={assigning?.kind === 'm' && assigning.macro === index ? follow : undefined}
                           onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}

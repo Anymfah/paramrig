@@ -1382,9 +1382,11 @@
   --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
   --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
   --fp-plot-fill: #394963; --fp-plot-line: #4675bf; --fp-wheel: #2a2a2a; --fp-wheel-hover: #333333; --fp-wheel-top: #3b3b3b;
-  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e;
+  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e; --fp-readout-hover: #9c9d9d;
   --fp-font: 'Roboto', var(--font-sans);
   --fp-stretch: 97%;
+  --fp-text-scale: 1;
+  --fp-read-scale: 1;
 }
 
 /*
@@ -1393,13 +1395,13 @@
  */
 .fp-stage[data-skin='paramrig'] {
   --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: var(--surface-inset); --fp-hairline: var(--carbon); --fp-line: var(--rule);
-  --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--rule); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted);
+  --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--text-muted); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted); --fp-readout-hover: var(--text-primary);
   --fp-box: var(--surface-overlay); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 80%, var(--chalk)); --fp-box-on-hover: var(--accent-hover);
   --fp-badge: var(--stone); --fp-badge-text: var(--carbon); --fp-badge-off: var(--rule); --fp-badge-hover: var(--text-muted); --fp-badge-edge: var(--chalk);
   --fp-knob-top: #2f3836; --fp-knob-bottom: #161b1a; --fp-knob-rim: var(--carbon); --fp-hand: var(--accent); --fp-ring: var(--rule); --fp-ring-dark: var(--rule);
   --fp-hero: var(--surface-overlay); --fp-hero-edge: #343d3a; --fp-hero-rim: var(--carbon); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
   --fp-macro-top: #34403c; --fp-macro-bottom: #1a2120; --fp-macro-hand: var(--accent);
-  --fp-light-top: var(--chalk); --fp-light-bottom: var(--stone); --fp-light-hand: var(--carbon);
+  --fp-light-top: var(--stone); --fp-light-bottom: #97a29e; --fp-light-hand: var(--carbon);
   --fp-groove-edge: var(--carbon); --fp-red: var(--warning); --fp-tray: var(--surface-overlay);
   --fp-src-p: var(--warning); --fp-src-e: #8fb4c9; --fp-src-l: var(--success); --fp-src-l-edge: #6f9d8a; --fp-src-t: #b8a3cf; --fp-src-v: var(--danger);
   --fp-slot: var(--surface-overlay); --fp-slot-edge: var(--border-strong); --fp-slot-open: var(--surface-raised); --fp-slot-filled: var(--surface-inset);
@@ -1408,7 +1410,19 @@
   --fp-icon: var(--stone); --fp-icon-cut: var(--carbon); --fp-bracket: var(--rule);
   --fp-font: var(--font-sans);
   --fp-stretch: 100%;
+  /* Public Sans runs wider than the reference's condensed Roboto: a touch smaller keeps neighbouring
+     labels apart, and the readouts, which the reference sets condensed bold, a touch smaller still. */
+  --fp-text-scale: 0.95;
+  --fp-read-scale: 0.9;
 }
+.fp-stage[data-skin='paramrig'] .fp-read { letter-spacing: -0.03em; }
+/* The app's look draws its knobs by its own tokens: one light from above, the dark of the surfaces below. */
+.fp-stage[data-skin='paramrig'] .fp-knob[data-size='hero'] .fp-knob__body {
+  background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-hairline) 100%);
+  box-shadow: 0 0 0 1px var(--fp-hairline), inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.35), 0 7px 12px -3px rgba(0, 0, 0, 0.6);
+}
+/* A macro's number on a light knob: dark, or it is lost against the disc. */
+.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--carbon); }
 
 @font-face {
   font-family: 'Roboto';
@@ -1431,7 +1445,13 @@
   block-size: 100%;
   min-block-size: 0;
   overflow: hidden auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
   background: var(--fp-ground);
+}
+/* Everything on the plate that answers a pointer answers it in the app's own beat. */
+.fp button.fp-text, .fp .fp-box, .fp .fp-badge, .fp .fp-slot, .fp .fp-read[data-edit], .fp .fp-source__grab, .fp .fp-macro__grab, .fp .fp-knob__slot, .fp .fp-fader__slot {
+  transition: color var(--duration-instant) var(--ease-out), background-color var(--duration-instant) var(--ease-out), box-shadow var(--duration-instant) var(--ease-out);
 }
 /* The narrow face scrolls, so its gutter is reserved before the bar is needed: a scrollbar that
    arrives with the first scroll would narrow the room, refit the plate, and take itself away again. */
@@ -1489,6 +1509,7 @@
   border: 0;
   background: none;
   font: inherit;
+  font-size: calc(var(--size, 13px) * var(--fp-text-scale, 1));
   line-height: 1;
   white-space: nowrap;
   color: var(--fp-text);
@@ -1502,7 +1523,6 @@
 .fp-text[data-kind='digit'] { font-weight: 700; color: var(--fp-dim); }
 .fp-macro[data-wired] .fp-text[data-kind='digit'] { color: var(--fp-red); }
 .fp-text[data-kind='dim'] { color: var(--fp-dim); }
-.fp-text[data-kind='dim'][style*='font-size: 11px'] { color: var(--fp-dim); }
 .fp-text[data-kind='source'] { font-weight: 700; }
 .fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: var(--fp-rule); }
 button.fp-text { cursor: pointer; touch-action: manipulation; }
@@ -1718,16 +1738,16 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-read__anchor > * { position: absolute; white-space: nowrap; }
 /* A readout that edits: dragged up and down, as the reference's are. */
 .fp-read[data-edit] { cursor: ns-resize; touch-action: none; outline: none; border-radius: 2px; }
-.fp-read[data-edit]:hover { color: #9c9d9d; }
+.fp-read[data-edit]:hover { color: var(--fp-readout-hover); }
 .fp-read[data-edit]:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 /* The global `svg { max-width: 100% }` would cap the mark at its zero-width anchor. */
 .fp-read__mark { fill: var(--fp-rule); color: var(--fp-rule); display: block; max-inline-size: none; }
 .fp-read__u { display: block; block-size: 0.5px; background: var(--fp-rule); }
 .fp-read__row { display: flex; align-items: baseline; }
-.fp-read__big { position: static; font-size: 17.6px; font-weight: 700; font-style: normal; margin-inline-end: 1.7px; }
+.fp-read__big { position: static; font-size: calc(17.6px * var(--fp-read-scale, 1)); font-weight: 700; font-style: normal; margin-inline-end: 1.7px; }
 .fp-read__dot { position: static; display: block; inline-size: 1.5px; block-size: 1.5px; background: var(--fp-readout); margin-inline-end: 2.8px; }
 .fp-read__small { position: static; }
-.fp-read__small { font-size: 12.7px; font-weight: 700; }
+.fp-read__small { font-size: calc(12.7px * var(--fp-read-scale, 1)); font-weight: 700; }
 
 /* Pitch-bend and mod wheels and aftertouch, drawn as the reference draws its own. */
 .fp-wheel { inline-size: 17px; block-size: 26.5px; border-radius: 2.5px; background: linear-gradient(var(--fp-wheel-top), var(--fp-wheel)); box-shadow: 0 0 0 1px var(--fp-knob-rim); }
