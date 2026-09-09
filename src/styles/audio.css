@@ -1717,3 +1717,33 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-target .select-trigger__label { display: none; }
 .fp-target .select-trigger__value { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
 .fp-target .select-trigger__icon { inline-size: 8px; block-size: 8px; flex: none; }
+
+/*
+ * The modulation slot. While a source is held, every control it could take shows the case it is
+ * dropped in, under the dial or the groove; once taken, the case stays and reads the amount in the
+ * source's colour, a drag on it sets the amount, and a double-click empties it.
+ */
+.fp-knob__slot, .fp-fader__slot {
+  position: absolute;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  display: none;
+  place-items: center;
+  inline-size: 24.5px;
+  block-size: 14.5px;
+  border-radius: 2px;
+  background: #3a3a3a;
+  box-shadow: 0 0 0 1px #4a4a4a;
+  color: var(--slot, #8a8a8a);
+  font: 400 10.5px/1 'Roboto', var(--font-sans);
+  font-stretch: 97%;
+  cursor: ns-resize;
+  touch-action: none;
+  pointer-events: auto;
+}
+.fp-knob__slot { inset-block-end: 0; }
+.fp-fader__slot { inset-block-start: calc(100% + 1px); }
+.fp-knob[data-mod] .fp-knob__slot, .fp-fader[data-mod] .fp-fader__slot { display: grid; box-shadow: 0 0 0 1px var(--slot); }
+.fp[data-assigning] .fp-knob[data-target] .fp-knob__slot, .fp[data-assigning] .fp-fader[data-target] .fp-fader__slot { display: grid; background: #2e2e2e; box-shadow: 0 0 0 1px var(--assign); }
+.fp[data-assigning] .fp-knob[data-target]:hover .fp-knob__slot, .fp[data-assigning] .fp-fader[data-target]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, #2e2e2e); box-shadow: 0 0 0 1.5px var(--assign); }
+.fp-knob[data-size='macro'] .fp-knob__slot { display: none; }

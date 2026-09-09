@@ -34,3 +34,31 @@ describe('AudioKnob', () => {
     expect(onChange).toHaveBeenCalledWith(0.52)
   })
 })
+
+describe('the modulation slot', () => {
+  it('is there for a control a source could take, and reads the amount once one has', () => {
+    const { container, rerender } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" />)
+    const slot = container.querySelector('.fp-knob__slot')
+    expect(slot).not.toBeNull()
+    expect(slot?.textContent).toBe('')
+    rerender(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mod={{ colour: '#6fb904', depth: 0.7, onDepth: () => undefined }} />)
+    expect(container.querySelector('.fp-knob__slot')?.textContent).toBe('0.70')
+    expect(container.querySelector('.fp-knob__slot')?.getAttribute('style')).toMatch(/6fb904|111, 185, 4/)
+  })
+
+  it('has no slot on a control nothing can be pointed at', () => {
+    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} />)
+    expect(container.querySelector('.fp-knob__slot')).toBeNull()
+  })
+
+  it('empties on a double-click, and pushes one way for an envelope', () => {
+    const onClear = vi.fn()
+    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mod={{ colour: '#4576c4', depth: -0.5, bipolar: false, onDepth: () => undefined, onClear }} />)
+    fireEvent.doubleClick(container.querySelector('.fp-knob__slot') as Element)
+    expect(onClear).toHaveBeenCalled()
+    // A negative envelope depth draws its stretch before the value, none after it.
+    const d = container.querySelector('.fp-knob__mod')?.getAttribute('d') ?? ''
+    expect(d).toMatch(/^M/)
+    expect(container.querySelector('.fp-knob__slot')?.textContent).toBe('-0.50')
+  })
+})

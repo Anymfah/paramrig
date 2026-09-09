@@ -58,11 +58,17 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
     onGestureEnd?.()
   }
 
-  // The modulator's swing, as a bar beside the groove either side of the cap.
+  // The modulator's swing, as a bar beside the groove: either side of the cap for an LFO, one
+  // side for an envelope, the sign of its depth saying which.
   const centre = 7.5 + (1 - fraction) * travel
-  const half = mod ? (mod.depth * travel) / 2 : 0
-  const barTop = Math.max(7.5, centre - half)
-  const barBottom = Math.min(7.5 + travel, centre + half)
+  const reach = mod ? Math.abs(mod.depth) * travel : 0
+  const oneWay = mod?.bipolar === false
+  const barTop = Math.max(7.5, oneWay ? (mod && mod.depth >= 0 ? centre - reach : centre) : centre - reach / 2)
+  const barBottom = Math.min(7.5 + travel, oneWay ? (mod && mod.depth >= 0 ? centre : centre + reach) : centre + reach / 2)
+  const half = reach / 2
+  // A drag on the slot under the groove sets the swing.
+  const slotOrigin = useRef({ y: 0, depth: 0 })
+  const slotDragging = useRef(false)
 
   const nudge = (direction: 1 | -1, coarse: boolean) => {
     const step = (param.step > 0 ? param.step : 0.01) * (coarse ? 10 : 1)
@@ -97,8 +103,28 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       }}
     >
       <span className="fp-fader__track" aria-hidden="true" />
-      {mod && half > 0.5 ? <span className="fp-fader__mod" aria-hidden="true" style={{ top: barTop, height: barBottom - barTop, background: mod.colour }} /> : null}
+      {mod && half > 0.25 ? <span className="fp-fader__mod" aria-hidden="true" style={{ top: barTop, height: barBottom - barTop, background: mod.colour }} /> : null}
       <span className="fp-fader__handle" aria-hidden="true">{digit}</span>
+      {target ? (
+        <span className="fp-fader__slot" aria-hidden="true" style={mod ? { '--slot': mod.colour } as CSSProperties : undefined}
+          onPointerDown={mod ? (event) => {
+            if (event.button && event.button !== 0) return
+            event.stopPropagation()
+            event.currentTarget.setPointerCapture?.(event.pointerId)
+            slotDragging.current = true
+            slotOrigin.current = { y: event.clientY, depth: mod.depth }
+            onGestureStart?.()
+          } : undefined}
+          onPointerMove={mod ? (event) => {
+            if (!slotDragging.current) return
+            mod.onDepth(Math.min(1, Math.max(oneWay ? -1 : 0, slotOrigin.current.depth + (slotOrigin.current.y - event.clientY) / 150)))
+          } : undefined}
+          onPointerUp={mod ? (event) => { if (!slotDragging.current) return; slotDragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId); onGestureEnd?.() } : undefined}
+          onPointerCancel={() => { slotDragging.current = false }}
+          onDoubleClick={mod?.onClear}>
+          {mod ? mod.depth.toFixed(2) : ''}
+        </span>
+      ) : null}
     </div>
   )
 }
