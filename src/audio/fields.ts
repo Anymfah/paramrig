@@ -162,11 +162,14 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
 export const MAX_VOICES = 5
 export const LFO_COUNT = 2
 
+/** How many layers an instrument has. Every table below is built from it. */
+export const LAYER_COUNT = 4
+
 /** Everywhere an LFO may point. Built from the layers, so it cannot name one that is not there. */
 export const LFO_DESTINATIONS = ['pitch', 'cutoff', 'pulseWidth', 'gain'] as const
 export const LFO_TARGETS: string[] = [
   'off',
-  ...Array.from({ length: 3 }, (_, layer) => LFO_DESTINATIONS.map((where) => `layers[${layer}].${where}`)).flat(),
+  ...Array.from({ length: LAYER_COUNT }, (_, layer) => LFO_DESTINATIONS.map((where) => `layers[${layer}].${where}`)).flat(),
 ]
 
 const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
@@ -212,4 +215,3 @@ export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
 }
 
 /** How many layers a patch has. Fixed, and the parser refuses an index past it. */
-export const LAYER_COUNT = 3

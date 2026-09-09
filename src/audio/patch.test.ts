@@ -1,11 +1,12 @@
+import { LAYER_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
 import { defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
 import { coin } from '@/audio/presets'
 
 describe('makePatch', () => {
-  it('always has three layers, padding with silent ones', () => {
+  it('always has as many layers as the instrument has, padding with silent ones', () => {
     const patch = makePatch(0.3, [makeLayer()])
-    expect(patch.layers).toHaveLength(3)
+    expect(patch.layers).toHaveLength(LAYER_COUNT)
     expect(patch.layers[1]?.enabled).toBe(false)
   })
 })
@@ -48,8 +49,8 @@ describe('sanitizeAudioPatch', () => {
   })
 
   it('pads a short layer list and ignores extra layers', () => {
-    expect(sanitizeAudioPatch({ layers: [] }).layers).toHaveLength(3)
-    expect(sanitizeAudioPatch({ layers: [{}, {}, {}, {}, {}] }).layers).toHaveLength(3)
+    expect(sanitizeAudioPatch({ layers: [] }).layers).toHaveLength(LAYER_COUNT)
+    expect(sanitizeAudioPatch({ layers: [{}, {}, {}, {}, {}, {}] }).layers).toHaveLength(LAYER_COUNT)
   })
 
   it('never comes back with a non-finite number in it', () => {

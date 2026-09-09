@@ -1,3 +1,4 @@
+import { LAYER_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
 import { LAYER_COLOURS, layerProfiles, profileCeiling } from '@/audio/profiles'
 import { makeLayer, makePatch, silentLayer } from '@/audio/patch'
@@ -6,9 +7,10 @@ import { coin, explosion } from '@/audio/presets'
 describe('layerProfiles', () => {
   it('describes every layer, whether or not it is switched on', () => {
     const profiles = layerProfiles(coin())
-    expect(profiles).toHaveLength(3)
-    expect(profiles.map((profile) => profile.enabled)).toEqual([true, false, false])
-    expect(profiles.map((profile) => profile.name)).toEqual(['Layer 1', 'Layer 2', 'Layer 3'])
+    expect(profiles).toHaveLength(LAYER_COUNT)
+    // Coin is one layer; the rest of the instrument is there and silent.
+    expect(profiles.map((profile) => profile.enabled)).toEqual([true, ...Array.from({ length: LAYER_COUNT - 1 }, () => false)])
+    expect(profiles.map((profile) => profile.name)).toEqual(Array.from({ length: LAYER_COUNT }, (_, index) => `Layer ${index + 1}`))
     expect(profiles.map((profile) => profile.color)).toEqual(LAYER_COLOURS)
   })
 

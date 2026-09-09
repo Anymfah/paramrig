@@ -831,12 +831,12 @@
 }
 
 /*
- * The instrument as a signal path.
+ * The instrument as a signal path: columns are stages, rows inside them are layers.
  *
- * The arrangement every hardware synthesiser uses and every plugin that copies them: the signal
- * runs left to right across the window and each thing done to it stands upright in the path. Three
- * layer panels, then the bus they feed. The modulators are a drawer beneath the whole thing rather
- * than a tab beside it, so setting a rate and seeing the layer it moves are the same glance.
+ * Reading the plugins this copies too literally is what made the previous version scroll. Their
+ * upright panels are stages — oscillator, noise, filter, amplifier — laid across the window in the
+ * order the signal passes through. Filling each panel with a whole voice instead put seven stages
+ * down every column and one layer summed to 1871 pixels in a rack four hundred tall.
  */
 .audio-instrument {
   display: grid;
@@ -847,276 +847,90 @@
 .audio-rack {
   display: flex;
   align-items: stretch;
-  gap: var(--space-1);
+  gap: 1px;
   padding: var(--space-2);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   min-block-size: 0;
 }
 
-.audio-lane {
-  --section: var(--accent);
+.audio-stage {
   flex: 1 1 0;
-  min-inline-size: 11rem;
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  min-inline-size: 8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
   background: var(--surface-raised);
   border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 
-/* The panel head carries the lane's identity, so the colour is a band rather than a wash. */
-.audio-lane__spine {
-  padding: var(--space-2) var(--space-3);
-  background: color-mix(in oklab, var(--section) 16%, transparent);
-  border-block-end: 1px solid var(--border-hairline);
-  user-select: none;
-}
-
-.audio-lane__name {
-  color: var(--section);
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.audio-lane[data-bus] {
-  --section: var(--text-muted);
-  flex: 1.15 1 0;
-}
-
-.audio-lane[data-off] {
-  flex: 0 0 auto;
-  min-inline-size: 0;
-  opacity: 0.62;
-}
-
-.audio-lane__stages {
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  min-block-size: 0;
-}
-
-/* One stage is one thing done to the signal, and the rules between them are the signal moving. */
-.audio-stage {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2) var(--space-2);
-  border-block-end: 1px solid var(--border-hairline);
-}
-
-.audio-stage:last-child {
-  border-block-end: 0;
-}
+.audio-stage[data-stage='amp'] { flex: 1.7 1 0; min-inline-size: 12rem; }
+.audio-stage[data-stage='source'] { flex: 1.5 1 0; min-inline-size: 11rem; }
+.audio-stage[data-stage='bus'] { flex: 1.6 1 0; min-inline-size: 12rem; }
+.audio-stage[data-stage='root'] { flex: 0 0 auto; min-inline-size: 6.5rem; }
 
 .audio-stage__title {
   margin: 0;
+  padding: 0.25rem var(--space-2) 0.125rem;
   color: var(--text-muted);
   font-size: 0.625rem;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  background: var(--surface-inset);
   user-select: none;
 }
 
-/* Knobs sit in a grid, the way a panel of them does on a face-plate. */
-.audio-stage__fields {
+/* One row is one layer inside this stage. The tag on the left is which. */
+.audio-row {
+  --section: var(--text-muted);
+  flex: 1 1 0;
+  min-block-size: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
-  gap: var(--space-2) 0.25rem;
+  grid-template-columns: 0.875rem minmax(0, 1fr);
   align-items: start;
-  justify-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem 0.25rem 0.25rem;
+  border-block-start: 1px solid var(--border-hairline);
+  overflow: hidden;
 }
 
-/*
- * Four sizes, because a panel where everything is the same size has no hierarchy and the eye has
- * to read all of it to find the one control that matters. The dial ships at eighty pixels, which
- * is right for an inspector row and four times too much for a face-plate.
- */
-.audio-slot {
-  inline-size: 100%;
+.audio-row:first-of-type { border-block-start: 0; }
+
+.audio-row__tag {
+  padding-block-start: 0.25rem;
+  color: var(--section);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.audio-row[data-off] { opacity: 0.45; }
+
+.audio-row__off {
+  margin: 0;
+  padding-block-start: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.625rem;
+}
+
+.audio-row__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
+  gap: 0.25rem 0.125rem;
+  align-items: start;
+  justify-items: center;
   min-inline-size: 0;
 }
 
+.audio-slot { inline-size: 100%; min-inline-size: 0; }
 .audio-slot[data-size='lg'] { grid-column: span 2; }
-
-.audio-stage .controller-dial,
-.audio-mod .controller-dial {
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
-}
-
-.audio-slot[data-size='lg'] .controller-dial {
-  inline-size: 3.25rem;
-  block-size: 3.25rem;
-}
-
-.audio-slot[data-size='sm'] .controller-dial {
-  inline-size: 1.75rem;
-  block-size: 1.75rem;
-}
-
-.audio-stage .dial-row,
-.audio-mod .dial-row {
-  gap: 0;
-  padding: 0;
-}
-
-/* A level is a height. */
 .audio-slot[data-size='fader'] { grid-row: span 2; }
-
-.audio-fader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.125rem;
-}
-
-.audio-fader__track {
-  position: relative;
-  inline-size: 0.75rem;
-  block-size: 4.5rem;
-  background: var(--surface-inset);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xs);
-  cursor: ns-resize;
-  touch-action: none;
-  user-select: none;
-  overflow: hidden;
-  transition: border-color var(--duration-fast) var(--ease-out);
-}
-
-.audio-fader__track:hover,
-.audio-fader__track:focus-visible {
-  border-color: var(--border-strong);
-}
-
-.audio-fader__track:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 2px;
-}
-
-.audio-fader__fill {
-  position: absolute;
-  inset-inline: 0;
-  inset-block-end: 0;
-  block-size: calc(var(--fill, 0) * 100%);
-  background: var(--section, var(--accent));
-  opacity: 0.85;
-}
-
-.audio-fader__value {
-  color: var(--text-primary);
-  font-size: 0.6875rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.audio-fader__label {
-  max-inline-size: 4rem;
-  color: var(--text-muted);
-  font-size: 0.625rem;
-  line-height: 1.2;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-/*
- * A knob on an instrument is a dial with its name under it, not a labelled row with a dial beneath.
- * The shared controller stacks a full number field above the dial because in an inspector the
- * value is the point; here the gesture is, so the order is reversed and the field shrinks to a
- * readout. Scoped to these panels — the inspector everywhere else is unchanged.
- */
-.audio-stage .controller-stack,
-.audio-mod .controller-stack {
-  display: flex;
-  flex-direction: column-reverse;
-  align-items: center;
-  gap: 0.125rem;
-}
-
-.audio-stage .controller-stack .control--field,
-.audio-mod .controller-stack .control--field {
-  inline-size: 100%;
-}
-
-.audio-stage .dial-row,
-.audio-mod .dial-row {
-  justify-content: center;
-}
-
-/* Anything that is not a dial — a switch, a wave picker, a curve — spans the grid. */
-.audio-stage__fields > .control:not(.controller-stack),
-.audio-stage__fields > .controller-visual,
-.audio-stage__fields > .controller-curve {
-  grid-column: 1 / -1;
-}
-
-.audio-lane__off {
-  margin: 0;
-  padding: var(--space-3);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-/*
- * A knob's name belongs under the knob, small, and its value belongs in the knob's own readout.
- * The shared number field is built for an inspector, where it is a labelled row with room to
- * breathe; in a four-rem column that row is three things fighting for the same line. Scoped to
- * these panels, so the inspector everywhere else keeps the field it was designed as.
- */
-.audio-stage .number-value,
-.audio-mod .number-value {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  min-block-size: 0;
-}
-
-.audio-stage .number-value__label,
-.audio-mod .number-value__label {
-  order: 2;
-  max-inline-size: 100%;
-  color: var(--text-muted);
-  font-size: 0.625rem;
-  line-height: 1.25;
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-
-.audio-stage .number-value__input,
-.audio-mod .number-value__input {
-  order: 1;
-  inline-size: 100% !important;
-  padding: 0;
-  color: var(--text-primary);
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  background: none;
-  border: 0;
-}
-
-/* The reset is a repair, not a control: it appears when the knob is being used. */
-.audio-stage .field-reset,
-.audio-mod .field-reset {
-  order: 3;
-  opacity: 0;
-  transition: opacity var(--duration-instant) var(--ease-out);
-}
-
-.audio-stage .controller-stack:hover .field-reset,
-.audio-mod .controller-stack:hover .field-reset,
-.audio-stage .field-reset:focus-visible,
-.audio-mod .field-reset:focus-visible {
-  opacity: 1;
-}
 
 /* The drawer. Fixed to the foot of the instrument, never behind a tab. */
 .audio-drawer {
@@ -1162,6 +976,7 @@
 .audio-route[data-layer='0'] { --section: #9fd9bd; }
 .audio-route[data-layer='1'] { --section: #93c8ea; }
 .audio-route[data-layer='2'] { --section: #e3c98f; }
+.audio-route[data-layer='3'] { --section: #d8a8d0; }
 
 .audio-route[data-off] {
   --section: var(--text-muted);
@@ -1335,3 +1150,280 @@
 .audio-library[data-compact] .audio-library__title {
   display: none;
 }
+
+/*
+ * Density, measured rather than guessed.
+ *
+ * One layer's stages summed to 1871 pixels in a rack 401 tall, which is where the scrolling came
+ * from. Two things were doing almost all of it. A curve control is 408 pixels here because it
+ * ships with a preset grid and an exact-coordinates field — right in an inspector, where setting
+ * a curve is the task; on a face-plate the curve is a shape you drag and the rest is a dialog you
+ * did not open. And each knob was taking ninety to a hundred and ten pixels for a thirty-six pixel
+ * dial, the remainder being label leading and the space held for a reset that only appears on
+ * hover.
+ */
+.audio-stage .control--curve .curve-presets,
+.audio-stage .control--curve .curve-field__exact,
+.audio-stage .control--curve .control__head > *:not(.curve-field__canvas):not(svg) {
+  display: none;
+}
+
+.audio-stage .control--curve .control__head {
+  block-size: auto;
+  padding: 0;
+}
+
+.audio-stage .control--curve svg,
+.audio-stage .control--curve canvas {
+  block-size: 3rem;
+  inline-size: 100%;
+}
+
+.audio-stage .controller-stack,
+.audio-mod .controller-stack {
+  gap: 0;
+}
+
+.audio-stage .number-value__label,
+.audio-mod .number-value__label {
+  font-size: 0.5625rem;
+  line-height: 1.1;
+}
+
+.audio-stage .number-value__input,
+.audio-mod .number-value__input {
+  font-size: 0.6875rem;
+  line-height: 1.15;
+}
+
+/* The reset takes its space out of the flow; it is a hover affordance, not a row of the panel. */
+.audio-stage .field-reset,
+.audio-mod .field-reset {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+}
+
+.audio-stage .number-value,
+.audio-mod .number-value {
+  position: relative;
+}
+
+.audio-stage .controller-dial,
+.audio-mod .controller-dial {
+  inline-size: 2rem;
+  block-size: 2rem;
+}
+
+.audio-slot[data-size='lg'] .controller-dial { inline-size: 2.75rem; block-size: 2.75rem; }
+.audio-slot[data-size='sm'] .controller-dial { inline-size: 1.5rem; block-size: 1.5rem; }
+
+.audio-stage__title {
+  margin-block-end: -0.125rem;
+}
+
+/* The drawer was taking a third of the window for two modulators. */
+.audio-drawer__panels {
+  max-block-size: none;
+  padding: var(--space-2) var(--space-3);
+  gap: var(--space-3);
+}
+
+.audio-mod .audio-lfo-shape,
+.audio-mod svg {
+  block-size: 2.5rem;
+}
+
+/* Cells sized so a stage's row of controls fits the height a row of three layers can afford. */
+.audio-row__fields {
+  grid-template-columns: repeat(auto-fill, minmax(2.4rem, 1fr));
+  gap: 0.125rem;
+}
+
+.audio-stage .controller-dial {
+  inline-size: 1.6rem;
+  block-size: 1.6rem;
+}
+
+.audio-slot[data-size='lg'] .controller-dial { inline-size: 2.1rem; block-size: 2.1rem; }
+.audio-slot[data-size='sm'] .controller-dial { inline-size: 1.3rem; block-size: 1.3rem; }
+
+.audio-stage .number-value__label {
+  font-size: 0.5rem;
+  line-height: 1.05;
+  max-block-size: 2.1em;
+  overflow: hidden;
+}
+
+.audio-stage .number-value__input {
+  font-size: 0.5625rem;
+  line-height: 1.05;
+}
+
+.audio-stage .audio-fader__track { inline-size: 0.5rem; block-size: 2.6rem; }
+.audio-stage .audio-fader__value { font-size: 0.5625rem; }
+.audio-stage .audio-fader__label { font-size: 0.5rem; line-height: 1.05; max-inline-size: 3rem; }
+
+.audio-stage .control--curve svg,
+.audio-stage .control--curve canvas { block-size: 2rem; }
+
+.audio-stage .choice-controller--visual .choice-controller__preview { block-size: 1rem; }
+
+/* A row that still cannot fit scrolls itself rather than pushing the window: the alternative is
+   clipping a control in half, which reads as broken rather than as full. */
+.audio-row { overflow-y: auto; }
+
+/* The stages show one layer, so their single row has the whole panel height. */
+.audio-row[data-solo] { flex: 1 1 auto; }
+
+/* Choosing a layer is a click on its level. */
+.audio-row__pick {
+  padding: 0.25rem 0;
+  color: var(--section);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-xs);
+  font: inherit;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background var(--duration-instant) var(--ease-out);
+}
+
+.audio-row__pick:hover { background: color-mix(in oklab, var(--section) 22%, transparent); }
+.audio-row__pick:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.audio-row__pick[aria-pressed='true'] { background: color-mix(in oklab, var(--section) 34%, transparent); }
+
+.audio-row[data-active] { background: color-mix(in oklab, var(--section) 8%, transparent); }
+
+/*
+ * Readable again. The type went to eight pixels to fight a constraint that no longer exists: with
+ * one layer to a stage there is room for a control to be legible, and a panel you have to lean
+ * into is not denser, it is just worse.
+ */
+.audio-row__fields {
+  grid-template-columns: repeat(auto-fill, minmax(3.1rem, 1fr));
+  gap: 0.375rem 0.25rem;
+}
+
+.audio-stage .controller-dial { inline-size: 2.1rem; block-size: 2.1rem; }
+.audio-slot[data-size='lg'] .controller-dial { inline-size: 2.9rem; block-size: 2.9rem; }
+.audio-slot[data-size='sm'] .controller-dial { inline-size: 1.7rem; block-size: 1.7rem; }
+
+.audio-stage .number-value__label {
+  font-size: 0.625rem;
+  line-height: 1.15;
+  max-block-size: 2.4em;
+}
+
+.audio-stage .number-value__input { font-size: 0.6875rem; line-height: 1.2; }
+
+.audio-stage .audio-fader__track { inline-size: 0.6rem; block-size: 3.4rem; }
+.audio-stage .audio-fader__value { font-size: 0.625rem; }
+.audio-stage .audio-fader__label { font-size: 0.625rem; line-height: 1.15; }
+
+.audio-stage .control--curve svg,
+.audio-stage .control--curve canvas { block-size: 2.75rem; }
+
+.audio-stage .choice-controller--visual .choice-controller__preview { block-size: 1.4rem; }
+
+/* The level column stays narrow: three layers of switch, fader and pan and nothing else. */
+.audio-stage[data-stage='root'] { min-inline-size: 7.5rem; }
+
+
+/* The knob cell, built for the cell rather than squeezed into it. */
+.audio-knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.0625rem;
+  user-select: none;
+}
+
+.audio-knob__dial {
+  --size: 2.1rem;
+  position: relative;
+  inline-size: var(--size);
+  block-size: var(--size);
+  border-radius: 50%;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-default);
+  cursor: ns-resize;
+  touch-action: none;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.audio-knob[data-size='lg'] .audio-knob__dial { --size: 2.9rem; }
+.audio-knob[data-size='sm'] .audio-knob__dial { --size: 1.6rem; }
+
+.audio-knob__dial:hover { border-color: var(--border-strong); }
+.audio-knob__dial:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* The arc reads the value from across the room; the hand reads it precisely. */
+.audio-knob__dial::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(from 225deg, var(--section, var(--accent)) calc(var(--fraction, 0) * 270deg), transparent 0);
+  mask: radial-gradient(circle, transparent calc(50% - 2px), #000 calc(50% - 2px));
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.audio-knob__hand {
+  position: absolute;
+  inset-inline-start: 50%;
+  inset-block-start: 12%;
+  inline-size: 2px;
+  block-size: 34%;
+  margin-inline-start: -1px;
+  background: var(--text-primary);
+  border-radius: 1px;
+  transform-origin: 50% 115%;
+  transform: rotate(var(--turn, 0deg));
+  pointer-events: none;
+}
+
+.audio-knob__value {
+  color: var(--text-primary);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.audio-knob__label {
+  max-inline-size: 100%;
+  color: var(--text-muted);
+  font-size: 0.5625rem;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-slot[data-size='wide'] { grid-column: 1 / -1; }
+
+
+/* Folding the drawer hands its three hundred pixels back to whichever stage wanted them. */
+.audio-routing__fold {
+  margin-inline-start: auto;
+  padding: 0.25rem var(--space-3);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-full);
+  font: inherit;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: color var(--duration-instant) var(--ease-out), border-color var(--duration-instant) var(--ease-out);
+}
+
+.audio-routing__fold:hover { color: var(--text-primary); border-color: var(--border-default); }
+.audio-routing__fold:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

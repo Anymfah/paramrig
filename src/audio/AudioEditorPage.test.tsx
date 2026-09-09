@@ -26,29 +26,47 @@ const open = (id: string) => render(
 
 describe('AudioEditorPage', () => {
   /** The whole argument of the layout: nothing is behind a tab, so nothing has to be found. */
-  it('shows every layer and the bus at once, as lanes of a signal path', () => {
+  it('lays the stages across the window in the order the signal goes through them', () => {
     open(arcadeCoin().id)
     const rack = screen.getByRole('group', { name: 'Signal path' })
-    for (const lane of ['Layer 1', 'Layer 2', 'Layer 3', 'Mix']) {
-      expect(within(rack).getByRole('region', { name: lane })).toBeInTheDocument()
+    for (const stage of ['Level', 'Source', 'Pitch', 'Filter', 'Shaper', 'Body', 'Envelope', 'Mix']) {
+      expect(within(rack).getByRole('region', { name: stage })).toBeInTheDocument()
     }
     expect(within(rack).queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('keeps all three levels, and gives the stages the layer being worked on', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const level = screen.getByRole('region', { name: 'Level' })
+    // Which layers are on and how loud they are against each other is the comparison worth
+    // keeping, so the level column holds all three.
+    for (const layer of ['Layer 1', 'Layer 2', 'Layer 3']) {
+      expect(within(level).getByRole('group', { name: `${layer} · Level` })).toBeInTheDocument()
+    }
+    const filter = screen.getByRole('region', { name: 'Filter' })
+    expect(within(filter).getByRole('group', { name: 'Layer 1 · Filter' })).toBeInTheDocument()
+    expect(within(filter).queryByRole('group', { name: 'Layer 2 · Filter' })).toBeNull()
+
+    await user.click(within(level).getByRole('button', { name: 'Work on Layer 2' }))
+    expect(within(filter).getByRole('group', { name: 'Layer 2 · Filter' })).toBeInTheDocument()
+    expect(within(filter).queryByRole('group', { name: 'Layer 1 · Filter' })).toBeNull()
   })
 
   /**
    * The tabs separate what you are doing, not what you can see: nothing is hidden inside a view.
    * The layers show every field they have at once, and so do the modulators.
    */
-  it('keeps the modulators under the instrument rather than behind a tab', async () => {
+  it('keeps the routing beside the instrument even though the modulators moved out', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     const tabs = screen.getByRole('tablist', { name: 'Views' })
     expect(within(tabs).getByRole('tab', { name: 'Instrument', selected: true })).toBeInTheDocument()
-    expect(within(tabs).queryByRole('tab', { name: 'Modulation' })).toBeNull()
 
-    // The layer and the modulator that moves it are on screen together, which is the point.
-    expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: 'Modulation' })).toBeInTheDocument()
+    // The panels have their own view; the one line saying what is moving does not go with them.
+    expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Routing' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Modulation' })).toBeNull()
 
     await user.click(within(tabs).getByRole('tab', { name: 'Sounds' }))
     const browser = screen.getByRole('tabpanel')
@@ -56,11 +74,13 @@ describe('AudioEditorPage', () => {
     expect(within(browser).getByRole('button', { name: /Sub drop/ })).toBeInTheDocument()
 
     await user.click(within(tabs).getByRole('tab', { name: 'Instrument' }))
-    expect(screen.getByRole('region', { name: 'Layer 1' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
   })
 
-  it('says what a modulator is doing, and that it is doing it to nothing yet', () => {
+  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
+    const user = userEvent.setup()
     open(arcadeCoin().id)
+    await user.click(screen.getByRole('tab', { name: 'Modulation' }))
     const drawer = screen.getByRole('region', { name: 'Modulation' })
     // Both modulators are on screen now rather than one at a time, so both say it.
     expect(within(drawer).getAllByText('Not assigned')).toHaveLength(2)
@@ -82,13 +102,14 @@ describe('AudioEditorPage', () => {
     expect(screen.getByText('1.50 s')).toBeInTheDocument()
   })
 
-  it('collapses a layer that is switched off to its own switch', () => {
+  it('says a stage is off rather than showing settings that make no sound', async () => {
+    const user = userEvent.setup()
     open(arcadeCoin().id)
-    const off = screen.getByRole('region', { name: 'Layer 2' })
-    expect(within(off).getByText(/switched off/i)).toBeInTheDocument()
-    expect(within(off).queryByText('Cutoff')).toBeNull()
-    const on = screen.getByRole('region', { name: 'Layer 1' })
-    expect(within(on).getByText('Cutoff')).toBeInTheDocument()
+    const filter = screen.getByRole('region', { name: 'Filter' })
+    expect(within(filter).getByText('Cutoff')).toBeInTheDocument()
+    await user.click(within(screen.getByRole('region', { name: 'Level' })).getByRole('button', { name: 'Work on Layer 2' }))
+    expect(within(filter).getByText('Off')).toBeInTheDocument()
+    expect(within(filter).queryByText('Cutoff')).toBeNull()
   })
 
   it('puts the waveform in the transport with the numbers that describe it', () => {
@@ -180,7 +201,7 @@ describe('AudioEditorPage', () => {
 
   it('draws the envelope rather than listing its five times', () => {
     open(arcadeCoin().id)
-    const layer = screen.getByRole('region', { name: 'Layer 1' })
+    const layer = screen.getByRole('region', { name: 'Envelope' })
     for (const handle of ['Attack, layer 1', 'Hold, layer 1', 'Decay and sustain, layer 1', 'Release, layer 1']) {
       expect(within(layer).getByRole('slider', { name: handle })).toBeInTheDocument()
     }
@@ -190,7 +211,7 @@ describe('AudioEditorPage', () => {
 
   it('reads the envelope out in numbers beside the shape', () => {
     open(arcadeCoin().id)
-    const layer = screen.getByRole('region', { name: 'Layer 1' })
+    const layer = screen.getByRole('region', { name: 'Envelope' })
     expect(within(layer).getByText('D 260 ms')).toBeInTheDocument()
     expect(within(layer).getByText('S 0.00')).toBeInTheDocument()
   })

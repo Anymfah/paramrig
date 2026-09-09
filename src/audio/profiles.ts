@@ -19,7 +19,7 @@ import type { AudioPatch } from '@/audio/types'
 /** Samples inside each stage. The corners are exact; these fill in the curve between them. */
 const PER_STAGE = 8
 
-export const LAYER_COLOURS = ['#9fd9bd', '#93c8ea', '#e3c98f']
+export const LAYER_COLOURS = ['#9fd9bd', '#93c8ea', '#e3c98f', '#d8a8d0']
 
 function times(start: number, end: number): number[] {
   if (end <= start) return []

@@ -8,7 +8,7 @@ import { IconRedo, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioRack } from '@/audio/AudioRack'
-import { AudioDrawer } from '@/audio/AudioDrawer'
+import { AudioDrawer, AudioRouting } from '@/audio/AudioDrawer'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioSoundList } from '@/audio/AudioSoundList'
 import { AudioTransport } from '@/audio/AudioTransport'
@@ -34,9 +34,10 @@ const EMPTY = { left: new Float32Array(0), right: new Float32Array(0) }
  * it moves in two places you could not occupy at once. It is a drawer under the instrument now, on
  * screen while you work, the way every synthesiser worth copying arranges it.
  */
-type ViewId = 'instrument' | 'sounds'
+type ViewId = 'instrument' | 'modulation' | 'sounds'
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'instrument', label: 'Instrument' },
+  { id: 'modulation', label: 'Modulation' },
   { id: 'sounds', label: 'Sounds' },
 ]
 
@@ -340,7 +341,16 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           ))}
         </div>
         <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
-          {view === 'sounds' ? (
+          {view === 'modulation' ? (
+            <AudioDrawer
+              parameters={parameters}
+              values={values}
+              duration={patch.duration}
+              onChange={change}
+              onGestureStart={began}
+              onGestureEnd={ended}
+            />
+          ) : view === 'sounds' ? (
             <AudioPresetsView
               current={preset}
               snapshots={snapshots}
@@ -358,14 +368,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onGestureStart={began}
                 onGestureEnd={ended}
               />
-              <AudioDrawer
-                parameters={parameters}
-                values={values}
-                duration={patch.duration}
-                onChange={change}
-                onGestureStart={began}
-                onGestureEnd={ended}
-              />
+              <AudioRouting values={values} />
             </div>
           )}
         </div>
