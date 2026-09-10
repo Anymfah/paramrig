@@ -4,13 +4,13 @@ import { applyTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { LINEAR } from '@/audio/dsp/curve'
 import {
-  AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
+  AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
   type AudioPropertyType, type FieldSpec, type LayerSection,
 } from '@/audio/fields'
 import type { AudioPatch, Layer } from '@/audio/types'
 
 export { applyTransform, controlId, type BindingTransform } from '@/rigs/binding'
-export { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, LAYER_SECTIONS, type AudioPropertyType, type FieldSpec, type LayerSection } from '@/audio/fields'
+export { AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, LAYER_SECTIONS, type AudioPropertyType, type FieldSpec, type LayerSection } from '@/audio/fields'
 
 /**
  * A patch is a fixed chain, so a path addresses its target completely on its own — there is no
@@ -35,8 +35,7 @@ export type AudioRig = {
 
 export type AudioPath =
   | { kind: 'patch'; field: string; spec: FieldSpec }
-  | { kind: 'lfo'; index: number; field: string; spec: FieldSpec }
-  | { kind: 'envelope'; index: number; field: string; spec: FieldSpec }
+  | { kind: 'mod'; index: number; field: string; spec: FieldSpec }
   | { kind: 'performer'; index: number; field: string; spec: FieldSpec }
   | { kind: 'layer'; index: number; section: LayerSection; field: string; spec: FieldSpec }
   | { kind: 'fx'; field: string; spec: FieldSpec }
@@ -62,20 +61,12 @@ export function parseAudioProperty(property: string): AudioPath | null {
     return spec ? { kind: 'layer', index, section, field, spec } : null
   }
 
-  const lfo = /^lfos\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
-  if (lfo) {
-    const index = Number(lfo[1])
-    if (!Number.isInteger(index) || index < 0 || index >= LFO_COUNT) return null
-    const spec = AUDIO_FIELDS.lfo[lfo[2] ?? '']
-    return spec ? { kind: 'lfo', index, field: lfo[2] ?? '', spec } : null
-  }
-
-  const envelope = /^envelopes\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
-  if (envelope) {
-    const index = Number(envelope[1])
-    if (!Number.isInteger(index) || index < 0 || index >= MOD_ENVELOPE_COUNT) return null
-    const spec = AUDIO_FIELDS.envelope[envelope[2] ?? '']
-    return spec ? { kind: 'envelope', index, field: envelope[2] ?? '', spec } : null
+  const mod = /^mods\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
+  if (mod) {
+    const index = Number(mod[1])
+    if (!Number.isInteger(index) || index < 0 || index >= MOD_COUNT) return null
+    const spec = AUDIO_FIELDS.mod[mod[2] ?? '']
+    return spec ? { kind: 'mod', index, field: mod[2] ?? '', spec } : null
   }
 
   const performer = /^performers\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
@@ -102,6 +93,25 @@ export function parseAudioProperty(property: string): AudioPath | null {
 }
 
 /**
+ * What a property used to be called, so a binding that names an older path is moved rather than
+ * deleted.
+ *
+ * This is the half of a migration nobody sees coming. `sanitizeAudioPatch` carries the patch
+ * forward, but the controls someone exposed live on the document beside it, and `sanitizeAudioRig`
+ * drops every binding whose property no longer parses. Without this, renaming a field would
+ * quietly throw away the rig of every patch anyone had built.
+ */
+export function carryAudioProperty(property: string, from: number): string {
+  if (from >= 2) return property
+  // One to two: two lists of modulators became one list of slots, the envelopes first.
+  const envelope = /^envelopes\[(\d+)\]\.(.+)$/.exec(property)
+  if (envelope) return `mods[${Number(envelope[1])}].${envelope[2]}`
+  const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(property)
+  if (lfo) return `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
+  return property
+}
+
+/**
  * Every path a binding may name, generated from the same tables the parser reads. The docs page
  * renders this, so a field the synthesiser gains is a documented row on the same commit and a
  * field it loses cannot linger in the documentation.
@@ -115,8 +125,7 @@ export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: Audi
       type: spec.type,
     })),
   ),
-  ...Object.entries(AUDIO_FIELDS.lfo).map(([field, spec]) => ({ property: `lfos[i].${field}`, label: spec.label, type: spec.type })),
-  ...Object.entries(AUDIO_FIELDS.envelope).map(([field, spec]) => ({ property: `envelopes[i].${field}`, label: spec.label, type: spec.type })),
+  ...Object.entries(AUDIO_FIELDS.mod).map(([field, spec]) => ({ property: `mods[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.performer).map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.master).map(([field, spec]) => ({ property: `master.${field}`, label: spec.label, type: spec.type })),
@@ -170,15 +179,10 @@ export function applyAudioBinding(patch: AudioPatch, binding: AudioBinding, valu
   if (next === null) return patch
 
   if (path.kind === 'patch') return { ...patch, [path.field]: next }
-  if (path.kind === 'lfo') {
-    const lfo = patch.lfos[path.index]
-    if (!lfo) return patch
-    return { ...patch, lfos: patch.lfos.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
-  }
-  if (path.kind === 'envelope') {
-    const envelope = patch.envelopes[path.index]
-    if (!envelope) return patch
-    return { ...patch, envelopes: patch.envelopes.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
+  if (path.kind === 'mod') {
+    const slot = patch.mods[path.index]
+    if (!slot) return patch
+    return { ...patch, mods: patch.mods.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
   }
   if (path.kind === 'performer') {
     const performer = patch.performers[path.index]
@@ -253,13 +257,9 @@ export function currentAudioValue(patch: AudioPatch, property: string): ParamVal
     return value && typeof value === 'object' ? (value as ParamValue) : null
   }
   if (path.kind === 'patch') return read(patch, path.field)
-  if (path.kind === 'lfo') {
-    const lfo = patch.lfos[path.index]
-    return lfo ? read(lfo, path.field) : null
-  }
-  if (path.kind === 'envelope') {
-    const envelope = patch.envelopes[path.index]
-    return envelope ? read(envelope, path.field) : null
+  if (path.kind === 'mod') {
+    const slot = patch.mods[path.index]
+    return slot ? read(slot, path.field) : null
   }
   if (path.kind === 'performer') {
     const performer = patch.performers[path.index]
@@ -327,8 +327,7 @@ export function audioPropertyLabel(property: string): string {
   const path = parseAudioProperty(property)
   if (!path) return property
   if (path.kind === 'layer') return `Layer ${path.index + 1} · ${path.spec.label}`
-  if (path.kind === 'lfo') return `LFO ${path.index + 1} · ${path.spec.label}`
-  if (path.kind === 'envelope') return `Envelope ${path.index + 2} · ${path.spec.label}`
+  if (path.kind === 'mod') return `Modulator ${path.index + 2} · ${path.spec.label}`
   if (path.kind === 'performer') return `Performer ${path.index + 1} · ${path.spec.label}`
   return path.spec.label
 }

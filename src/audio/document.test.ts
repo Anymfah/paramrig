@@ -98,3 +98,30 @@ describe('audioManifest', () => {
     expect(manifest.parameters).toHaveLength(0)
   })
 })
+
+describe('carrying a saved document forward', () => {
+  it('moves the controls someone exposed onto the paths that moved, rather than deleting them', () => {
+    // A document written before the two lists of modulators became one list of slots.
+    const older = {
+      version: 1,
+      id: 'older-one',
+      name: 'Older',
+      patch: { version: 1, duration: 0.3, lfos: [{ enabled: true, rate: 7, target: 'layers[0].cutoff' }] },
+      rig: {
+        groups: [{ id: 'g', label: 'Group' }],
+        parameters: [
+          { kind: 'number', id: 'speed', label: 'Speed', group: 'g', min: 0.1, max: 40, step: 0.1, defaultValue: 7 },
+          { kind: 'number', id: 'sweep', label: 'Sweep', group: 'g', min: -1, max: 1, step: 0.01, defaultValue: 0.5 },
+        ],
+        bindings: [
+          { id: 'a', property: 'lfos[0].rate', parameterId: 'speed' },
+          { id: 'b', property: 'envelopes[1].depth', parameterId: 'sweep' },
+        ],
+      },
+    }
+    const read = sanitizeAudioDocument(older)
+    // The first oscillator was the third slot, and the second free envelope was the second.
+    expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(['mods[2].rate', 'mods[1].depth'])
+    expect(read?.patch.mods[2]).toMatchObject({ kind: 'lfo', enabled: true, rate: 7, target: 'layers[0].cutoff' })
+  })
+})

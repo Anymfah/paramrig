@@ -6,7 +6,7 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { createShaper, shapeSample } from '@/audio/dsp/shaper'
@@ -96,15 +96,16 @@ const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
     if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
     return { colour: SOURCE_COLOUR.p, depth: readNum(ctx, `${id}.depth`), bipolar: read(ctx, `${id}.bipolar`) === true, onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
   }
-  for (let index = 0; index < MOD_ENVELOPE_COUNT; index += 1) {
-    const id = `envelopes[${index}]`
+  for (let index = 0; index < MOD_COUNT; index += 1) {
+    const id = `mods[${index}]`
     if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
-    return { colour: SOURCE_COLOUR.e, depth: readNum(ctx, `${id}.depth`), bipolar: false, onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
-  }
-  for (let index = 0; index < LFO_COUNT; index += 1) {
-    const id = `lfos[${index}]`
-    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
-    return { colour: SOURCE_COLOUR.l, depth: readNum(ctx, `${id}.depth`), onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
+    const envelope = read(ctx, `${id}.kind`) === 'envelope'
+    return {
+      colour: envelope ? SOURCE_COLOUR.e : SOURCE_COLOUR.l,
+      depth: readNum(ctx, `${id}.depth`),
+      onDepth: (next) => ctx.onChange(`${id}.depth`, next),
+      onClear: () => ctx.onChange(`${id}.target`, 'off'),
+    }
   }
   return undefined
 }
@@ -740,35 +741,31 @@ const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 const hertz = (st: number) => 440 * Math.pow(2, st / 12)
 
 /** A modulation source of the routing bar: which slot it is, which page of panels shows it. */
-type Source = { id: string; kind: 'p' | 'e' | 'l'; lfo?: number; envelope?: number; performer?: number }
-const SOURCES: Source[] = [
-  { id: 'P1', kind: 'p', performer: 0 },
-  { id: 'P2', kind: 'p', performer: 1 },
-  { id: 'P3', kind: 'p', performer: 2 },
-  { id: 'E1', kind: 'e' },
-  { id: 'E2', kind: 'e', envelope: 0 },
-  { id: 'E3', kind: 'e', envelope: 1 },
-  { id: 'L4', kind: 'l', lfo: 0 },
-  { id: 'L5', kind: 'l', lfo: 1 },
-  { id: 'L6', kind: 'l', lfo: 2 },
-  { id: 'L7', kind: 'l', lfo: 3 },
-  { id: 'L8', kind: 'l', lfo: 4 },
-  { id: 'L9', kind: 'l', lfo: 5 },
-]
+/**
+ * A station of the routing bar.
+ *
+ * Three performers, then the amplifier's own envelope, then the eight free slots. A slot's letter
+ * says what it holds and its number says where it sits, which is how the reference numbers its
+ * nine — E1 to E3 and then L4 to L9 is one run, not two. So the eight are numbered two to nine and
+ * their letter follows whatever each is set to.
+ */
+type Source = { id: string; kind: 'p' | 'e' | 'l'; mod?: number; performer?: number }
+const PERFORMER_SOURCES: Source[] = Array.from({ length: PERFORMER_COUNT }, (_, index) => ({ id: `P${index + 1}`, kind: 'p', performer: index }))
+const AMP_SOURCE: Source = { id: 'E1', kind: 'e' }
+/** Where the amplifier's envelope sits in the bar, and the first free slot right after it. */
+const AMP_AT = PERFORMER_SOURCES.length
+const FIRST_SLOT = AMP_AT + 1
 /** A source's centre in the routing row: forty and a quarter each, and one more between trios. */
 const SOURCE_AT = (index: number) => 20.125 + 40.25 * (index + Math.floor(index / 3))
 /** The three slots' left edges. */
 const SLOT_X = [0, 414.5, 832.5]
 /** The gap before each slot's panel, which the reference's hairlines between them measure. */
 const SLOT_GAP = [0, 1, 0.5]
-/** The slot a modulator's property path names, or null. */
+/** The slot a modulator's property path names, or null for the amplifier's own, which stays put. */
 const held = (source: Source): { path: string; id: string } | null =>
   source.performer !== undefined ? { path: `performers[${source.performer}]`, id: source.id }
-  : source.lfo !== undefined ? { path: `lfos[${source.lfo}]`, id: source.id }
-  : source.envelope !== undefined ? { path: `envelopes[${source.envelope}]`, id: source.id }
+  : source.mod !== undefined ? { path: `mods[${source.mod}]`, id: source.id }
   : null
-/** The routing bar's first envelope: the plate opens on the envelopes, as it did before the performers stood in front of them. */
-const FIRST_ENVELOPE = SOURCES.findIndex((source) => source.kind === 'e')
 
 const MACRO_COUNT = 16
 const macroBindingId = (index: number) => `macro-${index + 1}`
@@ -878,7 +875,16 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   const hintOf = (node: EventTarget | null) => ((node as HTMLElement | null)?.closest?.('[data-hint]') as HTMLElement | null) ?? null
   const hintFrom = (event: SyntheticEvent) => setHinted(hintOf(event.target))
   /** The source whose modulator is on show: with its two neighbours on the wide face, alone on the narrow. */
-  const [shown, setShown] = useState(FIRST_ENVELOPE)
+  /** The bar, named from what each slot currently holds. */
+  const SOURCES: Source[] = [
+    ...PERFORMER_SOURCES,
+    AMP_SOURCE,
+    ...Array.from({ length: MOD_COUNT }, (_, index): Source => {
+      const envelope = read(ctx, `mods[${index}].kind`) !== 'lfo'
+      return { id: `${envelope ? 'E' : 'L'}${index + 2}`, kind: envelope ? 'e' : 'l', mod: index }
+    }),
+  ]
+  const [shown, setShown] = useState(AMP_AT)
   const page = Math.floor(shown / 3)
   /** Which row the performers play, held on the patch. */
   const scene = Math.min(SCENE_COUNT - 1, Math.max(0, Math.round(readNum(ctx, 'scene', 0))))
@@ -1214,7 +1220,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   const modulatorPanels = (
     <>
       {/* ═══ Modulators: three of nine at a time, the trio the routing bar chose; one on a folded face ═══ */}
-      {modulators.filter((entry) => entry.source < FIRST_ENVELOPE).map(({ source, slot }) => {
+      {modulators.filter((entry) => entry.source < AMP_AT).map(({ source, slot }) => {
         const index = source
         const o = 418.3 * slot
         const px = SLOT_X[slot] ?? 0
@@ -1259,7 +1265,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           </Panel>
         )
       })}
-      {modulators.some((entry) => entry.source === FIRST_ENVELOPE) ? (
+      {modulators.some((entry) => entry.source === AMP_AT) ? (
         <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
           <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
           <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
@@ -1293,83 +1299,84 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         </Panel>
 
       ) : null}
-      {modulators.filter((entry) => entry.source === FIRST_ENVELOPE + 1 || entry.source === FIRST_ENVELOPE + 2).map(({ source, slot }) => {
-        const index = source - FIRST_ENVELOPE - 1
-        const o = 418.3 * slot
-        const px = SLOT_X[slot] ?? 0
-        const id = (tail: string) => `envelopes[${index}].${tail}`
-        const target = ctx.byId.get(id('target'))
-        const on = read(ctx, id('enabled')) !== false
-        const Y = (local: number) => 384 + local
-        return (
-          <Panel key={index} x={px} y={384} w={417.5} h={288} label={`Envelope ${index + 2}`} gap={SLOT_GAP[slot]}>
-            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
-            <Text x={205.5 + o} y={Y(5)} kind="title">Envelope</Text>
-            <Text x={95.65 + o} y={Y(29.5)}>Shape</Text>
-            <Text x={232.45 + o} y={Y(29.5)}>Sustain</Text>
-            <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
-            <Knob ctx={ctx} x={95.65 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
-            <Knob ctx={ctx} x={232.45 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
-            <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
-            <Text x={96 + o} y={Y(116)}>A</Text>
-            <Text x={232.4 + o} y={Y(115.5)}>D</Text>
-            <Text x={368.6 + o} y={Y(115.5)}>R</Text>
-            <Text x={27.6 + o} y={Y(126)}>Delay</Text>
-            <Text x={164.8 + o} y={Y(126)}>Hold</Text>
-            <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
-            <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
-            <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
-            <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
-            <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
-            <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
-            <Text x={38.4 + o} y={Y(208)} u>Target</Text>
-            <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5} hint="What this envelope moves. Pick a target here, or drag the handle above onto a control.">
-              {target ? (
-                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-              ) : null}
-            </Block>
-            <Box x={10 + o} y={Y(246)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
-            <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
-              <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
-            </Block>
-          </Panel>
-        )
-      })}
-      {modulators.filter((entry) => entry.source >= FIRST_ENVELOPE + 3).map(({ source, slot }) => {
-        const index = source - FIRST_ENVELOPE - 3
+      {modulators.filter((entry) => entry.source >= FIRST_SLOT).map(({ source, slot }) => {
+        const index = source - FIRST_SLOT
         const o = 418.3 * slot
         const px = SLOT_X[slot] ?? 0
         const pw = slot === 0 ? 413.5 : 417.5
-        const id = (tail: string) => `lfos[${index}].${tail}`
+        const id = (tail: string) => `mods[${index}].${tail}`
+        const envelope = read(ctx, id('kind')) !== 'lfo'
         const target = ctx.byId.get(id('target'))
         const on = read(ctx, id('enabled')) !== false
         const shape = read(ctx, id('shape'))
         const cycles = readNum(ctx, id('rate'), 5) * duration
         const Y = (local: number) => 384 + local
         return (
-          <Panel key={index} x={px} y={384} w={pw} h={288} label={`LFO ${index + 1}`} gap={SLOT_GAP[slot]}>
-            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 4}</Text>
-            <Text x={203.3 + o} y={Y(5)} kind="title">Switcher LFO</Text>
-            {/* the left column: how fast, and whether at all */}
-            <Text x={36.5 + o} y={Y(104)}>Rate</Text>
-            <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
-            <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
-            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 4} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
-            {/* the wheel */}
-            <Text x={193 + o} y={Y(30)}>Shape</Text>
-            <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`LFO ${index + 1} shape`} onPick={(next) => onChange(id('shape'), next)} />
-            <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
-            {/* the right column: how much, and from where in the cycle */}
-            <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
-            <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
-            <Text x={351.5 + o} y={Y(172)}>Phase</Text>
-            <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label="Phase" size="sm" />
-            {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
-            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
-              {target ? (
-                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-              ) : null}
-            </Block>
+          <Panel key={index} x={px} y={384} w={pw} h={288} label={`Modulator ${index + 2}`} gap={SLOT_GAP[slot]}>
+            <Text x={2.5 + o} y={Y(5.5)} align="left" kind="title">Modulator {index + 2}</Text>
+            {/* The one control every slot has, whatever it holds: what it is. */}
+            <SlotMenu x={186 + o} y={Y(-1.5)} w={124} columns={2} label={`Modulator ${index + 2} kind`}
+              value={envelope ? 'envelope' : 'lfo'}
+              hint="What stands in this slot. An envelope happens once; an oscillator keeps happening."
+              options={[
+                { value: 'envelope', label: 'Envelope', note: 'A shape that happens once, on the sound\u2019s own clock.' },
+                { value: 'lfo', label: 'Switcher LFO', note: 'A shape that keeps happening, at a rate you set.' },
+              ]}
+              onPick={(next) => onChange(id('kind'), next)} />
+            {envelope ? (
+              <>
+                  <Text x={95.65 + o} y={Y(29.5)}>Shape</Text>
+                  <Text x={232.45 + o} y={Y(29.5)}>Sustain</Text>
+                  <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
+                  <Knob ctx={ctx} x={95.65 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
+                  <Knob ctx={ctx} x={232.45 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
+                  <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
+                  <Text x={96 + o} y={Y(116)}>A</Text>
+                  <Text x={232.4 + o} y={Y(115.5)}>D</Text>
+                  <Text x={368.6 + o} y={Y(115.5)}>R</Text>
+                  <Text x={27.6 + o} y={Y(126)}>Delay</Text>
+                  <Text x={164.8 + o} y={Y(126)}>Hold</Text>
+                  <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
+                  <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
+                  <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
+                  <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
+                  <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
+                  <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
+                  <Text x={38.4 + o} y={Y(208)} u>Target</Text>
+                  <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5} hint="What this envelope moves. Pick a target here, or drag the handle above onto a control.">
+                    {target ? (
+                      <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+                    ) : null}
+                  </Block>
+                  <Box x={10 + o} y={Y(246)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+                  <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
+                    <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+                  </Block>
+              </>
+            ) : (
+              <>
+                  {/* the left column: how fast, and whether at all */}
+                  <Text x={36.5 + o} y={Y(104)}>Rate</Text>
+                  <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
+                  <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
+                  <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+                  {/* the wheel */}
+                  <Text x={193 + o} y={Y(30)}>Shape</Text>
+                  <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`Modulator ${index + 2} shape`} onPick={(next) => onChange(id('shape'), next)} />
+                  <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
+                  {/* the right column: how much, and from where in the cycle */}
+                  <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
+                  <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
+                  <Text x={351.5 + o} y={Y(172)}>Phase</Text>
+                  <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label="Phase" size="sm" />
+                  {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
+                  <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
+                    {target ? (
+                      <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
+                    ) : null}
+                  </Block>
+              </>
+            )}
           </Panel>
         )
       })}

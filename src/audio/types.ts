@@ -195,6 +195,37 @@ export type ModEnvelope = {
   target: string
 }
 
+/**
+ * What stands in a modulation slot.
+ *
+ * The reference numbers its nine slots once and lets the letter say what each one holds — E1 to E3
+ * and then L4 to L9 is one run of nine, not two runs of three and six. A slot is that: a kind and
+ * the fields of every kind it could be, of which the engine reads the ones its kind needs. The
+ * same shape `SourceSettings` has had all along, where a tone carries a colour it never reads.
+ */
+export type ModKind = 'envelope' | 'lfo'
+
+export type ModSlot = {
+  kind: ModKind
+  enabled: boolean
+  /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
+  target: string
+  /** −1..1, scaled by whatever it is pointed at. Both ways round, on either kind. */
+  depth: number
+  /** An envelope's shape, read when the kind is `envelope`. */
+  delay: number
+  attack: number
+  hold: number
+  decay: number
+  sustain: number
+  release: number
+  curve: number
+  /** An oscillator's, read when the kind is `lfo`. */
+  shape: LfoShape
+  rate: number
+  phase: number
+}
+
 export type PerformerShape = 'step' | 'line' | 'curve'
 
 /**
@@ -234,8 +265,8 @@ export type AudioPatch = {
   duration: number
   seed: number
   layers: Layer[]
-  lfos: Lfo[]
-  envelopes: ModEnvelope[]
+  /** The nine slots the reference numbers once, less the first: that one is a layer's own amp. */
+  mods: ModSlot[]
   performers: Performer[]
   /** Which row every performer plays, 0..11. */
   scene: number

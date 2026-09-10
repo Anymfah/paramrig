@@ -1,4 +1,4 @@
-import { LAYER_COUNT, MOD_ENVELOPE_COUNT, LFO_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
 import { PATCH_VERSION, defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
 import { coin } from '@/audio/presets'
@@ -91,18 +91,32 @@ describe('the performers', () => {
   })
 })
 
-describe('the free envelopes', () => {
-  it('are always there, off and pointed at nothing, however old the patch', () => {
-    const read = sanitizeAudioPatch({ version: 1, duration: 0.5 })
-    expect(read.envelopes).toHaveLength(MOD_ENVELOPE_COUNT)
-    expect(read.envelopes.every((envelope) => !envelope.enabled && envelope.target === 'off')).toBe(true)
-    expect(read.lfos).toHaveLength(LFO_COUNT)
+describe('the modulation slots', () => {
+  it('are eight, off and pointed at nothing, two envelopes then six oscillators', () => {
+    const read = sanitizeAudioPatch({})
+    expect(read.mods).toHaveLength(MOD_COUNT)
+    expect(read.mods.map((slot) => slot.kind)).toEqual(['envelope', 'envelope', 'lfo', 'lfo', 'lfo', 'lfo', 'lfo', 'lfo'])
+    expect(read.mods.every((slot) => !slot.enabled && slot.target === 'off')).toBe(true)
   })
 
-  it('keep what a patch says about them', () => {
-    const written = makePatch(0.5, [], {}, {}, 1, [], [{ enabled: true, target: 'layers[1].cutoff', depth: -0.4 }])
-    const read = sanitizeAudioPatch(JSON.parse(JSON.stringify(written)))
-    expect(read.envelopes[0]).toMatchObject({ enabled: true, target: 'layers[1].cutoff', depth: -0.4 })
+  it('hold the settings of the kind they are not, so switching and switching back loses nothing', () => {
+    const read = sanitizeAudioPatch({ mods: [{ kind: 'lfo', rate: 12, decay: 0.44 }] })
+    expect(read.mods[0]).toMatchObject({ kind: 'lfo', rate: 12, decay: 0.44 })
+  })
+
+  it('carries a patch written as two lists into the one, in the order the bar showed', () => {
+    const older = {
+      version: 1,
+      envelopes: [{ enabled: true, target: 'layers[1].cutoff', depth: -0.4, decay: 0.3 }, {}],
+      lfos: [{ enabled: true, shape: 'square', rate: 9, target: 'layers[0].gain' }, {}, {}, {}, {}, {}],
+    }
+    const read = sanitizeAudioPatch(older)
+    expect(read.version).toBe(PATCH_VERSION)
+    // The first free envelope was E2 and is the first slot; the first oscillator was L4, the third.
+    expect(read.mods[0]).toMatchObject({ kind: 'envelope', enabled: true, target: 'layers[1].cutoff', depth: -0.4, decay: 0.3 })
+    expect(read.mods[2]).toMatchObject({ kind: 'lfo', enabled: true, shape: 'square', rate: 9, target: 'layers[0].gain' })
+    expect(read.mods[1]?.kind).toBe('envelope')
+    expect(read.mods[3]?.kind).toBe('lfo')
   })
 })
 

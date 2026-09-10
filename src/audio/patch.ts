@@ -1,6 +1,6 @@
-import { AUDIO_FIELDS, LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, Lfo, MasterSettings, ModEnvelope, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -61,13 +61,40 @@ export function makeMaster(input: Partial<MasterSettings> = {}): MasterSettings 
   return { gain: 0.9, limiter: 0.6, fadeOut: 0.01, ...input }
 }
 
-export function makeLfo(input: Partial<Lfo> = {}): Lfo {
-  return { enabled: false, shape: 'sine', rate: 5, depth: 0.3, phase: 0, target: 'off', ...input }
+/**
+ * A slot before anything is pointed at it, holding the settings of both kinds it can be.
+ *
+ * The fields its kind does not read are not junk: they are what it reads the moment its kind
+ * changes, which is why an envelope turned into an oscillator and back is the envelope it was.
+ */
+export function makeMod(input: Partial<ModSlot> = {}): ModSlot {
+  return {
+    kind: 'lfo',
+    enabled: false,
+    target: 'off',
+    depth: 0.3,
+    delay: 0, attack: 0.01, hold: 0, decay: 0.2, sustain: 0, release: 0.05, curve: 2,
+    shape: 'sine', rate: 5, phase: 0,
+    ...input,
+  }
+}
+
+/** What a new patch puts in each slot: two envelopes then six oscillators, as the reference has. */
+export const DEFAULT_MOD_KINDS: ModKind[] = ['envelope', 'envelope', 'lfo', 'lfo', 'lfo', 'lfo', 'lfo', 'lfo']
+
+const emptyMod = (index: number): ModSlot => {
+  const kind = DEFAULT_MOD_KINDS[index] ?? 'lfo'
+  return kind === 'envelope' ? makeMod({ kind, depth: 0.5 }) : makeMod({ kind })
+}
+
+/** An oscillator, as a slot. Kept because every preset hands its modulators in as these. */
+export function makeLfo(input: Partial<ModSlot> = {}): ModSlot {
+  return makeMod({ kind: 'lfo', ...input })
 }
 
 /** A free envelope before anything is pointed at it: a quick sweep, half strength, going nowhere. */
-export function makeModEnvelope(input: Partial<ModEnvelope> = {}): ModEnvelope {
-  return { enabled: false, delay: 0, attack: 0.01, hold: 0, decay: 0.2, sustain: 0, release: 0.05, curve: 2, depth: 0.5, target: 'off', ...input }
+export function makeModEnvelope(input: Partial<ModSlot> = {}): ModSlot {
+  return makeMod({ kind: 'envelope', depth: 0.5, ...input })
 }
 
 /** A row with nothing drawn on it. */
@@ -81,12 +108,20 @@ export function makePerformer(input: Partial<Performer> = {}): Performer {
 }
 
 /** Three layers, whatever was handed over, padded with silent ones. A patch always has three. */
-export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<Lfo>[] = [], envelopes: Partial<ModEnvelope>[] = [], performers: Partial<Performer>[] = []): AudioPatch {
+/**
+ * A caller still hands its oscillators and its envelopes in as two lists, because that is how
+ * every preset in the library is written, and they land in the slots the reference gives them:
+ * the envelopes in the first two, the oscillators in the six after.
+ */
+export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<ModSlot>[] = [], envelopes: Partial<ModSlot>[] = [], performers: Partial<Performer>[] = []): AudioPatch {
   const three = Array.from({ length: LAYER_COUNT }, (_, index) => layers[index] ?? silentLayer())
-  const modulators = Array.from({ length: LFO_COUNT }, (_, index) => makeLfo(lfos[index]))
-  const shapes = Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => makeModEnvelope(envelopes[index]))
+  const mods = Array.from({ length: MOD_COUNT }, (_, index) => {
+    const given = index < 2 ? envelopes[index] : lfos[index - 2]
+    if (!given) return emptyMod(index)
+    return index < 2 ? makeModEnvelope(given) : makeLfo(given)
+  })
   const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
-  return { version: PATCH_VERSION, duration, seed, layers: three, lfos: modulators, envelopes: shapes, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
+  return { version: PATCH_VERSION, duration, seed, layers: three, mods, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
 }
 
 /** A performer's rows read back from anything: twelve of sixteen levels, each held to 0..1. */
@@ -160,9 +195,33 @@ function readLayer(value: unknown, base: Layer): Layer {
  * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
  * is open so that the first change to the shape has somewhere to go.
  */
-export const PATCH_VERSION = 1
+export const PATCH_VERSION = 2
 
-const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = []
+/**
+ * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
+ * that each say which of the two they are. A slot's name is its place in that list, so the second
+ * free envelope of an older patch is the second slot and the first oscillator is the third —
+ * which is the numbering the routing bar already showed.
+ */
+function intoSlots(source: Record<string, unknown>): Record<string, unknown> {
+  // A patch that already has slots is already here: it simply did not say which version it was,
+  // which is what a hand-written object in a test looks like, and what a file trimmed by hand
+  // looks like too. Carrying it forward again would throw its slots away.
+  if (Array.isArray(source.mods)) return source
+  const envelopes = Array.isArray(source.envelopes) ? source.envelopes : []
+  const lfos = Array.isArray(source.lfos) ? source.lfos : []
+  const mods = Array.from({ length: MOD_COUNT }, (_, index) => {
+    const kind = DEFAULT_MOD_KINDS[index] ?? 'lfo'
+    const was = index < 2 ? envelopes[index] : lfos[index - 2]
+    return was && typeof was === 'object' && !Array.isArray(was) ? { kind, ...was as Record<string, unknown> } : { kind }
+  })
+  const carried: Record<string, unknown> = { ...source, mods }
+  delete carried.envelopes
+  delete carried.lfos
+  return carried
+}
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots]
 
 function migrate(source: Record<string, unknown>): Record<string, unknown> {
   const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1
@@ -181,8 +240,7 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
   const base = defaultPatch()
   const top = readSection(AUDIO_FIELDS.patch, source, base as unknown as Record<string, unknown>)
   const rawLayers = Array.isArray(source.layers) ? source.layers : []
-  const rawLfos = Array.isArray(source.lfos) ? source.lfos : []
-  const rawEnvelopes = Array.isArray(source.envelopes) ? source.envelopes : []
+  const rawMods = Array.isArray(source.mods) ? source.mods : []
   const rawPerformers = Array.isArray(source.performers) ? source.performers : []
   return {
     version: PATCH_VERSION,
@@ -191,11 +249,8 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
     scene: typeof top.scene === 'number' ? Math.round(top.scene) : 0,
     layers: Array.from({ length: LAYER_COUNT }, (_, index) =>
       (index < rawLayers.length ? readLayer(rawLayers[index], base.layers[index] ?? silentLayer()) : base.layers[index] ?? silentLayer())),
-    lfos: Array.from({ length: LFO_COUNT }, (_, index) => (
-      readSection(AUDIO_FIELDS.lfo, rawLfos[index], makeLfo() as unknown as Record<string, unknown>) as unknown as Lfo
-    )),
-    envelopes: Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => (
-      readSection(AUDIO_FIELDS.envelope, rawEnvelopes[index], makeModEnvelope() as unknown as Record<string, unknown>) as unknown as ModEnvelope
+    mods: Array.from({ length: MOD_COUNT }, (_, index) => (
+      readSection(AUDIO_FIELDS.mod, rawMods[index], emptyMod(index) as unknown as Record<string, unknown>) as unknown as ModSlot
     )),
     performers: Array.from({ length: PERFORMER_COUNT }, (_, index) => {
       const raw = rawPerformers[index]

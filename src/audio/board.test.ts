@@ -56,16 +56,17 @@ describe('the performers on the board', () => {
   it('have their fields on the board, in their own groups, in front of the envelopes', () => {
     const paths = boardPaths()
     expect(paths.some((entry) => entry.property === 'performers[0].target' && entry.group === 'per0.all')).toBe(true)
-    expect(paths.findIndex((entry) => entry.property === 'performers[0].depth')).toBeLessThan(paths.findIndex((entry) => entry.property === 'envelopes[0].depth'))
+    expect(paths.findIndex((entry) => entry.property === 'performers[0].depth')).toBeLessThan(paths.findIndex((entry) => entry.property === 'mods[0].depth'))
     expect(boardGroups().some((group) => group.id === 'per2.all')).toBe(true)
   })
 })
 
-describe('the free envelopes on the board', () => {
-  it('have their fields on the board, in their own groups', () => {
+describe('the modulation slots on the board', () => {
+  it('have their fields on the board, in one group each', () => {
     const paths = boardPaths()
-    expect(paths.some((entry) => entry.property === 'envelopes[0].target' && entry.group === 'env0.all')).toBe(true)
-    expect(paths.some((entry) => entry.property === 'envelopes[1].depth')).toBe(true)
-    expect(boardGroups().some((group) => group.id === 'env1.all')).toBe(true)
+    expect(paths.some((entry) => entry.property === 'mods[0].target' && entry.group === 'mod0.all')).toBe(true)
+    expect(paths.some((entry) => entry.property === 'mods[7].kind')).toBe(true)
+    expect(boardGroups().some((group) => group.id === 'mod7.all')).toBe(true)
   })
 })
+

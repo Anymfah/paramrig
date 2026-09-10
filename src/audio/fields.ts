@@ -171,9 +171,14 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
 
 /** How many oscillator copies a layer may run, and how many modulators a patch carries. */
 export const MAX_VOICES = 5
-export const LFO_COUNT = 6
-/** The free envelopes, beside the amplifier's: the reference's second and third modulator slots. */
-export const MOD_ENVELOPE_COUNT = 2
+/**
+ * The free modulation slots, beside the amplifier's own envelope.
+ *
+ * The reference has nine and numbers them once, E1 to E3 then L4 to L9, so the letter says what
+ * each holds rather than where it sits. The first is a layer's amp envelope and is not free, which
+ * leaves eight.
+ */
+export const MOD_COUNT = 8
 /** The performers, the reference's first three modulator slots, and how many steps a row has. */
 export const PERFORMER_COUNT = 3
 export const STEP_COUNT = 16
@@ -197,22 +202,17 @@ const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
   }),
 )
 
-export const LFO_FIELDS: Record<string, FieldSpec> = {
-  enabled: { type: 'boolean', label: 'Enabled' },
-  shape: { type: 'option', label: 'Shape', options: ['sine', 'triangle', 'square', 'saw', 'noise'] },
-  rate: num('Rate', 0.1, 40, 0.1, { unit: 'Hz', scale: 'log' }),
-  depth: num('Depth', 0, 1),
-  phase: num('Phase', 0, 1),
-  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
-}
-
 /**
- * Every field table in one place. The parser reads it, the docs page is generated from it, a
- * freshly exposed control takes its bounds from it, and the patch reader clamps against it — so a
- * field's range is written once and four things cannot disagree about it.
+ * One table for a slot, holding the fields of both kinds it can be.
+ *
+ * Depth runs both ways for both, where an oscillator's used to run one way only: a shape that can
+ * be turned upside down is worth more than a rule that says it cannot.
  */
-export const ENVELOPE_FIELDS: Record<string, FieldSpec> = {
+export const MOD_FIELDS: Record<string, FieldSpec> = {
+  kind: { type: 'option', label: 'Modulator', options: ['envelope', 'lfo'], optionLabels: { envelope: 'Envelope', lfo: 'Switcher LFO' } },
   enabled: { type: 'boolean', label: 'Enabled' },
+  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+  depth: num('Depth', -1, 1),
   delay: num('Delay', 0, 1, 0.001, SECONDS),
   attack: num('Attack', 0, 2, 0.001, SECONDS),
   hold: num('Hold', 0, 2, 0.001, SECONDS),
@@ -220,10 +220,16 @@ export const ENVELOPE_FIELDS: Record<string, FieldSpec> = {
   sustain: num('Sustain', 0, 1),
   release: num('Release', 0, 2, 0.001, SECONDS),
   curve: num('Envelope curve', 0.25, 6, 0.05),
-  depth: num('Depth', -1, 1),
-  target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+  shape: { type: 'option', label: 'Shape', options: ['sine', 'triangle', 'square', 'saw', 'noise'] },
+  rate: num('Rate', 0.1, 40, 0.1, { unit: 'Hz', scale: 'log' }),
+  phase: num('Phase', 0, 1),
 }
 
+/**
+ * Every field table in one place. The parser reads it, the docs page is generated from it, a
+ * freshly exposed control takes its bounds from it, and the patch reader clamps against it — so a
+ * field's range is written once and four things cannot disagree about it.
+ */
 export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
   enabled: { type: 'boolean', label: 'Enabled' },
   rate: num('Rate', 0.25, 8, 0.25, { unit: 'cycles' }),
@@ -235,8 +241,7 @@ export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
 
 export const AUDIO_FIELDS = {
   patch: PATCH_FIELDS,
-  lfo: LFO_FIELDS,
-  envelope: ENVELOPE_FIELDS,
+  mod: MOD_FIELDS,
   performer: PERFORMER_FIELDS,
   fx: FX_FIELDS,
   master: MASTER_FIELDS,

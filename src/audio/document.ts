@@ -1,8 +1,8 @@
 import { readStore, writeStore, type StorageResult } from '@/editor/storage'
 import type { RigManifest } from '@/rigs/types'
 import { rigText as text } from '@/rigs/sanitize'
-import { defaultPatch, sanitizeAudioPatch } from '@/audio/patch'
-import { sanitizeAudioRig, type AudioRig } from '@/audio/rig'
+import { PATCH_VERSION, defaultPatch, sanitizeAudioPatch } from '@/audio/patch'
+import { carryAudioProperty, sanitizeAudioRig, type AudioRig } from '@/audio/rig'
 import type { AudioPatch } from '@/audio/types'
 import { BUNDLED_PATCHES } from '@/rigs/examples/arcade-coin'
 
@@ -60,6 +60,29 @@ export function createAudioDocument(): AudioDocument {
   return document
 }
 
+/** What shape a stored patch says it is in; anything unreadable is treated as the first. */
+function claimedVersion(patch: unknown): number {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return 1
+  const version = (patch as Record<string, unknown>).version
+  return typeof version === 'number' && Number.isFinite(version) ? Math.floor(version) : 1
+}
+
+/** The same rig, with every binding pointed at where its property lives now. */
+function carriedRig(rig: unknown, from: number): unknown {
+  if (from >= PATCH_VERSION || !rig || typeof rig !== 'object' || Array.isArray(rig)) return rig
+  const source = rig as Record<string, unknown>
+  if (!Array.isArray(source.bindings)) return rig
+  return {
+    ...source,
+    bindings: source.bindings.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
+      const binding = entry as Record<string, unknown>
+      if (typeof binding.property !== 'string') return entry
+      return { ...binding, property: carryAudioProperty(binding.property, from) }
+    }),
+  }
+}
+
 /** A patch read back from storage or a file. The patch itself is clamped rather than refused. */
 export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -67,7 +90,9 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
   const id = text(source.id, 80)
   if (!id) return null
   const now = new Date(0).toISOString()
-  const rig = sanitizeAudioRig(source.rig)
+  // The rig is carried forward with the patch it belongs to: a binding naming a path that has moved
+  // is moved with it, where sanitising alone would have deleted it for no longer parsing.
+  const rig = sanitizeAudioRig(carriedRig(source.rig, claimedVersion(source.patch)))
   const snapshots = (Array.isArray(source.snapshots) ? source.snapshots : [])
     .slice(0, MAX_SNAPSHOTS)
     .flatMap((entry) => {

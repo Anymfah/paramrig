@@ -31,9 +31,10 @@ const FADE_IN_SECONDS = 0.002
  * fitted to what is left of the patch after its delay, or a performer with the row the patch's
  * scene chose. Several may point at one destination, and their swings add.
  */
+type Slot = AudioPatch['mods'][number]
 type Modulator =
-  | { kind: 'lfo'; lfo: AudioPatch['lfos'][number]; destination: LfoDestination; state: LfoState; random: () => number }
-  | { kind: 'envelope'; envelope: AudioPatch['envelopes'][number]; destination: LfoDestination; fitted: FittedEnvelope; life: number }
+  | { kind: 'lfo'; lfo: Slot; destination: LfoDestination; state: LfoState; random: () => number }
+  | { kind: 'envelope'; envelope: Slot; destination: LfoDestination; fitted: FittedEnvelope; life: number }
   | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; duration: number }
 
 /**
@@ -212,18 +213,18 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
   const dry: Stereo = { left: new Float32Array(length), right: new Float32Array(length) }
 
   const wired: (Modulator & { layer: number })[] = [
-    ...patch.lfos.flatMap((lfo, index) => {
-      const target = lfo.enabled ? readLfoTarget(lfo.target) : null
+    // One list of slots, each saying which kind it is; the two the kind does not read are left
+    // alone, so a slot switched to the other kind and back is the one it was.
+    ...patch.mods.flatMap((slot, index): (Modulator & { layer: number })[] => {
+      const target = slot.enabled ? readLfoTarget(slot.target) : null
       if (!target) return []
+      if (slot.kind === 'envelope') {
+        const life = Math.max(0.001, patch.duration - Math.max(0, slot.delay))
+        return [{ kind: 'envelope' as const, ...target, envelope: slot, fitted: fitEnvelope(slot, life), life }]
+      }
       // Its own stream, so a noise modulator is reproducible and independent of the layers'.
       const random = streamFor(patch.seed, 100 + index)
-      return [{ kind: 'lfo' as const, ...target, lfo, state: createLfoState(random), random }]
-    }),
-    ...patch.envelopes.flatMap((envelope) => {
-      const target = envelope.enabled ? readLfoTarget(envelope.target) : null
-      if (!target) return []
-      const life = Math.max(0.001, patch.duration - Math.max(0, envelope.delay))
-      return [{ kind: 'envelope' as const, ...target, envelope, fitted: fitEnvelope(envelope, life), life }]
+      return [{ kind: 'lfo' as const, ...target, lfo: slot, state: createLfoState(random), random }]
     }),
     ...patch.performers.flatMap((performer) => {
       const target = performer.enabled ? readLfoTarget(performer.target) : null

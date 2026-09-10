@@ -105,11 +105,11 @@ describe('AudioEditorPage', () => {
       for (const name of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX', 'Amp envelope']) {
         expect(screen.getByRole('region', { name })).toBeInTheDocument()
       }
-      expect(screen.queryByRole('region', { name: 'Envelope 2' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Modulator 2' })).toBeNull()
       // A source's name brings its modulator alone; the trio is the wide face's.
       fireEvent.click(screen.getByRole('button', { name: 'Show modulator L5' }))
-      expect(screen.getByRole('region', { name: 'LFO 2' })).toBeInTheDocument()
-      expect(screen.queryByRole('region', { name: 'LFO 1' })).toBeNull()
+      expect(screen.getByRole('region', { name: 'Modulator 5' })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Modulator 4' })).toBeNull()
       expect(screen.queryByRole('region', { name: 'Amp envelope' })).toBeNull()
     } finally {
       globalThis.ResizeObserver = Real
@@ -125,7 +125,7 @@ describe('AudioEditorPage', () => {
       expect(stage).toHaveAttribute('data-layout', 'narrow')
       expect(stage).toHaveStyle({ '--fp-scale': '1' })
       expect(screen.getByRole('region', { name: 'Amp envelope' })).toBeInTheDocument()
-      expect(screen.queryByRole('region', { name: 'Envelope 3' })).toBeNull()
+      expect(screen.queryByRole('region', { name: 'Modulator 3' })).toBeNull()
       expect(screen.getByRole('list', { name: 'Routing' })).toBeInTheDocument()
     } finally {
       globalThis.ResizeObserver = Real
@@ -173,14 +173,33 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '1')
   })
 
+  it('lets a slot be an envelope or an oscillator, and the bar says which', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    // The bar numbers its slots once and the letter says what each holds, as the reference does.
+    const routing = screen.getByRole('list', { name: 'Routing' })
+    expect(within(routing).getAllByRole('listitem').map((entry) => entry.textContent)).toEqual(
+      ['P1', 'P2', 'P3', 'E1', 'E2', 'E3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9'],
+    )
+    await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
+    const panel = screen.getByRole('region', { name: 'Modulator 4' })
+    // An oscillator has a rate; the envelope it can become has stages instead.
+    expect(within(panel).getByRole('slider', { name: 'Rate' })).toBeInTheDocument()
+    expect(within(panel).queryByRole('slider', { name: 'Hold' })).toBeNull()
+    await user.click(within(panel).getByRole('button', { name: 'Modulator 4 kind' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Envelope' }))
+    expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('slider', { name: 'Hold' })).toBeInTheDocument()
+    expect(within(routing).getAllByRole('listitem')[6]).toHaveTextContent('E4')
+  })
+
   it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     // The plate opens on the envelopes; the LFOs are a page away, reached by their names.
-    expect(screen.getByRole('region', { name: 'Envelope 2' })).toBeInTheDocument()
-    expect(screen.queryByRole('region', { name: 'LFO 1' })).toBeNull()
+    expect(screen.getByRole('region', { name: 'Modulator 2' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Modulator 4' })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
-    for (const name of ['LFO 1', 'LFO 2', 'LFO 3']) {
+    for (const name of ['Modulator 4', 'Modulator 5', 'Modulator 6']) {
       const panel = screen.getByRole('region', { name })
       expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
       expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
@@ -213,7 +232,7 @@ describe('AudioEditorPage', () => {
     }
     expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
     fireEvent.click(screen.getByRole('button', { name: 'Show modulator L4' }))
-    expect(within(screen.getByRole('region', { name: 'LFO 1' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
+    expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
   })
 
   /** A macro is a control of the rig: dropped on a dial, it exposes that dial to Tune and the SDK. */

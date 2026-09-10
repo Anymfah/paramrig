@@ -1,4 +1,4 @@
-import type { Lfo } from '../types.ts'
+import type { LfoShape } from '../types.ts'
 
 /**
  * The other kind of movement.
@@ -18,7 +18,7 @@ export function createLfoState(random: () => number): LfoState {
 }
 
 /** −1 to 1. Noise is sampled and held at the rate, which is what makes it a modulator and not hiss. */
-export function lfoAt(lfo: Lfo, seconds: number, state: LfoState, random: () => number): number {
+export function lfoAt(lfo: { shape: LfoShape; rate: number; phase: number }, seconds: number, state: LfoState, random: () => number): number {
   const phase = (seconds * lfo.rate + lfo.phase) % 1
   const at = phase < 0 ? phase + 1 : phase
   if (lfo.shape === 'sine') return Math.sin(at * Math.PI * 2)

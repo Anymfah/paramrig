@@ -1,5 +1,5 @@
 import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
-import { LAYER_COUNT, LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
+import { LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
 import { AUDIO_FIELDS, applyAudioBinding, currentAudioValue, parameterForAudioProperty, parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import type { AudioPatch } from '@/audio/types'
@@ -34,8 +34,7 @@ export const BOARD_CATEGORIES: InspectorCategory[] = [
 /** The modulators get their own view, so they are their own set of columns. */
 export const MODULATION_CATEGORIES: InspectorCategory[] = [
   ...Array.from({ length: PERFORMER_COUNT }, (_, index) => ({ id: `per${index}`, label: `Performer ${index + 1}` })),
-  ...Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => ({ id: `env${index}`, label: `Envelope ${index + 2}` })),
-  ...Array.from({ length: LFO_COUNT }, (_, index) => ({ id: `lfo${index}`, label: `LFO ${index + 1}` })),
+  ...Array.from({ length: MOD_COUNT }, (_, index) => ({ id: `mod${index}`, label: `Modulator ${index + 2}` })),
 ]
 
 const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'shaper', 'resonator', 'amp']
@@ -52,8 +51,7 @@ export function boardGroups(): ParamGroup[] {
   return [
     ...layers,
     ...Array.from({ length: PERFORMER_COUNT }, (_, index) => ({ id: `per${index}.all`, label: `Performer ${index + 1}`, tab: `per${index}` })),
-    ...Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => ({ id: `env${index}.all`, label: `Envelope ${index + 2}`, tab: `env${index}` })),
-    ...Array.from({ length: LFO_COUNT }, (_, index) => ({ id: `lfo${index}.all`, label: `LFO ${index + 1}`, tab: `lfo${index}` })),
+    ...Array.from({ length: MOD_COUNT }, (_, index) => ({ id: `mod${index}.all`, label: `Modulator ${index + 2}`, tab: `mod${index}` })),
     { id: 'mix.patch', label: 'Patch', tab: 'mix' },
     { id: 'mix.fx', label: 'Effects', tab: 'mix' },
     { id: 'mix.master', label: 'Master', tab: 'mix' },
@@ -70,11 +68,8 @@ export function boardPaths(): { property: string; group: string }[] {
       })),
     ),
   ).flat()
-  const lfos = Array.from({ length: LFO_COUNT }, (_, index) =>
-    Object.keys(AUDIO_FIELDS.lfo).map((field) => ({ property: `lfos[${index}].${field}`, group: `lfo${index}.all` })),
-  ).flat()
-  const envelopes = Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) =>
-    Object.keys(AUDIO_FIELDS.envelope).map((field) => ({ property: `envelopes[${index}].${field}`, group: `env${index}.all` })),
+  const mods = Array.from({ length: MOD_COUNT }, (_, index) =>
+    Object.keys(AUDIO_FIELDS.mod).map((field) => ({ property: `mods[${index}].${field}`, group: `mod${index}.all` })),
   ).flat()
   const performers = Array.from({ length: PERFORMER_COUNT }, (_, index) =>
     Object.keys(AUDIO_FIELDS.performer).map((field) => ({ property: `performers[${index}].${field}`, group: `per${index}.all` })),
@@ -82,8 +77,7 @@ export function boardPaths(): { property: string; group: string }[] {
   return [
     ...layers,
     ...performers,
-    ...envelopes,
-    ...lfos,
+    ...mods,
     ...Object.keys(AUDIO_FIELDS.patch).map((field) => ({ property: field, group: 'mix.patch' })),
     ...Object.keys(AUDIO_FIELDS.fx).map((field) => ({ property: `fx.${field}`, group: 'mix.fx' })),
     ...Object.keys(AUDIO_FIELDS.master).map((field) => ({ property: `master.${field}`, group: 'mix.master' })),
