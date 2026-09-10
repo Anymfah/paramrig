@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createNoise, polyBlep, waveAt } from '@/audio/dsp/osc'
+import { createNoise, polyBlep, warp, waveAt } from '@/audio/dsp/osc'
 import { mulberry32 } from '@/audio/dsp/rng'
 
 const SAMPLE_RATE = 44100
@@ -151,5 +151,27 @@ describe('createNoise', () => {
       return slow / 8000
     }
     expect(energy('pink')).toBeGreaterThan(energy('white'))
+  })
+})
+
+describe('warp', () => {
+  it('is an exact bypass at a half, so an unskewed shape reads as it was written', () => {
+    for (const phase of [0, 0.13, 0.5, 0.87, 0.999]) expect(warp(phase, 0.5)).toBe(phase)
+  })
+
+  it('spends half the cycle on the first slice, whatever that slice is', () => {
+    for (const width of [0.1, 0.25, 0.75, 0.9]) {
+      expect(warp(0, width)).toBeCloseTo(0, 9)
+      expect(warp(width, width)).toBeCloseTo(0.5, 9)
+      expect(warp(1, width)).toBeCloseTo(1, 9)
+      // And it never turns back on itself: a warped cycle is still a cycle.
+      expect(warp(width * 0.5, width)).toBeLessThan(warp(width, width))
+      expect(warp((1 + width) / 2, width)).toBeGreaterThan(warp(width, width))
+    }
+  })
+
+  it('holds a width the field could never send it', () => {
+    expect(warp(0.5, 0)).toBeGreaterThan(0.5)
+    expect(Number.isFinite(warp(0.5, 1))).toBe(true)
   })
 })

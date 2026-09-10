@@ -27,6 +27,21 @@ export function polyBlep(t: number, dt: number): number {
   return 0
 }
 
+/**
+ * A cycle skewed: the first `width` of it stretched to fill the first half, the rest squeezed into
+ * the second.
+ *
+ * On a square this is exactly the duty cycle, which is why the control is called Width. On any
+ * other shape it is the same gesture — the wave leaning one way — and it is what gives a wavetable
+ * the movement a pulse gets for free. At a half it is an exact bypass, so a table nobody has
+ * skewed reads as it was written.
+ */
+export function warp(phase: number, width: number): number {
+  const w = Math.min(0.95, Math.max(0.05, width))
+  if (w === 0.5) return phase
+  return phase < w ? (phase * 0.5) / w : 0.5 + ((phase - w) * 0.5) / (1 - w)
+}
+
 /** One sample of a shape at `phase`, given the per-sample phase increment `dt`. */
 export function waveAt(shape: WaveShape, phase: number, dt: number, pulseWidth: number): number {
   if (shape === 'sine') return Math.sin(phase * Math.PI * 2)

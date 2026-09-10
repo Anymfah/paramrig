@@ -10,6 +10,9 @@ import { LFO_COUNT, MOD_ENVELOPE_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { createShaper, shapeSample } from '@/audio/dsp/shaper'
+import { warp } from '@/audio/dsp/osc'
+import { TABLES, TABLE_NAMES, tableAt, tableOf, wavetable } from '@/audio/dsp/wavetable'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { PerformerShape, ShaperSettings } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
 import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
@@ -73,9 +76,11 @@ const SOURCE_COLOUR = { p: 'var(--fp-src-p)', e: 'var(--fp-src-e)', l: 'var(--fp
 
 /** The modulation target a parameter stands for, when an LFO may be pointed at it. */
 const targetOf = (id: string): string | undefined => {
-  const found = /^layers\[(\d)\]\.(pitch\.start|filter\.cutoff|source\.pulseWidth|gain)$/.exec(id)
+  const found = /^layers\[(\d)\]\.(pitch\.start|filter\.cutoff|source\.pulseWidth|source\.position|gain)$/.exec(id)
   if (!found) return undefined
-  const where: Record<string, string> = { 'pitch.start': 'pitch', 'filter.cutoff': 'cutoff', 'source.pulseWidth': 'pulseWidth', gain: 'gain' }
+  // Width and position are one destination in the engine — how far along the shape sits — so a
+  // modulator dropped on either moves whichever of the two its source reads.
+  const where: Record<string, string> = { 'pitch.start': 'pitch', 'filter.cutoff': 'cutoff', 'source.pulseWidth': 'pulseWidth', 'source.position': 'pulseWidth', gain: 'gain' }
   return `layers[${found[1]}].${where[found[2] ?? ''] ?? ''}`
 }
 
@@ -285,6 +290,45 @@ function Modes({ x, y, w, label, options }: {
 }
 
 /**
+ * The name of what is in a slot, and the menu that changes it.
+ *
+ * One pattern for every slot on the plate: which wavetable an oscillator reads, and — as the rest
+ * of this arrives — which model a filter is, what stands in an insert, what an effect is, what a
+ * modulator is. The trigger sits in plate coordinates and scales with the plate; the menu is
+ * portalled to the document, so it renders at the app's own size and stays legible on a plate that
+ * has been scaled down.
+ */
+function SlotMenu({ x, y, w, label, value, options, onPick, hint }: {
+  x: number; y: number; w: number; label: string; value: string
+  options: { value: string; label: string; note?: string }[]
+  onPick: (next: string) => void; hint?: string
+}) {
+  const at = useAt()
+  const chosen = options.find((option) => option.value === value)
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="fp-slot-head" aria-label={label} data-hint={hint} style={{ ...at(x, y), width: w }}>
+          <span className="fp-slot-head__name">{chosen?.label ?? value}</span>
+          <svg className="fp-slot-head__mark" viewBox="0 0 8 5" aria-hidden="true"><path d="M0.6 0.8 L4 4.2 L7.4 0.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu fp-menu" align="start" sideOffset={6} collisionPadding={8}>
+          <DropdownMenu.Label className="menu__label">{label}</DropdownMenu.Label>
+          {options.map((option) => (
+            <DropdownMenu.Item key={option.value} className="menu__item fp-menu__item" data-current={option.value === value || undefined} onSelect={() => onPick(option.value)}>
+              <span className="fp-menu__name">{option.label}</span>
+              {option.note ? <span className="fp-menu__note">{option.note}</span> : null}
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+/**
  * A stack of choices in the box style, centred on `x`: the chosen one filled, the rest quiet.
  * Three underlined words of the same size, one a shade brighter, is not a switch a person can read.
  */
@@ -442,14 +486,18 @@ const waveOf = (value: unknown): Wave => (typeof value === 'string' && (WAVES as
  * the four and a half milliseconds the sample-and-hold of Crush is counted in, so its steps come
  * out the size they are heard at.
  */
-function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: number, fmRatio: number, shaper?: ShaperSettings): string {
+function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: number, fmRatio: number, shaper?: ShaperSettings, table?: string, position = 0.5, dt = 0.01): string {
   const points = 220
   const state = createShaper()
+  const built = table === undefined ? null : wavetable(tableOf(table))
   const steps: string[] = []
   for (let at = 0; at <= points; at += 1) {
     const along = at / points
     const phase = along * cycles + (fmIndex / (Math.PI * 2)) * Math.sin(2 * Math.PI * fmRatio * along * cycles)
-    const raw = waveAt(wave, phase - Math.floor(phase), 0, pulseWidth)
+    const wrapped = phase - Math.floor(phase)
+    // The band a table plays is chosen by the pitch it is played at, so the picture has to be
+    // asked at that pitch too: drawn at the glyph's own step it would show harmonics nobody hears.
+    const raw = built ? tableAt(built, warp(wrapped, pulseWidth), position, dt) : waveAt(wave, wrapped, 0, pulseWidth)
     const value = shaper ? shapeSample(state, shaper, raw) : raw
     steps.push(`${at === 0 ? 'M' : 'L'}${(1 + along * 44).toFixed(2)} ${(11.5 - value * 9.5).toFixed(2)}`)
   }
@@ -459,12 +507,13 @@ function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: numbe
 /** How much of the sound the glyph shows: an octave of pitch is a doubling of the cycles in it. */
 const cyclesAt = (pitch: number) => Math.min(8, Math.max(0.5, pitch / 220))
 
-function WaveGlyph({ kind, wave, pulseWidth = 0.5, pitch = 440, fmIndex = 0, fmRatio = 1, shaper }: {
-  kind: unknown; wave: unknown; pulseWidth?: number; pitch?: number; fmIndex?: number; fmRatio?: number; shaper?: ShaperSettings
+function WaveGlyph({ kind, wave, pulseWidth = 0.5, pitch = 440, fmIndex = 0, fmRatio = 1, shaper, table, position = 0.5 }: {
+  kind: unknown; wave: unknown; pulseWidth?: number; pitch?: number; fmIndex?: number; fmRatio?: number
+  shaper?: ShaperSettings; table?: string; position?: number
 }) {
   const d = kind === 'noise'
     ? 'M1 11 L4 4 L7 16 L10 7 L13 14 L16 3 L19 13 L22 8 L25 17 L28 5 L31 12 L34 6 L37 15 L40 9 L43 11'
-    : wavePath(waveOf(wave), pulseWidth, cyclesAt(pitch), fmIndex, fmRatio, shaper)
+    : wavePath(waveOf(wave), pulseWidth, cyclesAt(pitch), fmIndex, fmRatio, shaper, kind === 'table' ? table ?? 'sweep' : undefined, position, pitch / 44100)
   return (
     <svg viewBox="0 0 46 23" className="fp-waveglyph">
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -811,9 +860,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   /** An oscillator's source column: a tone, noise, or nothing at all. */
   const source = (index: number) => {
     const enabled = read(ctx, L(index, 'enabled')) !== false
-    return !enabled ? 'off' : read(ctx, L(index, 'source.kind')) === 'noise' ? 'noise' : 'tone'
+    if (!enabled) return 'off'
+    const kind = read(ctx, L(index, 'source.kind'))
+    return kind === 'noise' ? 'noise' : kind === 'table' ? 'table' : 'tone'
   }
-  const setSource = (index: number, mode: 'tone' | 'noise' | 'off') => {
+  const setSource = (index: number, mode: 'tone' | 'table' | 'noise' | 'off') => {
     if (mode === 'off') { onChange(L(index, 'enabled'), false); return }
     if (read(ctx, L(index, 'enabled')) === false) onChange(L(index, 'enabled'), true)
     onChange(L(index, 'source.kind'), mode)
@@ -864,6 +915,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     const wave = waveOf(read(ctx, L(index, 'source.wave')))
     const widths = { sine: 25, triangle: 16, saw: 24, square: 18 }
     let x = left
+    if (source(index) === 'table') {
+      return (
+        <SlotMenu x={left} y={53} w={124} label={`Oscillator ${index + 1} wavetable`}
+          value={String(read(ctx, L(index, 'source.table')) ?? 'sweep')}
+          hint="Which wavetable this oscillator reads. The big dial walks along it."
+          options={TABLE_NAMES.map((name) => ({ value: name, label: TABLES[name]?.label ?? name, note: TABLES[name]?.note }))}
+          onPick={(next) => onChange(L(index, 'source.table'), next)} />
+      )
+    }
     return (
       <span role="radiogroup" aria-label={`Oscillator ${index + 1} wave`}>
         {WAVES.map((entry) => {
@@ -880,13 +940,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     <>
       <Text x={cx} y={98} size={11}>Jitter</Text>
       <Knob ctx={ctx} x={cx} y={131} id={L(index, 'pitch.jitter')} label="Jitter" size="sm" />
-      <Text x={cx} y={152} size={11} kind="dim">Source</Text>
-      <Choices x={cx} y={163} w={44} row={13.5} label={`Oscillator ${index + 1} source`} options={[
-        { word: 'Tone', on: source(index) === 'tone', onPick: () => setSource(index, 'tone'), hint: 'This layer makes a pitched tone.' },
+      <Text x={cx} y={148} size={11} kind="dim">Source</Text>
+      <Choices x={cx} y={158} w={44} row={12.5} label={`Oscillator ${index + 1} source`} options={[
+        { word: 'Tone', on: source(index) === 'tone', onPick: () => setSource(index, 'tone'), hint: 'One of four fixed shapes, at a pitch.' },
+        { word: 'Table', on: source(index) === 'table', onPick: () => setSource(index, 'table'), hint: 'A wavetable: the big dial walks along its shape instead of setting a pitch.' },
         { word: 'Noise', on: source(index) === 'noise', onPick: () => setSource(index, 'noise'), hint: 'This layer makes noise instead of a tone.' },
         { word: 'Off', on: source(index) === 'off', onPick: () => setSource(index, 'off'), hint: 'This layer is silent.' },
       ]} />
-      <Text x={cx} y={212} size={11} kind="dim">Voices</Text>
+      <Text x={cx} y={214} size={11} kind="dim">Voices</Text>
       <Knob ctx={ctx} x={cx} y={242.5} id={L(index, 'source.voices')} label="Voices" size="sm" />
     </>
   )
@@ -921,7 +982,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {/* oscillator 1 */}
       <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
       {sideColumn(0, 104)}
-      <Knob ctx={ctx} x={204.5} y={128.4} id={L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} shaper={{ drive: readNum(ctx, L(0, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(0, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(0, 'shaper.crush'), 0) }} />} />
+      <Knob ctx={ctx} x={204.5} y={128.4} id={source(0) === 'table' ? L(0, 'source.position') : L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} table={String(read(ctx, L(0, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(0, 'source.position'), 0.5)} shaper={{ drive: readNum(ctx, L(0, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(0, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(0, 'shaper.crush'), 0) }} />} />
       <Text x={166.9} y={184}>Width</Text>
       <Text x={240.7} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
@@ -929,7 +990,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
       {/* oscillator 2 */}
       <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
-      <Knob ctx={ctx} x={445.8} y={128.2} id={L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(1, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(1, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(1, 'source.fmRatio'), 1)} shaper={{ drive: readNum(ctx, L(1, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(1, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(1, 'shaper.crush'), 0) }} />} />
+      <Knob ctx={ctx} x={445.8} y={128.2} id={source(1) === 'table' ? L(1, 'source.position') : L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(1, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(1, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(1, 'source.fmRatio'), 1)} table={String(read(ctx, L(1, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(1, 'source.position'), 0.5)} shaper={{ drive: readNum(ctx, L(1, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(1, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(1, 'shaper.crush'), 0) }} />} />
       <Text x={409.3} y={184}>Width</Text>
       <Text x={482} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />

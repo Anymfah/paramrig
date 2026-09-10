@@ -158,6 +158,21 @@ describe('AudioEditorPage', () => {
     expect(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider')[0]).toHaveAttribute('aria-valuenow', '0')
   })
 
+  it('turns an oscillator into a wavetable, names the table, and gives the big dial to the position', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const sources = screen.getByRole('radiogroup', { name: 'Oscillator 1 source' })
+    // Four positions where there were three, and the fourth is the one the engine gained.
+    expect(within(sources).getAllByRole('radio').map((choice) => choice.textContent)).toEqual(['Tone', 'Table', 'Noise', 'Off'])
+    // The big dial sets the pitch while the source is a plain shape.
+    expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '12000')
+    await user.click(within(sources).getByRole('radio', { name: 'Table' }))
+    // The four wave names give way to the table's, and the dial now walks along it.
+    expect(screen.getByRole('button', { name: 'Oscillator 1 wavetable' })).toHaveTextContent('Sweep')
+    expect(screen.queryByRole('radiogroup', { name: 'Oscillator 1 wave' })).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '1')
+  })
+
   it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)

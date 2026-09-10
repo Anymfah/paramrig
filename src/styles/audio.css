@@ -1582,7 +1582,7 @@
   user-select: none;
 }
 .fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
-.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-pattern, .fp-target, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
+.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-pattern, .fp-target, .fp-slot-head, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /*
@@ -1938,6 +1938,42 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope__dot { display: none; }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
 .fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/*
+ * The name of what stands in a slot, and the menu that changes it.
+ *
+ * The trigger lives on the plate and scales with it. The menu does not: it is portalled to the
+ * document, so it renders at the app's own size and stays legible on a plate scaled to two thirds.
+ * That also means it wears the app's tokens rather than the plate's, which is why it is styled
+ * from the shared menu here rather than from `--fp-*`.
+ */
+.fp-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  block-size: 15px;
+  margin: 0;
+  padding: 0 3px 0 5px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--fp-box);
+  color: var(--fp-box-text);
+  font: 400 12px/1 var(--fp-font);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+.fp-slot-head:hover, .fp-slot-head[data-state='open'] { background: var(--fp-box-hover); color: var(--fp-text-bright); }
+.fp-slot-head:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
+.fp-slot-head__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-slot-head__mark { flex: none; inline-size: 8px; block-size: 5px; }
+
+.fp-menu { max-inline-size: 19rem; }
+.fp-menu__item { display: block; }
+.fp-menu__item[data-current] .fp-menu__name { color: var(--accent); }
+.fp-menu__name { display: block; font-size: var(--text-sm); }
+.fp-menu__note { display: block; margin-block-start: 2px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.35; text-wrap: pretty; }
 
 /* A stack of choices in the box style: a switch you can read at a glance. */
 .fp-choices { position: absolute; display: flex; flex-direction: column; overflow: hidden; border-radius: 2px; background: var(--fp-box); }

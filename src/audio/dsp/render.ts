@@ -1,6 +1,6 @@
 import type { AudioPatch, Layer, Stereo } from '../types.ts'
 import { createFilter, filterSample } from './filter.ts'
-import { createNoise, waveAt } from './osc.ts'
+import { createNoise, warp, waveAt } from './osc.ts'
 import { tableAt, tableOf, wavetable } from './wavetable.ts'
 import { createShaper, shapeSample } from './shaper.ts'
 import { curveAt } from './curve.ts'
@@ -165,7 +165,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
           read = shifted < 0 ? shifted + 1 : shifted
         }
         const value = table
-          ? tableAt(table, read, position, step)
+          ? tableAt(table, warp(read, duty), position, step)
           : waveAt(layer.source.wave, read, step, duty)
         const side = sides[voice] ?? still
         rawL += value * side.left
