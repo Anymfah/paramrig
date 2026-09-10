@@ -159,8 +159,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!gestureRef.current) setHeard(next)
   }, [patch])
 
-  /** A performer's row redrawn: one drag is one undo step, as a knob's is. */
-  const paint = useCallback((performer: number, scene: number, steps: number[]) => {
+  /**
+   * A performer's row redrawn: one drag is one undo step, as a knob's is.
+   *
+   * `which` says which of the two grids a performer keeps is being written — the levels or the
+   * joinings — because they are drawn one above the other by the same gesture and go back into
+   * the patch the same way.
+   */
+  const redraw = useCallback((which: 'patterns' | 'curves') => (performer: number, scene: number, steps: number[]) => {
     const current = latest.current ?? patch
     if (!current) return
     setDirty(true)
@@ -172,12 +178,16 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     }
     const next: AudioPatch = {
       ...current,
-      performers: current.performers.map((entry, at) => (at === performer ? { ...entry, patterns: entry.patterns.map((row, index) => (index === scene ? steps : row)) } : entry)),
+      performers: current.performers.map((entry, at) => (at === performer
+        ? { ...entry, [which]: entry[which].map((row, index) => (index === scene ? steps : row)) }
+        : entry)),
     }
     latest.current = next
     setPatch(next)
     if (!gestureRef.current) setHeard(next)
   }, [patch])
+  const paint = useMemo(() => redraw('patterns'), [redraw])
+  const joinUp = useMemo(() => redraw('curves'), [redraw])
 
   const undo = useCallback(() => {
     const previous = past[past.length - 1]
@@ -411,6 +421,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 skin={skin}
                 patterns={patch.performers.map((performer) => performer.patterns)}
                 onPattern={paint}
+                curves={patch.performers.map((performer) => performer.curves)}
+                onCurves={joinUp}
               />
             </div>
           )}

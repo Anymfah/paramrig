@@ -2121,7 +2121,41 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .pattern__rest { stroke: var(--fp-rule-light); stroke-width: 1; stroke-dasharray: 3 3; }
 .pattern__step { fill: var(--fp-plot-fill); }
 .pattern__read { fill: none; stroke: var(--fp-src-p); stroke-width: 1.5; stroke-linejoin: round; pointer-events: none; }
-.pattern__key { position: absolute; inset-block: 0; pointer-events: none; }
+.pattern__key { position: absolute; inset-block-start: 0; pointer-events: none; }
+/*
+ * The joinings: one a step, under its bar.
+ *
+ * Full height is joined the way the row says, nothing is held to its own boundary. Drawn as a bar
+ * that grows rather than a switch, because it is a number and not a yes: half a joining is a step
+ * that slides most of the way and arrives late, which is a real thing to want.
+ */
+.pattern__joins { position: absolute; inset-inline: 0; inset-block-end: 0; display: flex; }
+.pattern__join {
+  position: relative;
+  flex: 1;
+  margin: 0 0.5px 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  background: var(--fp-groove);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.pattern__join::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: calc(var(--amount, 1) * 100%);
+  border-radius: 1px;
+  background: var(--fp-src-p);
+  opacity: 0.42;
+}
+.pattern__join:hover::after { opacity: 0.85; }
+.pattern__join[data-held]::after { display: none; }
+.pattern__join:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .pattern__key:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; pointer-events: auto; }
 
 /* The LFO's target, in the box style, where the reference keeps its gate options. */

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { monoSum, renderPatch } from '@/audio/dsp/render'
 import { PRESETS, coin, makeLayer, makePatch, silentLayer, uiClick } from '@/audio/presets'
-import { makeMod } from '@/audio/patch'
+import { makeMod, makePerformer } from '@/audio/patch'
 
 const SAMPLE_RATE = 44100
 /**
@@ -289,14 +289,14 @@ describe('performers', () => {
 
   it('moves what it is pointed at by its row, over the length of the sound', () => {
     const still = render(tone())
-    const drawn = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }] })
+    const drawn = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }].map((one) => makePerformer(one)) })
     // The first half of the row is up: an octave. The second half is on the floor: no change.
     expect(pitchOf(drawn, SAMPLE_RATE, 0.1, 0.4) / pitchOf(still, SAMPLE_RATE, 0.1, 0.4)).toBeCloseTo(2, 0)
     expect(Math.abs(pitchOf(drawn, SAMPLE_RATE, 0.6, 0.9) - pitchOf(still, SAMPLE_RATE, 0.6, 0.9))).toBeLessThan(20)
   })
 
   it('plays the row the patch\'s scene names, and does nothing on an empty one', () => {
-    const patch = { ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }] }
+    const patch = { ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: false, depth: 1, target: 'layers[0].pitch', patterns: rows(square) }].map((one) => makePerformer(one)) }
     const still = render(tone())
     const other = render({ ...patch, scene: 3 })
     expect(Math.abs(pitchOf(other, SAMPLE_RATE, 0.1, 0.4) - pitchOf(still, SAMPLE_RATE, 0.1, 0.4))).toBeLessThan(20)
@@ -305,9 +305,9 @@ describe('performers', () => {
   it('rests at half height when bipolar, and pulls down below it', () => {
     const half = Array.from({ length: 16 }, () => 0.5)
     const still = render(tone())
-    const resting = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(half) }] })
+    const resting = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(half) }].map((one) => makePerformer(one)) })
     expect(Math.abs(pitchOf(resting, SAMPLE_RATE, 0.2, 0.8) - pitchOf(still, SAMPLE_RATE, 0.2, 0.8))).toBeLessThan(20)
-    const down = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step', bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(flat) }] })
+    const down = render({ ...tone(), performers: [{ enabled: true, rate: 1, shape: 'step' as const, bipolar: true, depth: 1, target: 'layers[0].pitch', patterns: rows(flat) }].map((one) => makePerformer(one)) })
     expect(pitchOf(down, SAMPLE_RATE, 0.2, 0.8) / pitchOf(still, SAMPLE_RATE, 0.2, 0.8)).toBeCloseTo(0.5, 1)
   })
 })

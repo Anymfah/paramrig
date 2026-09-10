@@ -285,6 +285,7 @@ export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
   bipolar: { type: 'boolean', label: 'Bipolar' },
   depth: num('Depth', 0, 1),
   target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
+  grid: num('Grid', 0, 8, 1),
 }
 
 export const AUDIO_FIELDS = {

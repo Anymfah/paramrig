@@ -143,7 +143,7 @@ describe('AudioEditorPage', () => {
     expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
     expect(within(panel).getByRole('slider', { name: 'Level' })).toBeInTheDocument()
     // A step drawn by the keyboard lands in the patch's row for the scene that plays.
-    const steps = within(within(panel).getByRole('group', { name: 'Performer 1 row 1' })).getAllByRole('slider')
+    const steps = within(within(panel).getByRole('group', { name: 'Performer 1 row 1' })).getAllByRole('slider', { name: /^Step \d+$/ })
     expect(steps).toHaveLength(16)
     fireEvent.keyDown(steps[2]!, { key: 'PageUp' })
     expect(steps[2]).toHaveAttribute('aria-valuenow', '0.25')
@@ -152,10 +152,16 @@ describe('AudioEditorPage', () => {
     await user.click(screen.getByRole('button', { name: 'Pattern 4' }))
     expect(screen.getByRole('button', { name: 'Pattern 4' })).toHaveAttribute('aria-pressed', 'true')
     expect(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).toBeInTheDocument()
-    // Init clears the row on show.
-    fireEvent.keyDown(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider')[0]!, { key: 'End' })
-    await user.click(within(panel).getByRole('button', { name: 'Clear performer 1 row 4' }))
-    expect(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider')[0]).toHaveAttribute('aria-valuenow', '0')
+    // Init starts the row from a shape rather than from nothing, and Flat is the old Init.
+    fireEvent.keyDown(within(within(panel).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider', { name: /^Step \d+$/ })[0]!, { key: 'End' })
+    await user.click(within(panel).getByRole('button', { name: 'Start performer 1 row 4 from a shape' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Ramp up' }))
+    const drawn = () => within(within(screen.getByRole('region', { name: 'Performer 1' })).getByRole('group', { name: 'Performer 1 row 4' })).getAllByRole('slider', { name: /^Step \d+$/ })
+    expect(drawn()[0]).toHaveAttribute('aria-valuenow', '0')
+    expect(drawn()[15]).toHaveAttribute('aria-valuenow', '1')
+    await user.click(within(screen.getByRole('region', { name: 'Performer 1' })).getByRole('button', { name: 'Start performer 1 row 4 from a shape' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Flat' }))
+    expect(drawn()[15]).toHaveAttribute('aria-valuenow', '0')
   })
 
   it('turns an oscillator into a wavetable, names the table, and gives the big dial to the position', async () => {

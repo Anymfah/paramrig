@@ -34,7 +34,7 @@ type Slot = AudioPatch['mods'][number]
 type Modulator =
   | { kind: 'lfo'; lfo: Slot; destination: LfoDestination; state: LfoState; random: () => number }
   | { kind: 'envelope'; envelope: Slot; destination: LfoDestination; fitted: FittedEnvelope; life: number }
-  | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; duration: number }
+  | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; curves: readonly number[] | undefined; duration: number }
 
 /**
  * A modulator's swing at a moment of the patch's clock, at its depth, and the sum of a list of
@@ -53,7 +53,7 @@ function swingOf(entries: Modulator[], clock: number): number {
 function swingAt(entry: Modulator, clock: number): number {
   if (entry.kind === 'lfo') return lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
   if (entry.kind === 'envelope') return envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth
-  return performerAt(entry.performer, entry.pattern, clock, entry.duration) * entry.performer.depth
+  return performerAt(entry.performer, entry.pattern, entry.curves, clock, entry.duration) * entry.performer.depth
 }
 
 /** Equal power, so a sound swept across the field does not dip in the middle. */
@@ -331,7 +331,7 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
       const target = performer.enabled ? readLfoTarget(performer.target) : null
       if (!target) return []
       const scene = Math.min(performer.patterns.length - 1, Math.max(0, Math.round(patch.scene)))
-      return [{ kind: 'performer' as const, ...target, performer, pattern: performer.patterns[scene] ?? [], duration: patch.duration }]
+      return [{ kind: 'performer' as const, ...target, performer, pattern: performer.patterns[scene] ?? [], curves: performer.curves?.[scene], duration: patch.duration }]
     }),
   ]
   /*

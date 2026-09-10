@@ -32,13 +32,42 @@ describe('a performer\'s row', () => {
 
   it('reads the row rate times over the sound, and rests at half height when bipolar', () => {
     const twice = makePerformer({ rate: 2 })
-    expect(performerAt(twice, square, 0.2, 1)).toBe(1)
-    expect(performerAt(twice, square, 0.3, 1)).toBe(0)
-    expect(performerAt(twice, square, 0.7, 1)).toBe(1)
+    expect(performerAt(twice, square, undefined, 0.2, 1)).toBe(1)
+    expect(performerAt(twice, square, undefined, 0.3, 1)).toBe(0)
+    expect(performerAt(twice, square, undefined, 0.7, 1)).toBe(1)
     const both = makePerformer({ bipolar: true })
-    expect(performerAt(both, square, 0.1, 1)).toBe(1)
-    expect(performerAt(both, square, 0.9, 1)).toBe(-1)
+    expect(performerAt(both, square, undefined, 0.1, 1)).toBe(1)
+    expect(performerAt(both, square, undefined, 0.9, 1)).toBe(-1)
     const rest = Array.from({ length: STEP_COUNT }, () => 0.5)
-    expect(performerAt(both, rest, 0.5, 1)).toBeCloseTo(0, 6)
+    expect(performerAt(both, rest, undefined, 0.5, 1)).toBeCloseTo(0, 6)
+  })
+})
+
+describe('a step that is not joined to the one before it', () => {
+  const ramp = Array.from({ length: STEP_COUNT }, (_, at) => at / (STEP_COUNT - 1))
+  const all = Array.from({ length: STEP_COUNT }, () => 1)
+
+  it('holds its predecessor to the boundary instead of sloping into it', () => {
+    const held = all.map((one, at) => (at === 4 ? 0 : one))
+    const before = 3 / (STEP_COUNT - 1)
+    // Half way through step three: joined it is on the way to step four, held it is still on three.
+    expect(patternAt(ramp, 'line', 3.5 / STEP_COUNT, all)).toBeGreaterThan(before)
+    expect(patternAt(ramp, 'line', 3.5 / STEP_COUNT, held)).toBeCloseTo(before, 6)
+    // And it arrives all the same: the next step is the next step.
+    expect(patternAt(ramp, 'line', 4.01 / STEP_COUNT, held)).toBeCloseTo(4 / (STEP_COUNT - 1), 2)
+  })
+
+  it('reads as it always did when every joining is whole, or when there are none at all', () => {
+    for (const phase of [0, 0.1, 0.37, 0.5, 0.99]) {
+      expect(patternAt(ramp, 'curve', phase, all)).toBe(patternAt(ramp, 'curve', phase))
+      expect(patternAt(ramp, 'line', phase, all)).toBe(patternAt(ramp, 'line', phase))
+    }
+  })
+
+  it('is ignored by a row that is held anyway', () => {
+    const none = all.map(() => 0)
+    for (const phase of [0.1, 0.37, 0.9]) {
+      expect(patternAt(ramp, 'step', phase, none)).toBe(patternAt(ramp, 'step', phase))
+    }
   })
 })

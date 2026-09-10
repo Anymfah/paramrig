@@ -206,7 +206,14 @@ export function makePattern(): number[] {
 
 /** A performer before anything is drawn on it: at rest, half strength, going nowhere. */
 export function makePerformer(input: Partial<Performer> = {}): Performer {
-  return { enabled: false, rate: 1, shape: 'step', bipolar: false, depth: 0.5, target: 'off', patterns: Array.from({ length: SCENE_COUNT }, makePattern), ...input }
+  return {
+    enabled: false, rate: 1, shape: 'step', bipolar: false, depth: 0.5, target: 'off', grid: 0,
+    patterns: Array.from({ length: SCENE_COUNT }, makePattern),
+    // Every step joined the way the row says, which is what a performer did before it could say
+    // otherwise: the field is new and a patch without it has to sound the same.
+    curves: Array.from({ length: SCENE_COUNT }, () => Array.from({ length: STEP_COUNT }, () => 1)),
+    ...input,
+  }
 }
 
 /** Three layers, whatever was handed over, padded with silent ones. A patch always has three. */
@@ -237,14 +244,20 @@ function readFx(value: unknown, base: FxSettings): FxSettings {
   return { ...top, ...slots } as unknown as FxSettings
 }
 
-/** A performer's rows read back from anything: twelve of sixteen levels, each held to 0..1. */
-function readPatterns(value: unknown): number[][] {
+/**
+ * A performer's rows read back from anything: twelve of sixteen numbers, each held to 0..1.
+ *
+ * `empty` is what a missing step becomes, and it is not the same for both grids a performer keeps:
+ * a level nobody drew is the floor, and a joining nobody drew is the whole of it, which is how a
+ * row written before there were joinings reads exactly as it did.
+ */
+function readRows(value: unknown, empty: number): number[][] {
   const rows = Array.isArray(value) ? value : []
   return Array.from({ length: SCENE_COUNT }, (_, scene) => {
     const row = Array.isArray(rows[scene]) ? rows[scene] as unknown[] : []
     return Array.from({ length: STEP_COUNT }, (_, step) => {
       const level = row[step]
-      return typeof level === 'number' && Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : 0
+      return typeof level === 'number' && Number.isFinite(level) ? Math.min(1, Math.max(0, level)) : empty
     })
   })
 }
@@ -413,8 +426,10 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
     performers: Array.from({ length: PERFORMER_COUNT }, (_, index) => {
       const raw = rawPerformers[index]
       const fields = readSection(AUDIO_FIELDS.performer, raw, makePerformer() as unknown as Record<string, unknown>)
-      const patterns = readPatterns(raw && typeof raw === 'object' ? (raw as Record<string, unknown>).patterns : undefined)
-      return { ...fields, patterns } as unknown as Performer
+      const held = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {}
+      const patterns = readRows(held.patterns, 0)
+      const curves = readRows(held.curves, 1)
+      return { ...fields, patterns, curves } as unknown as Performer
     }),
     fx: readFx(source.fx, base.fx),
     master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,

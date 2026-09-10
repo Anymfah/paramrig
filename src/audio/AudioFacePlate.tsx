@@ -450,6 +450,52 @@ function Routed({ at, mods, onShow, onClose }: {
   )
 }
 
+/**
+ * A box that opens a menu, in the plate's own box style.
+ *
+ * `Box` is a button and nothing else, and Radix needs a trigger it can hand its own props to, so
+ * the trigger is written out here rather than wrapped around one.
+ */
+function BoxMenu({ x, y, w, text, label, hint, children }: {
+  x: number; y: number; w: number; text: string; label: string; hint: string; children: ReactNode
+}) {
+  const at = useAt()
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="fp-box" data-hint={hint} aria-label={label}
+          style={{ ...at(x, y), width: w, height: 14.5, lineHeight: '14.5px' }}>{text}</button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu fp-rows" align="start" side="top" sideOffset={6} collisionPadding={8}>{children}</DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
+  )
+}
+
+/**
+ * Shapes a row can start from.
+ *
+ * Sixteen bars at the floor is not a starting point, it is an empty page — and the rows anybody
+ * actually wants are the same handful every time. Random is the one that is not a shape: it is
+ * there because a performer is a thing you audition, and a throw of the dice is the fastest way
+ * to find out what a destination sounds like when it moves.
+ */
+const ROW_SHAPES: { label: string; of: (at: number, total: number) => number }[] = [
+  { label: 'Flat', of: () => 0 },
+  { label: 'Ramp up', of: (at, total) => at / (total - 1) },
+  { label: 'Ramp down', of: (at, total) => 1 - at / (total - 1) },
+  { label: 'Triangle', of: (at, total) => 1 - Math.abs((2 * at) / (total - 1) - 1) },
+  { label: 'Sine', of: (at, total) => (Math.sin((2 * Math.PI * at) / total) + 1) / 2 },
+  { label: 'Square', of: (at, total) => (at < total / 2 ? 1 : 0) },
+  { label: 'Stairs', of: (at, total) => Math.floor(at / (total / 4)) / 3 },
+  { label: 'Every other', of: (at) => (at % 2 === 0 ? 1 : 0) },
+  { label: 'Random', of: () => Math.round(Math.random() * 100) / 100 },
+]
+
+/** The divisions the drawing can land on, stepped through in this order. */
+const GRIDS = [0, 2, 3, 4, 6, 8]
+
 /** What each phase-modulation source is called on the plate, where a word has to fit under a dial. */
 const PM_NAMES: Record<string, string> = {
   internal: 'Self', layer0: 'Osc 1', layer1: 'Osc 2', layer2: 'Noise 1', layer3: 'Noise 2',
@@ -1005,7 +1051,7 @@ const macroLabel = (property: string) => {
   return layer ? `${label} ${Number(layer[1]) + 1}` : label
 }
 
-export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, rig, onRig, skin }: {
+export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, curves, onCurves, rig, onRig, skin }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
@@ -1016,6 +1062,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   /** Each performer's twelve rows of sixteen levels, and how a row is redrawn. */
   patterns?: number[][][]
   onPattern?: (performer: number, scene: number, steps: number[]) => void
+  /** The joinings, kept beside the levels: twelve rows of sixteen, one a performer. */
+  curves?: number[][][]
+  onCurves?: (performer: number, scene: number, curves: number[]) => void
   /** The document's rig, which the macro band shows and edits. */
   rig?: AudioRig
   onRig?: (next: AudioRig) => void
@@ -1593,6 +1642,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         const bipolar = read(ctx, id('bipolar')) === true
         const rate = readNum(ctx, id('rate'), 1)
         const row = patterns?.[index]?.[scene] ?? Array.from({ length: STEP_COUNT }, () => 0)
+        const join = curves?.[index]?.[scene] ?? Array.from({ length: STEP_COUNT }, () => 1)
+        const grid = Math.round(readNum(ctx, id('grid'), 0))
         const Y = (local: number) => 384 + local
         const pickShape = (next: PerformerShape) => onChange(id('shape'), next)
         return (
@@ -1605,7 +1656,29 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Text x={36.5 + o} y={Y(112)}>Rate</Text>
             <Knob ctx={ctx} x={36 + o} y={Y(150)} id={id('rate')} label="Rate" />
             <Text x={36.5 + o} y={Y(186)} size={11} kind="dim">{rate.toFixed(2)} cycles</Text>
-            <Box x={5 + o} y={Y(200)} w={62.5} onClick={() => onPattern?.(index, scene, Array.from({ length: STEP_COUNT }, () => 0))} label={`Clear performer ${index + 1} row ${scene + 1}`} hint="Clear this row: every step back to the floor.">Init</Box>
+            <BoxMenu x={5 + o} y={Y(200)} w={62.5} text="Init" label={`Start performer ${index + 1} row ${scene + 1} from a shape`}
+              hint="Start this row from a shape rather than from nothing, or copy it into another of the twelve.">
+              <DropdownMenu.Label className="menu__label">Start from</DropdownMenu.Label>
+              {ROW_SHAPES.map((made) => (
+                <DropdownMenu.Item key={made.label} className="menu__item" onSelect={() => onPattern?.(index, scene, Array.from({ length: STEP_COUNT }, (_, at) => made.of(at, STEP_COUNT)))}>
+                  {made.label}
+                </DropdownMenu.Item>
+              ))}
+              <DropdownMenu.Separator className="menu__sep" />
+              <DropdownMenu.Sub>
+                <DropdownMenu.SubTrigger className="menu__item">Copy into…</DropdownMenu.SubTrigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.SubContent className="menu" sideOffset={4}>
+                    {Array.from({ length: SCENE_COUNT }, (_, other) => (
+                      <DropdownMenu.Item key={other} className="menu__item" disabled={other === scene}
+                        onSelect={() => { onPattern?.(index, other, [...row]); onCurves?.(index, other, [...join]) }}>
+                        Row {other + 1}
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.SubContent>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Sub>
+            </BoxMenu>
             <Box x={5 + o} y={Y(222)} w={62.5} selected={bipolar} pressed={bipolar} onClick={() => onChange(id('bipolar'), !bipolar)} label={`Performer ${index + 1} bipolar`} hint={bipolar ? 'Bipolar: half height is rest, the row swings both ways. Click for unipolar.' : 'Unipolar: the floor is rest, the row only pushes. Click for bipolar.'}>{bipolar ? 'Bi' : 'Uni'}</Box>
             <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
             {/* the row, and how it is read */}
@@ -1614,8 +1687,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               <Text x={218 + o} y={Y(30)} u={shape === 'line'} checked={shape === 'line'} onClick={() => pickShape('line')} hint="A straight line from each step to the next.">Line</Text>
               <Text x={268 + o} y={Y(30)} u={shape === 'curve'} checked={shape === 'curve'} onClick={() => pickShape('curve')} hint="Eased from each step into the next.">Curve</Text>
             </span>
+            <Text x={366 + o} y={Y(30)} u onClick={() => onChange(id('grid'), GRIDS[(GRIDS.indexOf(grid) + 1) % GRIDS.length] ?? 0)}
+              label={`Performer ${index + 1} grid: ${grid >= 2 ? `${grid} divisions` : 'off'}`}
+              hint="What the drawing lands on. A row drawn freehand is a row of numbers nobody chose; three is a triplet feel, four a step sequence. Click to step to the next.">
+              {grid >= 2 ? `Grid ${grid}` : 'Free'}
+            </Text>
             <Block className="fp-pattern" x={82 + o} y={Y(44)} w={318} h={214} off={!on} hint={`Row ${scene + 1} of twelve: draw it with the pointer, from the floor to the top. The bar under the plate picks the row.`}>
-              <AudioPattern steps={row} shape={shape} bipolar={bipolar} width={318} height={214} name={`Performer ${index + 1} row ${scene + 1}`} onChange={(next) => onPattern?.(index, scene, next)} {...gesture} />
+              <AudioPattern steps={row} curves={join} shape={shape} bipolar={bipolar} grid={grid} width={318} height={214}
+                name={`Performer ${index + 1} row ${scene + 1}`}
+                onChange={(next) => onPattern?.(index, scene, next)} onCurves={(next) => onCurves?.(index, scene, next)} {...gesture} />
             </Block>
             {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
             <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this performer moves. Pick a target here, or drag the handle above onto a control.">

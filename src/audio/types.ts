@@ -350,8 +350,25 @@ export type Performer = {
   depth: number
   /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
   target: string
+  /**
+   * How many divisions the drawing snaps to, 0 for none.
+   *
+   * A row drawn freehand is a row of numbers nobody chose. Three divisions is a triplet feel, four
+   * is a step sequence, eight is close enough to freehand that it only tidies the drawing.
+   */
+  grid: number
   /** Twelve rows of sixteen levels, 0..1. */
   patterns: number[][]
+  /**
+   * How far each step is joined to the one before it, 0..1, twelve rows of sixteen.
+   *
+   * The row's `shape` says *how* two steps are joined — held, straight, eased — and this says how
+   * much of that joining happens at each step. At 1, every step is joined the way the row says; at
+   * 0, a step is held until its own boundary whatever the row says, which is the glide a step
+   * sequencer gives each note. A row that has never been touched is all ones, so it reads exactly
+   * as it did before there was such a thing.
+   */
+  curves: number[][]
 }
 
 export type MasterSettings = {
