@@ -37,7 +37,7 @@ type Spectrum = (harmonic: number, position: number) => number
 export const TABLES: Record<string, { label: string; note: string; spectrum: Spectrum }> = {
   sweep: {
     label: 'Sweep',
-    note: 'A sine that grows into a saw. The plainest way to open a sound up.',
+    note: 'Sine into saw. The plainest way to open up.',
     spectrum: (h, p) => {
       // The position moves a soft ceiling up the harmonic series rather than switching harmonics on.
       const reach = 1 + p * p * 63
@@ -47,7 +47,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   pulse: {
     label: 'Pulse',
-    note: 'A square whose duty narrows to a sliver. Hollow at the top of the knob.',
+    note: 'A square narrowing to a hollow sliver.',
     spectrum: (h, p) => {
       const duty = 0.5 - p * 0.45
       return Math.abs(Math.sin(Math.PI * h * duty)) / h
@@ -55,7 +55,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   formant: {
     label: 'Formant',
-    note: 'A peak that walks up the spectrum. The closest this gets to a vowel.',
+    note: 'A peak walking up the spectrum. Nearly a vowel.',
     spectrum: (h, p) => {
       const centre = 1 + p * 24
       const width = 2 + p * 6
@@ -64,7 +64,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   bell: {
     label: 'Bell',
-    note: 'Odd harmonics, spaced wider as the knob turns. Struck metal, not a horn.',
+    note: 'Odd harmonics, spaced wider. Struck metal.',
     spectrum: (h, p) => {
       if (h % 2 === 0) return 0
       const spread = 1 + p * 3
@@ -73,7 +73,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   stack: {
     label: 'Stack',
-    note: 'A saw combed into ridges, the way detuned copies of one wave interfere.',
+    note: 'A saw combed into ridges, like detuned copies.',
     spectrum: (h, p) => {
       const comb = 0.5 + 0.5 * Math.cos(2 * Math.PI * h * (0.02 + p * 0.18))
       return (comb * Math.exp(-(h - 1) / 40)) / h
@@ -81,7 +81,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   fold: {
     label: 'Fold',
-    note: 'A sine gaining the odd harmonics of a folded wave. Bites without a filter.',
+    note: 'A sine folding over. Bites without a filter.',
     spectrum: (h, p) => {
       if (h % 2 === 0) return p * 0.1 / h
       const order = (h - 1) / 2
@@ -90,7 +90,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   glass: {
     label: 'Glass',
-    note: 'Nothing low, everything high, and the floor drops as the knob turns.',
+    note: 'Nothing low, and the floor drops as it turns.',
     spectrum: (h, p) => {
       const floor = 20 - p * 17
       return h < floor ? 0 : Math.exp(-(h - floor) / 18) / Math.sqrt(h)
@@ -98,7 +98,7 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
   },
   growl: {
     label: 'Growl',
-    note: 'Alternating harmonics, uneven on purpose. Engines and creatures.',
+    note: 'Uneven harmonics. Engines and creatures.',
     spectrum: (h, p) => {
       const beat = 0.35 + 0.65 * Math.abs(Math.sin(h * (0.7 + p * 1.9)))
       return (beat * Math.exp(-(h - 1) / 30)) / h

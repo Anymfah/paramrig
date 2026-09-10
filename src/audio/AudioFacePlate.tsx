@@ -319,23 +319,54 @@ function TableMark({ name }: { name: string }) {
 }
 
 /**
- * The name of what is in a slot, and the menu that changes it.
+ * The name of what is in a slot, and the picker that changes it.
  *
- * One pattern for every slot on the plate: which wavetable an oscillator reads, and — as the rest
- * of this arrives — which model a filter is, what stands in an insert, what an effect is, what a
- * modulator is. The trigger sits in plate coordinates and scales with the plate; the menu is
- * portalled to the document, so it renders at the app's own size and stays legible on a plate that
- * has been scaled down.
+ * A list of names with a line of prose under each is a wall of text for choosing a shape. The
+ * shapes are the choice, so the picker is a grid of them and nothing else; the name and the line
+ * belong to whichever one the pointer or the keyboard is on, on a single strip at the foot that
+ * never changes height, so the menu does not resize under the hand.
+ *
+ * The trigger sits in plate coordinates and scales with the plate. The picker is portalled to the
+ * document, so it renders at the app's own size and stays legible on a plate scaled down.
  */
-function SlotMenu({ x, y, w, label, value, options, onPick, hint }: {
+function SlotMenu({ x, y, w, label, value, options, onPick, hint, columns = 4 }: {
   x: number; y: number; w: number; label: string; value: string
   options: { value: string; label: string; note?: string; mark?: ReactNode }[]
-  onPick: (next: string) => void; hint?: string
+  onPick: (next: string) => void; hint?: string; columns?: number
 }) {
   const at = useAt()
   const chosen = options.find((option) => option.value === value)
+  const [under, setUnder] = useState<string | null>(null)
+  const said = options.find((option) => option.value === under) ?? chosen
+
+  /**
+   * A grid answers the arrow keys as a grid.
+   *
+   * A menu is a column to Radix: down goes to the next cell written rather than the one below it,
+   * and left closes the whole thing, which in a grid is the wrong answer to wanting the cell
+   * before. All four keys are taken here, with Home and End for the ends.
+   */
+  const grid = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const cells = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+    const from = cells.findIndex((cell) => cell === document.activeElement)
+    if (from < 0) return
+    const step = event.key === 'ArrowDown' ? columns
+      : event.key === 'ArrowUp' ? -columns
+      : event.key === 'ArrowRight' ? 1
+      : event.key === 'ArrowLeft' ? -1
+      : 0
+    const to = event.key === 'Home' ? cells[0]
+      : event.key === 'End' ? cells[cells.length - 1]
+      : step ? cells[Math.min(cells.length - 1, Math.max(0, from + step))]
+      : null
+    if (!to) return
+    event.preventDefault()
+    event.stopPropagation()
+    to.focus()
+  }
+
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={(open) => { if (!open) setUnder(null) }}>
       <DropdownMenu.Trigger asChild>
         <button type="button" className="fp-slot-head" aria-label={label} data-hint={hint} style={{ ...at(x, y), width: w }}>
           <span className="fp-slot-head__name">{chosen?.label ?? value}</span>
@@ -343,18 +374,24 @@ function SlotMenu({ x, y, w, label, value, options, onPick, hint }: {
         </button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="menu fp-menu" align="start" sideOffset={6} collisionPadding={8}>
-          <DropdownMenu.Label className="menu__label">{label}</DropdownMenu.Label>
-          {options.map((option) => (
-            <DropdownMenu.Item key={option.value} className="menu__item fp-menu__item" data-current={option.value === value || undefined} onSelect={() => onPick(option.value)}>
-              {option.mark ? <span className="fp-menu__figure">{option.mark}</span> : null}
-              <span className="fp-menu__said">
-                <span className="fp-menu__name">{option.label}</span>
-                {option.note ? <span className="fp-menu__note">{option.note}</span> : null}
-              </span>
-              <svg className="fp-menu__tick" viewBox="0 0 10 8" aria-hidden="true"><path d="M0.8 4.2 L3.6 6.8 L9.2 1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </DropdownMenu.Item>
-          ))}
+        <DropdownMenu.Content className="menu fp-picker" aria-label={label} align="start" sideOffset={6} collisionPadding={8} style={{ '--columns': columns } as CSSProperties}>
+          {/* Caught on the way down: the roving focus answers the key on the cell itself, so a
+              handler that waits for the event to bubble has already lost the argument. */}
+          <div className="fp-picker__grid" onKeyDownCapture={grid}>
+            {options.map((option) => (
+              <DropdownMenu.Item key={option.value} className="fp-picker__cell" aria-label={option.label}
+                data-current={option.value === value || undefined}
+                onFocus={() => setUnder(option.value)}
+                onPointerMove={() => setUnder(option.value)}
+                onSelect={() => onPick(option.value)}>
+                {option.mark}
+              </DropdownMenu.Item>
+            ))}
+          </div>
+          <p className="fp-picker__said" aria-live="polite">
+            <span className="fp-picker__name">{said?.label ?? ''}</span>
+            <span className="fp-picker__note">{said?.note ?? ''}</span>
+          </p>
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>

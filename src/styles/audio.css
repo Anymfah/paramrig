@@ -1970,58 +1970,55 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-slot-head__mark { flex: none; inline-size: 8px; block-size: 5px; }
 
 /*
- * A row of this menu says three things at once: what the thing is called, what it is for, and what
- * it looks like. The picture is drawn by the same function that plays it, at three points along
- * the knob, so a table is chosen by its shape rather than by its name.
+ * The picker: the shapes, and nothing else.
  *
- * The shared menu centres a row's contents on one line, which a row with a picture and two lines
- * of words cannot use. What is kept from it: the open and close, the surface, the highlight on the
- * row the keyboard is on. What is added: the grid, the separation, and a current row that does not
- * read the same as a highlighted one.
+ * What is being chosen is a shape, so the grid holds shapes and the words go to a strip at the
+ * foot that says what the pointer or the keyboard is on. The strip keeps its height whatever it
+ * says, or the menu would resize under the hand. Each cell draws five readings of its table,
+ * from the near end of the position dial to the far one, by the same function that plays them.
  */
-.fp-menu { max-inline-size: 22rem; padding: var(--space-1); }
-.fp-menu .menu__label {
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  color: var(--text-muted);
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.fp-menu__item {
+/* Sized by its grid, not by the longest line at its foot. */
+.fp-picker { inline-size: calc(var(--columns, 4) * 70px + (var(--columns, 4) - 1) * 3px + 2 * var(--space-1)); min-inline-size: 0; padding: var(--space-1); }
+.fp-picker__grid {
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 12px;
-  align-items: center;
-  gap: var(--space-3);
-  min-block-size: 0;
-  padding: var(--space-2) var(--space-3);
+  grid-template-columns: repeat(var(--columns, 4), 1fr);
+  gap: 3px;
 }
-.fp-menu__item + .fp-menu__item { box-shadow: inset 0 1px 0 var(--border-hairline); }
-/* A row with nothing to draw does not keep a column for the drawing. */
-.fp-menu__item:not(:has(.fp-menu__figure)) { grid-template-columns: minmax(0, 1fr) 12px; }
-.fp-menu__item:where([data-highlighted], [data-current]) + .fp-menu__item,
-.fp-menu__item:where([data-highlighted], [data-current]) { box-shadow: none; }
-.fp-menu__figure {
+.fp-picker__cell {
   display: grid;
   place-items: center;
-  inline-size: 64px;
-  block-size: 38px;
+  inline-size: 70px;
+  block-size: 46px;
   border-radius: var(--radius-xs);
   background: var(--surface-inset);
   color: var(--text-secondary);
+  outline: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background-color var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out), box-shadow var(--duration-instant) var(--ease-out);
 }
-/* The shared menu sizes every svg inside a row as a sixteen-pixel icon; a drawn wave is not one. */
-.fp-menu__item .fp-menu__mark { display: block; inline-size: 64px; block-size: 34px; overflow: visible; color: inherit; }
-.fp-menu__mark path { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
-.fp-menu__said { min-inline-size: 0; }
-.fp-menu__name { display: block; font-size: var(--text-sm); font-weight: 500; }
-.fp-menu__note { display: block; margin-block-start: 1px; color: var(--text-muted); font-size: var(--text-xs); line-height: 1.35; text-wrap: pretty; }
-.fp-menu__item .fp-menu__tick { inline-size: 10px; block-size: 8px; opacity: 0; color: var(--accent); }
-.fp-menu__item[data-current] { background: var(--accent-subtle); }
-.fp-menu__item[data-current] .fp-menu__name { color: var(--accent); }
-.fp-menu__item[data-current] .fp-menu__figure { color: var(--accent); }
-.fp-menu__item[data-current] .fp-menu__tick { opacity: 1; }
-.fp-menu__item[data-highlighted] .fp-menu__figure { background: var(--surface); color: var(--text-primary); }
+/* On a dark plate the inset and the surface are a shade apart, which is not an answer to "where am
+   I": the cell under the pointer or the keyboard is lifted and ringed. */
+.fp-picker__cell:where([data-highlighted], :hover) {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+}
+.fp-picker__cell[data-current] { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.fp-picker__cell[data-current]:where([data-highlighted], :hover) { background: var(--accent-subtle); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.fp-picker__cell .fp-menu__mark { display: block; inline-size: 62px; block-size: 33px; overflow: visible; color: inherit; }
+.fp-picker__cell .fp-menu__mark path { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
+.fp-picker__said {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  min-block-size: 58px;
+  align-content: start;
+}
+.fp-picker__name { color: var(--text-primary); font-size: var(--text-sm); font-weight: 500; }
+.fp-picker__note { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; text-wrap: pretty; }
 
 /* A stack of choices in the box style: a switch you can read at a glance. */
 .fp-choices { position: absolute; display: flex; flex-direction: column; overflow: hidden; border-radius: 2px; background: var(--fp-box); }
