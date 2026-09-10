@@ -8,7 +8,7 @@ import type { BezierCurve } from '../rigs/types.ts'
 
 export type WaveShape = 'sine' | 'triangle' | 'saw' | 'square'
 export type NoiseColour = 'white' | 'pink' | 'metallic'
-export type FilterKind = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'peak' | 'allpass' | 'ladder' | 'comb'
+export type FilterKind = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'peak' | 'ladder' | 'comb'
 export type SourceKind = 'tone' | 'noise' | 'table'
 
 export type SourceSettings = {

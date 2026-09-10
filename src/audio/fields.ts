@@ -106,7 +106,7 @@ const PITCH_FIELDS: Record<string, FieldSpec> = {
 
 const FILTER_FIELDS: Record<string, FieldSpec> = {
   kind: {
-    type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass', 'notch', 'peak', 'allpass', 'ladder', 'comb'],
+    type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass', 'notch', 'peak', 'ladder', 'comb'],
     // Four words that all start differently and end the same, ellipsised to 'Lowp…' and
     // 'Highp…' in a column this wide. The response curve is both shorter and clearer.
     previews: {

@@ -104,7 +104,10 @@ export function filterSample(
     const u = input - amount * Math.tanh(state.fed)
     const y = pole(state, 3, pole(state, 2, pole(state, 1, pole(state, 0, u, g), g), g), g)
     state.fed = y
-    return y
+    // Feedback takes the bottom out as it goes up — nine decibels of it at half resonance, which
+    // is the ladder everyone knows and also a filter that goes quiet when you turn a knob that
+    // says nothing about level. Put back what the feedback took.
+    return y * (1 + amount * 0.6)
   }
   const k = 2 - 2 * Math.min(0.97, Math.max(0, resonance))
   const a1 = 1 / (1 + g * (g + k))
@@ -122,6 +125,5 @@ export function filterSample(
   // band taken out twice. None of them costs another filter.
   if (kind === 'notch') return input - k * v1
   if (kind === 'peak') return input - k * v1 - 2 * v2
-  if (kind === 'allpass') return input - 2 * k * v1
   return input - k * v1 - v2
 }

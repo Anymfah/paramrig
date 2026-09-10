@@ -2009,6 +2009,8 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-picker__cell[data-current]:where([data-highlighted], :hover) { background: var(--accent-subtle); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .fp-picker__cell .fp-menu__mark { display: block; inline-size: 62px; block-size: 33px; overflow: visible; color: inherit; }
 .fp-picker__cell .fp-menu__mark path { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
+/* The line a response is measured against: unity, where nothing has been done to the sound. */
+.fp-picker__cell .fp-menu__floor { stroke-dasharray: 2 3; }
 .fp-picker__said {
   display: grid;
   gap: 1px;
@@ -2040,29 +2042,6 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-choice[aria-checked='true'] { background: var(--fp-box-on); color: var(--fp-box-on-text); }
 .fp-choice[aria-checked='true']:hover { background: var(--fp-box-on-hover); }
 .fp-choice:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
-
-/*
- * A row of modes — the filter's three — spread across its panel rather than placed at three
- * measured points: the reference's font is condensed and ours is not, so fixed points put uneven
- * gaps between the pairs. The badge and its word are one control, which is also a bigger target.
- */
-.fp-modes { position: absolute; display: flex; align-items: center; justify-content: space-between; block-size: 16px; }
-.fp-modes .fp-badge, .fp-modes .fp-text { position: static; translate: none; }
-.fp-mode {
-  display: inline-flex;
-  align-items: center;
-  gap: 3.5px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.fp-mode .fp-text { color: var(--fp-title); }
-.fp-mode:hover .fp-text, .fp-mode[aria-checked='true'] .fp-text { color: var(--fp-text-hover); }
-.fp-mode:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
 /* The performer's row: bars drawn with the pointer, the read line over them in the performer's colour. */
 .fp-pattern { overflow: hidden; background: var(--fp-wheel); }

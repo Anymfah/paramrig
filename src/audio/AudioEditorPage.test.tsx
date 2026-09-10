@@ -173,6 +173,25 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '1')
   })
 
+  it('offers every filter the engine can run, and gives the choice to the one layer', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const model = () => within(screen.getByRole('region', { name: 'Filter' })).getByRole('button', { name: 'Filter model' })
+    await user.click(model())
+    // The engine has answered to eight models for a while; the plate offered three of them.
+    expect(screen.getAllByRole('menuitem').map((cell) => cell.getAttribute('aria-label'))).toEqual(
+      ['Off', 'Low', 'High', 'Band', 'Notch', 'Peak', 'Ladder', 'Comb'],
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Ladder' }))
+    expect(model()).toHaveTextContent('Ladder')
+    // And the choice went to that layer's filter, not to something the whole patch shares.
+    const layers = screen.getByRole('tablist', { name: 'Oscillator layer' })
+    await user.click(within(layers).getByRole('tab', { name: 'Oscillator 2' }))
+    expect(model()).not.toHaveTextContent('Ladder')
+    await user.click(within(layers).getByRole('tab', { name: 'Oscillator 1' }))
+    expect(model()).toHaveTextContent('Ladder')
+  })
+
   it('lets a slot be an envelope or an oscillator, and the bar says which', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)

@@ -12,6 +12,8 @@ import { waveAt } from '@/audio/dsp/osc'
 import { createShaper, shapeSample } from '@/audio/dsp/shaper'
 import { warp } from '@/audio/dsp/osc'
 import { TABLES, TABLE_NAMES, tableAt, tableOf, wavetable } from '@/audio/dsp/wavetable'
+import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse } from '@/audio/dsp/response'
+import type { FilterKind } from '@/audio/types'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { PerformerShape, ShaperSettings } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
@@ -269,28 +271,6 @@ function Badge({ x, y, kind, selected, onClick, label, tab, hint, children }: {
 }
 
 /**
- * A row of modes — a badge and its word, each pair one control — spread evenly across the width
- * it is given. The reference places its three at three measured points, which comes out even only
- * in the reference's own condensed face; ours left a wider gap on one side than the other.
- */
-function Modes({ x, y, w, label, options }: {
-  x: number; y: number; w: number; label: string
-  options: { badge: string; word: string; on: boolean; onPick: () => void; hint: string }[]
-}) {
-  const at = useAt()
-  return (
-    <span className="fp-modes" role="radiogroup" aria-label={label} style={{ ...at(x, y - 8), width: w }}>
-      {options.map((option) => (
-        <button type="button" key={option.word} className="fp-mode" role="radio" aria-checked={option.on} aria-label={option.word} data-hint={option.hint} onClick={option.onPick}>
-          <span className="fp-badge" data-kind="circle" aria-hidden="true">{option.badge}</span>
-          <span className="fp-text" data-kind="title" data-u={option.on || undefined} aria-hidden="true">{option.word}</span>
-        </button>
-      ))}
-    </span>
-  )
-}
-
-/**
  * What a table looks like across its knob, drawn by the function that plays it.
  *
  * Five readings of it, from the near end of the position dial to the far one, stacked back to
@@ -318,6 +298,34 @@ function TableMark({ name }: { name: string }) {
     </svg>
   )
 }
+
+/** What a filter model does, measured by pushing tones through the filter itself. */
+function FilterMark({ kind }: { kind: FilterKind }) {
+  const curve = filterResponse(kind)
+  const span = RESPONSE_CEILING - RESPONSE_FLOOR
+  const d = Array.from(curve, (level, at) => {
+    const x = (at / (curve.length - 1)) * 60 + 2
+    const y = 31 - ((level - RESPONSE_FLOOR) / span) * 28
+    return `${at === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`
+  }).join(' ')
+  return (
+    <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
+      <path className="fp-menu__floor" d="M2 17 H62" opacity="0.25" />
+      <path d={d} />
+    </svg>
+  )
+}
+
+const FILTER_MODELS: { value: FilterKind; label: string; note: string }[] = [
+  { value: 'off', label: 'Off', note: 'Straight through, nothing taken away.' },
+  { value: 'lowpass', label: 'Low', note: 'Takes the top off. What most sounds want.' },
+  { value: 'highpass', label: 'High', note: 'Takes the bottom out. Thins and clears.' },
+  { value: 'bandpass', label: 'Band', note: 'Keeps a band and drops both sides of it.' },
+  { value: 'notch', label: 'Notch', note: 'Takes out a band, leaves the rest alone.' },
+  { value: 'peak', label: 'Peak', note: 'Lifts a band without touching the rest.' },
+  { value: 'ladder', label: 'Ladder', note: 'Four poles. Falls twice as fast, and growls.' },
+  { value: 'comb', label: 'Comb', note: 'The sound added to itself a moment later.' },
+]
 
 /**
  * The name of what is in a slot, and the picker that changes it.
@@ -946,7 +954,6 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     onChange(L(index, 'source.kind'), mode)
   }
   const filterKind = read(ctx, L(f, 'filter.kind'))
-  const setFilter = (kind: string) => onChange(L(f, 'filter.kind'), filterKind === kind ? 'off' : kind)
   const colourName = (index: number) => {
     const colour = read(ctx, L(index, 'source.colour'))
     return colour === 'pink' ? 'Pink' : colour === 'metallic' ? 'Metal' : 'White'
@@ -1130,11 +1137,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     ),
     filter: (
     <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
-      <Modes x={860.5} y={65.5} w={153} label="Filter mode" options={[
-        { badge: 'A', word: 'Low', on: filterKind === 'lowpass', onPick: () => setFilter('lowpass'), hint: 'A low-pass filter: darkens. Click again for no filter.' },
-        { badge: 'B', word: 'High', on: filterKind === 'highpass', onPick: () => setFilter('highpass'), hint: 'A high-pass filter: thins. Click again for no filter.' },
-        { badge: 'C', word: 'Band', on: filterKind === 'bandpass', onPick: () => setFilter('bandpass'), hint: 'A band-pass filter: keeps a band around the cutoff. Click again for no filter.' },
-      ]} />
+      <SlotMenu x={875} y={58} w={124} label="Filter model"
+        value={typeof filterKind === 'string' ? filterKind : 'off'}
+        hint="Which filter this layer runs through. The picture beside each is its measured response."
+        options={FILTER_MODELS.map((model) => ({ ...model, mark: <FilterMark kind={model.value} /> }))}
+        onPick={(next) => onChange(L(f, 'filter.kind'), next)} />
       <Text x={900.5} y={79.5}>Cutoff</Text>
       <Text x={972.4} y={80}>Reso</Text>
       <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />

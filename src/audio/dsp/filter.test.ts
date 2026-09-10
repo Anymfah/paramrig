@@ -74,11 +74,13 @@ describe('the models that come out of the same two integrators', () => {
     expect(through('bandpass', 1000, 1000, 0.7)).toBeGreaterThan(through('bandpass', 200, 1000, 0.7))
   })
 
-  it('lifts its corner as a peak, and leaves the level alone as an allpass', () => {
+  it('lifts its corner as a peak and leaves the rest of the band where it was', () => {
     expect(through('peak', 1000, 1000, 0.8)).toBeGreaterThan(through('peak', 200, 1000, 0.8))
-    // An allpass passes everything: what it changes is the phase, which a level cannot read.
-    for (const tone of [200, 1000, 5000]) {
-      expect(Math.abs(through('allpass', tone, 1000, 0.5) - Math.SQRT1_2)).toBeLessThan(0.08)
+    expect(through('peak', 1000, 1000, 0.8)).toBeGreaterThan(through('peak', 6000, 1000, 0.8))
+    // Away from the corner it is a wire: an equaliser that moved the whole band would be a tone
+    // control wearing a filter's name.
+    for (const tone of [120, 8000]) {
+      expect(Math.abs(through('peak', tone, 1000, 0.8) - Math.SQRT1_2)).toBeLessThan(0.1)
     }
   })
 })
