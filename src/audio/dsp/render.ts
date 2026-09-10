@@ -1,6 +1,7 @@
 import type { AudioPatch, Layer, Stereo } from '../types.ts'
 import { createFilter, filterSample } from './filter.ts'
 import { createNoise, waveAt } from './osc.ts'
+import { tableAt, tableOf, wavetable } from './wavetable.ts'
 import { createShaper, shapeSample } from './shaper.ts'
 import { curveAt } from './curve.ts'
 import { envelopeAt, fitEnvelope, type FittedEnvelope } from './envelope.ts'
@@ -108,6 +109,9 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   // Radians of phase deviation, expressed in cycles for the oscillator that reads it.
   const fmDepth = layer.source.fmIndex / (Math.PI * 2)
   const still = pan(layer.pan)
+  // Built once for the layer, and only when it is the kind that plays one: the first sound that
+  // reaches for a table pays about forty milliseconds for the whole library, and no sound after it does.
+  const table = layer.source.kind === 'table' ? wavetable(tableOf(layer.source.table)) : null
 
   const on = (destination: LfoDestination) => modulators.filter((entry) => entry.destination === destination)
   const pitchLfo = on('pitch')
@@ -140,7 +144,11 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
       rawL = a * still.left
       rawR = (a * (1 - width) + b * width) * still.right
     } else {
-      const duty = Math.min(0.95, Math.max(0.05, layer.source.pulseWidth + swingOf(widthLfo, clock) * LFO_RANGE.pulseWidth))
+      // Width and position are the same knob at heart — how far along the shape sits — so one
+      // modulator swing moves whichever of the two this source reads.
+      const shift = swingOf(widthLfo, clock)
+      const duty = Math.min(0.95, Math.max(0.05, layer.source.pulseWidth + shift * LFO_RANGE.pulseWidth))
+      const position = Math.min(1, Math.max(0, layer.source.position + shift * LFO_RANGE.pulseWidth))
       // The depth falls across the layer's life, which is what a struck thing does: the clang is
       // at the start and what is left afterwards is the note.
       const depth = fmDepth * (1 - layer.source.fmFall * x)
@@ -156,7 +164,9 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
           const shifted = (at + depth * Math.sin(modAt * Math.PI * 2)) % 1
           read = shifted < 0 ? shifted + 1 : shifted
         }
-        const value = waveAt(layer.source.wave, read, step, duty)
+        const value = table
+          ? tableAt(table, read, position, step)
+          : waveAt(layer.source.wave, read, step, duty)
         const side = sides[voice] ?? still
         rawL += value * side.left
         rawR += value * side.right

@@ -9,13 +9,20 @@ import type { BezierCurve } from '../rigs/types.ts'
 export type WaveShape = 'sine' | 'triangle' | 'saw' | 'square'
 export type NoiseColour = 'white' | 'pink' | 'metallic'
 export type FilterKind = 'off' | 'lowpass' | 'highpass' | 'bandpass'
-export type SourceKind = 'tone' | 'noise'
+export type SourceKind = 'tone' | 'noise' | 'table'
 
 export type SourceSettings = {
   kind: SourceKind
   wave: WaveShape
   /** Duty cycle of the square, 0..1. Ignored by the other shapes. */
   pulseWidth: number
+  /**
+   * Which wavetable, and where along it. A table is a spectrum that changes shape as `position`
+   * turns — the one control on a synthesiser that changes the timbre itself rather than filtering
+   * what is already there. Only read when `kind` is `table`; see `dsp/wavetable.ts`.
+   */
+  table: string
+  position: number
   colour: NoiseColour
   /**
    * Copies of the oscillator, detuned against each other. One oscillator is one oscillator: it is

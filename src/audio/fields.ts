@@ -9,6 +9,8 @@
  * preview script render a patch to a .wav with no build step.
  */
 
+import { TABLE_NAMES, TABLES } from './dsp/wavetable.ts'
+
 export type AudioPropertyType = 'number' | 'boolean' | 'option' | 'curve'
 
 /**
@@ -60,7 +62,7 @@ const LAYER_FIELDS: Record<string, FieldSpec> = {
 }
 
 const SOURCE_FIELDS: Record<string, FieldSpec> = {
-  kind: { type: 'option', label: 'Source', options: ['tone', 'noise'] },
+  kind: { type: 'option', label: 'Source', options: ['tone', 'noise', 'table'] },
   wave: {
     type: 'option', label: 'Wave', options: ['sine', 'triangle', 'saw', 'square'],
     previews: {
@@ -71,6 +73,11 @@ const SOURCE_FIELDS: Record<string, FieldSpec> = {
     },
   },
   pulseWidth: num('Pulse width', 0.05, 0.95),
+  table: {
+    type: 'option', label: 'Wavetable', options: TABLE_NAMES,
+    optionLabels: Object.fromEntries(TABLE_NAMES.map((name) => [name, TABLES[name]?.label ?? name])),
+  },
+  position: num('Table position', 0, 1),
   voices: num('Voices', 1, 5, 1),
   detune: num('Detune', 0, 60, 1, { unit: 'cents' }),
   fmRatio: num('FM ratio', 0.25, 12, 0.01),

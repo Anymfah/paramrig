@@ -219,6 +219,67 @@ function pitchOf(samples: Float32Array, rate: number, from: number, to: number):
   return crossings / (to - from) / 2
 }
 
+describe('a wavetable source', () => {
+  const table = (over = {}) => makePatch(0.4, [makeLayer({
+    gain: 0.6,
+    source: { kind: 'table', table: 'sweep', position: 0.5, ...over },
+    pitch: { start: 220 },
+    amp: { attack: 0.002, hold: 0.3, decay: 0, sustain: 1, release: 0.02 },
+  })])
+
+  it('makes a sound, and the same one twice', () => {
+    const first = render(table())
+    expect(peak(first)).toBeGreaterThan(0.05)
+    expect(Array.from(first)).toEqual(Array.from(render(table())))
+  })
+
+  it('changes timbre along the position, not level', () => {
+    const loudness = (samples: Float32Array, from = 0, to = samples.length) => {
+      let sum = 0
+      for (let i = from; i < to; i += 1) sum += (samples[i] ?? 0) ** 2
+      return Math.sqrt(sum / Math.max(1, to - from))
+    }
+    /**
+     * How much of the sound sits high: the size of the change from sample to sample against the
+     * size of the sound itself. A crossing count cannot read this — a wave with sixty harmonics
+     * still crosses zero twice a cycle if its fundamental is what carries it across.
+     */
+    const brightness = (samples: Float32Array) => {
+      let moved = 0
+      for (let i = 2205; i < 13230; i += 1) moved += ((samples[i] ?? 0) - (samples[i - 1] ?? 0)) ** 2
+      return Math.sqrt(moved / 11025) / Math.max(1e-9, loudness(samples, 2205, 13230))
+    }
+    const shut = render(table({ position: 0 }))
+    const open = render(table({ position: 1 }))
+    // The far end of the knob has harmonics the near end does not.
+    expect(brightness(open)).toBeGreaterThan(brightness(shut) * 3)
+    // And it does not get there by getting louder.
+    expect(Math.abs(loudness(open) - loudness(shut))).toBeLessThan(0.25)
+  })
+
+  it('plays a different table as a different sound', () => {
+    expect(Array.from(render(table({ table: 'bell' })))).not.toEqual(Array.from(render(table({ table: 'growl' }))))
+  })
+
+  it('takes an unknown table as the first one rather than falling silent', () => {
+    expect(Array.from(render(table({ table: 'not-a-table' })))).toEqual(Array.from(render(table({ table: 'sweep' }))))
+  })
+
+  it('holds its harmonics under the rate however high it is played', () => {
+    // Six kilohertz leaves room for three harmonics; anything folded down would show as a rise in
+    // crossings well below the fundamental.
+    const high = render(table({ position: 1 }), SAMPLE_RATE)
+    expect(peak(high)).toBeLessThanOrEqual(1)
+    const shrill = makePatch(0.3, [makeLayer({
+      gain: 0.6,
+      source: { kind: 'table', table: 'sweep', position: 1 },
+      pitch: { start: 6000 },
+      amp: { attack: 0.002, hold: 0.25, decay: 0, sustain: 1, release: 0.02 },
+    })])
+    expect(peak(render(shrill))).toBeLessThanOrEqual(1)
+  })
+})
+
 describe('performers', () => {
   const tone = () => makePatch(1, [makeLayer({ gain: 0.5, source: { kind: 'tone', wave: 'sine' }, pitch: { start: 440 }, amp: { attack: 0.001, hold: 1, decay: 0, sustain: 1, release: 0.001 } })])
   const square = Array.from({ length: 16 }, (_, at) => (at < 8 ? 1 : 0))

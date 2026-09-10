@@ -32,7 +32,7 @@ export function makeLayer(input: LayerInput = {}): Layer {
     pan: input.pan ?? 0,
     spread: input.spread ?? 0.5,
     offset: input.offset ?? 0,
-    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, colour: 'white', voices: 1, detune: 12, fmRatio: 2, fmIndex: 0, fmFall: 0.6, ...input.source },
+    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, table: 'sweep', position: 0.5, colour: 'white', voices: 1, detune: 12, fmRatio: 2, fmIndex: 0, fmFall: 0.6, ...input.source },
     pitch: {
       start: 440, slide: 0, slideCurve: LINEAR, vibratoRate: 0, vibratoDepth: 0,
       arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
