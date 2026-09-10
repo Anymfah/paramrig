@@ -12,7 +12,8 @@ const doc = (patch = defaultPatch(), rig?: Parameters<typeof resolveAudioValues>
 describe('parseAudioProperty', () => {
   it('reads the shapes a patch is made of', () => {
     expect(parseAudioProperty('duration')?.kind).toBe('patch')
-    expect(parseAudioProperty('fx.delayMix')?.kind).toBe('fx')
+    expect(parseAudioProperty('fx.tone')?.kind).toBe('fx')
+    expect(parseAudioProperty('fx.y.mix')).toMatchObject({ kind: 'fx', slot: 'y', field: 'mix' })
     expect(parseAudioProperty('master.gain')?.kind).toBe('master')
     expect(parseAudioProperty('layers[1].gain')).toMatchObject({ kind: 'layer', index: 1, section: 'root', field: 'gain' })
     expect(parseAudioProperty('layers[0].pitch.start')).toMatchObject({ kind: 'layer', index: 0, section: 'pitch', field: 'start' })

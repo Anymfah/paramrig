@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget } from '@/audio/dsp/lfo'
+import { LFO_DESTINATIONS } from '@/audio/fields'
 import { mulberry32 } from '@/audio/dsp/rng'
 import { makeLayer, makeLfo, makePatch } from '@/audio/patch'
 import { monoSum, renderPatch } from '@/audio/dsp/render'
@@ -54,7 +55,11 @@ describe('readLfoTarget', () => {
   })
 
   it('publishes how far each destination travels, so the board and the ear agree', () => {
-    expect(Object.keys(LFO_RANGE).sort()).toEqual(['cutoff', 'gain', 'pitch', 'pulseWidth'])
+    // Two lists kept by hand: what the engine can move, and what the board offers to point at it.
+    // A destination in one and not the other is either a target that does nothing or a thing that
+    // moves and cannot be reached, and both have happened here.
+    expect(Object.keys(LFO_RANGE).sort()).toEqual([...LFO_DESTINATIONS].sort())
+    for (const destination of LFO_DESTINATIONS) expect(LFO_RANGE[destination], destination).toBeGreaterThan(0)
   })
 })
 
@@ -129,5 +134,40 @@ describe('unison', () => {
     const five = rms(render(voiced(5)))
     expect(five).toBeGreaterThan(one * 0.7)
     expect(five).toBeLessThan(one * 1.3)
+  })
+})
+
+describe('the destinations the plate gained', () => {
+  const pointed = (target: string, depth = 1) => makePatch(0.4, [makeLayer({
+    gain: 0.7,
+    // A square, because the duty cycle is the one destination a saw cannot answer.
+    source: { kind: 'tone', wave: 'square', pulseWidth: 0.4, voices: 3, detune: 20, fmRatio: 2, fmIndex: 1 },
+    pitch: { start: 300 },
+    filter: { kind: 'lowpass', cutoff: 1400, resonance: 0.4 },
+    // All three slots hold something, since the amount of an empty slot is nothing to move.
+    insertA: { kind: 'drive', place: 'pre', amount: 0.5, drive: 0.9 },
+    insertB: { kind: 'crusher', place: 'pre', amount: 0.5, bitDepth: 5, crush: 0.3 },
+    insertC: { kind: 'body', place: 'post', amount: 0.5, frequency: 900, spread: 0.5, decay: 0.2, partials: 3 },
+    amp: { attack: 0.005, hold: 0.1, decay: 0.2, sustain: 0.4, release: 0.05, curve: 1 },
+  })], {}, { limiter: 0 }, 1, [{ enabled: true, shape: 'sine', rate: 6, depth, target }])
+
+  const still = renderPatch(pointed('off'), 22050)
+
+  it('moves the sound for every one of them, and for none of them when nothing is pointed', () => {
+    for (const where of LFO_DESTINATIONS) {
+      const moved = renderPatch(pointed(`layers[0].${where}`), 22050)
+      const apart = moved.left.reduce((sum, value, at) => sum + Math.abs(value - (still.left[at] ?? 0)), 0)
+      expect(apart, where).toBeGreaterThan(0.5)
+      for (const value of moved.left) expect(Number.isFinite(value), where).toBe(true)
+    }
+  })
+
+  it('leaves the two channels turned when a modulator is pointed at the pan and not otherwise', () => {
+    const level = (out: { left: Float32Array; right: Float32Array }) => {
+      let apart = 0
+      for (let at = 0; at < out.left.length; at += 1) apart += Math.abs(Math.abs(out.left[at] ?? 0) - Math.abs(out.right[at] ?? 0))
+      return apart
+    }
+    expect(level(renderPatch(pointed('layers[0].pan'), 22050))).toBeGreaterThan(level(still))
   })
 })

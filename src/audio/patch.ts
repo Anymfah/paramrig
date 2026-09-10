@@ -1,6 +1,6 @@
-import { AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -80,7 +80,7 @@ export function makeLayer(input: LayerInput = {}): Layer {
     pan: input.pan ?? 0,
     spread: input.spread ?? 0.5,
     offset: input.offset ?? 0,
-    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, table: 'sweep', position: 0.5, colour: 'white', voices: 1, detune: 12, fmRatio: 2, fmIndex: 0, fmFall: 0.6, ...input.source },
+    source: { kind: 'tone', wave: 'square', pulseWidth: 0.5, table: 'sweep', position: 0.5, colour: 'white', voices: 1, detune: 12, pmFrom: 'internal', fmRatio: 2, fmIndex: 0, fmFall: 0.6, ...input.source },
     pitch: {
       start: 440, slide: 0, slideCurve: LINEAR, vibratoRate: 0, vibratoDepth: 0,
       arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
@@ -97,12 +97,65 @@ export function silentLayer(): Layer {
   return makeLayer({ enabled: false })
 }
 
-export function makeFx(input: Partial<FxSettings> = {}): FxSettings {
+/**
+ * The three master effects as a preset still writes them.
+ *
+ * The same shorthand as a layer's `shaper`: `flangerMix: 0.3` says what it means, where the slot
+ * it becomes says how it is filed. They land where the migration of a saved patch puts them —
+ * the flanger in X standing in the sound, the delay in Y beside it, the reverb in Z — which is
+ * the order they ran in when they were three effects written into one loop.
+ */
+export type FxInput = Partial<Omit<FxSettings, 'x' | 'y' | 'z'>> & {
+  x?: Partial<FxSlot>
+  y?: Partial<FxSlot>
+  z?: Partial<FxSlot>
+  delayTime?: number
+  delayFeedback?: number
+  delayMix?: number
+  reverbSize?: number
+  reverbDamping?: number
+  reverbMix?: number
+  flangerRate?: number
+  flangerDepth?: number
+  flangerMix?: number
+}
+
+export function makeFxSlot(input: Partial<FxSlot> = {}): FxSlot {
   return {
-    delayTime: 0.12, delayFeedback: 0.3, delayMix: 0,
-    reverbSize: 0.5, reverbDamping: 0.4, reverbMix: 0,
-    flangerRate: 0.5, flangerDepth: 0.5, flangerMix: 0,
-    tone: 0, width: 0.6, ...input,
+    kind: 'off', mode: 'insert', mix: 0.35,
+    rate: 0.5, depth: 0.5, feedback: 0.3,
+    time: 0.12, size: 0.5, damping: 0.4, width: 0.5,
+    ...input,
+  }
+}
+
+/** A flanger with nothing to sweep is a fixed comb, which is not what anybody asked for. */
+function flangerSlot(input: FxInput): Partial<FxSlot> {
+  const mix = input.flangerMix ?? 0
+  const depth = input.flangerDepth ?? 0.5
+  if (mix <= 0 || depth <= 0) return {}
+  return { kind: 'flanger', mode: 'insert', mix, depth, rate: input.flangerRate ?? 0.5, feedback: 0.4 }
+}
+
+function delaySlot(input: FxInput): Partial<FxSlot> {
+  const mix = input.delayMix ?? 0
+  if (mix <= 0) return { mode: 'send' }
+  return { kind: 'delay', mode: 'send', mix, time: input.delayTime ?? 0.12, feedback: input.delayFeedback ?? 0.3 }
+}
+
+function reverbSlot(input: FxInput): Partial<FxSlot> {
+  const mix = input.reverbMix ?? 0
+  if (mix <= 0) return { mode: 'send' }
+  return { kind: 'reverb', mode: 'insert', mix, size: input.reverbSize ?? 0.5, damping: input.reverbDamping ?? 0.4 }
+}
+
+export function makeFx(input: FxInput = {}): FxSettings {
+  return {
+    x: makeFxSlot({ ...flangerSlot(input), ...input.x }),
+    y: makeFxSlot({ ...delaySlot(input), ...input.y }),
+    z: makeFxSlot({ ...reverbSlot(input), ...input.z }),
+    tone: input.tone ?? 0,
+    width: input.width ?? 0.6,
   }
 }
 
@@ -162,7 +215,7 @@ export function makePerformer(input: Partial<Performer> = {}): Performer {
  * every preset in the library is written, and they land in the slots the reference gives them:
  * the envelopes in the first two, the oscillators in the six after.
  */
-export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<ModSlot>[] = [], envelopes: Partial<ModSlot>[] = [], performers: Partial<Performer>[] = []): AudioPatch {
+export function makePatch(duration: number, layers: Layer[], fx: FxInput = {}, master: Partial<MasterSettings> = {}, seed = 1, lfos: Partial<ModSlot>[] = [], envelopes: Partial<ModSlot>[] = [], performers: Partial<Performer>[] = []): AudioPatch {
   const three = Array.from({ length: LAYER_COUNT }, (_, index) => layers[index] ?? silentLayer())
   const mods = Array.from({ length: MOD_COUNT }, (_, index) => {
     const given = index < 2 ? envelopes[index] : lfos[index - 2]
@@ -171,6 +224,17 @@ export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSetti
   })
   const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
   return { version: PATCH_VERSION, duration, seed, layers: three, mods, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
+}
+
+/** The master's own two fields, and the three slots read the way a layer's sections are. */
+function readFx(value: unknown, base: FxSettings): FxSettings {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const top = readSection(AUDIO_FIELDS.fx, source, base as unknown as Record<string, unknown>)
+  const slots = Object.fromEntries(FX_SLOTS.map((slot) => [
+    slot,
+    readSection(AUDIO_FIELDS.fxSlot, source[slot], base[slot] as unknown as Record<string, unknown>),
+  ]))
+  return { ...top, ...slots } as unknown as FxSettings
 }
 
 /** A performer's rows read back from anything: twelve of sixteen levels, each held to 0..1. */
@@ -244,7 +308,7 @@ function readLayer(value: unknown, base: Layer): Layer {
  * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
  * is open so that the first change to the shape has somewhere to go.
  */
-export const PATCH_VERSION = 3
+export const PATCH_VERSION = 4
 
 /**
  * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
@@ -300,7 +364,22 @@ function intoInserts(source: Record<string, unknown>): Record<string, unknown> {
   return { ...source, layers: carried }
 }
 
-const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts]
+/**
+ * Three to four: the flanger, the delay and the reverb were written into one loop in that order,
+ * and become three slots that could each be anything. They land where they ran — the flanger in X
+ * standing in the sound, the delay in Y beside it, the reverb in Z — so a patch saved yesterday
+ * sounds today exactly as it did, and can be rearranged afterwards.
+ */
+function intoFxSlots(source: Record<string, unknown>): Record<string, unknown> {
+  const fx = source.fx
+  if (!fx || typeof fx !== 'object' || Array.isArray(fx)) return source
+  const held = fx as Record<string, unknown>
+  if (held.x || held.y || held.z) return source
+  const carried = makeFx(held as FxInput) as unknown as Record<string, unknown>
+  return { ...source, fx: carried }
+}
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts, intoFxSlots]
 
 function migrate(source: Record<string, unknown>): Record<string, unknown> {
   const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1
@@ -337,7 +416,7 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
       const patterns = readPatterns(raw && typeof raw === 'object' ? (raw as Record<string, unknown>).patterns : undefined)
       return { ...fields, patterns } as unknown as Performer
     }),
-    fx: readSection(AUDIO_FIELDS.fx, source.fx, base.fx as unknown as Record<string, unknown>) as unknown as FxSettings,
+    fx: readFx(source.fx, base.fx),
     master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,
   }
 }

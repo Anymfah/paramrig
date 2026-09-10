@@ -4,7 +4,7 @@ import { applyTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { LINEAR } from '@/audio/dsp/curve'
 import {
-  AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
+  AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
   type AudioPropertyType, type FieldSpec, type LayerSection,
 } from '@/audio/fields'
 import type { AudioPatch, Layer } from '@/audio/types'
@@ -38,7 +38,7 @@ export type AudioPath =
   | { kind: 'mod'; index: number; field: string; spec: FieldSpec }
   | { kind: 'performer'; index: number; field: string; spec: FieldSpec }
   | { kind: 'layer'; index: number; section: LayerSection; field: string; spec: FieldSpec }
-  | { kind: 'fx'; field: string; spec: FieldSpec }
+  | { kind: 'fx'; slot: 'x' | 'y' | 'z' | null; field: string; spec: FieldSpec }
   | { kind: 'master'; field: string; spec: FieldSpec }
 
 /**
@@ -78,10 +78,13 @@ export function parseAudioProperty(property: string): AudioPath | null {
     return spec ? { kind: 'performer', index, field: performer[2] ?? '', spec } : null
   }
 
-  const fx = /^fx\.([A-Za-z]+)$/.exec(property)
+  // Either the master's own two fields, or one field of one of the three effect slots.
+  const fx = /^fx\.(?:([xyz])\.)?([A-Za-z]+)$/.exec(property)
   if (fx) {
-    const spec = AUDIO_FIELDS.fx[fx[1] ?? '']
-    return spec ? { kind: 'fx', field: fx[1] ?? '', spec } : null
+    const slot = (fx[1] ?? null) as 'x' | 'y' | 'z' | null
+    const field = fx[2] ?? ''
+    const spec = slot ? AUDIO_FIELDS.fxSlot[field] : AUDIO_FIELDS.fx[field]
+    return spec ? { kind: 'fx', slot, field, spec } : null
   }
 
   const master = /^master\.([A-Za-z]+)$/.exec(property)
@@ -111,6 +114,15 @@ export function carryAudioProperty(property: string, from: number): string {
     const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(carried)
     if (lfo) carried = `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
   }
+  if (from < 4) {
+    // Three to four: the master effects became three slots, in the order they always ran.
+    const named: Record<string, string> = {
+      'fx.flangerRate': 'fx.x.rate', 'fx.flangerDepth': 'fx.x.depth', 'fx.flangerMix': 'fx.x.mix',
+      'fx.delayTime': 'fx.y.time', 'fx.delayFeedback': 'fx.y.feedback', 'fx.delayMix': 'fx.y.mix',
+      'fx.reverbSize': 'fx.z.size', 'fx.reverbDamping': 'fx.z.damping', 'fx.reverbMix': 'fx.z.mix',
+    }
+    carried = named[carried] ?? carried
+  }
   if (from < 3) {
     // Two to three: the drive and the resonator became slots. Drive is the first, the two lo-fi
     // fields the second, the body the third — the same order the patch migration puts them in.
@@ -139,6 +151,8 @@ export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: Audi
   ...Object.entries(AUDIO_FIELDS.mod).map(([field, spec]) => ({ property: `mods[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.performer).map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
+  ...FX_SLOTS.flatMap((slot) =>
+    Object.entries(AUDIO_FIELDS.fxSlot).map(([field, spec]) => ({ property: `fx.${slot}.${field}`, label: spec.label, type: spec.type }))),
   ...Object.entries(AUDIO_FIELDS.master).map(([field, spec]) => ({ property: `master.${field}`, label: spec.label, type: spec.type })),
 ]
 
@@ -200,7 +214,10 @@ export function applyAudioBinding(patch: AudioPatch, binding: AudioBinding, valu
     if (!performer) return patch
     return { ...patch, performers: patch.performers.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
   }
-  if (path.kind === 'fx') return { ...patch, fx: { ...patch.fx, [path.field]: next } }
+  if (path.kind === 'fx') {
+    if (!path.slot) return { ...patch, fx: { ...patch.fx, [path.field]: next } }
+    return { ...patch, fx: { ...patch.fx, [path.slot]: { ...patch.fx[path.slot], [path.field]: next } } }
+  }
   if (path.kind === 'master') return { ...patch, master: { ...patch.master, [path.field]: next } }
 
   const layer = patch.layers[path.index]
@@ -276,7 +293,7 @@ export function currentAudioValue(patch: AudioPatch, property: string): ParamVal
     const performer = patch.performers[path.index]
     return performer ? read(performer, path.field) : null
   }
-  if (path.kind === 'fx') return read(patch.fx, path.field)
+  if (path.kind === 'fx') return read(path.slot ? patch.fx[path.slot] : patch.fx, path.field)
   if (path.kind === 'master') return read(patch.master, path.field)
   const layer = patch.layers[path.index]
   if (!layer) return null

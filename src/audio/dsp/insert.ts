@@ -61,9 +61,11 @@ export function insertSample(
   input: number,
   frequency: number,
   sampleRate: number,
+  /** How much of it is heard, when something is moving that: the slot's own figure otherwise. */
+  heard = slot.amount,
 ): number {
   if (slot.kind === 'off') return input
-  const amount = Math.min(1, Math.max(0, slot.amount))
+  const amount = Math.min(1, Math.max(0, heard))
   if (amount <= 0) return input
 
   let wet = input

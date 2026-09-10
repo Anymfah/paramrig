@@ -28,7 +28,7 @@ describe('sanitizeAudioPatch', () => {
       duration: 900,
       seed: 3,
       layers: [{ gain: -12, pitch: { start: 1e9 }, filter: { cutoff: -4, kind: 'trapdoor' } }],
-      fx: { delayFeedback: 4, tone: -80 },
+      fx: { y: { kind: 'delay', feedback: 4 }, tone: -80 },
       master: { gain: 1e6 },
     })
     expect(patch.duration).toBe(4)
@@ -36,7 +36,7 @@ describe('sanitizeAudioPatch', () => {
     expect(patch.layers[0]?.pitch.start).toBe(12000)
     expect(patch.layers[0]?.filter.cutoff).toBe(20)
     expect(patch.layers[0]?.filter.kind).toBe('off')
-    expect(patch.fx.delayFeedback).toBe(0.95)
+    expect(patch.fx.y.feedback).toBe(0.95)
     expect(patch.fx.tone).toBe(-1)
     expect(patch.master.gain).toBe(3)
   })

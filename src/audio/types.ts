@@ -38,6 +38,17 @@ export type SourceSettings = {
   /** Cents between the outermost voices. Does nothing at one voice. */
   detune: number
   /**
+   * What modulates this oscillator's phase: its own second oscillator, or another layer.
+   *
+   * `internal` is the dedicated sine below, tuned by `fmRatio`. `layer0` to `layer3` take the
+   * whole output of another layer instead — its wave, its envelope, its filter and its inserts,
+   * all of it — which is the one thing in this synthesiser that makes the layers stop being
+   * independent. A layer named here still plays if its level is up and modulates whether or not
+   * it is: the reading is taken before the level. Naming itself, or naming a layer that names it
+   * back, falls to `internal` rather than failing.
+   */
+  pmFrom: string
+  /**
    * A second oscillator, modulating this one's phase rather than being added to it.
    *
    * Subtractive synthesis takes a harmonic wave and removes from it, so everything it makes is
@@ -197,16 +208,50 @@ export type Layer = {
   amp: AmpSettings
 }
 
+export type FxKind = 'off' | 'flanger' | 'chorus' | 'phaser' | 'delay' | 'reverb' | 'widener'
+
+/**
+ * Whether a master effect stands in the signal or beside it.
+ *
+ * An `insert` replaces the sound in proportion to its mix, which is what a flanger or a phaser is
+ * for: the point of them is that the dry goes away. A `send` is added on top and leaves the dry
+ * alone, which is what a delay and a reverb are for: the point of those is the sound *plus* the
+ * room. Two sends off the same signal are two effects in parallel; two inserts are two in series.
+ */
+export type FxMode = 'insert' | 'send'
+
+/**
+ * One of three master effects, on the same pattern as an insert slot: a kind, and the fields of
+ * every kind it could be, of which the engine reads only its own.
+ *
+ * These were three effects written in a fixed order inside one loop, with their state in closure
+ * variables — no interface, nothing exchangeable, nothing reorderable. Which is why a patch could
+ * have a flanger it did not want and could not have a chorus at all.
+ */
+export type FxSlot = {
+  kind: FxKind
+  mode: FxMode
+  /** How much of it is heard, 0..1. At 0 every kind is a true bypass. */
+  mix: number
+  /** Hertz. What sweeps a flanger, a chorus, a phaser, or a widener that moves. */
+  rate: number
+  /** How far that sweep travels, 0..1. */
+  depth: number
+  /** How much comes back round, 0..0.95. Read by the flanger, the phaser and the delay. */
+  feedback: number
+  /** Seconds down the line. Read by the delay. */
+  time: number
+  /** How big the room is, 0..1, and how fast it loses its top. Read by the reverb. */
+  size: number
+  damping: number
+  /** How far apart the two channels are pushed, 0..1. Read by the widener. */
+  width: number
+}
+
 export type FxSettings = {
-  delayTime: number
-  delayFeedback: number
-  delayMix: number
-  reverbSize: number
-  reverbDamping: number
-  reverbMix: number
-  flangerRate: number
-  flangerDepth: number
-  flangerMix: number
+  x: FxSlot
+  y: FxSlot
+  z: FxSlot
   /** −1 dark, 0 flat, +1 bright. One control instead of a band curve, because this is a generator
    * of short sounds and nobody wants to sculpt an EQ to make a laser. */
   tone: number

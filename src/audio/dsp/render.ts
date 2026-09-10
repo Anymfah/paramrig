@@ -2,11 +2,11 @@ import type { AudioPatch, Layer, Stereo } from '../types.ts'
 import { createFilter, filterSample } from './filter.ts'
 import { createNoise, warp, waveAt } from './osc.ts'
 import { tableAt, tableOf, wavetable } from './wavetable.ts'
-import { createInsert, insertSample } from './insert.ts'
+import { createInsert, insertSample, type InsertState } from './insert.ts'
 import { curveAt } from './curve.ts'
 import { envelopeAt, fitEnvelope, type FittedEnvelope } from './envelope.ts'
 import { performerAt } from './performer.ts'
-import { applyFx } from './space.ts'
+import { applyFx } from './fx.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
 import { MAX_VOICES } from '../fields.ts'
@@ -62,7 +62,19 @@ function pan(position: number): { left: number; right: number } {
   return { left: Math.cos(at), right: Math.sin(at) }
 }
 
-function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo, sampleRate: number, modulators: Modulator[]): void {
+/** How much of an insert is heard at this instant: what its slot says, plus whatever points at it. */
+function amountOf(unit: { slot: Layer['insertA']; swing: Modulator[] }, clock: number): number {
+  if (unit.swing.length === 0) return unit.slot.amount
+  return Math.min(1, Math.max(0, unit.slot.amount + swingOf(unit.swing, clock) * LFO_RANGE.insertA))
+}
+
+function renderLayer(
+  layer: Layer, patch: AudioPatch, index: number, out: Stereo, sampleRate: number, modulators: Modulator[],
+  /** Where this layer's own signal is kept for whatever modulates its phase with it, if anything does. */
+  capture: Float64Array | null = null,
+  /** The layer that modulates this one's phase, already rendered, or null for its own oscillator. */
+  from: Float64Array | null = null,
+): void {
   if (!layer.enabled) return
   const offset = Math.max(0, layer.offset)
   const life = patch.duration - offset
@@ -81,9 +93,10 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
    * switched off, so the sample loop walks two short lists rather than asking three slots what
    * kind they are on every sample of every channel.
    */
-  const chain = [layer.insertA, layer.insertB, layer.insertC].map((slot) => ({
-    slot, left: createInsert(slot, sampleRate), right: createInsert(slot, sampleRate),
-  }))
+  const chain: { slot: Layer['insertA']; left: InsertState; right: InsertState; swing: Modulator[] }[] =
+    [layer.insertA, layer.insertB, layer.insertC].map((slot) => ({
+      slot, left: createInsert(slot, sampleRate), right: createInsert(slot, sampleRate), swing: [],
+    }))
   const before = chain.filter((unit) => unit.slot.kind !== 'off' && unit.slot.place !== 'post')
   const after = chain.filter((unit) => unit.slot.kind !== 'off' && unit.slot.place === 'post')
   const fitted = fitEnvelope(layer.amp, life)
@@ -122,8 +135,15 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   const on = (destination: LfoDestination) => modulators.filter((entry) => entry.destination === destination)
   const pitchLfo = on('pitch')
   const cutoffLfo = on('cutoff')
+  const resoLfo = on('resonance')
   const widthLfo = on('pulseWidth')
   const gainLfo = on('gain')
+  const panLfo = on('pan')
+  const pmLfo = on('pm')
+  // One list a slot, in the slots' own order, so an insert reads the modulator pointed at its
+  // letter rather than at the kind it happens to be holding this minute.
+  const amountLfo = [on('insertA'), on('insertB'), on('insertC')]
+  chain.forEach((unit, at) => { unit.swing = amountLfo[at] ?? [] })
 
   for (let i = start; i < end; i += 1) {
     const t = (i - start) / sampleRate
@@ -157,17 +177,26 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
       const position = Math.min(1, Math.max(0, layer.source.position + shift * LFO_RANGE.pulseWidth))
       // The depth falls across the layer's life, which is what a struck thing does: the clang is
       // at the start and what is left afterwards is the note.
-      const depth = fmDepth * (1 - layer.source.fmFall * x)
+      const index = pmLfo.length === 0 ? fmDepth
+        : Math.max(0, layer.source.fmIndex + swingOf(pmLfo, clock) * LFO_RANGE.pm) / (Math.PI * 2)
+      const depth = index * (1 - layer.source.fmFall * x)
       for (let voice = 0; voice < voices; voice += 1) {
         const step = dt * (ratios[voice] ?? 1)
         const at = ((phases[voice] ?? 0) + step) % 1
         phases[voice] = at
         let read = at
         if (depth > 0) {
-          const modStep = step * layer.source.fmRatio
-          const modAt = ((fmPhases[voice] ?? 0) + modStep) % 1
-          fmPhases[voice] = modAt
-          const shifted = (at + depth * Math.sin(modAt * Math.PI * 2)) % 1
+          // Another layer's output where one is named, and this oscillator's own sine otherwise.
+          // The ratio tunes that sine and means nothing to a layer, which arrives at whatever
+          // pitch it was already playing.
+          let bend = from ? (from[i] ?? 0) : 0
+          if (!from) {
+            const modStep = step * layer.source.fmRatio
+            const modAt = ((fmPhases[voice] ?? 0) + modStep) % 1
+            fmPhases[voice] = modAt
+            bend = Math.sin(modAt * Math.PI * 2)
+          }
+          const shifted = (at + depth * bend) % 1
           read = shifted < 0 ? shifted + 1 : shifted
         }
         const value = table
@@ -183,12 +212,15 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
 
     const sweep = Math.pow(2, layer.filter.envAmount * curveAt(layer.filter.envCurve, x) + swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff)
     const cutoff = layer.filter.cutoff * sweep
-    let left = filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate)
-    let right = filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate)
+    const resonance = resoLfo.length === 0 ? layer.filter.resonance
+      : Math.min(1, Math.max(0, layer.filter.resonance + swingOf(resoLfo, clock) * LFO_RANGE.resonance))
+    let left = filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, resonance, sampleRate)
+    let right = filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, resonance, sampleRate)
     for (let at = 0; at < before.length; at += 1) {
       const unit = before[at]!
-      left = insertSample(unit.left, unit.slot, left, frequency, sampleRate)
-      right = insertSample(unit.right, unit.slot, right, frequency, sampleRate)
+      const amount = amountOf(unit, clock)
+      left = insertSample(unit.left, unit.slot, left, frequency, sampleRate, amount)
+      right = insertSample(unit.right, unit.slot, right, frequency, sampleRate, amount)
     }
 
     /*
@@ -210,14 +242,71 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     let hitR = right * amplitude
     for (let at = 0; at < after.length; at += 1) {
       const unit = after[at]!
-      hitL = insertSample(unit.left, unit.slot, hitL, frequency, sampleRate)
-      hitR = insertSample(unit.right, unit.slot, hitR, frequency, sampleRate)
+      const amount = amountOf(unit, clock)
+      hitL = insertSample(unit.left, unit.slot, hitL, frequency, sampleRate, amount)
+      hitR = insertSample(unit.right, unit.slot, hitR, frequency, sampleRate, amount)
     }
 
+    // Kept before the level: a layer used only as a modulator is turned down to nothing and still
+    // modulates, which is how a modulator oscillator is meant to work.
+    if (capture) capture[i] = (hitL + hitR) * 0.5
+
     const level = layer.gain * tremolo
-    out.left[i] = (out.left[i] ?? 0) + hitL * level
-    out.right[i] = (out.right[i] ?? 0) + hitR * level
+    if (panLfo.length === 0) {
+      out.left[i] = (out.left[i] ?? 0) + hitL * level
+      out.right[i] = (out.right[i] ?? 0) + hitR * level
+    } else {
+      /*
+       * A pan modulator turns the layer's own sum, not each of its voices.
+       *
+       * The voices are spread across the field before anything else happens, and re-panning every
+       * one of them per sample would cost a sine and a cosine each. Turning what they add up to
+       * moves the whole image the same way for two, and at rest the two gains are cos and sin of
+       * forty-five degrees — which times root two is one, so a layer nobody points at is untouched.
+       */
+      const turn = pan(Math.min(1, Math.max(-1, swingOf(panLfo, clock) * LFO_RANGE.pan)))
+      out.left[i] = (out.left[i] ?? 0) + hitL * level * turn.left * Math.SQRT2
+      out.right[i] = (out.right[i] ?? 0) + hitR * level * turn.right * Math.SQRT2
+    }
   }
+}
+
+/**
+ * Which layer feeds which, and an order that respects it.
+ *
+ * `from[i]` is the layer that modulates layer i's phase, or null. A layer that names itself, names
+ * a layer that is not there, or sits in a ring of layers naming each other is given null instead —
+ * a patch that cannot be rendered is not a patch anyone can fix from the plate, so the engine
+ * decides rather than refuses. Four layers, so the sort is a handful of passes and no recursion.
+ */
+export function pmOrder(layers: Layer[]): { order: number[]; from: (number | null)[] } {
+  const from = layers.map((layer, index) => {
+    const found = /^layer(\d+)$/.exec(layer.source.pmFrom ?? 'internal')
+    if (!found) return null
+    const at = Number(found[1])
+    return Number.isInteger(at) && at >= 0 && at < layers.length && at !== index ? at : null
+  })
+  const order: number[] = []
+  const placed = new Set<number>()
+  let moved = true
+  while (moved && order.length < layers.length) {
+    moved = false
+    for (let index = 0; index < layers.length; index += 1) {
+      if (placed.has(index)) continue
+      const feeds = from[index]
+      if (feeds !== null && feeds !== undefined && !placed.has(feeds)) continue
+      order.push(index)
+      placed.add(index)
+      moved = true
+    }
+  }
+  // What is left is a ring. Each of them goes back to its own oscillator, in the order they sit in.
+  for (let index = 0; index < layers.length; index += 1) {
+    if (placed.has(index)) continue
+    from[index] = null
+    order.push(index)
+  }
+  return { order, from }
 }
 
 export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
@@ -245,10 +334,27 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
       return [{ kind: 'performer' as const, ...target, performer, pattern: performer.patterns[scene] ?? [], duration: patch.duration }]
     }),
   ]
-  patch.layers.forEach((layer, index) => renderLayer(
-    layer, patch, index, dry, sampleRate,
-    wired.filter((entry) => entry.layer === index),
-  ))
+  /*
+   * The one place the layers stop being independent.
+   *
+   * A layer whose phase is modulated by another has to wait for that other one, so the render
+   * order is a topological sort rather than nought to three, and the layer it waits on is kept in
+   * a buffer while it plays. `pmOrder` also decides what a cycle means: two layers modulating each
+   * other cannot both go first, so both fall back to their own oscillators rather than deadlock.
+   */
+  const { order, from } = pmOrder(patch.layers)
+  const kept = patch.layers.map((_, index) => (from.includes(index) ? new Float64Array(length) : null))
+  for (const index of order) {
+    const layer = patch.layers[index]
+    if (!layer) continue
+    const feeds = from[index]
+    renderLayer(
+      layer, patch, index, dry, sampleRate,
+      wired.filter((entry) => entry.layer === index),
+      kept[index] ?? null,
+      feeds === null || feeds === undefined ? null : kept[feeds] ?? null,
+    )
+  }
 
   const wet = applyFx(dry, patch.fx, sampleRate)
 

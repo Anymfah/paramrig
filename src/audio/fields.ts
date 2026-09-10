@@ -47,6 +47,18 @@ const num = (label: string, min: number, max: number, step = 0.01, extra: Partia
 /** How many rows a performer keeps; the patch's scene picks one for all of them. */
 export const SCENE_COUNT = 12
 
+/** How many layers an instrument has. Every table here is built from it. */
+export const LAYER_COUNT = 4
+
+/**
+ * What may modulate an oscillator's phase: its own second oscillator, or any layer.
+ *
+ * Built from `LAYER_COUNT`, so it cannot name a layer that is not there. A layer naming itself is
+ * refused by the engine rather than by this list, because which entry is the offending one depends
+ * on which layer is asking.
+ */
+export const PM_SOURCES = ['internal', ...Array.from({ length: LAYER_COUNT }, (_, layer) => `layer${layer}`)] as const
+
 const PATCH_FIELDS: Record<string, FieldSpec> = {
   duration: num('Duration', 0.02, 4, 0.001, SECONDS),
   seed: num('Seed', 0, 9999, 1),
@@ -78,6 +90,13 @@ const SOURCE_FIELDS: Record<string, FieldSpec> = {
     optionLabels: Object.fromEntries(TABLE_NAMES.map((name) => [name, TABLES[name]?.label ?? name])),
   },
   position: num('Table position', 0, 1),
+  pmFrom: {
+    type: 'option', label: 'PM source', options: PM_SOURCES,
+    optionLabels: {
+      internal: 'Its own modulator',
+      layer0: 'Oscillator 1', layer1: 'Oscillator 2', layer2: 'Noise 1', layer3: 'Noise 2',
+    },
+  },
   voices: num('Voices', 1, 5, 1),
   detune: num('Detune', 0, 60, 1, { unit: 'cents' }),
   fmRatio: num('FM ratio', 0.25, 12, 0.01),
@@ -159,16 +178,31 @@ const AMP_FIELDS: Record<string, FieldSpec> = {
   curve: num('Envelope curve', 0.25, 6, 0.05),
 }
 
+/** What a master effect slot can be, in the order the picker offers them. */
+export const FX_KINDS = ['off', 'flanger', 'chorus', 'phaser', 'delay', 'reverb', 'widener'] as const
+
+/** The three of them, in the order the sound meets them. */
+export const FX_SLOTS = ['x', 'y', 'z'] as const
+
+/**
+ * One master effect slot: a kind, whether it stands in the sound or beside it, and the fields of
+ * all six kinds. The same shape an insert slot has, for the same reason.
+ */
+const FX_SLOT_FIELDS: Record<string, FieldSpec> = {
+  kind: { type: 'option', label: 'Effect', options: FX_KINDS },
+  mode: { type: 'option', label: 'Placing', options: ['insert', 'send'], optionLabels: { insert: 'In the sound', send: 'Beside it' } },
+  mix: num('Mix', 0, 1),
+  rate: num('Rate', 0.05, 8, 0.05, { unit: 'Hz' }),
+  depth: num('Depth', 0, 1),
+  feedback: num('Feedback', 0, 0.95),
+  time: num('Time', 0.001, 1, 0.001, SECONDS),
+  size: num('Size', 0, 1),
+  damping: num('Damping', 0, 1),
+  width: num('Spread', 0, 1),
+}
+
+/** What is left at the master once the three effects are their own slots. */
 const FX_FIELDS: Record<string, FieldSpec> = {
-  delayTime: num('Delay time', 0.001, 1, 0.001, SECONDS),
-  delayFeedback: num('Delay feedback', 0, 0.95),
-  delayMix: num('Delay mix', 0, 1),
-  reverbSize: num('Reverb size', 0, 1),
-  reverbDamping: num('Reverb damping', 0, 1),
-  reverbMix: num('Reverb mix', 0, 1),
-  flangerRate: num('Flanger rate', 0.05, 8, 0.05, { unit: 'Hz' }),
-  flangerDepth: num('Flanger depth', 0, 1),
-  flangerMix: num('Flanger mix', 0, 1),
   tone: num('Tone', -1, 1),
   width: num('Width', 0, 1),
 }
@@ -195,11 +229,9 @@ export const MOD_COUNT = 8
 export const PERFORMER_COUNT = 3
 export const STEP_COUNT = 16
 
-/** How many layers an instrument has. Every table below is built from it. */
-export const LAYER_COUNT = 4
 
 /** Everywhere an LFO may point. Built from the layers, so it cannot name one that is not there. */
-export const LFO_DESTINATIONS = ['pitch', 'cutoff', 'pulseWidth', 'gain'] as const
+export const LFO_DESTINATIONS = ['pitch', 'cutoff', 'resonance', 'pulseWidth', 'gain', 'pan', 'pm', 'insertA', 'insertB', 'insertC'] as const
 export const LFO_TARGETS: string[] = [
   'off',
   ...Array.from({ length: LAYER_COUNT }, (_, layer) => LFO_DESTINATIONS.map((where) => `layers[${layer}].${where}`)).flat(),
@@ -209,7 +241,10 @@ const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
   LFO_TARGETS.map((target) => {
     if (target === 'off') return [target, 'Off']
     const [, layer, where] = /^layers\[(\d)\]\.(\w+)$/.exec(target) ?? []
-    const named: Record<string, string> = { pitch: 'pitch', cutoff: 'cutoff', pulseWidth: 'pulse width', gain: 'gain' }
+    const named: Record<string, string> = {
+      pitch: 'pitch', cutoff: 'cutoff', resonance: 'resonance', pulseWidth: 'width', gain: 'gain',
+      pan: 'pan', pm: 'PM depth', insertA: 'insert A', insertB: 'insert B', insertC: 'insert C',
+    }
     return [target, `Layer ${Number(layer) + 1} ${named[where ?? ''] ?? where}`]
   }),
 )
@@ -256,6 +291,7 @@ export const AUDIO_FIELDS = {
   mod: MOD_FIELDS,
   performer: PERFORMER_FIELDS,
   fx: FX_FIELDS,
+  fxSlot: FX_SLOT_FIELDS,
   master: MASTER_FIELDS,
 } as const
 

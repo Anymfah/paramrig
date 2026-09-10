@@ -173,6 +173,22 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '1')
   })
 
+  it('lets one oscillator bend another one\'s phase, and drops the ratio that stops meaning anything', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const panel = () => screen.getByRole('region', { name: 'Oscillators' })
+    // Its own modulator to begin with, tuned by a ratio beside it.
+    const word = () => within(panel()).getByRole('button', { name: /^Oscillator 1 phase modulator/ })
+    expect(word()).toHaveTextContent('Self')
+    expect(within(panel()).getByRole('slider', { name: 'Oscillator 1 modulator ratio' })).toBeInTheDocument()
+    // Stepping past itself: a layer cannot name itself, so Oscillator 1 is not on its own list.
+    await user.click(word())
+    expect(word()).toHaveTextContent('Osc 2')
+    expect(within(panel()).queryByRole('slider', { name: 'Oscillator 1 modulator ratio' })).toBeNull()
+    await user.click(word())
+    expect(word()).toHaveTextContent('Noise 1')
+  })
+
   it('gives a layer three insert slots, each saying what it is and where it stands', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
@@ -282,6 +298,18 @@ describe('AudioEditorPage', () => {
     expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
     fireEvent.click(screen.getByRole('button', { name: 'Show modulator L4' }))
     expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
+  })
+
+  /** Four destinations was most of the reason a dropped modulator seemed to do nothing. */
+  it('takes a modulator on the resonance, the pan and the phase depth as well as the four it had', () => {
+    open(arcadeCoin().id)
+    const where = (region: string, control: string) =>
+      within(screen.getByRole('region', { name: region })).getByRole('slider', { name: control })
+    expect(where('Filter', 'Reso')).toHaveAttribute('data-target', 'layers[0].resonance')
+    expect(where('Oscillators', 'PM1')).toHaveAttribute('data-target', 'layers[0].pm')
+    expect(where('Amp envelope', 'Pan')).toHaveAttribute('data-target', 'layers[0].pan')
+    // And a dial that is not a destination says so by carrying no target at all.
+    expect(where('Oscillators', 'Fall')).not.toHaveAttribute('data-target')
   })
 
   /** A macro is a control of the rig: dropped on a dial, it exposes that dial to Tune and the SDK. */

@@ -1,5 +1,5 @@
 import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
-import { LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
+import { FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, type LayerSection } from '@/audio/fields'
 import { AUDIO_FIELDS, applyAudioBinding, currentAudioValue, parameterForAudioProperty, parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import type { AudioPatch } from '@/audio/types'
@@ -55,6 +55,7 @@ export function boardGroups(): ParamGroup[] {
     ...Array.from({ length: MOD_COUNT }, (_, index) => ({ id: `mod${index}.all`, label: `Modulator ${index + 2}`, tab: `mod${index}` })),
     { id: 'mix.patch', label: 'Patch', tab: 'mix' },
     { id: 'mix.fx', label: 'Effects', tab: 'mix' },
+    ...FX_SLOTS.map((slot) => ({ id: `mix.fx${slot}`, label: `Effect ${slot.toUpperCase()}`, tab: 'mix', defaultOpen: false })),
     { id: 'mix.master', label: 'Master', tab: 'mix' },
   ]
 }
@@ -81,6 +82,7 @@ export function boardPaths(): { property: string; group: string }[] {
     ...mods,
     ...Object.keys(AUDIO_FIELDS.patch).map((field) => ({ property: field, group: 'mix.patch' })),
     ...Object.keys(AUDIO_FIELDS.fx).map((field) => ({ property: `fx.${field}`, group: 'mix.fx' })),
+    ...FX_SLOTS.flatMap((slot) => Object.keys(AUDIO_FIELDS.fxSlot).map((field) => ({ property: `fx.${slot}.${field}`, group: `mix.fx${slot}` }))),
     ...Object.keys(AUDIO_FIELDS.master).map((field) => ({ property: `master.${field}`, group: 'mix.master' })),
   ]
 }

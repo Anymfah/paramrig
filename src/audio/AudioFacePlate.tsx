@@ -6,14 +6,14 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { INSERT_SLOTS, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { FX_SLOTS, INSERT_SLOTS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { warp } from '@/audio/dsp/osc'
 import { TABLES, TABLE_NAMES, tableAt, tableOf, wavetable } from '@/audio/dsp/wavetable'
-import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse, insertResponse } from '@/audio/dsp/response'
+import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse, fxResponse, insertResponse } from '@/audio/dsp/response'
 import { createInsert, insertSample } from '@/audio/dsp/insert'
-import type { FilterKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
+import type { FilterKind, FxKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { PerformerShape } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
@@ -78,12 +78,25 @@ const SOURCE_COLOUR = { p: 'var(--fp-src-p)', e: 'var(--fp-src-e)', l: 'var(--fp
 
 /** The modulation target a parameter stands for, when an LFO may be pointed at it. */
 const targetOf = (id: string): string | undefined => {
-  const found = /^layers\[(\d)\]\.(pitch\.start|filter\.cutoff|source\.pulseWidth|source\.position|gain)$/.exec(id)
+  const found = /^layers\[(\d)\]\.(.+)$/.exec(id)
   if (!found) return undefined
   // Width and position are one destination in the engine — how far along the shape sits — so a
   // modulator dropped on either moves whichever of the two its source reads.
-  const where: Record<string, string> = { 'pitch.start': 'pitch', 'filter.cutoff': 'cutoff', 'source.pulseWidth': 'pulseWidth', 'source.position': 'pulseWidth', gain: 'gain' }
-  return `layers[${found[1]}].${where[found[2] ?? ''] ?? ''}`
+  const where: Record<string, string> = {
+    'pitch.start': 'pitch',
+    'filter.cutoff': 'cutoff',
+    'filter.resonance': 'resonance',
+    'source.pulseWidth': 'pulseWidth',
+    'source.position': 'pulseWidth',
+    'source.fmIndex': 'pm',
+    'insertA.amount': 'insertA',
+    'insertB.amount': 'insertB',
+    'insertC.amount': 'insertC',
+    gain: 'gain',
+    pan: 'pan',
+  }
+  const destination = where[found[2] ?? '']
+  return destination ? `layers[${found[1]}].${destination}` : undefined
 }
 
 /**
@@ -336,6 +349,54 @@ const INSERT_MODELS: { value: InsertKind; label: string; note: string }[] = [
   { value: 'body', label: 'Body', note: 'Resonances it rings through: a struck thing.' },
   { value: 'comb', label: 'Comb', note: 'Added to itself a moment later. A pitch, or a tail.' },
 ]
+
+/**
+ * What a master effect does, as the outline of both channels: the left above the line, the right
+ * below it. A widener changes neither channel on its own and only how far apart they are, so a
+ * picture of one of them would say it does nothing.
+ */
+function FxMark({ kind }: { kind: FxKind }) {
+  const shape = fxResponse(kind)
+  const points = shape.length / 2
+  const at = (index: number) => (index / (points - 1)) * 60 + 2
+  const top = Array.from({ length: points }, (_, index) =>
+    `${index === 0 ? 'M' : 'L'}${at(index).toFixed(2)} ${(17 - (shape[index] ?? 0) * 13).toFixed(2)}`)
+  const bottom = Array.from({ length: points }, (_, index) => {
+    const back = points - 1 - index
+    return `L${at(back).toFixed(2)} ${(17 + (shape[points + back] ?? 0) * 13).toFixed(2)}`
+  })
+  return (
+    <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
+      <path className="fp-menu__floor" d="M2 17 H62" opacity="0.25" />
+      <path d={`${top.join(' ')} ${bottom.join(' ')} Z`} />
+    </svg>
+  )
+}
+
+const FX_MODELS: { value: FxKind; label: string; note: string }[] = [
+  { value: 'off', label: 'Off', note: 'Nothing in this slot.' },
+  { value: 'flanger', label: 'Flanger', note: 'A comb, swept. Jet engines and swoops.' },
+  { value: 'chorus', label: 'Chorus', note: 'Copies that never quite agree. Thickens.' },
+  { value: 'phaser', label: 'Phaser', note: 'Notches that move. Softer than a flanger.' },
+  { value: 'delay', label: 'Delay', note: 'It happens again, and again after that.' },
+  { value: 'reverb', label: 'Reverb', note: 'The room it happened in.' },
+  { value: 'widener', label: 'Widener', note: 'Pushes the two channels apart.' },
+]
+
+/** The three dials each kind puts in its row, small, large, small — the reference's own shape. */
+const FX_KNOBS: Record<string, { field: string; label: string }[]> = {
+  flanger: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'depth', label: 'Depth' }],
+  chorus: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'depth', label: 'Depth' }],
+  phaser: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'feedback', label: 'Feed' }],
+  delay: [{ field: 'time', label: 'Time' }, { field: 'mix', label: 'Mix' }, { field: 'feedback', label: 'Feed' }],
+  reverb: [{ field: 'size', label: 'Size' }, { field: 'mix', label: 'Mix' }, { field: 'damping', label: 'Damp' }],
+  widener: [{ field: 'width', label: 'Spread' }, { field: 'mix', label: 'Mix' }, { field: 'rate', label: 'Rate' }],
+}
+
+/** What each phase-modulation source is called on the plate, where a word has to fit under a dial. */
+const PM_NAMES: Record<string, string> = {
+  internal: 'Self', layer0: 'Osc 1', layer1: 'Osc 2', layer2: 'Noise 1', layer3: 'Noise 2',
+}
 
 /** The three slots, as the panel head and the hints name them. */
 const INSERT_LETTERS = ['A', 'B', 'C'] as const
@@ -827,8 +888,8 @@ const DEFAULT_MACROS: { label: string; id: string }[] = [
   { label: 'PM', id: 'layers[0].source.fmIndex' },
   { label: 'Detune', id: 'layers[0].source.detune' },
   { label: 'Spread', id: 'layers[0].spread' },
-  { label: 'Delay', id: 'fx.delayMix' },
-  { label: 'Verb', id: 'fx.reverbMix' },
+  { label: 'Delay', id: 'fx.y.mix' },
+  { label: 'Verb', id: 'fx.z.mix' },
   { label: 'Width', id: 'fx.width' },
   { label: 'Limit', id: 'master.limiter' },
   { label: 'Fade', id: 'master.fadeOut' },
@@ -1058,6 +1119,32 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     const current = read(ctx, L(index, 'source.colour'))
     onChange(L(index, 'source.colour'), order[(order.indexOf(typeof current === 'string' ? current : 'white') + 1) % order.length] ?? 'white')
   }
+  /**
+   * What bends an oscillator's phase, and the word that says so.
+   *
+   * A layer cannot name itself, so the list it steps through is the whole one less its own entry.
+   * The ratio beside it tunes the internal modulator and means nothing to a layer, which arrives
+   * at whatever pitch it is already playing — so the ratio goes away when a layer is named, rather
+   * than sitting there as a number that does nothing.
+   */
+  const pmName = (index: number) => {
+    const current = String(read(ctx, L(index, 'source.pmFrom')) ?? 'internal')
+    return PM_NAMES[current] ?? 'Self'
+  }
+  const cyclePm = (index: number) => {
+    const options = PM_SOURCES.filter((name) => name !== `layer${index}`)
+    const current = String(read(ctx, L(index, 'source.pmFrom')) ?? 'internal')
+    const at = options.indexOf(current as (typeof options)[number])
+    onChange(L(index, 'source.pmFrom'), options[(at + 1) % options.length] ?? 'internal')
+  }
+  const pmWord = (index: number, x: number) => (
+    <Text x={x} y={322} u onClick={() => cyclePm(index)}
+      label={`${index < 2 ? `Oscillator ${index + 1}` : `Noise ${index - 1}`} phase modulator: ${pmName(index)}`}
+      hint="What bends this oscillator's phase: its own modulator, or another layer's whole output — wave, envelope, filter and all. Click to step to the next.">
+      {pmName(index)}
+    </Text>
+  )
+
   const cycleWave = (index: number) => {
     const wave = waveOf(read(ctx, L(index, 'source.wave')))
     onChange(L(index, 'source.wave'), WAVES[(WAVES.indexOf(wave) + 1) % WAVES.length] ?? 'sine')
@@ -1180,7 +1267,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <path d="M0 0.5 H61 L77 12.5 H438 L454 0.5 H515" fill="none" style={{ stroke: 'var(--fp-hairline)' }} strokeWidth="1" />
         <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
       </svg>
-      <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
+      {read(ctx, L(0, 'source.pmFrom')) === undefined || read(ctx, L(0, 'source.pmFrom')) === 'internal' ? (
+        <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
+      ) : null}
+      {pmWord(0, 100)}
       <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
       <Icon x={204.6} y={314.3} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(0, 'source.wave')))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} /></Icon>
       <Text x={277.2} y={281}>PM1</Text>
@@ -1191,7 +1281,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Knob ctx={ctx} x={373.8} y={313.9} id={L(1, 'source.fmIndex')} label="PM2" size="sm" />
       <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
       <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} /></Icon>
-      <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
+      {read(ctx, L(1, 'source.pmFrom')) === undefined || read(ctx, L(1, 'source.pmFrom')) === 'internal' ? (
+        <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
+      ) : null}
+      {pmWord(1, 542)}
     </Panel>
     ),
     noise: (
@@ -1309,32 +1402,41 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     ),
     fx: (
     <Panel x={1090.5} y={54} w={159.5} h={288} label="FX" gap={1.5}>
-      <Badge x={1100.5} y={65} kind="square">X</Badge>
-      <Text x={1110} y={60} align="left" kind="title">Flanger</Text>
-      <Text x={1118} y={78}>Rate</Text>
-      <Text x={1169.5} y={78}>Mix</Text>
-      <Text x={1222} y={78}>Depth</Text>
-      <Knob ctx={ctx} x={1117.8} y={116} id="fx.flangerRate" label="Flanger rate" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={116} id="fx.flangerMix" label="Flanger mix" />
-      <Knob ctx={ctx} x={1222} y={116} id="fx.flangerDepth" label="Flanger depth" size="sm" />
-      <Line x={1090.5} y={150} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-      <Badge x={1100.5} y={161} kind="square">Y</Badge>
-      <Text x={1110} y={156} align="left" kind="title">Delay</Text>
-      <Text x={1118} y={174}>Time</Text>
-      <Text x={1169.5} y={174}>Mix</Text>
-      <Text x={1222} y={174}>Feed</Text>
-      <Knob ctx={ctx} x={1117.8} y={212} id="fx.delayTime" label="Delay time" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={212} id="fx.delayMix" label="Delay mix" />
-      <Knob ctx={ctx} x={1222} y={212} id="fx.delayFeedback" label="Delay feedback" size="sm" />
-      <Line x={1090.5} y={246} w={159.5} h={0.5} colour="var(--fp-rule-light)" />
-      <Badge x={1100.5} y={257} kind="square">Z</Badge>
-      <Text x={1110} y={252} align="left" kind="title">Reverb</Text>
-      <Text x={1118} y={270}>Size</Text>
-      <Text x={1169.5} y={270}>Mix</Text>
-      <Text x={1222} y={270}>Damp</Text>
-      <Knob ctx={ctx} x={1117.8} y={308} id="fx.reverbSize" label="Reverb size" size="sm" />
-      <Knob ctx={ctx} x={1169.9} y={308} id="fx.reverbMix" label="Reverb mix" />
-      <Knob ctx={ctx} x={1222} y={308} id="fx.reverbDamping" label="Reverb damping" size="sm" />
+      {FX_SLOTS.map((slot, at) => {
+        const top = 54 + at * 96
+        const kind = String(read(ctx, `fx.${slot}.kind`) ?? 'off')
+        const sends = read(ctx, `fx.${slot}.mode`) === 'send'
+        const knobs = FX_KNOBS[kind] ?? []
+        return (
+          <Fragment key={slot}>
+            {at > 0 ? <Line x={1090.5} y={top} w={159.5} h={0.5} colour="var(--fp-rule-light)" /> : null}
+            {/* The letter says which slot; whether it is lit says whether the sound goes through
+                it or past it, which is the whole difference between an effect and a room. */}
+            <Badge x={1100.5} y={top + 11} kind="square" selected={sends}
+              onClick={() => onChange(`fx.${slot}.mode`, sends ? 'insert' : 'send')}
+              label={`Effect ${slot.toUpperCase()} ${sends ? 'stands beside the sound' : 'stands in the sound'}`}
+              hint="Where this effect stands. In the sound it replaces it in proportion to the mix, which is what a flanger is for; beside it, it is added and the dry is left alone, which is what a room is for.">
+              {slot.toUpperCase()}
+            </Badge>
+            <SlotMenu x={1112} y={top + 2} w={112} label={`Effect ${slot.toUpperCase()} kind`} value={kind} columns={4}
+              hint="What this effect is. The picture beside each is that effect answering the same short burst."
+              options={FX_MODELS.map((model) => ({ ...model, mark: <FxMark kind={model.value} /> }))}
+              onPick={(next) => onChange(`fx.${slot}.kind`, next)} />
+            {knobs.length === 0 ? (
+              /* An empty slot is a wire, and the row draws the wire rather than leaving a hole. */
+              <Icon x={1170} y={top + 60} w={116} h={44} className="fp-face" hint="Nothing in this slot: the sound goes straight through it.">
+                <FxMark kind="off" />
+              </Icon>
+            ) : knobs.map((knob, place) => (
+              <Fragment key={knob.field}>
+                <Text x={[1118, 1169.5, 1222][place] ?? 1170} y={top + 24}>{knob.label}</Text>
+                <Knob ctx={ctx} x={[1117.8, 1169.9, 1222][place] ?? 1170} y={top + 62}
+                  id={`fx.${slot}.${knob.field}`} label={`Effect ${slot.toUpperCase()} ${knob.label}`} size={place === 1 ? 'std' : 'sm'} />
+              </Fragment>
+            ))}
+          </Fragment>
+        )
+      })}
     </Panel>
     ),
   }

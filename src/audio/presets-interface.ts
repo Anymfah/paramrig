@@ -1,5 +1,6 @@
-import type { AudioPatch, FxSettings, Layer, Lfo, MasterSettings } from './types.ts'
+import type { AudioPatch, Layer, Lfo, MasterSettings } from './types.ts'
 import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
+import type { FxInput } from './patch.ts'
 import { makeLayer, makePatch } from './patch.ts'
 
 /*
@@ -16,7 +17,7 @@ import { makeLayer, makePatch } from './patch.ts'
  * arrives late, sustains, and is chopped by a modulator on its own gain.
  */
 
-function patch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, lfos: Partial<Lfo>[] = []): AudioPatch {
+function patch(duration: number, layers: Layer[], fx: FxInput = {}, master: Partial<MasterSettings> = {}, lfos: Partial<Lfo>[] = []): AudioPatch {
   return makePatch(duration, layers, fx, master, 1, lfos)
 }
 

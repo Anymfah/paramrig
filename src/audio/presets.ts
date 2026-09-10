@@ -1,5 +1,6 @@
-import type { AudioPatch, FxSettings, Layer, Lfo, MasterSettings } from './types.ts'
+import type { AudioPatch, Layer, Lfo, MasterSettings } from './types.ts'
 import { EASE_IN, EASE_OUT, LINEAR } from './dsp/curve.ts'
+import type { FxInput } from './patch.ts'
 import { makeLayer, makePatch } from './patch.ts'
 import * as ui from './presets-interface.ts'
 import * as fx from './presets-series.ts'
@@ -13,7 +14,7 @@ export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.t
  * gesture after loading one is to change it.
  */
 
-function patch(duration: number, layers: Layer[], fx: Partial<FxSettings> = {}, master: Partial<MasterSettings> = {}, lfos: Partial<Lfo>[] = []): AudioPatch {
+function patch(duration: number, layers: Layer[], fx: FxInput = {}, master: Partial<MasterSettings> = {}, lfos: Partial<Lfo>[] = []): AudioPatch {
   return makePatch(duration, layers, fx, master, 1, lfos)
 }
 
