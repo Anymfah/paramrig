@@ -86,7 +86,7 @@ export function makePatch(duration: number, layers: Layer[], fx: Partial<FxSetti
   const modulators = Array.from({ length: LFO_COUNT }, (_, index) => makeLfo(lfos[index]))
   const shapes = Array.from({ length: MOD_ENVELOPE_COUNT }, (_, index) => makeModEnvelope(envelopes[index]))
   const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
-  return { version: 1, duration, seed, layers: three, lfos: modulators, envelopes: shapes, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
+  return { version: PATCH_VERSION, duration, seed, layers: three, lfos: modulators, envelopes: shapes, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
 }
 
 /** A performer's rows read back from anything: twelve of sixteen levels, each held to 0..1. */
@@ -149,9 +149,35 @@ function readLayer(value: unknown, base: Layer): Layer {
   return { ...root, ...nested } as unknown as Layer
 }
 
+/**
+ * What version of the patch shape this build writes, and how an older one is carried forward.
+ *
+ * A field that vanishes or is renamed does not fail loudly: `sanitizeAudioPatch` takes the default
+ * for what it cannot find, and `sanitizeAudioRig` deletes every binding whose property no longer
+ * parses. Between them, a rename silently throws away someone's exposed controls. A step here is
+ * how a rename stops doing that: it moves the old shape to the new one before anything is read.
+ *
+ * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
+ * is open so that the first change to the shape has somewhere to go.
+ */
+export const PATCH_VERSION = 1
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = []
+
+function migrate(source: Record<string, unknown>): Record<string, unknown> {
+  const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1
+  let carried = source
+  for (let from = Math.max(1, claimed); from < PATCH_VERSION; from += 1) {
+    const step = MIGRATIONS[from - 1]
+    if (step) carried = step(carried)
+  }
+  return carried
+}
+
 /** A patch read back from storage or from a file that could say anything. */
 export function sanitizeAudioPatch(value: unknown): AudioPatch {
-  const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+  const source = migrate(raw)
   const base = defaultPatch()
   const top = readSection(AUDIO_FIELDS.patch, source, base as unknown as Record<string, unknown>)
   const rawLayers = Array.isArray(source.layers) ? source.layers : []
@@ -159,7 +185,7 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
   const rawEnvelopes = Array.isArray(source.envelopes) ? source.envelopes : []
   const rawPerformers = Array.isArray(source.performers) ? source.performers : []
   return {
-    version: 1,
+    version: PATCH_VERSION,
     duration: typeof top.duration === 'number' ? top.duration : base.duration,
     seed: typeof top.seed === 'number' ? Math.round(top.seed) : base.seed,
     scene: typeof top.scene === 'number' ? Math.round(top.scene) : 0,

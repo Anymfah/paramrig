@@ -1,6 +1,6 @@
 import { LAYER_COUNT, MOD_ENVELOPE_COUNT, LFO_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { describe, expect, it } from 'vitest'
-import { defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
+import { PATCH_VERSION, defaultPatch, makeLayer, makePatch, sanitizeAudioPatch, silentLayer } from '@/audio/patch'
 import { coin } from '@/audio/presets'
 
 describe('makePatch', () => {
@@ -103,5 +103,25 @@ describe('the free envelopes', () => {
     const written = makePatch(0.5, [], {}, {}, 1, [], [{ enabled: true, target: 'layers[1].cutoff', depth: -0.4 }])
     const read = sanitizeAudioPatch(JSON.parse(JSON.stringify(written)))
     expect(read.envelopes[0]).toMatchObject({ enabled: true, target: 'layers[1].cutoff', depth: -0.4 })
+  })
+})
+
+describe('carrying an older patch forward', () => {
+  it('stamps what this build writes, whatever the file claimed', () => {
+    expect(sanitizeAudioPatch({}).version).toBe(PATCH_VERSION)
+    expect(sanitizeAudioPatch({ version: 0 }).version).toBe(PATCH_VERSION)
+    expect(sanitizeAudioPatch({ version: 'yesterday' }).version).toBe(PATCH_VERSION)
+  })
+
+  it('reads a patch from a version it does not know as the current shape rather than dropping it', () => {
+    const read = sanitizeAudioPatch({ version: 99, duration: 0.3, seed: 7 })
+    expect(read.duration).toBeCloseTo(0.3, 6)
+    expect(read.seed).toBe(7)
+  })
+
+  it('keeps what an older file said while it carries it forward', () => {
+    const read = sanitizeAudioPatch({ version: 1, layers: [{ gain: 0.25, pitch: { start: 220 } }] })
+    expect(read.layers[0]?.gain).toBeCloseTo(0.25, 6)
+    expect(read.layers[0]?.pitch.start).toBeCloseTo(220, 6)
   })
 })

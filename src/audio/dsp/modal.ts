@@ -12,10 +12,33 @@
  * source in gives the same body being scraped.
  */
 
-export type ModalState = { y1: number; y2: number }
+/**
+ * One resonator: the two samples it remembers, and the three numbers it rings by.
+ *
+ * Those three come out of an exponential, a logarithm, a cosine, a sine and two peak gains, and
+ * they only change when the body is retuned — which never happens inside the sample loop. They
+ * were being recomputed for every partial, on both channels, at every sample, which made this the
+ * hottest code in the engine by a distance. `tuning` is what they were computed for; a mismatch
+ * is the only thing that pays for them again.
+ */
+export type ModalState = {
+  y1: number
+  y2: number
+  /** What the three below were computed for. Four numbers, not a key: a key is an allocation. */
+  frequency: number
+  spread: number
+  decay: number
+  rate: number
+  /** 2r·cos(w), r² and the input scaling that takes the frequency out of the level. */
+  feedback: number
+  damping: number
+  gain: number
+  /** Whether this partial lands under Nyquist and therefore sounds at all. */
+  live: boolean
+}
 
 export function createModal(partials: number): ModalState[] {
-  return Array.from({ length: partials }, () => ({ y1: 0, y2: 0 }))
+  return Array.from({ length: partials }, () => ({ y1: 0, y2: 0, frequency: 0, spread: 0, decay: 0, rate: 0, feedback: 0, damping: 0, gain: 0, live: false }))
 }
 
 /**
@@ -52,6 +75,40 @@ function peakGain(w: number, r: number): number {
 /** Eight kilohertz is the frequency whose level the normalisation leaves alone. */
 const REFERENCE_W = (2 * Math.PI * 8000) / 44100
 
+/**
+ * What a partial rings by, computed once per tuning.
+ *
+ * Unity in, which is what modal synthesis wants and what the first attempt got wrong. Scaling the
+ * input by (1 − r) normalises a resonator being *driven* — held at its own frequency until it
+ * settles — but these are struck, not driven, and a long ring means r sits a hair under one, so
+ * that scaling took the sound to nothing. A sustained source into a long ring does build up, as a
+ * bowed thing does; the master limiter is what catches that.
+ *
+ * Normalised for frequency, which it was not. A two-pole resonator's peak gain depends on where it
+ * sits: measured across the band, one partial was up to twenty-five decibels louder than another
+ * purely because of its frequency — +10.7 dB at 2 kHz, flat around 10, and +14.5 dB by 20.8 kHz as
+ * the poles close on the real axis. So a body's own pitch silently set its loudness, and a partial
+ * that landed near Nyquist swamped the fundamental it was supposed to colour. Dividing the input by
+ * |H| at the resonant frequency takes that back out, so `frequency` chooses pitch and `gain`
+ * chooses level, which is what both controls claim to do.
+ */
+function tune(state: ModalState, index: number, frequency: number, spread: number, decay: number, sampleRate: number, nyquist: number): void {
+  state.frequency = frequency
+  state.spread = spread
+  state.decay = decay
+  state.rate = sampleRate
+  const partial = modalPartial(index, frequency, spread)
+  state.live = partial < nyquist
+  if (!state.live) return
+  const seconds = Math.max(0.005, decay / (DAMPING[index] ?? 1))
+  // r is how much of the ring survives one sample; 0.001 is sixty decibels down.
+  const r = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * sampleRate)))
+  const w = (2 * Math.PI * partial) / sampleRate
+  state.feedback = 2 * r * Math.cos(w)
+  state.damping = r * r
+  state.gain = peakGain(REFERENCE_W, r) / peakGain(w, r)
+}
+
 export function modalSample(
   states: ModalState[],
   input: number,
@@ -66,36 +123,12 @@ export function modalSample(
   for (let i = 0; i < states.length; i += 1) {
     const state = states[i]
     if (!state) continue
-    const partial = modalPartial(i, frequency, spread)
-    if (partial >= nyquist) continue
+    if (state.frequency !== frequency || state.spread !== spread || state.decay !== decay || state.rate !== sampleRate) {
+      tune(state, i, frequency, spread, decay, sampleRate, nyquist)
+    }
+    if (!state.live) continue
     rang += 1
-    const seconds = Math.max(0.005, decay / (DAMPING[i] ?? 1))
-    // r is how much of the ring survives one sample; 0.001 is sixty decibels down.
-    const r = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * sampleRate)))
-    const w = (2 * Math.PI * partial) / sampleRate
-    /*
-     * Unity in, which is what modal synthesis wants and what the first attempt got wrong.
-     * Scaling the input by (1 − r) normalises a resonator being *driven* — held at its own
-     * frequency until it settles — but these are struck, not driven, and a long ring means r sits
-     * a hair under one, so that scaling took the sound to nothing. A sustained source into a long
-     * ring does build up, as a bowed thing does; the master limiter is what catches that.
-     */
-    /*
-     * Normalised for frequency, which it was not.
-     *
-     * A two-pole resonator's peak gain depends on where it sits: measured across the band, one
-     * partial was up to twenty-five decibels louder than another purely because of its frequency —
-     * +10.7 dB at 2 kHz, flat around 10, and +14.5 dB by 20.8 kHz as the poles close on the real
-     * axis. So a body's own pitch silently set its loudness, and a partial that landed near
-     * Nyquist swamped the fundamental it was supposed to colour. Moving a body from 11.8 kHz to
-     * 13.2 kHz put ninety per cent of the layer's energy above 16 kHz, which is not a tuning
-     * decision anyone made.
-     *
-     * Dividing the input by |H| at the resonant frequency takes that back out, so `frequency`
-     * chooses pitch and `gain` chooses level, which is what both controls claim to do.
-     */
-    const value = input * (peakGain(REFERENCE_W, r) / peakGain(w, r))
-      + 2 * r * Math.cos(w) * state.y1 - r * r * state.y2
+    const value = input * state.gain + state.feedback * state.y1 - state.damping * state.y2
     state.y2 = state.y1
     state.y1 = value
     sum += value

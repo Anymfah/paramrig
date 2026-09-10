@@ -221,7 +221,8 @@ export type MasterSettings = {
 }
 
 export type AudioPatch = {
-  version: 1
+  /** The shape this patch was written in. `PATCH_VERSION` in patch.ts is what this build writes. */
+  version: number
   /** Seconds. */
   duration: number
   seed: number

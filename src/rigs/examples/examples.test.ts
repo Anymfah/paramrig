@@ -8,6 +8,8 @@ import { deskStudy } from '@/rigs/examples/desk-study'
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { vectorManifest } from '@/vector/document'
 import { sceneManifest } from '@/scene/document'
+import { audioManifest } from '@/audio/document'
+import { BUNDLED_PATCHES } from '@/rigs/examples/arcade-coin'
 import type { RigManifest } from '@/rigs/types'
 
 /*
@@ -24,6 +26,7 @@ const shipped = (): RigManifest[] => [
   vectorManifest(aperturePosterDocument),
   sceneManifest(paperLantern()),
   sceneManifest(deskStudy()),
+  ...BUNDLED_PATCHES.map((build) => audioManifest(build())),
 ]
 
 describe('the examples that ship with the app', () => {

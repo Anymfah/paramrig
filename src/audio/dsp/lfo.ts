@@ -48,7 +48,7 @@ export type LfoDestination = keyof typeof LFO_RANGE
 
 /** The layer and destination a target names, or null for `off` and anything unrecognised. */
 export function readLfoTarget(target: string): { layer: number; destination: LfoDestination } | null {
-  const found = /^layers\[(\d)\]\.(\w+)$/.exec(target)
+  const found = /^layers\[(\d+)\]\.(\w+)$/.exec(target)
   if (!found) return null
   const layer = Number(found[1])
   const destination = found[2] as LfoDestination

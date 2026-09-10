@@ -35,7 +35,20 @@ type Modulator =
   | { kind: 'envelope'; envelope: AudioPatch['envelopes'][number]; destination: LfoDestination; fitted: FittedEnvelope; life: number }
   | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; duration: number }
 
-/** A modulator's swing at a moment of the patch's clock, at its depth. */
+/**
+ * A modulator's swing at a moment of the patch's clock, at its depth, and the sum of a list of
+ * them. The sum used to be a closure built inside the sample loop, which allocated one of itself
+ * and one reduce callback per sample per layer — the only real garbage this renderer made.
+ */
+function swingOf(entries: Modulator[], clock: number): number {
+  let sum = 0
+  for (let at = 0; at < entries.length; at += 1) {
+    const entry = entries[at]
+    if (entry) sum += swingAt(entry, clock)
+  }
+  return sum
+}
+
 function swingAt(entry: Modulator, clock: number): number {
   if (entry.kind === 'lfo') return lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
   if (entry.kind === 'envelope') return envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth
@@ -109,12 +122,11 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     // Modulators run on the patch's clock, so two layers pointed at one of them move together
     // even when one of them starts late.
     const clock = i / sampleRate
-    const swing = (entries: Modulator[]) => entries.reduce((sum, entry) => sum + swingAt(entry, clock), 0)
 
     const vibrato = layer.pitch.vibratoDepth * Math.sin(2 * Math.PI * layer.pitch.vibratoRate * t)
     const slide = layer.pitch.slide * curveAt(layer.pitch.slideCurve, x)
     const arpeggio = x >= layer.pitch.arpeggioAt ? layer.pitch.arpeggioRatio : 1
-    const wobble = swing(pitchLfo) * LFO_RANGE.pitch
+    const wobble = swingOf(pitchLfo, clock) * LFO_RANGE.pitch
     const wanted = layer.pitch.start * Math.pow(2, (slide + vibrato) / 12 + wobble) * arpeggio * detune
     const frequency = Math.min(nyquist * 0.98, Math.max(1, wanted))
     const dt = frequency / sampleRate
@@ -128,7 +140,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
       rawL = a * still.left
       rawR = (a * (1 - width) + b * width) * still.right
     } else {
-      const duty = Math.min(0.95, Math.max(0.05, layer.source.pulseWidth + swing(widthLfo) * LFO_RANGE.pulseWidth))
+      const duty = Math.min(0.95, Math.max(0.05, layer.source.pulseWidth + swingOf(widthLfo, clock) * LFO_RANGE.pulseWidth))
       // The depth falls across the layer's life, which is what a struck thing does: the clang is
       // at the start and what is left afterwards is the note.
       const depth = fmDepth * (1 - layer.source.fmFall * x)
@@ -153,7 +165,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
       rawR *= balance
     }
 
-    const sweep = Math.pow(2, layer.filter.envAmount * curveAt(layer.filter.envCurve, x) + swing(cutoffLfo) * LFO_RANGE.cutoff)
+    const sweep = Math.pow(2, layer.filter.envAmount * curveAt(layer.filter.envCurve, x) + swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff)
     const cutoff = layer.filter.cutoff * sweep
     const left = shapeSample(shapers[0]!, layer.shaper, filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate))
     const right = shapeSample(shapers[1]!, layer.shaper, filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate))
@@ -170,7 +182,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
     const amplitude = envelopeAt(layer.amp, fitted, t, life)
     // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
     // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
-    const tremolo = Math.max(0, 1 + ((swing(gainLfo) - 1) / 2) * LFO_RANGE.gain)
+    const tremolo = Math.max(0, 1 + ((swingOf(gainLfo, clock) - 1) / 2) * LFO_RANGE.gain)
     const hitL = left * amplitude
     const hitR = right * amplitude
 

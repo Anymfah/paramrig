@@ -118,7 +118,10 @@ export function isBundledAudioDocument(id: string): boolean {
 /** Whether a document is a bundled one that nothing has altered, down to the last number. */
 function unchangedBundle(document: AudioDocument): boolean {
   const shipped = BUNDLED_PATCHES.map((build) => build()).find((entry) => entry.id === document.id)
-  return !!shipped && JSON.stringify(sanitizeAudioDocument(shipped)) === JSON.stringify(document)
+  // Both sides sanitised: the comparison is of content, and one side arriving with its keys in
+  // another order is not a change. It used to compare the shipped patch against the raw document,
+  // so any change to what the sanitiser emits made an example start copying itself into storage.
+  return !!shipped && JSON.stringify(sanitizeAudioDocument(shipped)) === JSON.stringify(sanitizeAudioDocument(document))
 }
 
 export function saveAudioDocument(document: AudioDocument): StorageResult {

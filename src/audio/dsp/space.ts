@@ -1,4 +1,5 @@
 import type { FxSettings, Stereo } from '../types.ts'
+import { allpass, line, readAt, write } from './delayline.ts'
 
 /**
  * The shared tail, in two channels.
@@ -24,38 +25,6 @@ const LINES = [0.0297, 0.0371, 0.0411, 0.0437]
 const WOBBLE = [0.11, 0.17, 0.23, 0.29]
 /** Short allpasses that smear the input before it reaches the network. */
 const DIFFUSION = [0.0043, 0.0077, 0.0113, 0.0151]
-
-type Line = { buffer: Float32Array; index: number }
-
-function line(length: number): Line {
-  return { buffer: new Float32Array(Math.max(2, Math.round(length))), index: 0 }
-}
-
-/** Reads `delay` samples back, interpolating, so a modulated length glides instead of stepping. */
-function readAt(l: Line, delay: number): number {
-  const size = l.buffer.length
-  const want = Math.min(size - 1, Math.max(0, delay))
-  const back = l.index - want
-  const at = back < 0 ? back + size : back
-  const i0 = Math.floor(at)
-  const frac = at - i0
-  const a = l.buffer[i0 % size] ?? 0
-  const b = l.buffer[(i0 + 1) % size] ?? 0
-  return a + (b - a) * frac
-}
-
-function write(l: Line, value: number): void {
-  l.buffer[l.index] = value
-  l.index = (l.index + 1) % l.buffer.length
-}
-
-/** One allpass: passes everything, delays it, and leaves the phase scrambled. */
-function allpass(l: Line, input: number, gain: number): number {
-  const delayed = readAt(l, l.buffer.length - 1)
-  const value = -input * gain + delayed
-  write(l, input + delayed * gain)
-  return value
-}
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
