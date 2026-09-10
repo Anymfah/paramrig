@@ -23,5 +23,17 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
+    /*
+     * Fifteen seconds, not five.
+     *
+     * The heaviest tests here open a whole editor in jsdom — the audio face-plate is several
+     * hundred controls over four hundred bound fields, and every keystroke in one of those tests
+     * re-renders it and re-renders the sound underneath it. Alone they take two to four seconds;
+     * run beside two hundred and seventy other files on a machine that is also running a browser
+     * and two other stacks, they cross five and fail on the clock rather than on anything they
+     * were testing. A test that times out for want of a spare core reports the machine, not the
+     * code it was pointed at.
+     */
+    testTimeout: 15000,
   },
 })
