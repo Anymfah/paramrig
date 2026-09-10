@@ -1089,6 +1089,7 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'metal-cutter', label: 'Metal Cutter', group: 'Showpiece', build: show.metalCutter },
   { id: 'gravel-bell', label: 'Gravel Bell', group: 'Showpiece', build: show.gravelBell },
   { id: 'prize-ladder', label: 'Prize Ladder', group: 'Showpiece', build: show.prizeLadder },
+  { id: 'cold-assent', label: 'Cold Assent', group: 'Showpiece', build: show.coldAssent },
 ]
 
 /**

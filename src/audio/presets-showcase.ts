@@ -465,3 +465,95 @@ export function prizeLadder(): AudioPatch {
     scene: 3,
   }
 }
+
+/**
+ * A machine agreeing with you, from a machine considerably better than the one asking.
+ *
+ * Everything the eighties thought the future sounded like is a synthesiser being played: a bright
+ * saw through a resonant filter, a pitch sliding down, a note. None of that is here. There is no
+ * slide anywhere in this patch, no ring modulator, no arpeggio, and nothing moving fast enough to
+ * tap a foot to — the only oscillator in it runs at a fifth of a hertz, half a cycle across the
+ * whole sound, which is not a wobble but a room turning.
+ *
+ * What is here instead is a struck object and the space that answers it. A millisecond and a half
+ * of triangle rings a small hard body at nine kilohertz — the ceramic tick, and the whole
+ * difference between something expensive and something moulded. Five milliseconds later a second
+ * body takes over, tuned at seventeen hundred and spread so far off the harmonic series that
+ * nothing in it beats against anything else: no fundamental, so no note, so nothing to hum back.
+ * Twenty-two decibels of air in the strike and none of it in the ring, which is the house rule
+ * about where brightness belongs, taken as far as it goes.
+ *
+ * Then the wrong things happen in the wrong order, which is what makes it read as designed rather
+ * than as recorded. The weight arrives fifty-five milliseconds *after* the strike, not with it, and
+ * it is bent for its first tenth of a second by the ring above it — the phase reading is taken
+ * before the level, so what is bending it is the object's own decay. The room answers later still,
+ * a pair of formants walked once through a vowel and never back. And all three of those — the room
+ * opening, the body blooming, the bend letting go — are one envelope pointed at three places, so
+ * it is one gesture with three consequences rather than three things that happen to coincide.
+ */
+export function coldAssent(): AudioPatch {
+  return patch(2.4, [
+    // The voice, and it is not a note: three milliseconds of noise into a body spread far off the
+    // harmonic series, so what rings has no fundamental for anything to beat against. Five
+    // milliseconds behind the tick, which is close enough that two attacks are heard as one.
+    makeLayer({
+      gain: 0.72, pan: -0.32, spread: 0.5, offset: 0.005,
+      source: { kind: 'noise', colour: 'white' },
+      pitch: { start: 2000 },
+      filterA: { kind: 'highpass', cutoff: 600, resonance: 0.2 },
+      insertC: { kind: 'body', place: 'post', amount: 0.42, frequency: 1720, spread: 0.86, decay: 1.9, partials: 6 },
+      amp: { attack: 0.0004, hold: 0.003, decay: 0.012, sustain: 0, release: 0.008, curve: 3.2 },
+    }),
+    // The tick. A triangle rather than a burst of noise, because a resonator this narrow rung by
+    // noise has a peak that is a draw rather than a number — the same patch came out a third
+    // louder on one machine than another until this stopped being random.
+    makeLayer({
+      gain: 0.62, pan: 0.15, spread: 0.7,
+      source: { kind: 'tone', wave: 'triangle' },
+      pitch: { start: 3100 },
+      filterA: { kind: 'highpass', cutoff: 3000, resonance: 0.2 },
+      insertC: { kind: 'body', place: 'post', amount: 0.92, frequency: 9200, spread: 0.24, decay: 0.09, partials: 3 },
+      amp: { attack: 0.0003, hold: 0.0015, decay: 0.008, sustain: 0, release: 0.006, curve: 3.4 },
+    }),
+    // The room answering, seventy-five milliseconds late. A formant pair walked once, never twice.
+    makeLayer({
+      gain: 0.4, pan: 0.28, spread: 0.7, offset: 0.075,
+      source: { kind: 'noise', colour: 'pink' },
+      pitch: { start: 700 },
+      routing: 'series',
+      filterA: { kind: 'formant', cutoff: 380, resonance: 0.4 },
+      filterB: { kind: 'lowpass', cutoff: 6200, resonance: 0.12, envAmount: -1.1, envCurve: EASE_OUT },
+      amp: { attack: 0.11, hold: 0.12, decay: 0.55, sustain: 0.2, release: 0.75, curve: 1.3 },
+    }),
+    // The weight, arriving after the strike rather than with it, folded a little so it has edges
+    // without being a note, and bent for its first tenth of a second by the body above it.
+    makeLayer({
+      gain: 0.34, pan: 0.12, spread: 0.12, offset: 0.055,
+      source: { kind: 'tone', wave: 'sine', pmFrom: 'layer0', fmIndex: 2.4, fmFall: 0.9 },
+      pitch: { start: 44 },
+      filterA: { kind: 'lowpass', cutoff: 260, resonance: 0.1 },
+      insertA: { kind: 'fold', place: 'pre', amount: 0.4, drive: 0.08 },
+      amp: { attack: 0.03, hold: 0.1, decay: 0.5, sustain: 0.12, release: 0.7, curve: 1.8 },
+    }),
+  ], {
+    // Small and dark: a room, not a hall. A long bright tail is the other thing 1983 did.
+    z: { kind: 'reverb', mode: 'send', mix: 0.14, size: 0.3, damping: 0.8 },
+    tone: -0.05, width: 0.95,
+  }, { gain: 0.310856 },
+     [
+       // Half a cycle over the whole sound, and the two long things turn opposite ways: the field
+       // itself rotates once rather than anything wobbling inside it.
+       { enabled: true, shape: 'triangle', rate: 0.21, phase: 0.75, depth: 0.6, target: 'layers[0].pan' },
+       { enabled: true, shape: 'triangle', rate: 0.21, phase: 0.25, depth: 0.6, target: 'layers[2].pan' },
+     ],
+     [
+       // One envelope, three places: the room opens, the body blooms, and the bend on the weight
+       // lets go. One gesture with three consequences rather than three that coincide.
+       {
+         enabled: true, delay: 0.03, attack: 0.45, hold: 0.1, decay: 0.8, sustain: 0.12, release: 0.4, curve: 1.4,
+         target: 'layers[2].cutoff', depth: 0.5,
+         targetB: 'layers[0].insertC', depthB: 0.3,
+         targetC: 'layers[3].pm', depthC: -0.35,
+       },
+     ])
+}
