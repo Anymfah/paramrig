@@ -1,4 +1,4 @@
-import { IconChevronRight, IconDice, IconSave, IconSnapshot, IconWave } from '@/ui/icons'
+import { IconChevronRight } from '@/ui/icons'
 import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioSoundMenu } from '@/audio/AudioSoundMenu'
@@ -7,24 +7,20 @@ import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
 /**
- * Everything to do with *which* sound, in the width the transport already had spare.
+ * Which sound, in the width the transport still has spare.
  *
  * Stepping is how these get used — you rarely know which sound you want, only that it is not this
  * one — so the arrows walk the whole list, the ones that ship and the ones you kept, in one order.
+ * Keeping, rolling and hearing live in the library, beside the names they act on.
  */
-export function AudioSoundBar({ current, snapshots, touched, onPatch, onRemove, onSnapshot, onOverwrite, onRandom, onMutate }: {
+export function AudioSoundBar({ current, snapshots, touched, onPatch, onRemove }: {
   current: string
   snapshots: AudioSnapshot[]
   /** Whether the sound on screen has moved away from the one under the selected name. */
   touched: boolean
   onPatch: (patch: AudioPatch, id: string) => void
   onRemove: (id: string) => void
-  onSnapshot: () => void
-  onOverwrite: () => void
-  onRandom: () => void
-  onMutate: () => void
 }) {
-  const saved = snapshots.find((snapshot) => snapshot.id === current)
   // The order the grid, the menu and the rail all show, not the order the file was written in.
   const all = [
     ...PRESET_ORDER.map((preset) => ({ id: preset.id, patch: preset.build })),
@@ -49,22 +45,6 @@ export function AudioSoundBar({ current, snapshots, touched, onPatch, onRemove, 
       <AudioSoundMenu current={current} snapshots={snapshots} touched={touched} onPatch={onPatch} onRemove={onRemove} />
       <Tooltip content="Next sound">
         <IconButton label="Next sound" onClick={() => step(1)}><IconChevronRight /></IconButton>
-      </Tooltip>
-      <Tooltip content="Keep this sound — it joins the menu, and travels with the patch">
-        <IconButton label="Keep this sound" onClick={onSnapshot}><IconSnapshot /></IconButton>
-      </Tooltip>
-      <Tooltip content={saved
-        ? `Replace ${saved.name} with what you have now`
-        : 'Nothing to replace — this sound is not one of the saved ones'}>
-        <IconButton label="Replace the saved sound" onClick={onOverwrite} disabled={!saved || !touched}>
-          <IconSave />
-        </IconButton>
-      </Tooltip>
-      <Tooltip content="Randomize — a new sound, drawn from the ranges that make sounds">
-        <IconButton label="Randomize" onClick={onRandom}><IconDice /></IconButton>
-      </Tooltip>
-      <Tooltip content="Mutate — this sound, moved a little">
-        <IconButton label="Mutate" onClick={onMutate}><IconWave /></IconButton>
       </Tooltip>
     </div>
   )

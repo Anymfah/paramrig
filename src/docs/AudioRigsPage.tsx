@@ -151,7 +151,10 @@ export function AudioRigsPage() {
         <li>Every number is held to the range the field declares. A file that says the cutoff is minus four million comes back at twenty hertz rather than being refused.</li>
         <li>A choice that is not one of the options listed falls back to that field&rsquo;s default, so a misspelt filter is <code>off</code> and not a crash.</li>
         <li>Seconds are seconds and hertz are hertz. The editor shows milliseconds where milliseconds are what anybody reads; the file holds seconds either way.</li>
-        <li>The sound is rendered, not played live: a patch and a sample rate go in, two channels come out. Nothing here reads a clock, so the same patch is the same samples every time — which is what makes <code>seed</code> and <code>layers[i].pitch.jitter</code> worth having.</li>
+        <li>The same voice writes a file and plays live. Offline render and the AudioWorklet share <code>processVoice</code>, so a drag during playback is the sound the exporter will write. <code>seed</code> and jitter stay deterministic at a given sample rate.</li>
+        <li>A macro may drive several fields. Each destination has a range and a curve. The last macro assigned to a property owns it. Bindings that are not the sixteen macros still apply afterwards, last writer winning.</li>
+        <li>Randomize and Mutate keep the user&rsquo;s macro names, assignments, ranges and curves. When every destination of a mapped macro still agrees on one amount, the knob shows that amount. When they do not, the destinations are parked: the generated patch is left as heard, the knob is not rewritten onto it, and the next movement recaptures the current values as the origin of those ranges so the sound does not jump.</li>
+        <li>A recorded gesture lives on the patch as <code>gestures[]</code>, with its destinations copied into the take. A missing user wavetable is an error, never a silent substitute.</li>
         <li>A layer may take another layer&rsquo;s output as its phase modulator with <code>source.pmFrom</code>. A layer that names itself, or sits in a ring of layers naming each other, falls back to its own modulator rather than failing.</li>
         <li>Several controls may drive the same property; the last binding in the list wins. One control may drive as many properties as it likes.</li>
       </ul>

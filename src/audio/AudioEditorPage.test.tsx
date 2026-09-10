@@ -109,7 +109,7 @@ describe('AudioEditorPage', () => {
 
     await user.click(within(tabs).getByRole('tab', { name: 'Instrument' }))
     expect(screen.getByRole('region', { name: 'Filter' })).toBeInTheDocument()
-  })
+  }, 30_000)
 
   /** jsdom measures nothing; a stand-in observer reports a room of the given size the moment it is asked to watch. */
   const roomOf = (width: number, height: number) => class {
@@ -244,7 +244,8 @@ describe('AudioEditorPage', () => {
     expect(within(panel()).getByRole('button', { name: 'Insert C kind' })).toHaveTextContent('Off')
     await user.click(within(panel()).getByRole('button', { name: 'Insert C kind' }))
     await user.click(screen.getByRole('menuitem', { name: 'Body' }))
-    expect(within(panel()).getByRole('slider', { name: 'Freq' })).toBeInTheDocument()
+    expect(within(panel()).getByRole('slider', { name: 'Size' })).toBeInTheDocument()
+    expect(within(panel()).getByRole('button', { name: 'Material' })).toBeInTheDocument()
     expect(within(panel()).queryByRole('slider', { name: 'Time' })).toBeNull()
     await user.click(within(slots).getByRole('tab', { name: 'Insert A' }))
     expect(within(panel()).getByRole('button', { name: 'Insert A kind' })).toHaveTextContent('Comb')
@@ -442,13 +443,13 @@ describe('AudioEditorPage', () => {
     }
     expect(within(cutoff).getByText('10')).toBeInTheDocument()
     expect(within(cutoff).queryByText('5')).toBeNull()
+    expect(screen.queryByRole('region', { name: /destinations/i })).toBeNull()
     const band = screen.getByRole('group', { name: 'Macros' })
-    expect(within(band).getByRole('slider', { name: 'Cutoff 1' })).toBeInTheDocument()
-    // The rig reaches storage with the patch, bound under the macro's number.
+    expect(within(band).getByRole('slider', { name: 'Detune' })).toBeInTheDocument()
     await waitFor(() => {
       const saved = getAudioDocument(doc.id)
-      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].filterA.cutoff')
-      expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-5')).toBe(false)
+      expect(saved?.rig?.bindings.some((binding) => binding.parameterId === 'macro-10' && binding.property === 'layers[0].filterA.cutoff')).toBe(true)
+      expect(saved?.rig?.bindings.some((binding) => binding.property === 'layers[0].filterA.cutoff' && binding.parameterId === 'macro-5')).toBe(false)
     })
   })
 
@@ -469,8 +470,9 @@ describe('AudioEditorPage', () => {
     await user.keyboard('{Enter}')
     expect(within(reso).getByText('12')).toBeInTheDocument()
     await waitFor(() => {
-      expect(getAudioDocument(doc.id)?.rig?.bindings.find((binding) => binding.id === 'macro-12')?.property)
-        .toBe('layers[0].filterA.resonance')
+      expect(getAudioDocument(doc.id)?.rig?.bindings.some(
+        (binding) => binding.parameterId === 'macro-12' && binding.property === 'layers[0].filterA.resonance',
+      )).toBe(true)
     })
     // And Delete frees it again.
     screen.getByRole('button', { name: /^Macro 12/ }).focus()
@@ -534,7 +536,7 @@ describe('AudioEditorPage', () => {
     expect(within(second).getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'false')
   })
 
-  it('puts the waveform in the transport with the numbers that describe it', () => {
+  it('puts the numbers that describe the sound in the transport', () => {
     open(arcadeCoin().id)
     expect(screen.getByRole('img', { name: /waveform/i })).toBeInTheDocument()
     expect(screen.getByText('Length', { selector: 'dt' })).toBeInTheDocument()
@@ -542,13 +544,32 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
   })
 
-  it('offers a sound menu with a step either side, and the three generators', () => {
+  it('offers a sound menu with a step either side, and hearing in the library', () => {
     open(arcadeCoin().id)
-    for (const label of ['Previous sound', 'Next sound', 'Keep this sound', 'Randomize', 'Mutate']) {
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    const rail = screen.getByRole('navigation', { name: 'Sounds' })
+    for (const label of ['Play', 'Repeat', 'Hold', 'Record gesture', 'Gestures', 'Keep this sound', 'Randomize', 'Mutate', 'Save as WAV']) {
+      expect(within(rail).getByRole('button', { name: label })).toBeInTheDocument()
     }
+    expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'One-shot' })).toBeNull()
+    expect(document.querySelector('details.audio-gestures')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Previous sound' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Next sound' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Sound:/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Look:/ })).toBeNull()
   })
+
+  it('walks the library with the arrow keys', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const rail = screen.getByRole('navigation', { name: 'Sounds' })
+    const first = within(rail).getByRole('button', { name: PRESET_ORDER[0]!.label })
+    await user.click(first)
+    expect(first).toHaveAttribute('aria-current', 'true')
+    first.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(within(rail).getByRole('button', { name: PRESET_ORDER[1]!.label })).toHaveAttribute('aria-current', 'true')
+  }, 15_000)
 
   /** The length as the transport prints it, so a test can name a sound by what it reads. */
   const lengthOf = (at: number) => {
@@ -610,7 +631,8 @@ describe('AudioEditorPage', () => {
     expect(replace).toHaveAttribute('aria-disabled', 'true')
 
     await user.click(screen.getByRole('button', { name: 'Mutate' }))
-    expect(screen.getByRole('button', { name: /^Sound: Sound 1 · edited/ })).toBeInTheDocument()
+    await user.click(within(await screen.findByRole('dialog', { name: 'Mutate' })).getByRole('button', { name: 'Mutate' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Sound: Sound 1 · edited/ })).toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Replace the saved sound' })).not.toHaveAttribute('aria-disabled')
 
     await user.click(screen.getByRole('button', { name: 'Replace the saved sound' }))
@@ -712,6 +734,7 @@ describe('AudioRigPreview', () => {
     render(<AudioRigPreview documentId={arcadeCoin().id} values={{ pitch: 1200, length: 0.3, sparkle: 1.5, tone: 0 }} name="Arcade coin" />)
     expect(screen.getByRole('img', { name: 'Arcade coin waveform' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Play' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Auto' })).toBeNull()
     expect(screen.queryByRole('group', { name: 'Sound board' })).toBeNull()
   })
 
@@ -784,4 +807,64 @@ describe('the history', () => {
     await user.click(screen.getByRole('button', { name: /^Sound:/ }))
     expect(await screen.findByRole('menuitem', { name: /Sound 1/ })).toBeInTheDocument()
   }, 20_000)
+})
+
+it('flushes a pending macro edit when the browser leaves before autosave', () => {
+  const doc = createAudioDocument()
+  open(doc.id)
+  const macro = within(screen.getByRole('group', { name: 'Macros' })).getByRole('slider', { name: 'Pos1' })
+  fireEvent.keyDown(macro, { key: 'ArrowRight' })
+  const changed = macro.getAttribute('aria-valuenow')
+  // No debounce advance or React unmount: this is the lifecycle of a browser reload.
+  fireEvent(window, new Event('pagehide'))
+  const saved = getAudioDocument(doc.id)
+  expect(saved?.patch.layers[0]?.pitch.start).not.toBe(doc.patch.layers[0]?.pitch.start)
+  expect(saved?.rig?.parameters.find((parameter) => parameter.id === 'macro-1')?.defaultValue).toBe(Number(changed))
+})
+
+it('restores an absent rig on undo instead of resurrecting the saved rig', async () => {
+  const user = userEvent.setup()
+  const doc = createAudioDocument()
+  open(doc.id)
+  await user.click(screen.getByRole('button', { name: 'Rename Pos1' }))
+  expect(screen.queryByRole('region', { name: /destinations/i })).toBeNull()
+  const name = screen.getByRole('textbox', { name: 'Macro name' })
+  await user.clear(name)
+  await user.type(name, 'Motion{Enter}')
+  await waitFor(() => expect(getAudioDocument(doc.id)?.rig?.parameters[0]?.label).toBe('Motion'))
+  await user.click(screen.getByRole('button', { name: 'Undo' }))
+  await waitFor(() => expect(getAudioDocument(doc.id)?.rig).toBeUndefined())
+})
+
+it('restores the saved seed exactly and preserves the selected sound across A/B', async () => {
+  const user = userEvent.setup()
+  const doc = createAudioDocument()
+  const snap = { id: 'saved-seed', name: 'Seed 987', createdAt: new Date().toISOString(), patch: { ...doc.patch, seed: 987 } }
+  saveAudioDocument({ ...doc, snapshots: [snap] })
+  open(doc.id)
+  await user.click(within(screen.getByRole('navigation', { name: 'Sounds' })).getByRole('button', { name: 'Seed 987' }))
+  await waitFor(() => expect(getAudioDocument(doc.id)?.patch.seed).toBe(987))
+  await user.click(screen.getByRole('button', { name: 'B' }))
+  await user.click(screen.getByRole('button', { name: 'Laser' }))
+  await user.click(screen.getByRole('button', { name: 'A' }))
+  expect(screen.getByRole('button', { name: 'Sound: Seed 987' })).toBeInTheDocument()
+  expect(getAudioDocument(doc.id)?.patch.seed).toBe(987)
+})
+
+it('opens randomize from the keyboard and remembers the family', async () => {
+  const user = userEvent.setup()
+  open(arcadeCoin().id)
+  await user.click(screen.getByRole('button', { name: 'Randomize' }))
+  const panel = await screen.findByRole('dialog', { name: 'Randomize' })
+  expect(within(panel).getByRole('radiogroup', { name: 'Family' })).toBeInTheDocument()
+  expect(within(panel).getByRole('button', { name: 'Randomize' })).toBeInTheDocument()
+  await user.click(within(panel).getByRole('radio', { name: 'Mechanical' }))
+  await user.click(within(panel).getByRole('button', { name: 'Randomize' }))
+  expect(screen.getByRole('dialog', { name: 'Randomize' })).toBeInTheDocument()
+  await user.click(within(panel).getByRole('button', { name: 'Randomize' }))
+  expect(screen.getByRole('dialog', { name: 'Randomize' })).toBeInTheDocument()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog', { name: 'Randomize' })).toBeNull()
+  await user.click(screen.getByRole('button', { name: 'Randomize' }))
+  expect(within(await screen.findByRole('dialog', { name: 'Randomize' })).getByRole('radio', { name: 'Mechanical' })).toBeChecked()
 })

@@ -196,4 +196,19 @@ describe('carrying a saved document forward', () => {
     expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(['layers[0].filterA.cutoff'])
     expect(read?.patch.layers[0]?.filterA.cutoff).toBeCloseTo(900, 6)
   })
+
+  it('keeps a snapshot\'s macros with the patch', () => {
+    const document = createAudioDocument()
+    const rig = {
+      groups: [{ id: 'main', label: 'Main' }],
+      parameters: [{ kind: 'number' as const, id: 'macro-1', label: 'Energy', group: 'main', min: 0, max: 1, step: 0.001, defaultValue: 0.4 }],
+      bindings: [{ id: 'macro-1', property: 'layers[0].gain', parameterId: 'macro-1', transform: { from: 0.2, to: 0.8 } }],
+    }
+    const saved = saveAudioDocument({
+      ...document,
+      snapshots: [{ id: 'snap-1', name: 'Kept', createdAt: new Date().toISOString(), patch: document.patch, rig }],
+    })
+    expect(saved.ok).toBe(true)
+    expect(getAudioDocument(document.id)?.snapshots?.[0]?.rig?.parameters[0]?.label).toBe('Energy')
+  })
 })

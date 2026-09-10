@@ -11,7 +11,7 @@ services:
       sh -lc "npm install --package-lock=false --prefer-offline --no-audit --no-fund &&
       exec ./node_modules/.bin/vite --host 0.0.0.0 --port 5174"
     init: true
-    restart: "no"
+    restart: unless-stopped
     ports:
       - "5174:5174"
     volumes:
@@ -39,7 +39,7 @@ services:
       dockerfile: docker/dev.Dockerfile
     command: node --experimental-strip-types services/web/server.mjs
     init: true
-    restart: "no"
+    restart: unless-stopped
     # The feedback files belong to whoever runs the project, not to the image's own user. Docker
     # Desktop maps ownership for you; on Linux a bind mount keeps the container's numeric ids, so
     # export PARAMRIG_UID=$(id -u) and PARAMRIG_GID=$(id -g) there or the project's agent cannot

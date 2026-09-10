@@ -18,6 +18,7 @@ import { PlanetMark } from '@/renderers/three/PlanetMark'
 import { AudioThumb } from '@/audio/AudioThumb'
 import { audioRigDefaults, resolveAudioValues } from '@/audio/rig'
 import { createAudioDocument, getAudioDocument } from '@/audio/document'
+import { importAudioProject, openAudioProject } from '@/audio/project'
 import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
 import { importProject as importSceneProject } from '@/scene/project'
 import { SceneThumb } from '@/scene/SceneThumb'
@@ -67,7 +68,7 @@ export function LibraryPage() {
       setRecentError(`Reading “${entry.fileName ?? entry.name}” was not allowed.`)
       return
     }
-    const opened = openFileText(await (await handle.getFile()).text())
+    const opened = await openFileText(await (await handle.getFile()).text())
     if (!opened.ok) {
       setRecentError(opened.error)
       return
@@ -98,7 +99,7 @@ export function LibraryPage() {
   const openDropped = async (file: File) => {
     setRecentError(null)
     setNote(null)
-    const opened = openFileText(await file.text())
+    const opened = await openFileText(await file.text())
     if (!opened.ok) {
       setRecentError(opened.error)
       return
@@ -326,7 +327,14 @@ function SkeletonCard() {
  * Reads a dropped or reopened project file with whichever editor claims it, stores it, and gives
  * back the id to open. A file that names neither format comes back with the reason.
  */
-function openFileText(text: string): { ok: true; id: string; name: string; note?: string } | { ok: false; error: string } {
+async function openFileText(text: string): Promise<{ ok: true; id: string; name: string; note?: string } | { ok: false; error: string }> {
+  const asAudio = importAudioProject(text)
+  if (asAudio.ok) {
+    let opened
+    try { opened = await openAudioProject(asAudio.project) } catch (error) { return { ok: false, error: error instanceof Error ? error.message : 'The project could not be stored.' } }
+    const { id, name } = opened
+    return { ok: true, id, name, ...(asAudio.note ? { note: asAudio.note } : {}) }
+  }
   const asScene = importSceneProject(text)
   if (asScene.ok) {
     saveSceneDocument(asScene.project.document)
@@ -340,7 +348,7 @@ function openFileText(text: string): { ok: true; id: string; name: string; note?
     return { ok: true, id, name, ...(asVector.note ? { note: asVector.note } : {}) }
   }
   // The file said which editor it belongs to, so its own reader gives the better message.
-  return { ok: false, error: text.includes('"paramrig.scene"') ? asScene.error : asVector.error }
+  return { ok: false, error: text.includes('"paramrig.audio"') ? asAudio.error : text.includes('"paramrig.scene"') ? asScene.error : asVector.error }
 }
 
 function RigThumb({ rig }: { rig: RigManifest }) {

@@ -20,6 +20,8 @@ export type AudioSnapshot = {
   name: string
   createdAt: string
   patch: AudioPatch
+  /** The macros as they stood, so a snapshot is the instrument and not only the chain. */
+  rig?: AudioRig
 }
 
 /** Past this many the list stops being findable, and the oldest gives way. */
@@ -129,11 +131,13 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
       const row = entry as Record<string, unknown>
       const snapshotId = text(row.id, 80)
       if (!snapshotId) return []
+      const rig = sanitizeAudioRig(carriedRig(row.rig, claimedVersion(row.patch)))
       return [{
         id: snapshotId,
         name: text(row.name, 80) ?? 'Sound',
         createdAt: text(row.createdAt, 40) ?? new Date(0).toISOString(),
         patch: sanitizeAudioPatch(row.patch),
+        ...(rig ? { rig } : {}),
       }]
     })
     // The end of the list, not the start. The strip appends and keeps the last twenty-four, so

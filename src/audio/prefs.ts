@@ -16,23 +16,16 @@ export type AudioTab = 'sound' | 'controls'
 
 export const AUDIO_TABS: AudioTab[] = ['sound', 'controls']
 
-/** The plate's look: ParamRig's own, or the reference's it was transcribed from. */
-export type AudioSkin = 'reference' | 'paramrig'
-
-/**
- * Whether a change plays itself, and which look the plate wears. Set once and kept: ways of
- * working. The look is stored as `look`: it was `skin` while the reference was the default, and
- * that default was written along with every other preference, so the old name is left to lapse.
- */
-type AudioExtra = { autoPlay: boolean; look: AudioSkin }
+/** Kept so older inspector prefs still parse; hearing now always plays a change. */
+type AudioExtra = { autoPlay: boolean }
 
 const store = inspectorPrefsStore<AudioTab, AudioExtra>({
   key: 'paramrig.audio-inspector.v1',
   tabs: AUDIO_TABS,
   defaultTab: 'sound',
   extra: {
-    empty: { autoPlay: true, look: 'paramrig' },
-    parse: (value) => ({ autoPlay: value.autoPlay !== false, look: value.look === 'reference' ? 'reference' : 'paramrig' }),
+    empty: { autoPlay: true },
+    parse: (value) => ({ autoPlay: value.autoPlay !== false }),
   },
 })
 
@@ -72,6 +65,56 @@ export function withAutoPlay(prefs: AudioPrefs, autoPlay: boolean): AudioPrefs {
   return { ...prefs, autoPlay }
 }
 
-export function withSkin(prefs: AudioPrefs, look: AudioSkin): AudioPrefs {
-  return { ...prefs, look }
+export const RANDOM_FAMILIES = ['any', 'mechanical', 'metallic', 'digital', 'organic', 'atmospheric', 'impact'] as const
+export type RandomFamilyPref = typeof RANDOM_FAMILIES[number]
+
+export const MUTATE_AMOUNT_PREFS = ['subtle', 'medium', 'strong'] as const
+export type MutateAmountPref = typeof MUTATE_AMOUNT_PREFS[number]
+
+export const MUTATE_TARGET_PREFS = ['balanced', 'timbre', 'motion', 'space'] as const
+export type MutateTargetPref = typeof MUTATE_TARGET_PREFS[number]
+
+export type ShufflePrefs = {
+  family: RandomFamilyPref
+  amount: MutateAmountPref
+  target: MutateTargetPref
+  keepReference: boolean
+}
+
+const SHUFFLE_KEY = 'paramrig.audio-shuffle.v1'
+
+export const EMPTY_SHUFFLE_PREFS: ShufflePrefs = {
+  family: 'any',
+  amount: 'subtle',
+  target: 'balanced',
+  keepReference: false,
+}
+
+export function parseShufflePrefs(raw: unknown): ShufflePrefs {
+  if (!raw || typeof raw !== 'object') return EMPTY_SHUFFLE_PREFS
+  const value = raw as Record<string, unknown>
+  return {
+    family: RANDOM_FAMILIES.includes(value.family as RandomFamilyPref) ? value.family as RandomFamilyPref : 'any',
+    amount: MUTATE_AMOUNT_PREFS.includes(value.amount as MutateAmountPref) ? value.amount as MutateAmountPref : 'subtle',
+    target: MUTATE_TARGET_PREFS.includes(value.target as MutateTargetPref) ? value.target as MutateTargetPref : 'balanced',
+    keepReference: value.keepReference === true,
+  }
+}
+
+export function readShufflePrefs(): ShufflePrefs {
+  if (typeof localStorage === 'undefined') return EMPTY_SHUFFLE_PREFS
+  try {
+    return parseShufflePrefs(JSON.parse(localStorage.getItem(SHUFFLE_KEY) ?? 'null'))
+  } catch {
+    return EMPTY_SHUFFLE_PREFS
+  }
+}
+
+export function writeShufflePrefs(prefs: ShufflePrefs): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(SHUFFLE_KEY, JSON.stringify(prefs))
+  } catch {
+    /* Generation prefs stay in memory when storage is blocked. */
+  }
 }

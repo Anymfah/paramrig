@@ -1,6 +1,7 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo, useState, type KeyboardEvent } from 'react'
 import { AudioThumb } from '@/audio/AudioThumb'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
+import { moveSoundFocus } from '@/audio/sound-keys'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
@@ -32,19 +33,33 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
     ? snapshots.filter((snapshot) => snapshot.name.toLowerCase().includes(wanted))
     : snapshots
   const groups = PRESET_GROUPS.filter((group) => found.some(({ preset }) => preset.group === group))
+  const firstId = found[0]?.preset.id ?? kept[0]?.id
+  const onKeys = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target instanceof HTMLInputElement) return
+    const cards = [...event.currentTarget.querySelectorAll<HTMLElement>('.sound-card')]
+    const next = moveSoundFocus(event.nativeEvent, cards)
+    if (next === null) return
+    cards[next]?.click()
+    cards[next]?.focus()
+    cards[next]?.scrollIntoView?.({ block: 'nearest' })
+  }
 
   return (
-    <div className="sound-browser">
+    <div className="sound-browser" onKeyDown={onKeys}>
       <div className="sound-browser__search">
-        <label className="sound-browser__label" htmlFor={search}>Find a sound</label>
-        <input
-          id={search}
-          type="search"
-          className="field"
-          placeholder="Name or family"
-          value={look}
-          onChange={(event) => setLook(event.target.value)}
-        />
+        <label className="text-field" htmlFor={search}>
+          <span className="text-field__label">Find a sound</span>
+          <input
+            id={search}
+            type="search"
+            className="text-field__input"
+            placeholder="Name or family"
+            autoComplete="off"
+            spellCheck={false}
+            value={look}
+            onChange={(event) => setLook(event.target.value)}
+          />
+        </label>
         <output className="sound-browser__count" aria-live="polite">
           {wanted ? `${found.length + kept.length} of ${built.length + snapshots.length}` : `${built.length + snapshots.length} sounds`}
         </output>
@@ -62,6 +77,7 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
                   type="button"
                   className="sound-card"
                   aria-current={preset.id === current ? 'true' : undefined}
+                  tabIndex={preset.id === current || (current === '' && preset.id === firstId) ? 0 : -1}
                   onClick={() => onPatch(preset.build(), preset.id)}
                 >
                   <AudioThumb patch={patch} id={preset.id} />
@@ -87,6 +103,7 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
                   type="button"
                   className="sound-card"
                   aria-current={snapshot.id === current ? 'true' : undefined}
+                  tabIndex={snapshot.id === current || (current === '' && snapshot.id === firstId) ? 0 : -1}
                   onClick={() => onPatch(snapshot.patch, snapshot.id)}
                 >
                   <AudioThumb patch={snapshot.patch} id={`${snapshot.id}:${snapshot.createdAt}`} />

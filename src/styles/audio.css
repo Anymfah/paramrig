@@ -47,6 +47,48 @@
   user-select: none;
 }
 
+.audio-transport__hearing {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+.audio-transport__modes {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.audio-transport__mode {
+  display: grid;
+  place-items: center;
+  inline-size: var(--hit-target);
+  block-size: var(--hit-target);
+  padding: 0;
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+.audio-transport__mode:hover { color: var(--text-primary); background: var(--surface-overlay); }
+.audio-transport__mode:active { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.audio-transport__mode:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.audio-transport__mode[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-subtle);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.audio-transport__rec {
+  display: block;
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+}
+.audio-transport__mode[aria-pressed='true'] .audio-transport__rec { background: #c45c5c; }
+
 .audio-transport__play {
   flex-shrink: 0;
   display: grid;
@@ -94,29 +136,7 @@
 .audio-transport__figures dd {
   margin: 0;
   color: var(--text-secondary);
-}
-
-/*
- * The push has to land on the tooltip's anchor, not on the button inside it: `Tooltip` wraps its
- * child in a span, so an auto margin on the button pushes nothing and the whole group drifted to
- * the middle of the band. The presets take the space when they are there; Auto takes it in Tune,
- * where they are not.
- */
-.audio-sounds {
-  margin-inline-start: auto;
-}
-
-.audio-transport:not(:has(.audio-sounds)) .tt__anchor:has(.audio-transport__auto) {
-  margin-inline-start: auto;
-}
-
-.audio-transport__auto {
-  touch-action: manipulation;
-}
-
-.audio-transport__auto[aria-pressed='true'] {
-  color: var(--text-on-accent);
-  background: var(--accent);
+  user-select: text;
 }
 
 .audio-transport__notice {
@@ -211,7 +231,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-inline-size: 9rem;
+  min-inline-size: 0;
   min-block-size: var(--hit-target);
   padding: var(--space-1) var(--space-2);
   color: var(--text-primary);
@@ -223,6 +243,12 @@
   cursor: pointer;
   touch-action: manipulation;
   transition: border-color var(--duration-instant) var(--ease-out), background var(--duration-instant) var(--ease-out);
+}
+.audio-sounds__trigger > span:first-child {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .audio-sounds__trigger:hover {
@@ -698,7 +724,7 @@
  * question — is it hitting the ceiling — and the numbers beside it answer the rest.
  */
 /* A and B, and the way between them: three quiet buttons, the live one pressed. */
-.audio-ab { display: flex; gap: 2px; align-items: center; }
+.audio-ab { display: flex; flex: none; gap: var(--space-1); align-items: center; }
 .audio-ab__side { min-inline-size: 26px; font-variant-numeric: tabular-nums; }
 .audio-ab__side[aria-pressed='true'] { background: var(--accent-subtle); color: var(--accent); }
 
@@ -730,7 +756,7 @@
 
 .sound-browser__search { display: flex; align-items: center; gap: var(--space-3); margin-block-end: var(--space-2); }
 .sound-browser__label { color: var(--text-muted); font-size: var(--text-xs); white-space: nowrap; }
-.sound-browser__search .field { flex: 1; max-inline-size: 320px; }
+.sound-browser__search .text-field { flex: 1; max-inline-size: 20rem; }
 .sound-browser__count { color: var(--text-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
 
 .sound-browser__title {
@@ -1419,75 +1445,124 @@
 
 
 /*
- * One bar, as the reference keeps its top row: everything that was stacked above the face-plate —
- * a toolbar, the transport with the picture in it, a tab strip — in a single line of the height a
- * control needs. The picture went to the foot of the rail.
+ * One bar: name, meter and figures, A/B, the sound menu, the views, history, export.
+ * The parent owns the gap. A second row only when the strip is genuinely too narrow.
  */
 .audio-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-2) var(--space-3);
-  min-block-size: 3rem;
+  gap: var(--space-2);
+  min-block-size: var(--hit-target);
   padding: 0 var(--space-3);
   background: var(--surface-inset);
   border-block-end: 1px solid var(--rule);
   container-type: inline-size;
+  user-select: none;
 }
-.audio-bar .audio-name { inline-size: 11rem; flex: none; }
-.audio-bar .audio-transport { flex: 1; min-inline-size: 0; }
-.audio-bar .audio-views { padding: 0; border: 0; }
-.audio-bar .audio-views button { min-block-size: 2rem; padding-inline: var(--space-3); }
-.audio-bar__history { display: flex; gap: var(--space-1); }
+.audio-bar .audio-name {
+  flex: 0 1 9rem;
+  min-inline-size: 6rem;
+  inline-size: auto;
+  user-select: text;
+}
+.audio-bar .audio-transport { flex: 1 1 auto; min-inline-size: 0; }
+.audio-bar .audio-views { flex: none; padding: 0; border: 0; }
+.audio-bar .audio-views button { min-block-size: var(--hit-target); padding-inline: var(--space-2); }
+.audio-bar__history { display: flex; flex: none; gap: var(--space-1); }
+.audio-bar .audio-sounds {
+  flex: 1 1 8rem;
+  min-inline-size: 0;
+}
+.audio-bar .audio-sounds__trigger { flex: 1 1 auto; }
 
-/* The transport in one row: no picture, the four figures inline, the tools beside them. */
-.audio-transport[data-compact] { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-3); padding: 0; background: transparent; border: 0; overflow: hidden; }
-/* The play button is the flex item's *child*: the tooltip anchor between them shrinks to nothing
-   and lets the button spill over the meter beside it. Hold the anchor open instead, the way the
-   stepper already does. */
+/* The transport in one row: no picture, the four figures as fixed columns, the tools beside them. */
+.audio-transport[data-compact] {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  min-inline-size: 0;
+}
 .audio-transport .tt__anchor:has(.audio-transport__play) { flex: none; }
-.audio-transport[data-compact] .audio-transport__figures { display: flex; gap: var(--space-3); margin: 0; }
-.audio-transport[data-compact] .audio-transport__figures > div { display: flex; gap: 0.3rem; align-items: baseline; }
+.audio-transport[data-compact] .audio-meter { flex: none; }
+.audio-transport[data-compact] .audio-transport__figures {
+  display: flex;
+  flex: none;
+  gap: var(--space-2);
+  margin: 0;
+}
+.audio-transport[data-compact] .audio-transport__figures > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-inline-size: 4.5em;
+}
+.audio-transport[data-compact] .audio-transport__figures > div:first-child { min-inline-size: 4em; }
+.audio-transport[data-compact] .audio-transport__figures > div:last-child { min-inline-size: 3.25em; }
 .audio-transport[data-compact] .audio-transport__figures dt { font-size: 0.5625rem; }
-.audio-transport[data-compact] .audio-transport__figures dd { font-size: 0.6875rem; }
+.audio-transport[data-compact] .audio-transport__figures dd {
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 .audio-transport[data-compact] .audio-transport__notice { display: none; }
 
 /*
- * The bar in one row needs about 1370 pixels inside its padding with everything on it, and 1280
- * without the four figures. Short of the first, the figures go — they say in numbers what the
- * picture in the rail already shows. Short of the second, the bar is two rows: the name, the views
- * and the history above, and the transport, the row you play from, below at the full width, with
- * the figures back while that row has room for them. A phone's width loses the stepping chevrons
- * too; the menu still lists every sound.
- *
- * The second figure used to be 72rem, which is where it was guessed rather than measured: between
- * about 1410 and 1530 pixels the transport was already wider than the space left for it, spilled
- * to the right with nothing to clip it, and the view tabs — later in the source — painted over the
- * top of the Auto button. On a 1440-wide laptop with the rail open, auto-play could not be
- * switched off with a mouse at all. The overflow rule below is the belt to that braces: a row that
- * does not fit is cut off at its own edge rather than drawn across its neighbour.
+ * One row holds at about 64rem with the figures in compact columns. Below that the transport
+ * takes a second row at full width. Chevrons leave last, on a phone's width.
  */
-@container (width < 86rem) {
-  .audio-transport[data-compact] .audio-transport__figures { display: none; }
-}
-@container (width < 80rem) {
-  .audio-bar { padding-block: var(--space-2); }
+@container (width < 48rem) {
+  .audio-bar { flex-wrap: wrap; padding-block: var(--space-2); }
   .audio-bar .audio-transport { order: 1; flex: 1 0 100%; }
-  .audio-transport[data-compact] .audio-transport__figures { display: flex; }
 }
-@container (width < 45rem) {
+@container (width < 36rem) {
   .audio-transport[data-compact] .audio-transport__figures { display: none; }
-  .audio-bar .audio-name { inline-size: 7rem; }
+  .audio-bar .audio-name { min-inline-size: 5rem; }
 }
 @container (width < 30rem) {
   .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back), .audio-bar .audio-sounds .tt__anchor:has(.audio-sounds__back) + .tt__anchor + .tt__anchor { display: none; }
-  .audio-bar .audio-sounds__trigger { min-inline-size: 7rem; }
 }
 
 /* The picture at the foot of the rail: pinned, small, the list scrolling above it. The rail itself
    no longer scrolls — ninety-two names scrolled the picture off the bottom — its list area does. */
 .audio-library { display: flex; flex-direction: column; overflow: hidden; padding: 0; gap: 0; }
-.audio-library__scroll { flex: 1; min-block-size: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-2); overflow-y: auto; }
+.audio-library { display: flex; flex-direction: column; overflow: hidden; padding: 0; gap: 0; }
+.audio-library__scroll { flex: 1; min-block-size: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-2) var(--space-2) var(--space-3); overflow-y: auto; }
+.audio-library__deck {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface);
+  border-block-end: 1px solid var(--border-hairline);
+  user-select: none;
+}
+.audio-library__make {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.audio-library[data-compact] .audio-library__deck {
+  justify-content: center;
+  padding: var(--space-1) 0;
+  margin: 0;
+}
+.audio-library[data-compact] .audio-library__make,
+.audio-library[data-compact] .audio-transport__modes,
+.audio-library[data-compact] .audio-library__gestures {
+  display: none;
+}
+.audio-bar .icon-btn[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
 .audio-library__wave {
   flex: none;
   block-size: 4.5rem;
@@ -1497,47 +1572,12 @@
 }
 .audio-library__wave canvas, .audio-library__wave svg { inline-size: 100%; block-size: 100%; }
 
-/* ---- The face-plate, at the reference's own coordinates ---------------------------------------
+/* ---- The face-plate -------------------------------------------------------------------------
  *
- * Every colour the plate uses is a token on its stage, so a second look — ParamRig's own — is a
- * second set of values and nothing else. The defaults are the reference's, measured.
+ * Geometry stays at the measured coordinates. Colour follows the workbench: every token here is
+ * mixed from the surfaces and the text of whichever theme is on.
  */
 .fp-stage {
-  --fp-ground: #262626; --fp-panel: #323232; --fp-panel-dark: #242424; --fp-hairline: #050505; --fp-line: #282828;
-  --fp-text: #a5a39a; --fp-title: #a7a7a7; --fp-text-bright: #c0c1bd; --fp-text-hover: #d4d4d4; --fp-dim: #838383; --fp-rule: #8a8a8a; --fp-rule-light: #989897; --fp-readout: #7d7e7e;
-  --fp-box: #545454; --fp-box-text: #1e1e1e; --fp-box-on: #9a9a9a; --fp-box-hover: #626262; --fp-box-on-hover: #a6a6a6;
-  --fp-badge: #999999; --fp-badge-text: #111111; --fp-badge-off: #4a4a4a; --fp-badge-off-text: #d0d0d0; --fp-badge-hover: #5a5a5a; --fp-badge-edge: #b8b8b8;
-  --fp-knob-top: #53555a; --fp-knob-bottom: #3c3b40; --fp-knob-rim: #101010; --fp-hand: #c4c2bf; --fp-ring: #505050; --fp-ring-dark: #494949;
-  /* The disc a macro's number sits on, and the red it is written in — a pair, because either one
-     alone is a guess. A saturated red on a mid grey is about two to one whichever way round it is
-     put; a pale red on a dark disc is eight, and still unmistakably the macros' colour. */
-  --fp-digit-disc: #1b1b1b; --fp-digit-ink: #ff9d9d;
-  --fp-hero: #3a3c3e; --fp-hero-edge: #414345; --fp-hero-rim: #2c2c2e; --fp-hero-hand: #eae1ca; --fp-face: #a7a7a7;
-  --fp-macro-top: #5c5c5c; --fp-macro-bottom: #3c3c3c; --fp-macro-hand: #e9e9e9;
-  --fp-light-top: #8e8d8b; --fp-light-bottom: #585755; --fp-light-hand: #0e0e0e;
-  --fp-groove: #1e1e1e; --fp-groove-edge: #151515; --fp-red: #db282d; --fp-tray: #404040;
-  --fp-src-p: #efa807; --fp-src-e: #4576c4; --fp-src-l: #6fb904; --fp-src-l-edge: #5f9a12; --fp-src-t: #8d52a4; --fp-src-v: #d0708b;
-  --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
-  --fp-amber: #db9d09; --fp-amber-dim: #bb860e; --fp-amber-bright: #f2aa07;
-  --fp-plot-fill: #394963; --fp-plot-line: #4675bf; --fp-wheel: #2a2a2a; --fp-wheel-hover: #333333; --fp-wheel-top: #3b3b3b;
-  --fp-icon: #9a9a9a; --fp-icon-cut: #2b2b2b; --fp-bracket: #4e4e4e; --fp-readout-hover: #9c9d9d; --fp-box-on-text: #1e1e1e;
-  --fp-knob-shadow: 0 5px 9px -2px rgba(0, 0, 0, 0.6); --fp-knob-light: rgba(255, 255, 255, 0.08); --fp-tip: #101010; --fp-tip-text: #d4d4d4;
-  --fp-font: 'Roboto', var(--font-sans);
-  --fp-stretch: 97%;
-  --fp-text-scale: 1;
-  --fp-read-scale: 1;
-}
-
-/*
- * ParamRig's own look: the same plate in the workbench's mineral greys and its emerald accent,
- * set in its own face. Geometry, anatomy and idiom are untouched; only the values change.
- */
-.fp-stage[data-skin='paramrig'] {
-  /*
-   * ParamRig's own look, in the app's tokens and nothing else, so it follows the theme: what is a
-   * light disc on the dark plate is a dark disc on the light one, and every rim, rule and shadow
-   * is mixed from the surfaces and the text of whichever theme is on.
-   */
   --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: color-mix(in srgb, var(--surface-inset) 85%, var(--carbon)); --fp-hairline: var(--border-hairline); --fp-line: var(--rule);
   --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--text-muted); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted); --fp-readout-hover: var(--text-primary);
   --fp-box: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-on-text: var(--text-on-accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 65%, var(--text-primary)); --fp-box-on-hover: var(--accent-hover);
@@ -1549,7 +1589,6 @@
   --fp-macro-top: var(--surface-overlay); --fp-macro-bottom: var(--surface-raised); --fp-macro-hand: var(--accent);
   --fp-light-top: color-mix(in srgb, var(--text-secondary) 55%, var(--carbon)); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 38%, var(--surface)); --fp-light-hand: var(--surface);
   --fp-groove: color-mix(in srgb, var(--carbon) 35%, var(--surface)); --fp-groove-edge: var(--fp-edge); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
-  /* The colours that mean something keep their hue whatever the look: a macro's red, an envelope's blue, an LFO's green, the strip's amber. */
   --fp-red: #e5484d; --fp-red-on-light: #e5484d;
   --fp-src-p: #efa807; --fp-src-e: #5b8def; --fp-src-l: #7ccf5a; --fp-src-l-edge: #5fae3f; --fp-src-t: #b07bd6; --fp-src-v: #e07a95;
   --fp-slot: var(--surface-overlay); --fp-slot-edge: var(--border-strong); --fp-slot-open: var(--surface-raised); --fp-slot-filled: var(--surface-inset);
@@ -1560,43 +1599,26 @@
   --fp-knob-light: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --fp-font: var(--font-sans);
   --fp-stretch: 100%;
-  /* Public Sans runs wider than the reference's condensed Roboto: a touch smaller keeps neighbouring
-     labels apart, and the readouts, which the reference sets condensed bold, a touch smaller still. */
   --fp-text-scale: 0.95;
   --fp-read-scale: 0.9;
+  --fp-box-on-text: var(--text-on-accent);
 }
-/* On the light theme a knob casts a lighter shadow, as everything in the app does, and the meaningful colours deepen to read on chalk; the light knobs are dark there, so a macro's number on one is a light red. */
-:root[data-theme='light'] .fp-stage[data-skin='paramrig'] {
+:root[data-theme='light'] .fp-stage {
   --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent);
   --fp-red: #c8232a; --fp-red-on-light: #ffb4a8; --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; --fp-src-l-edge: #35801a; --fp-src-t: #8a4fb5; --fp-src-v: #c2456a;
   --fp-amber: #b8860b; --fp-amber-dim: #9a6f08; --fp-amber-bright: #d99a12;
 }
 @media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) .fp-stage[data-skin='paramrig'] {
+  :root:not([data-theme='dark']) .fp-stage {
     --fp-knob-shadow: 0 3px 6px -2px color-mix(in srgb, var(--carbon) 28%, transparent); --fp-knob-light: color-mix(in srgb, var(--chalk) 60%, transparent);
     --fp-red: #c8232a; --fp-red-on-light: #ffb4a8; --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; --fp-src-l-edge: #35801a; --fp-src-t: #8a4fb5; --fp-src-v: #c2456a;
     --fp-amber: #b8860b; --fp-amber-dim: #9a6f08; --fp-amber-bright: #d99a12;
   }
 }
-.fp-stage[data-skin='paramrig'] .fp-read { letter-spacing: -0.03em; }
-/* The app's look draws its knobs by its own tokens: one light from above, the dark of the surfaces below. */
-.fp-stage[data-skin='paramrig'] .fp-knob[data-size='hero'] .fp-knob__body {
-  background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-edge) 100%);
-  box-shadow: 0 0 0 1px var(--fp-edge), inset 0 1px 0 var(--fp-knob-light), inset 0 -1px 0 color-mix(in srgb, var(--carbon) 35%, transparent), var(--fp-knob-shadow);
-}
+.fp-stage .fp-read { letter-spacing: -0.03em; }
 /* A macro's number stays red on a light knob too. It carries its own disc rather than borrowing the
    knob's, because the knob's is a mid grey on the light theme and no red reads on a mid grey: the
    pale red that was here measured 1.65 to one, which is a colour, not a number anyone can read. */
-
-@font-face {
-  font-family: 'Roboto';
-  src: url('/fonts/Roboto.woff2') format('woff2');
-  font-weight: 100 900;
-  font-stretch: 75% 100%;
-  font-style: normal;
-  font-display: swap;
-  unicode-range: U+0000-00FF, U+2010-2027, U+2212;
-}
 
 /*
  * The plate is a fixed object, 1250 by 696, and every control on it sits at measured coordinates.
@@ -1656,11 +1678,34 @@
  * measured coordinates, in a body of the measured size. At the reference's own size nothing has
  * anything to grow into, and the plate is the reference to the pixel.
  */
-.fp-band { display: flex; flex-wrap: wrap; align-items: center; align-content: center; flex: 54 1 54px; padding-inline-end: 4.5px; border-block-end: 1px solid var(--fp-hairline); }
-.fp-band__seed, .fp-band__lead { position: relative; flex: 217.5 1 217.5px; block-size: 53px; }
-.fp-band__group { display: flex; flex: 514 1 514px; block-size: 53px; }
-.fp-macro { position: relative; display: flex; justify-content: center; flex: 1 1 64.25px; block-size: 53px; }
-.fp-macro__box { position: relative; flex: none; inline-size: 64.25px; block-size: 53px; }
+.fp-band { display: flex; flex-wrap: wrap; align-items: center; align-content: center; flex: 54 1 54px; border-block-end: 1px solid var(--fp-hairline); }
+.fp-macro { position: relative; display: flex; justify-content: center; flex: 1 1 0; min-inline-size: var(--hit-target); block-size: 53px; }
+.fp-macro__box { position: relative; flex: none; inline-size: 100%; max-inline-size: 64.25px; block-size: 53px; }
+.fp-macro__name {
+  left: 63%;
+  top: calc(100% - var(--hit-target));
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  box-sizing: border-box;
+  font-size: var(--text-xs);
+  min-inline-size: var(--hit-target);
+  min-block-size: var(--hit-target);
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.fp-macro__name:hover, .fp-macro__name:active { color: var(--fp-text-hover); }
+.fp-macro__name:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+input.fp-macro__name {
+  appearance: none;
+  cursor: text;
+  text-align: center;
+  user-select: text;
+}
 .fp-row { display: flex; flex: 288 1 288px; }
 .fp-rule { flex: none; block-size: 1.5px; background: var(--fp-hairline); }
 .fp-panel { position: relative; display: flex; align-items: center; justify-content: center; }
@@ -1674,6 +1719,16 @@
 .fp-panel { background: var(--fp-panel); box-shadow: -1px 0 0 var(--fp-hairline), 1px 0 0 var(--fp-hairline); }
 .fp-panel[data-tone='noise'] { background: var(--fp-panel-dark); box-shadow: none; }
 .fp-panel[data-tone='bare'] { background: transparent; box-shadow: none; }
+.fp-panel[data-layer]::after {
+  content: 'L' attr(data-layer);
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 6px;
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
+  color: var(--fp-dim);
+  pointer-events: none;
+}
 
 /* Words. Placed by the top of their capitals; Roboto 13 in the reference's greys. */
 .fp-text {
@@ -1692,9 +1747,10 @@
 .fp-text[data-align='right'] { translate: -100% 0; }
 .fp-text[data-kind='title'] { color: var(--fp-title); }
 .fp-text[data-kind='bold'] { font-weight: 700; color: var(--fp-title); }
-.fp-text[data-kind='macro'] { color: var(--fp-text-bright); }
+.fp-text[data-kind='macro'] { font-size: var(--text-xs); color: var(--fp-text-bright); }
 .fp-text[data-kind='digit'] { font-weight: 700; color: var(--fp-dim); }
 .fp-macro[data-wired] .fp-text[data-kind='digit'] { color: var(--fp-red); }
+.fp-macro[data-parked] .fp-knob, .fp-macro[data-parked] .fp-text[data-kind='macro'] { opacity: 0.72; }
 .fp-text[data-kind='dim'] { color: var(--fp-dim); }
 .fp-text[data-kind='source'] { font-weight: 700; }
 .fp-text[data-u] { text-decoration: underline; text-decoration-thickness: 0.5px; text-underline-offset: 3px; text-decoration-color: var(--fp-rule); }
@@ -1755,13 +1811,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   box-shadow: 0 0 0 1px var(--rim), inset 0 1px 0 var(--fp-knob-light), var(--fp-knob-shadow);
 }
 .fp-knob[data-size='hero'] .fp-knob__body {
-  background:
-    radial-gradient(circle at 50% 36%, #525456 0 68%, #3c3e40 82%, #484a4c 90%, #2a2a2c 95.5%, #141416 100%);
-  box-shadow:
-    0 0 0 1px var(--fp-hairline),
-    inset 0 1px 0 rgba(255, 255, 255, 0.18),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
-    0 7px 12px -3px rgba(0, 0, 0, 0.7);
+  background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-edge) 100%);
+  box-shadow: 0 0 0 1px var(--fp-edge), inset 0 1px 0 var(--fp-knob-light), inset 0 -1px 0 color-mix(in srgb, var(--carbon) 35%, transparent), var(--fp-knob-shadow);
 }
 .fp-knob__spin { position: absolute; inset: 0; rotate: var(--turn, 0deg); }
 .fp-knob__hand {
@@ -1793,6 +1844,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   translate: -50% -50%;
   color: var(--fp-red);
   font: 700 12px/1 var(--fp-font);
+  transition: opacity var(--duration-instant) var(--ease-out);
 }
 .fp-knob[data-size='hero'] .fp-knob__digit { inset-block-start: calc(50% + 21px); }
 .fp-knob[data-tone='light'] .fp-knob__digit {
@@ -1804,11 +1856,16 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   color: var(--fp-digit-ink);
   background: var(--fp-digit-disc);
 }
+/*
+ * The reading sits on the dial, not under it. Every other side of these knobs is already a
+ * caption, a neighbour, a readout or a plot — a chip parked at 100% covered the next word.
+ * On the face it replaces the hand for a moment, which is the one place nothing else is drawn.
+ */
 .fp-knob__value {
   position: absolute;
-  inset-block-start: 100%;
+  inset-block-start: 50%;
   inset-inline-start: 50%;
-  translate: -50% 2px;
+  translate: -50% -50%;
   padding: 1px 5px;
   color: var(--fp-tip-text);
   background: var(--fp-tip);
@@ -1817,11 +1874,17 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   font-size: 10px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  display: none;
+  opacity: 0;
+  visibility: hidden;
   pointer-events: none;
-  z-index: 2;
+  z-index: 3;
+  transition: opacity var(--duration-instant) var(--ease-out), visibility var(--duration-instant) var(--ease-out);
 }
-.fp-knob:hover .fp-knob__value, .fp-knob:focus-visible .fp-knob__value { display: block; }
+.fp-knob:hover .fp-knob__value, .fp-knob:focus-visible .fp-knob__value, .fp-knob[data-dragging] .fp-knob__value {
+  opacity: 1;
+  visibility: visible;
+}
+.fp-knob:hover .fp-knob__digit, .fp-knob:focus-visible .fp-knob__digit, .fp-knob[data-dragging] .fp-knob__digit { opacity: 0; }
 
 /* Faders: an oscillator's dark groove with its numbered cap; a noise generator's thinner groove with a light ring. */
 .fp-fader { translate: -50% 0; inline-size: 16px; block-size: 88px; cursor: ns-resize; touch-action: none; outline: none; }
@@ -2008,7 +2071,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 /* A held macro may land on any dial but another macro's. */
 .fp[data-assigning='macro'] .fp-knob[data-property] .fp-knob__track { stroke: var(--assign); opacity: 0.5; }
 .fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__track { opacity: 1; stroke-width: 2.5; }
-.fp-macro__grab { cursor: grab; touch-action: none; }
+.fp-macro__grab { cursor: grab; touch-action: none; min-inline-size: var(--hit-target); min-block-size: var(--hit-target); display: grid; place-items: center; }
 .fp-macro__grab[data-held] { cursor: grabbing; }
 .fp-macro__grab:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
@@ -2252,6 +2315,26 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 
 .fp-picker__name { color: var(--text-primary); font-size: var(--text-sm); font-weight: 500; }
 .fp-picker__note { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; text-wrap: pretty; }
+.fp-picker__action {
+  appearance: none;
+  margin: 0 var(--space-1) var(--space-1);
+  padding: 0 var(--space-2);
+  min-block-size: var(--hit-target);
+  display: flex;
+  align-items: center;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  background: none;
+  border: 0;
+  border-block-start: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: 0;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.fp-picker__action:hover { background: var(--surface-overlay); }
+.fp-picker__action:active { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.fp-picker__action:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
 
 /* A stack of choices in the box style: a switch you can read at a glance. */
 .fp-choices { position: absolute; display: flex; flex-direction: column; overflow: hidden; border-radius: 2px; background: var(--fp-box); }
@@ -2352,3 +2435,67 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp[data-assigning='source'] .fp-knob[data-target]:hover .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target]:hover .fp-fader__slot,
 .fp[data-assigning='macro'] .fp-knob[data-property]:hover .fp-knob__slot, .fp[data-assigning='macro'] .fp-fader[data-property]:hover .fp-fader__slot { background: color-mix(in srgb, var(--assign) 22%, var(--fp-slot-open)); box-shadow: 0 0 0 1.5px var(--assign); }
 .fp-knob[data-size='macro'] .fp-knob__slot { display: none; }
+
+.audio-import {
+  padding: var(--space-2) var(--space-4);
+  border-block-end: 1px solid var(--rule);
+  background: var(--surface-raised);
+}
+.audio-import, .audio-gestures__take {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.audio-import > span { overflow-wrap: anywhere; }
+.audio-import .control { min-inline-size: 15rem; }
+.audio-library__gestures { flex: none; display: flex; }
+.audio-library__gestures .icon-btn {
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.audio-library__gestures .icon-btn:hover { color: var(--text-primary); background: var(--accent-subtle); }
+.audio-library__gestures .icon-btn:active { background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
+.audio-library__gestures .icon-btn:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+.audio-library__gestures .icon-btn[aria-pressed='true'] { color: var(--accent); background: var(--accent-subtle); }
+.audio-gestures {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-inline-size: 16rem;
+  max-inline-size: 22rem;
+  padding: var(--space-2);
+  user-select: none;
+}
+.audio-gestures__empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+.audio-gestures__take { min-inline-size: 0; }
+.audio-gestures__take .btn { flex: 1; min-inline-size: 0; justify-content: flex-start; text-align: start; }
+
+.audio-shuffle {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-inline-size: 16rem;
+  max-inline-size: 20rem;
+  padding: var(--space-3);
+  user-select: none;
+}
+.audio-shuffle .control { width: 100%; }
+.audio-shuffle__families {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  flex: 1 1 100%;
+  width: 100%;
+}
+.audio-shuffle__go { width: 100%; }
+.audio-shuffle__go[aria-busy='true'] { opacity: 0.55; }
+.audio-library__make .icon-btn[aria-busy='true'] {
+  opacity: 0.55;
+  pointer-events: none;
+}

@@ -146,6 +146,16 @@ export type ResonatorSettings = {
 
 export type InsertKind = 'off' | 'drive' | 'crusher' | 'ring' | 'fold' | 'body' | 'comb'
 
+/**
+ * What a body rings like. These are sounding intentions, not physical claims: a plate is a dense
+ * cluster of nearby modes, a cavity a hollow set of air resonances, glass a bright bar that
+ * keeps its top, and aether is this instrument's own invented metal.
+ *
+ * `bar` is the historical bank. A patch that never named a profile is a bar, so yesterday's files
+ * keep yesterday's ring.
+ */
+export type BodyProfile = 'bar' | 'plate' | 'cavity' | 'membrane' | 'glass' | 'aether'
+
 /** Which side of the amplifier a slot stands on. */
 export type InsertPlace = 'pre' | 'post'
 
@@ -184,6 +194,16 @@ export type InsertSlot = {
   /** Milliseconds down the line, and how much of it comes back. Read by `comb`. */
   time: number
   feedback: number
+  /**
+   * Which bank of resonances a `body` rings with. Omitted on patches written before there were
+   * several, and then it is a bar.
+   */
+  profile?: BodyProfile
+  /**
+   * 0..1 colour inside a profile: how far the extra inharmonicity and the quieter partials are
+   * allowed to show. A bar ignores it, so an old patch cannot pick up a new flavour by accident.
+   */
+  character?: number
 }
 
 export type Layer = {
@@ -414,6 +434,33 @@ export type MasterSettings = {
   fadeOut: number
 }
 
+/**
+ * A recorded movement of one macro, stored on the patch so the engine can play it without the
+ * rig that originally drove it.
+ *
+ * The destinations travel with the take: changing the macro's live mapping afterwards does not
+ * rewrite a take that has already been kept. Times are seconds on the patch clock.
+ */
+export type MacroGesture = {
+  id: string
+  /** Which of the sixteen macros this take belongs to, 0..15. */
+  macro: number
+  enabled: boolean
+  start: number
+  duration: number
+  /** Time 0..1 along the take, value 0..1 of the macro. */
+  points: { t: number; v: number }[]
+  destinations: MacroGestureDestination[]
+}
+
+export type MacroGestureDestination = {
+  property: string
+  from: number
+  to: number
+  invert: boolean
+  curve: BezierCurve
+}
+
 export type AudioPatch = {
   /** The shape this patch was written in. `PATCH_VERSION` in patch.ts is what this build writes. */
   version: number
@@ -428,4 +475,6 @@ export type AudioPatch = {
   scene: number
   fx: FxSettings
   master: MasterSettings
+  /** Recorded macro takes. Absent on patches written before there were any. */
+  gestures?: MacroGesture[]
 }

@@ -4,25 +4,33 @@ import type { ParamValue } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
 import { Button, IconButton } from '@/ui/Button'
-import { IconRedo, IconUndo } from '@/ui/icons'
+import { IconExport, IconRedo, IconSliders, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
+import { SelectField } from '@/ui/SelectField'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioFacePlate } from '@/audio/AudioFacePlate'
 import { AudioSoundBar } from '@/audio/AudioSoundBar'
 import { AudioSoundList } from '@/audio/AudioSoundList'
-import { AudioTransport } from '@/audio/AudioTransport'
+import { AudioLibraryDeck } from '@/audio/AudioLibraryDeck'
+import { AudioTransport, type HearingMode } from '@/audio/AudioTransport'
 import { boardParameters, boardValues, setBoardValue } from '@/audio/board'
 import { AudioPresetsView } from '@/audio/AudioPresetsView'
 import { getAudioDocument, MAX_SNAPSHOTS, saveAudioDocument, storageMessage, type AudioDocument, type AudioSnapshot } from '@/audio/document'
 import type { AudioRig } from '@/audio/rig'
+import { inspectWavetable, importWavetableFile, serializeAudioProject, restoreAudioAssets, MAX_IMPORT_BYTES, type WavetablePreview } from '@/audio/project'
+import { decodeWav } from '@/audio/dsp/wav'
+import { MAX_GESTURES, takeFromSamples } from '@/audio/gestures'
+import { macroAmount, macrosOf, syncMacrosToPatch, writeMacros } from '@/audio/macros'
+import { type AudioMode, readShufflePrefs, writeShufflePrefs, type ShufflePrefs } from '@/audio/prefs'
+import { PRESETS } from '@/audio/presets'
+import { mutateSound, randomPatch } from '@/audio/shuffle'
 import { monoSum, renderPatch } from '@/audio/dsp/render'
+import { gateLive, isLive, startLive, stopLive, triggerLive, updateLive, watchLiveMeter } from '@/audio/live'
 import { useTransport } from '@/audio/useTransport'
 import { layerProfiles } from '@/audio/profiles'
-import { disposePlayback, playbackRate } from '@/audio/playback'
-import { readAudioPrefs, withAutoPlay, withSkin, writeAudioPrefs, type AudioMode, type AudioSkin } from '@/audio/prefs'
-import { PRESETS } from '@/audio/presets'
-import { mutatePatch, randomPatch } from '@/audio/shuffle'
+import { disposePlayback, playbackRate, audioContext } from '@/audio/playback'
 import type { AudioPatch } from '@/audio/types'
+import type { VoiceGate } from '@/audio/dsp/engine'
 
 const HISTORY_LIMIT = 100
 
@@ -57,7 +65,7 @@ const VIEWS: { id: ViewId; label: string }[] = [
  * and scene editors set: that column belongs to the document you have open, not to the ones you
  * do not. Stepping through sounds while watching the panels change is how anyone finds one.
  */
-type Step = { patch: AudioPatch; preset: string; touched: boolean }
+type Step = { patch: AudioPatch; preset: string; touched: boolean; rig?: AudioRig; reference: AudioPatch }
 
 export function AudioEditorPage({ documentId, mode, onMode }: {
   documentId: string
@@ -81,8 +89,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [past, setPast] = useState<Step[]>([])
   const [future, setFuture] = useState<Step[]>([])
   const [notice, setNotice] = useState('')
-  const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
-  const [skin, setSkin] = useState<AudioSkin>(() => readAudioPrefs().look)
+  const [hearing, setHearing] = useState<HearingMode>('oneshot')
+  const [liveOn, setLiveOn] = useState(false)
+  const [liveMeter, setLiveMeter] = useState({ peak: 0, left: 0, right: 0 })
+  const [recording, setRecording] = useState(false)
+  const playRequest = useRef(0)
+  const [assetRevision, setAssetRevision] = useState(0)
+  const [tableImport, setTableImport] = useState<{ file: File; layer: number; preview: WavetablePreview; size: number } | null>(null)
+  const takeRef = useRef<{ times: number[]; values: number[]; started: number; macro: number; before: Step; past: Step[]; future: Step[] } | null>(null)
   // Nothing is written until something is changed, or opening a bundled example would stamp a new
   // updatedAt and quietly turn it into this browser's project.
   const [dirty, setDirty] = useState(false)
@@ -94,6 +108,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const capturedRef = useRef(false)
   /** The patch as of the last write, so the end of a drag can hand it to the ear. */
   const latest = useRef<AudioPatch | null>(null)
+  const mutateRef = useRef<AudioPatch | null>(loaded?.patch ?? null)
+  const genToken = useRef(0)
+  const [generating, setGenerating] = useState(false)
+  const [shuffle, setShuffle] = useState<ShufflePrefs>(readShufflePrefs)
+  const generatingRef = useRef(false)
 
   const parameters = useMemo(() => boardParameters(), [])
   const values = useMemo(() => (patch ? boardValues(patch) : {}), [patch])
@@ -108,24 +127,46 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
    * heard. Only the drag needs holding back, and a drag is something we already know about.
    */
   const [heard, setHeard] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
-  const samples = useMemo(() => (heard ? renderPatch(heard, rate) : EMPTY), [heard, rate])
+  const samples = useMemo(() => { void assetRevision; return heard ? renderPatch(heard, rate) : EMPTY }, [heard, rate, assetRevision])
   // Playback is owned here rather than in the transport, because the waveform in the rail needs
   // the same playhead and two of these would be two audio pipelines. Above the early return, as
   // every hook must be.
-  const transport = useTransport(samples, rate, autoPlay)
+  const transport = useTransport(samples, rate, false)
+  const autoHeard = useRef(heard)
+  const pendingSave = useRef<AudioDocument | null>(null)
+  pendingSave.current = loaded && patch && dirty ? { ...loaded, name, patch: recording && takeRef.current ? takeRef.current.before.patch : patch, snapshots, rig: recording && takeRef.current ? takeRef.current.before.rig : rig, updatedAt: new Date().toISOString() } : null
+  useEffect(() => {
+    const flush = () => {
+      if (pendingSave.current && saveAudioDocument(pendingSave.current).ok) pendingSave.current = null
+    }
+    // A browser reload does not unmount React. Flush the synchronous draft store before leaving.
+    window.addEventListener('pagehide', flush)
+    return () => { window.removeEventListener('pagehide', flush); flush() }
+  }, [])
   const mono = useMemo(() => monoSum(samples), [samples])
 
-  useEffect(() => () => disposePlayback(), [])
+  useEffect(() => () => { playRequest.current += 1; stopLive(); disposePlayback() }, [])
+  useEffect(() => {
+    if (!loaded || ![loaded.patch, ...(loaded.snapshots ?? []).map((entry) => entry.patch)].some((one) => one.layers.some((layer) => layer.source.table.startsWith('user:')))) return
+    let cancelled = false
+    void restoreAudioAssets(loaded).then((missing) => {
+      if (cancelled) return
+      setAssetRevision((value) => value + 1)
+      if (missing.length) setNotice(`Missing wavetables: ${missing.join(', ')}. Import them again to restore those layers.`)
+    })
+    return () => { cancelled = true }
+  }, [loaded])
 
   useEffect(() => {
-    if (!loaded || !patch || !dirty) return
+    if (!loaded || !patch || !dirty || recording) return
     // Written on a delay so a drag lands once, not on every frame of itself.
     const timer = setTimeout(() => {
-      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, ...(rig ? { rig } : {}), updatedAt: new Date().toISOString() })
+      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, rig, updatedAt: new Date().toISOString() })
+      if (result.ok) { pendingSave.current = null; setDirty(false) }
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
-  }, [dirty, loaded, name, patch, rig, snapshots])
+  }, [dirty, loaded, name, patch, rig, snapshots, recording])
 
   /**
    * Every one of these writes state from the callback rather than from inside another updater.
@@ -137,37 +178,36 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
    * twice. `latest` carries the newest patch so a drag — many writes before one render — still has
    * something current to build on without reaching for an updater.
    */
-  const commit = useCallback((next: AudioPatch) => {
+  const commit = useCallback((next: AudioPatch, nextRig?: AudioRig) => {
     const current = latest.current ?? patch
     if (!current) return
     setDirty(true)
-    setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
+    setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
     setFuture([])
     latest.current = next
     setPatch(next)
     setHeard(next)
-  }, [patch, preset, touched])
+    if (nextRig !== undefined) setRig(nextRig)
+    if (isLive()) updateLive(next)
+  }, [patch, preset, touched, rig])
 
   const change = useCallback((property: string, value: ParamValue) => {
     const current = latest.current ?? patch
     if (!current) return
     setDirty(true)
-    // The selection survives the edit — it is what an overwrite would write to — and `touched`
-    // is what says the sound on screen is no longer the one under that name.
     setTouched(true)
-    // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
     if (!gestureRef.current || !capturedRef.current) {
       capturedRef.current = true
-      setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
+      setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
       setFuture([])
     }
     const next = setBoardValue(current, property, value)
     latest.current = next
+    mutateRef.current = next
     setPatch(next)
-    // Held back only while a pointer is down on a control; a typed value or an arrow key is
-    // discrete and should be heard as soon as it lands.
     if (!gestureRef.current) setHeard(next)
-  }, [patch, preset, touched])
+    if (isLive()) updateLive(next)
+  }, [patch, preset, touched, rig])
 
   /**
    * A performer's row redrawn: one drag is one undo step, as a knob's is.
@@ -183,7 +223,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     setTouched(true)
     if (!gestureRef.current || !capturedRef.current) {
       capturedRef.current = true
-      setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
+      setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
       setFuture([])
     }
     const next: AudioPatch = {
@@ -193,9 +233,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         : entry)),
     }
     latest.current = next
+    mutateRef.current = next
     setPatch(next)
     if (!gestureRef.current) setHeard(next)
-  }, [patch, preset, touched])
+    if (isLive()) updateLive(next)
+  }, [patch, preset, touched, rig])
   /**
    * The other side of the A/B — its sound and its history both — and which side is on screen.
    *
@@ -204,17 +246,20 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
    * had just arrived at, and both sides ended up holding the same patch. Flipping is not an edit,
    * and the past you can walk back through is the past of the side you are standing on.
    */
-  const [spare, setSpare] = useState<{ patch: AudioPatch; past: Step[]; future: Step[] } | null>(null)
+  const [spare, setSpare] = useState<Step & { past: Step[]; future: Step[] } | null>(null)
   const [side, setSide] = useState<'a' | 'b'>('a')
   const paint = useMemo(() => redraw('patterns'), [redraw])
   const joinUp = useMemo(() => redraw('curves'), [redraw])
 
   const step = useCallback((to: Step) => {
     latest.current = to.patch
+    mutateRef.current = to.reference
     setPatch(to.patch)
     setHeard(to.patch)
     setPreset(to.preset)
     setTouched(to.touched)
+    setRig(to.rig)
+    if (isLive()) updateLive(to.patch)
   }, [])
 
   const undo = useCallback(() => {
@@ -223,9 +268,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!previous || !current) return
     setDirty(true)
     setPast((stack) => stack.slice(0, -1))
-    setFuture((ahead) => [{ patch: current, preset, touched }, ...ahead].slice(0, HISTORY_LIMIT))
+    setFuture((ahead) => [{ patch: current, preset, touched, rig, reference: mutateRef.current ?? current }, ...ahead].slice(0, HISTORY_LIMIT))
     step(previous)
-  }, [past, patch, preset, touched, step])
+  }, [past, patch, preset, touched, rig, step])
 
   const redo = useCallback(() => {
     const next = future[0]
@@ -233,9 +278,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!next || !current) return
     setDirty(true)
     setFuture((ahead) => ahead.slice(1))
-    setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
+    setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
     step(next)
-  }, [future, patch, preset, touched, step])
+  }, [future, patch, preset, touched, rig, step])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -259,14 +304,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     const name = from
       ? `${from} ${snapshots.filter((entry) => entry.name.startsWith(from)).length + 1}`
       : `Sound ${snapshots.length + 1}`
-    const snapshot: AudioSnapshot = { id: `snap-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString(), patch: current }
+    const snapshot: AudioSnapshot = { id: `snap-${crypto.randomUUID()}`, name, createdAt: new Date().toISOString(), patch: current, rig }
     setDirty(true)
     // The oldest gives way rather than the list growing past the point of being readable.
     setSnapshots((kept) => [...kept, snapshot].slice(-MAX_SNAPSHOTS))
     // You are on the thing you just kept, so the menu should say so.
     setPreset(snapshot.id)
     setTouched(false)
-  }, [patch, preset, snapshots])
+  }, [patch, preset, snapshots, rig])
 
   /**
    * A kept sound removed, and a way back for as long as the notice is on screen.
@@ -308,14 +353,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     setDirty(true)
     setTouched(false)
     setSnapshots((kept) => kept.map((entry) => (
-      entry.id === preset ? { ...entry, patch: current, createdAt: new Date().toISOString() } : entry
+      entry.id === preset ? { ...entry, patch: current, createdAt: new Date().toISOString(), rig } : entry
     )))
-  }, [patch, preset])
-
-  const setAuto = useCallback((next: boolean) => {
-    setAutoPlay(next)
-    writeAudioPrefs(withAutoPlay(readAudioPrefs(), next))
-  }, [])
+  }, [patch, preset, rig])
 
   /*
    * Everything below is held still on purpose.
@@ -330,22 +370,298 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const ended = useCallback(() => {
     gestureRef.current = false
     capturedRef.current = false
-    if (latest.current) setHeard(latest.current)
+    if (latest.current) {
+      setHeard(latest.current)
+      if (isLive()) updateLive(latest.current)
+    }
   }, [])
-  const writeRig = useCallback((next: AudioRig) => { setRig(next); setDirty(true) }, [])
+  const writeRig = useCallback((next: AudioRig) => {
+    const current = latest.current ?? patch
+    if (!current) return
+    setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
+    setFuture([])
+    setRig(next)
+    setTouched(true)
+    setDirty(true)
+  }, [patch, preset, touched, rig])
+  const writeMacrosTogether = useCallback((nextRig: AudioRig, nextPatch: AudioPatch, macroIndex?: number) => {
+    const current = latest.current ?? patch
+    if (!current) return
+    setDirty(true)
+    setTouched(true)
+    if (!takeRef.current && (!gestureRef.current || !capturedRef.current)) {
+      capturedRef.current = true
+      setPast((stack) => [...stack, { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }].slice(-HISTORY_LIMIT))
+      setFuture([])
+    }
+    latest.current = nextPatch
+    mutateRef.current = nextPatch
+    setPatch(nextPatch)
+    setRig(nextRig)
+    if (!gestureRef.current) setHeard(nextPatch)
+    if (isLive()) updateLive(nextPatch)
+    const take = takeRef.current
+    if (take && macroIndex !== undefined) {
+      const slots = macrosOf(nextRig, nextPatch)
+      if (take.macro < 0) {
+        take.macro = macroIndex
+        take.started = performance.now()
+        const request = ++playRequest.current
+        void startLive(nextPatch, 'oneshot').then((ok) => {
+          if (request !== playRequest.current) return
+          setLiveOn(ok)
+        })
+        const initialSlot = macrosOf(take.before.rig, take.before.patch)[macroIndex]
+        const initial = initialSlot ? macroAmount(initialSlot) : 0
+        take.times.push(0)
+        take.values.push(initial)
+        setNotice(`Recording ${slots[macroIndex]?.label || `macro ${macroIndex + 1}`}. Escape cancels.`)
+      }
+      if (take.macro === macroIndex && take.times.length < 8192) {
+        take.times.push(Math.min(current.duration, (performance.now() - take.started) / 1000))
+        take.values.push(slots[macroIndex] ? macroAmount(slots[macroIndex]!) : 0)
+      }
+    }
+  }, [patch, preset, touched, rig])
   const seed = patch?.seed ?? 0
+  const wantBuffer = useRef(false)
+  const cutVoice = useCallback(() => {
+    playRequest.current += 1
+    stopLive()
+    setLiveOn(false)
+    transport.stop()
+  }, [transport])
+  const hearNow = useCallback((next: AudioPatch) => {
+    cutVoice()
+    if (hearing === 'hold') setHearing('oneshot')
+    autoHeard.current = next
+    const gate: VoiceGate = hearing === 'repeat' ? 'repeat' : 'oneshot'
+    if (!audioContext()?.audioWorklet) {
+      wantBuffer.current = true
+      if (latest.current === next) transport.play()
+      return
+    }
+    const request = playRequest.current
+    void startLive(next, gate).then((ok) => {
+      if (request !== playRequest.current) return
+      setLiveOn(ok)
+      if (ok) transport.stop()
+      else wantBuffer.current = true
+    })
+  }, [cutVoice, hearing, transport])
   const load = useCallback((next: AudioPatch, id: string) => {
+    if (id === preset && !touched) {
+      hearNow(latest.current ?? next)
+      return
+    }
+    const bundled = PRESETS.find((entry) => entry.id === id)
+    const snap = snapshots.find((entry) => entry.id === id)
+    const applied = snap ? next : { ...next, seed }
     setPreset(id)
     setTouched(false)
-    commit({ ...next, seed })
-  }, [commit, seed])
+    setRig(bundled?.rig?.(applied) ?? snap?.rig)
+    mutateRef.current = applied
+    hearNow(applied)
+    commit(applied)
+  }, [commit, seed, snapshots, preset, touched, hearNow])
+
+  const hearingGate = (mode: HearingMode): VoiceGate => (mode === 'hold' ? 'hold' : mode === 'repeat' ? 'repeat' : 'oneshot')
+
+  const stopSound = useCallback(() => {
+    playRequest.current += 1
+    const take = takeRef.current
+    if (take) { step(take.before); setPast(take.past); setFuture(take.future) }
+    if (hearing === 'hold') {
+      if (isLive()) gateLive('release')
+      else {
+        stopLive()
+        setLiveOn(false)
+        transport.stop()
+      }
+      setHearing('oneshot')
+      setRecording(false)
+      takeRef.current = null
+      return
+    }
+    stopLive()
+    setLiveOn(false)
+    setHearing('oneshot')
+    transport.stop()
+    setRecording(false)
+    takeRef.current = null
+  }, [hearing, transport, step])
+
+  const playSound = useCallback(async () => {
+    const current = latest.current ?? patch
+    if (!current) return
+    const gate = hearingGate(hearing)
+    if (isLive()) {
+      triggerLive(gate)
+      return
+    }
+    const request = ++playRequest.current
+    const ok = await startLive(current, gate)
+    if (request !== playRequest.current) return
+    setLiveOn(ok)
+    if (ok) transport.stop()
+    else { setHearing('oneshot'); setNotice('Real-time playback is unavailable. Playing the rendered one-shot.'); transport.play() }
+  }, [patch, hearing, transport])
+
+  useEffect(() => {
+    if (autoHeard.current === heard) return
+    autoHeard.current = heard
+    if (!recording) void playSound()
+  }, [heard, recording, playSound])
+
+  useEffect(() => {
+    if (!wantBuffer.current) return
+    wantBuffer.current = false
+    if (!isLive()) transport.play()
+  }, [samples, transport])
+
+  const hearingTransport = useMemo(() => ({
+    ...transport,
+    playing: transport.playing || liveOn,
+    play: () => { void playSound() },
+    stop: stopSound,
+  }), [transport, liveOn, playSound, stopSound])
+
+  useEffect(() => {
+    watchLiveMeter((meter) => { setLiveMeter({ peak: meter.peak, left: meter.left ?? meter.peak, right: meter.right ?? meter.peak }); if (meter.ended) setLiveOn(false) })
+    return () => watchLiveMeter(null)
+  }, [])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
+      if (tableImport) { event.preventDefault(); setTableImport(null); return }
+      if (recording) {
+        event.preventDefault()
+        playRequest.current += 1
+        const take = takeRef.current
+        setRecording(false)
+        takeRef.current = null
+        if (take) { step(take.before); setPast(take.past); setFuture(take.future) }
+        stopLive(); setLiveOn(false)
+        setNotice('Recording cancelled.')
+        return
+      }
+      if (hearing !== 'oneshot' || liveOn) {
+        event.preventDefault()
+        stopSound()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [recording, hearing, liveOn, stopSound, step, tableImport])
+
+  const changeHearing = useCallback((next: HearingMode) => {
+    setHearing(next)
+    if (isLive()) {
+      if (next === 'oneshot' && hearing === 'hold') gateLive('release')
+      else gateLive(hearingGate(next))
+    }
+  }, [hearing])
+
+  const toggleRecord = useCallback(() => {
+    const current = latest.current ?? patch
+    if (!current) return
+    if (recording) {
+      const take = takeRef.current
+      setRecording(false)
+      takeRef.current = null
+      if (!take || take.times.length < 2) {
+        if (take) { step(take.before); setPast(take.past); setFuture(take.future) }
+        stopLive(); setLiveOn(false)
+        setNotice('Nothing was recorded.')
+        return
+      }
+      const duration = Math.max(0.05, Math.min(current.duration, (performance.now() - take.started) / 1000))
+      take.times.push(duration)
+      take.values.push(take.values[take.values.length - 1] ?? 0)
+      const points = takeFromSamples(take.times, take.values, 0, duration)
+      const slot = macrosOf(rig, current)[take.macro]
+      if (!slot || slot.destinations.length === 0) return
+      const gesture = {
+        id: `gesture-${crypto.randomUUID()}`, macro: take.macro, enabled: true, start: 0,
+        duration, points, destinations: slot.destinations,
+      }
+      setPast([...take.past, take.before].slice(-HISTORY_LIMIT))
+      setFuture([])
+      step({ ...take.before, touched: true, patch: { ...take.before.patch, gestures: [...(take.before.patch.gestures ?? []), gesture] } })
+      setDirty(true)
+      stopLive(); setLiveOn(false)
+      setNotice(`Kept a take of ${slot.label || `macro ${take.macro + 1}`}.`)
+
+      return
+    }
+    if ((current.gestures?.length ?? 0) >= MAX_GESTURES) {
+      setNotice('This patch already has 16 gestures. Remove a take before recording another.')
+      return
+    }
+    setHearing('oneshot')
+    setRecording(true)
+    takeRef.current = { times: [], values: [], started: performance.now(), macro: -1, before: { patch: current, preset, touched, rig, reference: mutateRef.current ?? current }, past, future }
+    stopLive()
+    const request = ++playRequest.current
+    void startLive(current, 'oneshot').then((ok) => {
+      if (request !== playRequest.current) return
+      setLiveOn(ok)
+      if (ok) { transport.stop(); if (takeRef.current) takeRef.current.started = performance.now() }
+      else { setRecording(false); takeRef.current = null; setNotice('Recording needs real-time audio, which is unavailable in this browser.') }
+    })
+    setNotice('Move the macro you want to record. Escape cancels.')
+  }, [recording, patch, rig, preset, touched, past, future, step, transport])
+
+  const importTable = useCallback(async (layer: number) => {
+    const picker = window.document.createElement('input')
+    picker.type = 'file'
+    picker.accept = 'audio/wav,audio/wave,.wav'
+    picker.addEventListener('change', async () => {
+      const file = picker.files?.[0]
+      if (!file) return
+      if (file.size > MAX_IMPORT_BYTES) { setNotice('That wavetable is larger than 8 MB.'); return }
+      try {
+      const buffer = await file.arrayBuffer()
+      const wav = decodeWav(buffer)
+      if ('error' in wav) { setNotice(wav.error); return }
+      const preview = inspectWavetable(wav)
+      if ('error' in preview) { setNotice(preview.error); return }
+      if (preview.ambiguous) {
+        setTableImport({ file, layer, preview, size: preview.candidates.includes(1024) ? 1024 : preview.frameSize })
+        return
+      }
+      const result = await importWavetableFile(file, preview.frameSize)
+      if ('error' in result) { setNotice(result.error); return }
+      change(`layers[${layer}].source.table`, result.tableName)
+      setNotice(`Imported ${result.name}.`)
+      } catch { setNotice('That wavetable could not be read or stored.') }
+    })
+    picker.click()
+  }, [change])
+
+  const exportProject = useCallback(async () => {
+    if (!loaded || !patch) return
+    try {
+    await restoreAudioAssets({ ...loaded, patch, snapshots })
+    const blob = new Blob([serializeAudioProject({ ...loaded, name, patch, snapshots, rig })], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = window.document.createElement('a')
+    link.href = url
+    link.download = `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'sound'}.paramrig.audio.json`
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'The project could not be exported.') }
+  }, [loaded, name, patch, snapshots, rig])
   const patterns = useMemo(() => patch?.performers.map((performer) => performer.patterns) ?? [], [patch])
   const curves = useMemo(() => patch?.performers.map((performer) => performer.curves) ?? [], [patch])
   const shownPatch = heard ?? patch
   const profiles = useMemo(() => (shownPatch ? layerProfiles(shownPatch) : []), [shownPatch])
   const wave = useMemo(
-    () => ({ samples: mono, head: transport.head, profiles, label: loaded?.name ?? '' }),
-    [mono, transport.head, profiles, loaded],
+    () => ({ samples: mono, head: liveOn ? null : transport.head, profiles, label: name ?? '' }),
+    [mono, transport.head, profiles, name, liveOn],
   )
 
   if (!loaded || !patch) {
@@ -377,6 +693,102 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           onNavigate={onNavigate}
           onPatch={load}
           wave={wave}
+          deck={
+            <AudioLibraryDeck
+              compact={compact}
+              transport={hearingTransport}
+              live={liveOn}
+              hearing={hearing}
+              onHearing={changeHearing}
+              recording={recording}
+              onRecord={toggleRecord}
+              patch={shownPatch ?? undefined}
+              name={name}
+              current={preset}
+              snapshots={snapshots}
+              touched={touched}
+              gestures={patch.gestures ?? []}
+              gestureLabels={macrosOf(rig, patch).map((macro) => macro.label)}
+              onToggleGesture={(id) => {
+                commit({ ...patch, gestures: patch.gestures?.map((entry) => entry.id === id ? { ...entry, enabled: !entry.enabled } : entry) })
+                setTouched(true)
+              }}
+              onRemoveGesture={(id) => {
+                commit({ ...patch, gestures: patch.gestures?.filter((entry) => entry.id !== id) })
+                setTouched(true)
+              }}
+              onSnapshot={keep}
+              onOverwrite={overwrite}
+              shuffle={shuffle}
+              generating={generating}
+              onShuffle={(next) => {
+                if (next.keepReference && !shuffle.keepReference) {
+                  mutateRef.current = latest.current ?? patch
+                }
+                setShuffle(next)
+                writeShufflePrefs(next)
+              }}
+              onRandom={() => {
+                if (generatingRef.current) return
+                generatingRef.current = true
+                setGenerating(true)
+                const token = ++genToken.current
+                const family = shuffle.family
+                window.setTimeout(() => {
+                  try {
+                    if (token !== genToken.current) return
+                    const next = randomPatch(Math.floor(Math.random() * 100000), rate, { family })
+                    if (token !== genToken.current) return
+                    const current = latest.current ?? patch
+                    const table = rig ? syncMacrosToPatch(macrosOf(rig, current), next) : undefined
+                    const nextRig = table ? writeMacros(rig, table, next) : rig
+                    mutateRef.current = next
+                    setPreset('')
+                    setTouched(false)
+                    hearNow(next)
+                    commit(next, nextRig)
+                  } finally {
+                    if (token === genToken.current) {
+                      generatingRef.current = false
+                      setGenerating(false)
+                    }
+                  }
+                }, 0)
+              }}
+              onMutate={() => {
+                const current = latest.current ?? patch
+                if (!current || generatingRef.current) return
+                generatingRef.current = true
+                setGenerating(true)
+                const token = ++genToken.current
+                const source = shuffle.keepReference ? (mutateRef.current ?? current) : current
+                const amount = shuffle.amount
+                const target = shuffle.target
+                const currentRig = rig
+                window.setTimeout(() => {
+                  try {
+                    if (token !== genToken.current) return
+                    const macros = currentRig ? macrosOf(currentRig, source) : undefined
+                    const result = mutateSound(source, Math.floor(Math.random() * 100000), { amount, target, macros }, rate)
+                    if (token !== genToken.current) return
+                    const table = result.macros
+                      ? syncMacrosToPatch(result.macros, result.patch)
+                      : (currentRig ? syncMacrosToPatch(macrosOf(currentRig, source), result.patch) : undefined)
+                    const nextRig = table ? writeMacros(currentRig, table, result.patch) : currentRig
+                    setTouched(true)
+                    if (!shuffle.keepReference) mutateRef.current = result.patch
+                    hearNow(result.patch)
+                    commit(result.patch, nextRig)
+                  } finally {
+                    if (token === genToken.current) {
+                      generatingRef.current = false
+                      setGenerating(false)
+                    }
+                  }
+                }, 0)
+              }}
+            />
+          }
         />
       )}
     >
@@ -396,13 +808,15 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         />
         <AudioTransport
           compact
-          transport={transport}
+          play={false}
+          transport={hearingTransport}
           samples={samples}
           sampleRate={rate}
-          name={loaded.name}
-          patch={shownPatch ?? undefined}
-          autoPlay={autoPlay}
-          onAutoPlay={setAuto}
+          name={name}
+          live={liveOn}
+          livePeak={liveMeter.peak}
+          liveLeft={liveMeter.left}
+          liveRight={liveMeter.right}
           tools={
             <>
             {/*
@@ -423,17 +837,21 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                     onClick={() => {
                       const current = latest.current ?? patch
                       if (which === side || !current) return
-                      const mine = { patch: current, past, future }
+                      const mine = { patch: current, past, future, rig, preset, touched, reference: mutateRef.current ?? current }
                       const other = spare ?? mine
                       setSpare(mine)
                       setPast(other.past)
                       setFuture(other.future)
                       setSide(which)
-                      setTouched(true)
+                      setTouched(other.touched)
+                      setPreset(other.preset)
                       setDirty(true)
                       latest.current = other.patch
+                      mutateRef.current = other.reference
                       setPatch(other.patch)
                       setHeard(other.patch)
+                      setRig(other.rig)
+                      if (isLive()) updateLive(other.patch)
                     }}
                   >
                     {which.toUpperCase()}
@@ -446,7 +864,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                   className="btn btn--quiet btn--sm"
                   // The other side becomes this sound, and starts its own history there: the steps
                   // it had led to a sound it no longer holds.
-                  onClick={() => { const current = latest.current ?? patch; if (current) setSpare({ patch: current, past: [], future: [] }) }}
+                  onClick={() => { const current = latest.current ?? patch; if (current) setSpare({ patch: current, past: [], future: [], rig, preset, touched, reference: mutateRef.current ?? current }) }}
                 >
                   Copy
                 </button>
@@ -458,10 +876,6 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
               touched={touched}
               onPatch={load}
               onRemove={forget}
-              onSnapshot={keep}
-              onOverwrite={overwrite}
-              onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000), rate)) }}
-              onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000), undefined, rate)) }}
             />
             </>
           }
@@ -491,20 +905,6 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             </button>
           ))}
         </div>
-        <Tooltip content={skin === 'reference' ? 'Wearing the reference look; switch to ParamRig\'s' : 'Wearing ParamRig\'s look; switch to the reference\'s'}>
-          <Button
-            variant="quiet"
-            size="sm"
-            aria-pressed={skin === 'paramrig'}
-            onClick={() => {
-              const next: AudioSkin = skin === 'reference' ? 'paramrig' : 'reference'
-              setSkin(next)
-              writeAudioPrefs(withSkin(readAudioPrefs(), next))
-            }}
-          >
-            {skin === 'reference' ? 'Look: reference' : 'Look: ParamRig'}
-          </Button>
-        </Tooltip>
         <div className="audio-bar__history">
           <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
             <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
@@ -513,8 +913,15 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
           </Tooltip>
         </div>
+        <Tooltip content="Save this patch, its macros and its wavetables as a project file">
+          <IconButton label="Export project" onClick={exportProject}><IconExport /></IconButton>
+        </Tooltip>
         {exposed > 0 ? (
-          <Button variant="quiet" size="sm" onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>Tune</Button>
+          <Tooltip content={mode === 'tune' ? 'Back to the instrument' : 'Tune the exposed controls'}>
+            <IconButton label="Tune" aria-pressed={mode === 'tune'} onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>
+              <IconSliders />
+            </IconButton>
+          </Tooltip>
         ) : null}
       </div>
       {/* Always in the tree so a screen reader keeps the live region, but no height until it has
@@ -523,13 +930,31 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
         {notice}
         {removed ? <Button size="sm" variant="quiet" onClick={putBack}>Undo</Button> : null}
       </p>
+      {tableImport ? (
+        <div className="audio-import" role="region" aria-label="Wavetable import">
+          <span>{tableImport.file.name} · {tableImport.preview.channels} ch · {tableImport.preview.sampleRate} Hz</span>
+          <SelectField label="Frame size" value={String(tableImport.size)} presentation="menu"
+            options={tableImport.preview.candidates.map((size) => ({ value: String(size), label: `${size} samples · ${tableImport.preview.samples / size} frames` }))}
+            onChange={(size) => setTableImport({ ...tableImport, size: Number(size) })} />
+          <Button size="sm" onClick={async () => {
+            const chosen = tableImport
+            setTableImport(null)
+            let result
+            try { result = await importWavetableFile(chosen.file, chosen.size) } catch { setNotice('That wavetable could not be read or stored.'); return }
+            if ('error' in result) { setNotice(result.error); return }
+            change(`layers[${chosen.layer}].source.table`, result.tableName)
+            setNotice(`Imported ${result.name}.`)
+          }}>Import</Button>
+          <Button size="sm" variant="quiet" onClick={() => setTableImport(null)}>Cancel</Button>
+        </div>
+      ) : null}
       <div className="audio-body" id="main" tabIndex={-1}>
         <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
           {view === 'sounds' ? (
             <AudioPresetsView
               current={preset}
               snapshots={snapshots}
-              onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+              onPatch={load}
               onRemove={forget}
             />
           ) : (
@@ -538,12 +963,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 parameters={parameters}
                 values={values}
                 duration={patch.duration}
+                patch={patch}
                 onChange={change}
                 onGestureStart={began}
                 onGestureEnd={ended}
                 rig={rig}
                 onRig={writeRig}
-                skin={skin}
+                onMacros={writeMacrosTogether}
+                onImportTable={importTable}
                 patterns={patterns}
                 onPattern={paint}
                 curves={curves}

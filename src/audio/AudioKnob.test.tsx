@@ -33,6 +33,16 @@ describe('AudioKnob', () => {
     fireEvent.keyDown(dial, { key: 'ArrowUp' })
     expect(onChange).toHaveBeenCalledWith(0.52)
   })
+
+  it('keeps the reading on the face while the pointer is down', () => {
+    render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} />)
+    const dial = screen.getByRole('slider', { name: 'Cutoff' })
+    expect(dial.querySelector('.fp-knob__value')?.textContent).toBeTruthy()
+    fireEvent.pointerDown(dial, { button: 0, clientY: 40 })
+    expect(dial).toHaveAttribute('data-dragging')
+    fireEvent.pointerUp(dial, { button: 0, clientY: 40 })
+    expect(dial).not.toHaveAttribute('data-dragging')
+  })
 })
 
 describe('the modulation slot', () => {

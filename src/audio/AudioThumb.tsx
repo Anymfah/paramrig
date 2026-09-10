@@ -30,15 +30,33 @@ const COLUMNS = 96
 
 const drawn = new Map<string, WaveformBand[]>()
 
+/** One card at a time, so opening the library does not synthesise a hundred sounds in one turn. */
+const waiting: Array<() => void> = []
+let pumping = false
+
+function pump(): void {
+  if (pumping) return
+  const work = waiting.shift()
+  if (!work) return
+  pumping = true
+  const idle = (globalThis as { requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number }).requestIdleCallback
+  const run = () => {
+    work()
+    pumping = false
+    pump()
+  }
+  if (typeof idle === 'function') idle(run, { timeout: 2000 })
+  else setTimeout(run, 0)
+}
+
 /** Idle time where the browser offers it, and the back of the queue where it does not. */
 function soon(work: () => void): () => void {
-  const idle = (globalThis as { requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number }).requestIdleCallback
-  if (typeof idle === 'function') {
-    const handle = idle(work, { timeout: 2000 })
-    return () => (globalThis as { cancelIdleCallback?: (handle: number) => void }).cancelIdleCallback?.(handle)
+  waiting.push(work)
+  pump()
+  return () => {
+    const at = waiting.indexOf(work)
+    if (at >= 0) waiting.splice(at, 1)
   }
-  const handle = setTimeout(work, 0)
-  return () => clearTimeout(handle)
 }
 
 export const AudioThumb = memo(function AudioThumb({ patch, id }: {

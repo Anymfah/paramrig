@@ -29,7 +29,7 @@ const MAX_COMB_SECONDS = 0.05
 export function createInsert(slot: InsertSlot, sampleRate: number): InsertState {
   return {
     shaper: createShaper(),
-    body: slot.kind === 'body' ? createModal(Math.min(6, Math.max(1, Math.round(slot.partials)))) : null,
+    body: slot.kind === 'body' ? createModal(6) : null,
     line: slot.kind === 'comb' ? line(Math.ceil(MAX_COMB_SECONDS * sampleRate) + 2) : null,
     phase: 0,
   }
@@ -89,7 +89,7 @@ export function insertSample(
   } else if (slot.kind === 'fold') {
     wet = fold(input * (1 + Math.min(1, Math.max(0, slot.drive)) * 15))
   } else if (slot.kind === 'body' && state.body) {
-    wet = modalSample(state.body, input, slot.frequency, slot.spread, slot.decay, sampleRate)
+    wet = modalSample(state.body, input, slot.frequency, slot.spread, slot.decay, sampleRate, slot.profile ?? 'bar', slot.character ?? 0.5, slot.partials)
   } else if (slot.kind === 'comb' && state.line) {
     const delay = Math.max(1, Math.min(MAX_COMB_SECONDS, slot.time) * sampleRate)
     const back = readAt(state.line, delay)

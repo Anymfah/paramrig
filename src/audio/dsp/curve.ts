@@ -51,3 +51,19 @@ export function curveAt(curve: BezierCurve, x: number): number {
 export const LINEAR: BezierCurve = { type: 'cubic-bezier', p0: [0, 0], p1: [0.33, 0.33], p2: [0.67, 0.67], p3: [1, 1] }
 export const EASE_OUT: BezierCurve = { type: 'cubic-bezier', p0: [0, 0], p1: [0, 0.6], p2: [0.3, 1], p3: [1, 1] }
 export const EASE_IN: BezierCurve = { type: 'cubic-bezier', p0: [0, 0], p1: [0.7, 0], p2: [1, 0.4], p3: [1, 1] }
+
+/** 0..1 through an optional curve onto a span, logarithmic when the field is. */
+export function mapAmount(
+  amount: number,
+  from: number,
+  to: number,
+  options: { invert?: boolean; curve?: BezierCurve; scale?: 'linear' | 'log' } = {},
+): number {
+  let at = Math.min(1, Math.max(0, amount))
+  if (options.invert) at = 1 - at
+  if (options.curve) at = curveAt(options.curve, at)
+  if (options.scale === 'log' && from > 0 && to > 0) {
+    return Math.exp(Math.log(from) + at * (Math.log(to) - Math.log(from)))
+  }
+  return from + at * (to - from)
+}

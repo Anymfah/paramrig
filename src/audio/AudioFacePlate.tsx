@@ -9,14 +9,19 @@ import { FILTER_SLOTS, FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, MOD
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { warp } from '@/audio/dsp/osc'
-import { TABLES, TABLE_NAMES, tableAt, tableOf, wavetable } from '@/audio/dsp/wavetable'
+import { listedWavetables, tableAt, tableOf, wavetable, wavetableOf } from '@/audio/dsp/wavetable'
 import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse, fxResponse, insertResponse } from '@/audio/dsp/response'
 import { createInsert, insertSample } from '@/audio/dsp/insert'
-import type { FilterKind, FxKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
+import type { AudioPatch, FilterKind, FxKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
+import { type AudioRig } from '@/audio/rig'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { PerformerShape } from '@/audio/types'
-import { DEFAULT_RIG_GROUP, controlId, emptyAudioRig, parseAudioProperty, type AudioRig } from '@/audio/rig'
-import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
+import {
+  applyMacros, bindMacro as addMacroDestination, inactiveMacroDestinations, macroIsMapped,
+  macroIsParked, macroPropertyLabel, macrosOf, prepareMacroMove, renameMacro, setMacroValue,
+  unbindMacro as removeMacro, writeMacros, type MacroSlot,
+} from '@/audio/macros'
+import { DEAL, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
 
 /**
  * The face-plate, transcribed from the reference at its own scale.
@@ -51,13 +56,12 @@ type Ctx = {
   onGestureEnd?: () => void
   focus: number
   setFocus: (index: number) => void
-  /** The sixteen macros as they stand: which property each drives, if any. */
-  macros: Macro[]
+  /** The sixteen macros as they stand: which properties each drives, if any. */
+  macros: MacroSlot[]
 }
-type Macro = { label: string; id?: string }
 /** The number a dial wears when a macro drives it. */
 const macroDigit = (ctx: Ctx, id: string) => {
-  const index = ctx.macros.findIndex((macro) => macro.id === id)
+  const index = ctx.macros.findIndex((macro) => macro.destinations.some((dest) => dest.property === id))
   return index < 0 ? undefined : index + 1
 }
 const num = (ctx: Ctx, id: string): Num | null => {
@@ -177,19 +181,22 @@ function Hint({ target }: { target: HTMLElement | null }) {
 const Origin = createContext({ x: 0, y: 0 })
 function useAt() {
   const origin = useContext(Origin)
-  return (x: number, y: number): CSSProperties => ({ left: x - origin.x, top: y - origin.y })
+  return (x: number | string, y: number): CSSProperties => ({ left: typeof x === 'number' ? x - origin.x : x, top: y - origin.y })
 }
 
-function Panel({ x, y, w, h, label, tone, gap, children }: {
+function Panel({ x, y, w, h, label, tone, gap, follow, children }: {
   x: number; y: number; w: number; h: number; label: string; tone?: 'panel' | 'noise' | 'bare'
   /** The gap before it in its row, as the reference measures it. */
-  gap?: number; children: ReactNode
+  gap?: number
+  /** Layer this panel follows; shown so a change of oscillator is a change of context, not a surprise. */
+  follow?: number
+  children: ReactNode
 }) {
   // A flex item at the size it was measured at, which grows with its row in proportion to its
   // width and centres what it holds; inside, every control keeps the coordinates it was measured at.
   return (
     <Origin.Provider value={{ x, y }}>
-      <section className="fp-panel" data-tone={tone ?? 'panel'} aria-label={label} style={{ flex: `${w} 1 ${w}px`, marginInlineStart: gap }}>
+      <section className="fp-panel" data-tone={tone ?? 'panel'} data-layer={follow} aria-label={label} aria-description={follow !== undefined ? `Layer ${follow}` : undefined} style={{ flex: `${w} 1 ${w}px`, marginInlineStart: gap }}>
         <div className="fp-panel__body" style={{ width: w, height: h }}>{children}</div>
       </section>
     </Origin.Provider>
@@ -218,7 +225,7 @@ function Text({ x, y, size = 13, align = 'center', kind, u, onClick, checked, la
 }
 
 function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, inert, idle, dots }: {
-  ctx: Ctx; x: number; y: number; id: string; label: string; size?: KnobSize; tone?: KnobTone; digit?: string | number; face?: ReactNode; param?: Num
+  ctx: Ctx; x: number | string; y: number; id: string; label: string; size?: KnobSize; tone?: KnobTone; digit?: string | number; face?: ReactNode; param?: Num
   /** Drawn where the reference draws it, wired to nothing: the fraction of the turn it shows. */
   inert?: number
   /** Wired, but nothing reads it in the arrangement the patch is in: why, in a few words. */
@@ -315,7 +322,7 @@ function Badge({ x, y, kind, selected, onClick, label, tab, hint, children }: {
  * A picker of eight names is a picker nobody uses.
  */
 function TableMark({ name }: { name: string }) {
-  const built = wavetable(tableOf(name))
+  const built = wavetableOf(name) ?? wavetable(tableOf(name))
   const frames = 5
   const points = 96
   return (
@@ -385,6 +392,15 @@ const INSERT_MODELS: { value: InsertKind; label: string; note: string }[] = [
   { value: 'fold', label: 'Fold', note: 'Turned back at the rails. Harmonics from nowhere.' },
   { value: 'body', label: 'Body', note: 'Resonances it rings through: a struck thing.' },
   { value: 'comb', label: 'Comb', note: 'Added to itself a moment later. A pitch, or a tail.' },
+]
+
+const BODY_PROFILES: { value: string; label: string; note: string }[] = [
+  { value: 'bar', label: 'Bar', note: 'The original struck rod. Kept so older patches stay themselves.' },
+  { value: 'plate', label: 'Plate', note: 'Nearby modes, a longer shimmer.' },
+  { value: 'cavity', label: 'Cavity', note: 'A hollow air, the first mode loud.' },
+  { value: 'membrane', label: 'Membrane', note: 'A skin: the top dies fast.' },
+  { value: 'glass', label: 'Glass', note: 'Bright, slow to lose its top.' },
+  { value: 'aether', label: 'Aether', note: 'Invented spacings no object rings at.' },
 ]
 
 /**
@@ -637,10 +653,11 @@ const FILTER_MODELS: { value: FilterKind; label: string; note: string }[] = [
  * The trigger sits in plate coordinates and scales with the plate. The picker is portalled to the
  * document, so it renders at the app's own size and stays legible on a plate scaled down.
  */
-function SlotMenu({ x, y, w, label, value, options, onPick, hint, columns = 4 }: {
+function SlotMenu({ x, y, w, label, value, options, onPick, hint, columns = 4, action }: {
   x: number; y: number; w: number; label: string; value: string
   options: { value: string; label: string; note?: string; mark?: ReactNode }[]
   onPick: (next: string) => void; hint?: string; columns?: number
+  action?: { label: string; onPick: () => void }
 }) {
   const at = useAt()
   const chosen = options.find((option) => option.value === value)
@@ -700,6 +717,11 @@ function SlotMenu({ x, y, w, label, value, options, onPick, hint, columns = 4 }:
             <span className="fp-picker__name">{said?.label ?? ''}</span>
             <span className="fp-picker__note">{said?.note ?? ''}</span>
           </p>
+          {action ? (
+            <DropdownMenu.Item className="fp-picker__action" onSelect={action.onPick}>
+              {action.label}
+            </DropdownMenu.Item>
+          ) : null}
         </DropdownMenu.Content>
       </DropdownMenu.Portal>
     </DropdownMenu.Root>
@@ -1069,33 +1091,6 @@ function Bracket({ x0, x1, top, mid, tip, width }: { x0: number; x1: number; top
 
 /* ── The plate ───────────────────────────────────────────────────────────────────────────────── */
 
-/**
- * The sixteen macros are the document's rig: each is a control exposed to Tune and to the SDK,
- * bound to the property it was dropped on. A document without a rig starts from these — the
- * reference's first eight as it names them, then the eight this engine reaches for next — and
- * the first macro moved makes them its own. A dial a macro drives wears its number in red.
- */
-const DEFAULT_MACROS: { label: string; id: string }[] = [
-  { label: 'Pos1', id: 'layers[0].pitch.start' },
-  { label: 'Level1', id: 'layers[0].gain' },
-  { label: 'Pos2', id: 'layers[1].pitch.start' },
-  { label: 'Level2', id: 'layers[1].gain' },
-  { label: 'Cutoff', id: 'layers[0].filterA.cutoff' },
-  { label: 'Reso', id: 'layers[0].filterA.resonance' },
-  { label: 'Attack', id: 'layers[0].amp.attack' },
-  { label: 'Release', id: 'layers[0].amp.release' },
-  // Not the insert slots: a macro pointed into a slot that is switched off is a dial that turns
-  // and does nothing, and the eight the reference names are the eight that always do something.
-  { label: 'PM', id: 'layers[0].source.fmIndex' },
-  { label: 'Detune', id: 'layers[0].source.detune' },
-  { label: 'Spread', id: 'layers[0].spread' },
-  { label: 'Delay', id: 'fx.y.mix' },
-  { label: 'Verb', id: 'fx.z.mix' },
-  { label: 'Width', id: 'fx.width' },
-  { label: 'Limit', id: 'master.limiter' },
-  { label: 'Fade', id: 'master.fadeOut' },
-]
-
 /** Hertz as the reference's semitone readout: distance from A4, to the thousandth. */
 const semitones = (hz: number) => (hz > 0 ? 12 * Math.log2(hz / 440) : 0)
 const hertz = (st: number) => 440 * Math.pow(2, st / 12)
@@ -1127,31 +1122,16 @@ const held = (source: Source): { path: string; id: string } | null =>
   : source.mod !== undefined ? { path: `mods[${source.mod}]`, id: source.id }
   : null
 
-const MACRO_COUNT = 16
-const macroBindingId = (index: number) => `macro-${index + 1}`
-
-/** The macros a rig describes: by the binding ids the plate writes, or by order for a rig made elsewhere. */
-function macrosOf(rig: AudioRig | undefined): Macro[] {
-  // No rig at all is a document that has never been touched, and it starts from the sixteen above.
-  // A rig with nothing bound is a different thing entirely — somebody took the last macro off —
-  // and it used to be told apart from neither: the defaults came back, sixteen dials claiming to
-  // drive properties that the document no longer bound to anything.
-  if (!rig) return DEFAULT_MACROS
-  if (rig.bindings.length === 0) return Array.from({ length: MACRO_COUNT }, () => ({ label: '' }))
-  const numbered = rig.bindings.some((binding) => /^macro-\d+$/.test(binding.id))
-  return Array.from({ length: MACRO_COUNT }, (_, index) => {
-    const binding = numbered ? rig.bindings.find((entry) => entry.id === macroBindingId(index)) : rig.bindings[index]
-    const parameter = binding && rig.parameters.find((entry) => entry.id === binding.parameterId)
-    return binding && parameter ? { label: parameter.label, id: binding.property } : { label: '' }
-  })
-}
-
-/** A short name for a macro on a property: the field's own, and the layer's number when it has one. */
-const macroLabel = (property: string) => {
-  const path = parseAudioProperty(property)
-  const layer = /^layers\[(\d)\]/.exec(property)
-  const label = path?.spec.label ?? property
-  return layer ? `${label} ${Number(layer[1]) + 1}` : label
+function macroHint(slot: MacroSlot, index: number, patch: AudioPatch): string {
+  if (slot.destinations.length === 0) {
+    return `Drag this number onto any knob or fader, or press Enter and then Enter again on the control: macro ${index + 1} will turn it, and the patch exposes it.`
+  }
+  const dests = slot.destinations.map((dest) => macroPropertyLabel(dest.property)).join(', ')
+  const parked = inactiveMacroDestinations(slot, patch)
+  const park = parked.length
+    ? ` ${parked.map((property) => macroPropertyLabel(property)).join(', ')} ${parked.length === 1 ? 'is' : 'are'} parked until this knob moves.`
+    : ''
+  return `${slot.label || `Macro ${index + 1}`} turns ${dests}.${park} Drag the number onto another control to add a destination; double-click or Delete frees it.`
 }
 
 /**
@@ -1163,14 +1143,14 @@ const macroLabel = (property: string) => {
  * object each time for that to hold, which is why the page builds them with `useCallback` and
  * `useMemo` rather than writing them into the JSX.
  */
-export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, curves, onCurves, rig, onRig, skin }: {
+export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values, duration, patch, onChange, onGestureStart, onGestureEnd, patterns, onPattern, curves, onCurves, rig, onRig, onMacros, onImportTable }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
+  patch: AudioPatch
   onChange: (property: string, value: ParamValue) => void
   onGestureStart?: () => void
   onGestureEnd?: () => void
-  /** The strip of twelve along the foot: the document's kept sounds, one a slot. */
   /** Each performer's twelve rows of sixteen levels, and how a row is redrawn. */
   patterns?: number[][][]
   onPattern?: (performer: number, scene: number, steps: number[]) => void
@@ -1180,64 +1160,42 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
   /** The document's rig, which the macro band shows and edits. */
   rig?: AudioRig
   onRig?: (next: AudioRig) => void
-  /** The look the plate wears: the reference's, or ParamRig's own. */
-  skin?: 'reference' | 'paramrig'
+  /** A mapped macro turned: the rig and the patch it writes, in one step. */
+  onMacros?: (next: AudioRig, nextPatch: AudioPatch, index?: number) => void
+  onImportTable?: (layer: number) => void
 }) {
   const [focus, setFocus] = useState(0)
   /** Which of a layer's three insert slots the panel is showing. Nothing is hidden, only stacked. */
   const [slot, setSlot] = useState(0)
-  const macros = macrosOf(rig)
+  const [renaming, setRenaming] = useState<number | null>(null)
+  const [rename, setRename] = useState('')
+  const renameFinished = useRef(false)
+  const macros = macrosOf(rig, patch)
   const ctx: Ctx = {
     byId: new Map(parameters.map((parameter) => [parameter.id, parameter])),
     values, onChange, onGestureStart, onGestureEnd, focus, setFocus, macros,
   }
 
-  /**
-   * The rig, rebuilt from the macro table: a control for every macro that drives something,
-   * bound under the macro's number, with the property's current value as the control's default.
-   *
-   * Only the sixteen are rebuilt. Everything else the rig carries — a control somebody exposed
-   * from Tune, the group it was filed under, an inspector category, a binding with a transform on
-   * it — is handed straight back. This used to return a rig built from the macro table and nothing
-   * else, so dropping one macro on a dial silently deleted every other control the document had.
-   */
-  const writeRig = (table: Macro[]) => {
+  const commitMacros = (table: MacroSlot[], apply = false, index?: number) => {
     if (!onRig) return
-    const base = rig ?? emptyAudioRig()
-    // Which bindings are the band's own. Numbered when the plate wrote them; otherwise the first
-    // sixteen by order, which is exactly the set `macrosOf` was showing when this table was made.
-    const numbered = base.bindings.some((entry) => /^macro-\d+$/.test(entry.id))
-    const mine = new Set((numbered
-      ? base.bindings.filter((entry) => /^macro-\d+$/.test(entry.id))
-      : base.bindings.slice(0, MACRO_COUNT)).map((entry) => entry.id))
-    const bindings = base.bindings.filter((entry) => !mine.has(entry.id))
-    const letGo = new Set(base.bindings.filter((entry) => mine.has(entry.id)).map((entry) => entry.parameterId))
-    const stillDriven = new Set(bindings.map((entry) => entry.parameterId))
-    const parameters = base.parameters.filter((entry) => !letGo.has(entry.id) || stillDriven.has(entry.id))
-    const taken = new Set(parameters.map((entry) => entry.id))
-    table.forEach((macro, at) => {
-      if (!macro.id) return
-      const source = ctx.byId.get(macro.id)
-      if (!source) return
-      const id = controlId(macro.label, taken)
-      taken.add(id)
-      parameters.push({ ...source, id, label: macro.label, group: DEFAULT_RIG_GROUP.id, defaultValue: (values[macro.id] ?? source.defaultValue) as never } as ParameterDef)
-      bindings.push({ id: macroBindingId(at), property: macro.id, parameterId: id })
-    })
-    const groups = base.groups.some((group) => group.id === DEFAULT_RIG_GROUP.id) ? base.groups : [...base.groups, DEFAULT_RIG_GROUP]
-    onRig({ ...base, groups, parameters, bindings })
+    const nextTable = apply && index !== undefined
+      ? prepareMacroMove(macros, index, table[index]?.value ?? 0, patch)
+      : table
+    const nextRig = writeMacros(rig, nextTable, patch)
+    if (apply && onMacros) onMacros(nextRig, applyMacros(patch, nextTable, nextRig, index), index)
+    else onRig(nextRig)
   }
   /**
    * A macro dropped on a control takes that property; a property carries one macro at most, so
-   * any macro already on it lets go. A document still on the default table takes the whole table
-   * as its own at that moment.
+   * any macro already on it lets go. Destinations already on this macro stay.
    */
   const bindMacro = (index: number, property: string) => {
     if (!ctx.byId.get(property)) return
-    writeRig(macros.map((macro, at) => (at === index ? { label: macroLabel(property), id: property } : macro.id === property ? { label: '' } : macro)))
+    commitMacros(addMacroDestination(macros, index, property, patch))
   }
   const unbindMacro = (index: number) => {
-    if (macros[index]?.id) writeRig(macros.map((macro, at) => (at === index ? { label: '' } : macro)))
+    if ((macros[index]?.destinations.length ?? 0) === 0) return
+    commitMacros(removeMacro(macros, index))
   }
   const f = focus
   const L = (index: number, tail: string) => `layers[${index}].${tail}`
@@ -1249,13 +1207,10 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
   /** The room the stage gives the plate; nothing until it is measured, which is the reference's size. */
   const [room, setRoom] = useState({ w: 0, h: 0 })
   const { layout, scale } = room.w && room.h ? fitPlate(room.w, room.h) : { layout: 'wide' as Layout, scale: 1 }
-  /** A folded face: the macros in two rows, one modulator at a time, the strip's slots sharing the width. */
+  /** A folded face: one modulator at a time, the strip's slots sharing the width. */
   const folded = layout !== 'wide'
-  const face = FACES[layout]
   const rows = DEAL[layout]
   const box = plateBox(layout, scale, room)
-  /** The seed's block before the first macro; a shorter one on a face too narrow for the reference's. */
-  const lead = Math.min(217.5, face.w - 514 - 10)
 
   /**
    * Assigning a modulator the reference's way: pick up its handle in the routing bar and drop it
@@ -1414,9 +1369,13 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
 
   /** Enter on any control that can take what is held, while something is held, drops it there. */
   const dropCarried = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (!assigning) return
-    if (event.key === 'Escape') { setAssigning(null); return }
+    if (event.key === 'Escape') {
+      setAssigning(null)
+      setRenaming(null)
+      return
+    }
     if (event.key !== 'Enter') return
+    if (!assigning) return
     const node = event.target as HTMLElement | null
     if (assigning.kind === 'm') {
       const property = node?.closest?.('[data-property]')?.getAttribute('data-property')
@@ -1562,20 +1521,25 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
       text: (ratio) => `ratio ${ratio.toFixed(3)}`,
     }
   }
-  const seed = readNum(ctx, 'seed', 0)
-
   /** The wave picker at the head of an oscillator: the four waves of the table, the chosen one lit. */
   const wavePicker = (index: number, left: number) => {
     const wave = waveOf(read(ctx, L(index, 'source.wave')))
     const widths = { sine: 25, triangle: 16, saw: 24, square: 18 }
     let x = left
     if (source(index) === 'table') {
+      const tables = listedWavetables()
       return (
+        <>
         <SlotMenu x={left} y={53} w={124} label={`Oscillator ${index + 1} wavetable`}
           value={String(read(ctx, L(index, 'source.table')) ?? 'sweep')}
           hint="Which wavetable this oscillator reads. The big dial walks along it."
-          options={TABLE_NAMES.map((name) => ({ value: name, label: TABLES[name]?.label ?? name, note: TABLES[name]?.note, mark: <TableMark name={name} /> }))}
-          onPick={(next) => onChange(L(index, 'source.table'), next)} />
+          options={tables.map((entry) => ({ value: entry.id, label: entry.label, note: entry.note, mark: <TableMark name={entry.id} /> }))}
+          onPick={(next) => onChange(L(index, 'source.table'), next)}
+          action={onImportTable ? {
+            label: 'Import WAV…',
+            onPick: () => onImportTable(index),
+          } : undefined} />
+        </>
       )
     }
     return (
@@ -1609,7 +1573,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
   /** The body's items, each at its measured size, for the face to deal into rows. */
   const panels: Record<Exclude<Item, 'modulators'>, ReactNode> = {
     pitch: (
-    <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare">
+    <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare" follow={f + 1}>
       <Text x={32} y={59.5} kind="title">Pitch</Text>
       <Readout ctx={ctx} x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
       <Text x={32} y={104}>Arp Ratio</Text>
@@ -1697,7 +1661,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     </Panel>
     ),
     insert: (
-    <Panel x={696.5} y={54} w={159} h={288} label="Insert" gap={2}>
+    <Panel x={696.5} y={54} w={159} h={288} label="Insert" gap={2} follow={f + 1}>
       <span role="tablist" aria-label="Insert slot" className="fp-tabs">
         {INSERT_LETTERS.map((name, index) => (
           <Badge key={name} x={707.5 + index * 19} y={65} kind="circle" tab selected={slot === index} onClick={() => setSlot(index)}
@@ -1729,8 +1693,10 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
             hint="Which side of the amp envelope this slot stands on. Before it bites the loud part of the sound; after it keeps ringing once the sound has gone.">
             {inserted.place === 'post' ? 'After the amp' : 'Before the amp'}
           </Text>
-          <Text x={739.9} y={148}>Amount</Text>
-          <Knob ctx={ctx} x={739.9} y={190} id={I('amount')} label="Amount" />
+          {inserted.kind !== 'body' ? (<>
+            <Text x={739.9} y={148}>Amount</Text>
+            <Knob ctx={ctx} x={739.9} y={190} id={I('amount')} label="Amount" />
+          </>) : null}
           {inserted.kind === 'drive' || inserted.kind === 'fold' ? (<>
             <Text x={811.4} y={148}>Drive</Text>
             <Knob ctx={ctx} x={811.4} y={190} id={I('drive')} label="Drive" />
@@ -1752,14 +1718,19 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
             <Knob ctx={ctx} x={776} y={288} id={I('feedback')} label="Feedback" />
           </>) : null}
           {inserted.kind === 'body' ? (<>
-            <Text x={811.4} y={148}>Freq</Text>
-            <Knob ctx={ctx} x={811.4} y={190} id={I('frequency')} label="Freq" />
-            <Text x={728} y={238}>Ring</Text>
-            <Text x={776} y={238}>Spread</Text>
-            <Text x={824} y={238}>Parts</Text>
-            <Knob ctx={ctx} x={728} y={272} id={I('decay')} label="Ring" size="sm" />
-            <Knob ctx={ctx} x={776} y={272} id={I('spread')} label="Spread" size="sm" />
-            <Knob ctx={ctx} x={824} y={272} id={I('partials')} label="Parts" size="sm" />
+            <Text x={811.4} y={148}>Size</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('frequency')} label="Size" />
+            <SlotMenu x={728} y={148} w={72} label="Material" columns={2}
+              value={String(read(ctx, I('profile')) || 'bar')}
+              hint="The resonances this body rings at. Names of intention, not a claim of physical modelling."
+              options={BODY_PROFILES}
+              onPick={(next) => onChange(I('profile'), next)} />
+            <Text x={728} y={238}>Damping</Text>
+            <Text x={776} y={238}>Character</Text>
+            <Text x={824} y={238}>Mix</Text>
+            <Knob ctx={ctx} x={728} y={272} id={I('decay')} label="Damping" size="sm" />
+            <Knob ctx={ctx} x={776} y={272} id={I('character')} label="Character" size="sm" />
+            <Knob ctx={ctx} x={824} y={272} id={I('amount')} label="Mix" size="sm" />
             <Readout ctx={ctx} x={741} base={322} mark="note" value={semitones(readNum(ctx, I('frequency'), 440))} label="Body pitch" edit={pitchEdit(I('frequency'))} />
           </>) : null}
         </>
@@ -1767,7 +1738,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     </Panel>
     ),
     filter: (
-    <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
+    <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5} follow={f + 1}>
       <span role="tablist" aria-label="Filter slot" className="fp-tabs">
         {FILTER_LETTERS.map((name, index) => (
           <Badge key={name} x={866 + index * 19} y={65} kind="circle" tab selected={filterSlot === index}
@@ -2010,7 +1981,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
         )
       })}
       {modulators.some((entry) => entry.source === AMP_AT) ? (
-        <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope">
+        <Panel x={0} y={384} w={413.5} h={288} label="Amp envelope" follow={f + 1}>
           <Text x={2.5} y={389.5} align="left" kind="title">Modulator 1</Text>
           <Text x={205.5} y={389} kind="title">Amp-Envelope</Text>
           <Text x={70.9} y={413.5}>Shape</Text>
@@ -2119,7 +2090,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
   )
 
   return (
-    <div className="fp-stage" ref={stageRef} data-skin={skin ?? 'reference'} data-layout={layout} style={{ '--fp-scale': scale } as CSSProperties}>
+    <div className="fp-stage" ref={stageRef} data-layout={layout} style={{ '--fp-scale': scale } as CSSProperties}>
       <div className="fp-sizer" style={{ width: box.w * scale, height: box.h * scale }}>
       <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}
         onPointerOver={hintFrom} onPointerOut={(event) => { const next = hintOf(event.relatedTarget); if (next !== hinted) setHinted(next) }}
@@ -2131,46 +2102,82 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
           onShow={(id) => { const slot = slotOf(id); if (slot !== null) setShown(slot); setRouted(null) }}
           onClose={() => setRouted(null)} />
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
-        {/* ═══ Macro band: the seed, then the macros in two groups of eight that wrap as units ═══ */}
+        {/* ═══ Macro band: sixteen on one row, wrapping only when the plate is too narrow ═══ */}
         <div className="fp-band" role="group" aria-label="Macros">
           <Origin.Provider value={{ x: 0, y: 0 }}>
-            <div className="fp-band__seed" style={{ width: lead }}>
-              <Text x={5} y={19.5} align="left" kind="bold">Seed</Text>
-              <Box x={40} y={12} w={62} h={16.5} onClick={() => onChange('seed', Math.floor(Math.random() * 10000))} label={`Seed ${seed}; click for another`} hint="The seed of the noise and the jitter. Click for another.">{seed}</Box>
-            </div>
-            {[0, 1].map((half) => (
-              <Fragment key={half}>
-                {/* the second row of a folded face starts under the first, past the seed */}
-                {half && folded ? <span className="fp-band__lead" style={{ width: lead }} aria-hidden="true" /> : null}
-                <div className="fp-band__group">
-                  {macros.slice(half * 8, half * 8 + 8).map((macro, at) => {
-                    const index = half * 8 + at
-                    return (
-                      <span key={index} className="fp-macro" data-wired={macro.id ? '' : undefined}>
-                      <span className="fp-macro__box">
-                        <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={0}
-                          aria-label={`Macro ${index + 1}${macro.id ? `, turning ${macro.label}` : ', free'}. Enter picks it up, Enter on a control drops it${macro.id ? ', Delete frees it' : ''}`}
-                          data-hint={macro.id ? `Macro ${index + 1} turns ${macro.label}. Drag the number onto another control to move it, or press Enter to pick it up; double-click or Delete frees it.` : `Drag this number onto any knob or fader, or press Enter and then Enter again on the control: macro ${index + 1} will turn it, and the patch exposes it.`}
-                          data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
-                          style={{ left: 40.5 - 28.3, top: 19.5 - 13 * CAP }}
-                          onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
-                          onPointerMove={assigning?.kind === 'm' && assigning.macro === index ? follow : undefined}
-                          onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}
-                          onKeyDown={carry(index)}
-                          onDoubleClick={() => unbindMacro(index)}>
-                          {index + 1}
-                        </span>
-                        {macro.id
-                          ? <Knob ctx={ctx} x={40.5} y={25} id={macro.id} label={macro.label} size="macro" />
-                          : <span className="fp-knob-empty" data-size="macro" style={{ left: 40.5, top: 25 }} aria-hidden="true"><Ring /></span>}
-                        {macro.label ? <Text x={40.5} y={40.5} kind="macro">{macro.label}</Text> : null}
-                      </span>
-                      </span>
-                    )
-                  })}
-                </div>
-              </Fragment>
-            ))}
+            {macros.map((macro, index) => {
+              const first = macro.destinations[0]
+              const wired = macro.destinations.length > 0
+              const mapped = macroIsMapped(macro)
+              const amountParam: Num = {
+                kind: 'number', id: `macro-${index + 1}`, label: macro.label || `Macro ${index + 1}`,
+                group: '', min: 0, max: 1, step: 0.001, defaultValue: macro.value,
+              }
+              return (
+                <span key={index} className="fp-macro" data-wired={wired ? '' : undefined} data-parked={macroIsParked(macro, patch) || undefined}>
+                <span className="fp-macro__box">
+                  <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={0}
+                    aria-label={`Macro ${index + 1}${wired ? `, ${macro.label}, ${macro.destinations.length} destination${macro.destinations.length === 1 ? '' : 's'}` : ', free'}. Enter picks it up, Enter on a control drops it${wired ? ', Delete frees it' : ''}`}
+                    data-hint={macroHint(macro, index, patch)}
+                    data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
+                    style={{ left: '19%', top: 19.5 - 13 * CAP }}
+                    onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
+                    onPointerMove={assigning?.kind === 'm' && assigning.macro === index ? follow : undefined}
+                    onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}
+                    onKeyDown={carry(index)}
+                    onDoubleClick={() => unbindMacro(index)}>
+                    {index + 1}
+                  </span>
+                  {wired && first && !mapped
+                    ? <Knob ctx={{ ...ctx, onChange: (_property, next) => commitMacros(setMacroValue(macros, index, Number(next)), true, index) }} x="63%" y={25} id={first.property} label={macro.label} size="macro" />
+                    : wired && mapped
+                      ? <AudioKnob param={amountParam} value={macro.value} size="macro" style={{ left: '63%', top: 25 }}
+                          onChange={(next) => commitMacros(setMacroValue(macros, index, next), true, index)}
+                          onGestureStart={onGestureStart} onGestureEnd={onGestureEnd} />
+                      : <span className="fp-knob-empty" data-size="macro" style={{ left: '63%', top: 25 }} aria-hidden="true"><Ring /></span>}
+                  {renaming === index ? (
+                    <input
+                      className="fp-text fp-macro__name"
+                      data-align="center"
+                      data-kind="macro"
+                      aria-label="Macro name"
+                      value={rename}
+                      autoFocus
+                      maxLength={40}
+                      onChange={(event) => setRename(event.target.value.slice(0, 40))}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          renameFinished.current = true
+                          commitMacros(renameMacro(macros, index, rename))
+                          setRenaming(null)
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          renameFinished.current = true
+                          setRenaming(null)
+                          setRename(macros[index]?.label ?? '')
+                        }
+                      }}
+                      onBlur={() => {
+                        if (!renameFinished.current) commitMacros(renameMacro(macros, index, rename))
+                        setRenaming(null)
+                      }}
+                    />
+                  ) : macro.label ? (
+                    <button type="button" className="fp-text fp-macro__name" data-align="center" data-kind="macro"
+                      aria-label={`Rename ${macro.label}`}
+                      data-hint={macroHint(macro, index, patch)}
+                      onClick={() => { renameFinished.current = false; setRenaming(index); setRename(macro.label) }}>
+                      {macro.label}
+                    </button>
+                  ) : null}
+                </span>
+                </span>
+              )
+            })}
           </Origin.Provider>
         </div>
 

@@ -104,12 +104,65 @@ export const TABLES: Record<string, { label: string; note: string; spectrum: Spe
       return (beat * Math.exp(-(h - 1) / 30)) / h
     },
   },
+  titan: {
+    label: 'Titan',
+    note: 'A thick inharmonic stack. Mass with a bright edge.',
+    spectrum: (h, p) => {
+      const metal = h % 3 === 0 ? 0.15 : 1
+      const reach = 8 + p * 40
+      return (metal * Math.exp(-((h - 1) / reach))) / Math.sqrt(h)
+    },
+  },
+  prism: {
+    label: 'Prism',
+    note: 'A sine that opens into a lattice of odd partials.',
+    spectrum: (h, p) => {
+      if (h === 1) return 1
+      if (h % 2 === 0) return p * 0.04 / h
+      const bloom = Math.pow(p, 0.6)
+      return bloom * Math.exp(-(((h - 3) / (6 + p * 18)) ** 2)) / Math.sqrt(h)
+    },
+  },
+  gate: {
+    label: 'Gate',
+    note: 'A hollow tube that fills as it turns.',
+    spectrum: (h, p) => {
+      const floor = 1 + (1 - p) * 10
+      if (h < floor) return 1 / h
+      const air = Math.exp(-((h - floor) / (4 + p * 20)))
+      return air / Math.sqrt(h)
+    },
+  },
+  serpent: {
+    label: 'Serpent',
+    note: 'A moving formant over a metallic bed.',
+    spectrum: (h, p) => {
+      const centre = 2 + p * 18
+      const vowel = Math.exp(-(((h - centre) / (1.4 + p * 3)) ** 2))
+      const metal = h % 2 === 0 ? 0.08 : 0.45
+      return (vowel * 1.4 + metal * Math.exp(-(h - 1) / 28)) / Math.sqrt(h)
+    },
+  },
+  ion: {
+    label: 'Ion',
+    note: 'Stacked ridges that beat as the position turns.',
+    spectrum: (h, p) => {
+      const comb = 0.35 + 0.65 * Math.abs(Math.cos(Math.PI * h * (0.08 + p * 0.22)))
+      const lift = Math.exp(-((h - 1) / (18 + p * 30)))
+      return (comb * lift) / h
+    },
+  },
 }
 
 export type TableName = keyof typeof TABLES
 export const TABLE_NAMES = Object.keys(TABLES) as TableName[]
-export const tableOf = (value: unknown): TableName =>
-  (typeof value === 'string' && Object.hasOwn(TABLES, value) ? value as TableName : 'sweep')
+
+/** A built-in name, or a user table stored beside the patch. */
+export const isTableName = (value: string): boolean =>
+  Object.hasOwn(TABLES, value) || /^user:[a-z0-9-]{8,}$/i.test(value)
+
+export const tableOf = (value: unknown): string =>
+  (typeof value === 'string' && isTableName(value) ? value : 'sweep')
 
 /** A built table: one frame per position per band, all in one array. */
 export type Wavetable = { frames: Float32Array; limits: readonly number[] }
@@ -158,12 +211,16 @@ function fill(frames: Float32Array, at: number, spectrum: Spectrum, position: nu
 }
 
 const built = new Map<string, Wavetable>()
+const custom = new Map<string, Wavetable>()
 
 /** A table, built the first time it is asked for and kept for the life of the process. */
-export function wavetable(name: TableName): Wavetable {
+export function wavetable(name: string): Wavetable {
+  const customHeld = custom.get(name)
+  if (customHeld) return customHeld
   const kept = built.get(name)
   if (kept) return kept
-  const spectrum = TABLES[name]?.spectrum ?? TABLES.sweep!.spectrum
+  const spectrum = TABLES[name as TableName]?.spectrum
+  if (!spectrum) return wavetable('sweep')
   const frames = new Float32Array(POSITIONS * BANDS.length * FRAME)
   const widest = BANDS[BANDS.length - 1] ?? 1
   for (let p = 0; p < POSITIONS; p += 1) {
@@ -180,6 +237,30 @@ export function wavetable(name: TableName): Wavetable {
   const made = { frames, limits: BANDS }
   built.set(name, made)
   return made
+}
+
+/**
+ * A user table, prepared off the audio thread and handed in by id.
+ *
+ * Missing tables are not replaced by a built-in: the caller gets null and the layer stays silent
+ * rather than playing a different shape under the same name.
+ */
+export function registerWavetable(id: string, table: Wavetable): void {
+  custom.set(id, table)
+}
+
+export function listedWavetables(): { id: string; label: string; note: string }[] {
+  const builtIn = TABLE_NAMES.map((id) => ({ id, label: TABLES[id]?.label ?? id, note: TABLES[id]?.note ?? '' }))
+  const users = [...custom.keys()].filter((id) => id.startsWith('user:')).map((id) => ({ id, label: id.startsWith('user:') ? 'Imported' : id, note: 'A table brought in from a WAV file.' }))
+  return [...builtIn, ...users]
+}
+
+export function wavetableOf(name: string): Wavetable | null {
+  if (custom.has(name)) return custom.get(name) ?? null
+  if (Object.hasOwn(TABLES, name)) return wavetable(name)
+  // A missing imported table is a broken asset: stay silent rather than play a different one.
+  if (/^user:/i.test(name)) return null
+  return wavetable('sweep')
 }
 
 /**
@@ -231,4 +312,79 @@ export function tableAt(table: Wavetable, phase: number, position: number, dt: n
   const fourth = (table.frames[d + i0] ?? 0) + ((table.frames[d + i1] ?? 0) - (table.frames[d + i0] ?? 0)) * frac
   const over = third + (fourth - third) * blend
   return under + (over - under) * rise
+}
+
+/** Samples in one stored cycle. Importers resample onto this so the player can stay one shape. */
+export const WAVETABLE_FRAME = FRAME
+export const WAVETABLE_POSITIONS = POSITIONS
+export const WAVETABLE_MAX_CYCLES = 256
+
+/**
+ * A table from recorded cycles, not from a spectrum.
+ *
+ * Each cycle is resampled onto one stored frame. Harmonics are taken by a DFT so the same
+ * band-limiting the built-in tables use still applies. Levels are left relative: a swell written
+ * into the file stays a swell, instead of every frame being scaled to the same peak.
+ */
+export function wavetableFromCycles(cycles: Float32Array[]): Wavetable {
+  const count = Math.min(WAVETABLE_MAX_CYCLES, Math.max(1, cycles.length))
+  const spectra: number[][] = []
+  const widest = BANDS[BANDS.length - 1] ?? 1
+  for (let c = 0; c < count; c += 1) {
+    const cycle = resampleCycle(cycles[c] ?? new Float32Array(FRAME), FRAME)
+    spectra.push(harmonicsOf(cycle, widest))
+  }
+  let loudest = 0
+  for (const spectrum of spectra) {
+    let sum = 0
+    for (let h = 1; h <= widest; h += 1) sum += Math.abs(spectrum[h] ?? 0)
+    if (sum > loudest) loudest = sum
+  }
+  const frames = new Float32Array(POSITIONS * BANDS.length * FRAME)
+  for (let p = 0; p < POSITIONS; p += 1) {
+    const along = count === 1 ? 0 : (p / (POSITIONS - 1)) * (count - 1)
+    const low = Math.floor(along)
+    const high = Math.min(count - 1, low + 1)
+    const blend = along - low
+    const spectrum: Spectrum = (h) => {
+      const a = spectra[low]?.[h] ?? 0
+      const b = spectra[high]?.[h] ?? 0
+      return a + (b - a) * blend
+    }
+    for (let b = 0; b < BANDS.length; b += 1) {
+      fill(frames, (p * BANDS.length + b) * FRAME, spectrum, 0, BANDS[b] ?? 1, loudest)
+    }
+  }
+  return { frames, limits: BANDS }
+}
+
+function resampleCycle(source: Float32Array, size: number): Float32Array {
+  const out = new Float32Array(size)
+  const span = source.length
+  if (span <= 0) return out
+  for (let i = 0; i < size; i += 1) {
+    const at = (i / size) * span
+    const lo = Math.floor(at) % span
+    const hi = (lo + 1) % span
+    const frac = at - Math.floor(at)
+    out[i] = (source[lo] ?? 0) + ((source[hi] ?? 0) - (source[lo] ?? 0)) * frac
+  }
+  return out
+}
+
+function harmonicsOf(cycle: Float32Array, widest: number): number[] {
+  const n = cycle.length
+  const out = new Array<number>(widest + 1).fill(0)
+  for (let h = 1; h <= widest; h += 1) {
+    let re = 0
+    let im = 0
+    const step = (2 * Math.PI * h) / n
+    for (let i = 0; i < n; i += 1) {
+      const sample = cycle[i] ?? 0
+      re += sample * Math.cos(step * i)
+      im -= sample * Math.sin(step * i)
+    }
+    out[h] = Math.hypot(re, im) * (2 / n)
+  }
+  return out
 }

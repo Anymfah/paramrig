@@ -14,8 +14,9 @@
  * row after the body and deals the filter, the amp, the effects and one modulator across a second
  * row, the routing bar between the two. The narrow one, for a room taller than it is wide, cuts
  * after the noise, deals the four panels that stood right of it across a row of their own, and
- * gives the one modulator a row under the routing bar. The macros wrap into two rows of eight on
- * both, and the strip's slots share whatever width the face has.
+ * gives the one modulator a row under the routing bar. The macros share one row, and wrap only
+ * when the plate is too narrow for sixteen hit targets. The strip's slots share whatever width
+ * the face has.
  */
 
 export type Layout = 'wide' | 'medium' | 'narrow'

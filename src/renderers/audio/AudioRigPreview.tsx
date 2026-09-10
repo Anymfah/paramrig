@@ -1,13 +1,13 @@
-import { useCallback, useDeferredValue, useMemo, useState } from 'react'
+import { useEffect, useDeferredValue, useMemo, useState } from 'react'
 import { useTransport } from '@/audio/useTransport'
 import type { ParamValue } from '@/rigs/types'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { AudioTransport } from '@/audio/AudioTransport'
 import { getAudioDocument } from '@/audio/document'
+import { restoreAudioAssets } from '@/audio/project'
 import { renderPatch } from '@/audio/dsp/render'
 import { resolveAudioValues } from '@/audio/rig'
 import { playbackRate } from '@/audio/playback'
-import { readAudioPrefs, withAutoPlay, writeAudioPrefs } from '@/audio/prefs'
 
 /**
  * A patch heard the way its controls say. The workbench asks for this like any other renderer —
@@ -23,24 +23,31 @@ export function AudioRigPreview({ documentId, values, name }: {
   name: string
 }) {
   const document = useMemo(() => getAudioDocument(documentId), [documentId])
+  const [assets, setAssets] = useState(0)
+  const [assetError, setAssetError] = useState('')
+  useEffect(() => {
+    if (!document || !document.patch.layers.some((layer) => layer.source.table.startsWith('user:'))) return
+    let cancelled = false
+    void restoreAudioAssets(document).then((missing) => {
+      if (cancelled) return
+      setAssets((value) => value + 1)
+      setAssetError(missing.length ? 'Some wavetables are missing. Open Edit to import them again.' : '')
+    })
+    return () => { cancelled = true }
+  }, [document])
   const rate = useMemo(() => playbackRate(), [])
   const patch = useMemo(() => (document ? resolveAudioValues(document, values) : null), [document, values])
   const shown = useDeferredValue(patch)
-  const samples = useMemo(() => (shown ? renderPatch(shown, rate) : { left: new Float32Array(0), right: new Float32Array(0) }), [shown, rate])
-  const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
-  const transport = useTransport(samples, rate, autoPlay)
-
-  const setAuto = useCallback((next: boolean) => {
-    setAutoPlay(next)
-    writeAudioPrefs(withAutoPlay(readAudioPrefs(), next))
-  }, [])
+  const samples = useMemo(() => { void assets; return shown ? renderPatch(shown, rate) : { left: new Float32Array(0), right: new Float32Array(0) } }, [shown, rate, assets])
+  const transport = useTransport(samples, rate)
 
   if (!document) {
     return <StatusMessage>That patch is not in this browser. Open its project file to bring it back.</StatusMessage>
   }
   return (
     <div className="audio-tune">
-      <AudioTransport transport={transport} samples={samples} sampleRate={rate} name={name} patch={shown ?? undefined} autoPlay={autoPlay} onAutoPlay={setAuto} />
+      {assetError ? <StatusMessage>{assetError}</StatusMessage> : null}
+      <AudioTransport transport={transport} samples={samples} sampleRate={rate} name={name} patch={shown ?? undefined} />
     </div>
   )
 }

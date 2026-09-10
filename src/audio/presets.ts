@@ -6,6 +6,10 @@ import * as ui from './presets-interface.ts'
 import * as fx from './presets-series.ts'
 import * as morph from './presets-morph.ts'
 import * as show from './presets-showcase.ts'
+import * as sign from './presets-signature.ts'
+import { MECHANICAL_PRESETS } from './presets-mechanical.ts'
+import { DRAWN_PRESETS } from './presets-drawn.ts'
+import type { AudioRig } from './rig.ts'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -954,11 +958,23 @@ export function crystal(): AudioPatch {
 
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */
 export type PresetGroup =
+  | 'Signature' | 'Drawn' | 'Mechanical'
   | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
   | 'Touch' | 'Surfaces' | 'Signals'
   | 'Element' | 'Weapon' | 'Morph' | 'Showpiece'
 
-export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
+export type AudioPreset = {
+  id: string
+  label: string
+  group: PresetGroup
+  build: () => AudioPatch
+  rig?: (patch: AudioPatch) => AudioRig
+}
+
+export const PRESETS: AudioPreset[] = [
+  ...sign.SIGNATURE_PRESETS.map((preset) => ({ ...preset, group: 'Signature' as const })),
+  ...DRAWN_PRESETS.map((preset) => ({ ...preset, group: 'Drawn' as const })),
+  ...MECHANICAL_PRESETS.map((preset) => ({ ...preset, group: 'Mechanical' as const })),
   { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
   { id: 'laser', label: 'Laser', group: 'Arcade', build: laser },
   { id: 'powerup', label: 'Powerup', group: 'Arcade', build: powerup },
@@ -1095,12 +1111,13 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
 /**
  * The order every list shows, and the order the stepping arrows walk.
  *
- * Showpiece is first because it is the one family that is not for working with: it is what you
- * play to find out what the instrument does, and a demonstration at the bottom of a list of a
- * hundred and thirteen is a demonstration nobody reaches. The working families follow, in the
- * order somebody looking for a sound would think of them.
+ * The authored families lead so their complete sounds and macros are easy to find. The working
+ * families follow, in the order somebody looking for a sound would think of them.
  */
 export const PRESET_GROUPS: PresetGroup[] = [
+  'Signature',
+  'Drawn',
+  'Mechanical',
   'Showpiece',
   'Interface', 'Element', 'Weapon',
   'Touch', 'Surfaces', 'Signals',

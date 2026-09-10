@@ -144,41 +144,33 @@ export default run('audio-plate', async ({ page, check, log }) => {
   check('the play button is reachable and nothing threw on it', true, '')
 
   /*
-   * 6. The top bar, at the widths where it stops fitting.
-   *
-   * This is the one thing only a browser can answer: whether a row that overflows is drawn across
-   * the row after it. Between about 1410 and 1530 pixels the transport was wider than the space
-   * the bar left it, spilled to the right with nothing to clip it, and the view tabs — later in
-   * the source, so painted on top — covered the Auto button entirely. On a 1440-wide laptop with
-   * the rail open, auto-play could not be switched off with a mouse.
+   * 6. The top bar, at the widths where it used to dump figures, A/B and the sound menu across
+   * the view tabs. Auto is gone; the bar is one strip. A second row is only for a genuinely
+   * narrow container, not a 1014-pixel editor.
    */
-  for (const width of [1400, 1440, 1470, 1500, 1600]) {
+  for (const width of [1014, 1400, 1440, 1470, 1600]) {
     await page.setViewportSize({ width, height: 900 })
     await page.waitForTimeout(250)
     const bar = await page.evaluate(() => {
-      const auto = document.querySelector('.audio-transport__auto')
-      const play = document.querySelector('.audio-transport__play')
-      const box = auto.getBoundingClientRect()
-      let reached = 0
-      for (let x = 2; x < box.width; x += 6) {
-        for (let y = 2; y < box.height; y += 6) {
-          const under = document.elementFromPoint(box.left + x, box.top + y)
-          if (under === auto || auto.contains(under)) reached += 1
-        }
-      }
-      const anchor = play.closest('.tt__anchor')
+      const strip = document.querySelector('.audio-bar')
+      const views = document.querySelector('.audio-views')
+      const sounds = document.querySelector('.audio-sounds__trigger')
+      const figures = document.querySelector('.audio-transport__figures')
+      const a = views.getBoundingClientRect()
+      const b = sounds.getBoundingClientRect()
+      const overlap = Math.round(Math.min(a.right, b.right) - Math.max(a.left, b.left))
+      const vertical = Math.round(Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
       return {
-        reached,
-        spill: Math.round(play.getBoundingClientRect().width - anchor.getBoundingClientRect().width),
-        overflow: Math.round(document.querySelector('.audio-transport').scrollWidth - document.querySelector('.audio-transport').clientWidth),
+        height: Math.round(strip.getBoundingClientRect().height),
+        figures: figures && getComputedStyle(figures).display !== 'none',
+        overlap: overlap > 0 && vertical > 0 ? overlap : 0,
       }
     })
     log(`MEASURE bar at ${width}: ${JSON.stringify(bar)}`)
-    check(`at ${width} the Auto button can be clicked`, bar.reached > 0, JSON.stringify(bar))
-    check(`at ${width} the play button stays inside its anchor`, bar.spill <= 1, JSON.stringify(bar))
+    check(`at ${width} the bar stays one strip`, bar.height <= 48, JSON.stringify(bar))
+    check(`at ${width} the sound menu is not under the view tabs`, bar.overlap <= 0, JSON.stringify(bar))
+    check(`at ${width} the figures stay on the bar`, bar.figures, JSON.stringify(bar))
   }
-  // And at a phone's width, where the anchor used to collapse to nothing and the meter was drawn
-  // straight across the play triangle.
   await page.setViewportSize({ width: 500, height: 900 })
   await page.waitForTimeout(250)
   const narrow = await page.evaluate(() => {

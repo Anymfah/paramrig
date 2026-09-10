@@ -20,15 +20,15 @@ export type Transport = {
   stop: () => void
 }
 
-export function useTransport(samples: Stereo, sampleRate: number, autoPlay = false): Transport {
+export function useTransport(samples: Stereo, sampleRate: number, autoPlay = true): Transport {
   const [playing, setPlaying] = useState(false)
   const [head, setHead] = useState<number | null>(null)
   const [silent, setSilent] = useState(false)
   const frameRef = useRef(0)
-  const first = useRef(true)
+  const previousSamples = useRef(samples)
   const seconds = samples.left.length / Math.max(1, sampleRate)
-  // Read at the moment a buffer arrives, never depended on: turning Auto on is not a request to
-  // hear the sound that is already on screen, it is a request about the next change.
+  // Read at the moment a buffer arrives, never depended on: a change plays itself, and the flag is
+  // about the next buffer, not the one already on screen.
   const wanted = useRef(autoPlay)
   wanted.current = autoPlay
 
@@ -62,23 +62,20 @@ export function useTransport(samples: Stereo, sampleRate: number, autoPlay = fal
   }, [samples, sampleRate, seconds])
 
   /**
-   * A new buffer is a different sound; whatever was playing is the old one — and if Auto is on,
-   * the new one is what you asked to hear.
+   * A new buffer is a different sound; whatever was playing is the old one, and the new one is
+   * what a tweak asked to hear.
    *
    * Both halves belong to one effect. They used to be split, the stop here and the play in the
    * transport bar below, and React runs a child's effects before its parent's: every auto-play
-   * started a sound and had it stopped five milliseconds later by this line. Auto did nothing at
-   * all, silently, for as long as it existed.
+   * started a sound and had it stopped five milliseconds later by this line.
    *
    * Not on arrival: a workspace that makes noise the moment it opens is a workspace people turn
-   * off. Auto answers a change, and there has not been one yet.
+   * off. A change plays itself, and there has not been one yet.
    */
   useEffect(() => {
     stop()
-    if (first.current) {
-      first.current = false
-      return
-    }
+    if (previousSamples.current === samples) return
+    previousSamples.current = samples
     if (wanted.current) play()
   }, [samples, stop, play])
   useEffect(() => stop, [stop])

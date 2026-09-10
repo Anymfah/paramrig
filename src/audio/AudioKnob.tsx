@@ -1,4 +1,4 @@
-import { Fragment, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { Fragment, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { ParameterDef } from '@/rigs/types'
 import { readable, spoken } from '@/audio/readable'
 
@@ -121,6 +121,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   const fraction = toFraction(value)
   const origin = useRef({ y: 0, fraction: 0 })
   const dragging = useRef(false)
+  const [held, setHeld] = useState(false)
   // A drag on a ring itself, where a modulator sits, sets how far that one swings.
   const depthOrigin = useRef({ y: 0, depth: 0 })
   const depthDragging = useRef<KnobMod | null>(null)
@@ -163,6 +164,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
     dragging.current = true
+    setHeld(true)
     origin.current = { y: event.clientY, fraction }
     onGestureStart?.()
   }
@@ -173,6 +175,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   const up = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!dragging.current) return
     dragging.current = false
+    setHeld(false)
     event.currentTarget.releasePointerCapture(event.pointerId)
     onGestureEnd?.()
   }
@@ -192,6 +195,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       data-dots={dots || undefined}
       data-target={target}
       data-property={property}
+      data-dragging={held || undefined}
       data-mod={mod ? '' : undefined}
       data-mods={mods.length > 1 ? mods.length : undefined}
       aria-label={inert ? `${param.label}, not wired` : idle ? `${param.label || param.id}, ${idle}` : param.label || param.id}

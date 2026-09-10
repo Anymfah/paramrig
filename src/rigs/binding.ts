@@ -1,4 +1,5 @@
 import { evaluateExpression } from '@/state/expression'
+import type { BezierCurve } from '@/rigs/types'
 
 /**
  * What every rig shares, whatever it drives.
@@ -21,6 +22,16 @@ export type BindingTransform = {
   scale?: number
   offset?: number
   expression?: string
+  /**
+   * When both are present, the control is read as 0..1 and mapped onto this range instead of
+   * being written through. That is how one macro drives several fields, each with its own span.
+   */
+  from?: number
+  to?: number
+  /** Reverse the 0..1 amount before it is mapped. */
+  invert?: boolean
+  /** How the amount travels from from to to. Linear when omitted. */
+  curve?: BezierCurve
 }
 
 /**
@@ -67,5 +78,17 @@ export function sanitizeTransform(value: unknown): BindingTransform | undefined 
   }
   const expression = source.expression
   if (typeof expression === 'string' && expression.trim()) transform.expression = expression.trim().slice(0, 1000)
+  for (const key of ['from', 'to'] as const) {
+    const number = source[key]
+    if (typeof number === 'number' && Number.isFinite(number)) transform[key] = number
+  }
+  if (source.invert === true) transform.invert = true
+  if (source.curve && typeof source.curve === 'object' && !Array.isArray(source.curve)) {
+    const curve = source.curve as Record<string, unknown>
+    const ok = (point: unknown) => Array.isArray(point) && point.length >= 2 && point.every((n) => typeof n === 'number' && Number.isFinite(n))
+    if (curve.type === 'cubic-bezier' && ok(curve.p0) && ok(curve.p1) && ok(curve.p2) && ok(curve.p3)) {
+      transform.curve = curve as unknown as BezierCurve
+    }
+  }
   return Object.keys(transform).length > 0 ? transform : undefined
 }

@@ -67,6 +67,18 @@ describe('modalSample', () => {
     expect(loudest(strike(6, 5000, 1, 0.3).slice(1))).toBeGreaterThan(0.01)
   })
 
+  it('rings differently as a plate than as a bar, at the same strike', () => {
+    const bar = strike(6, 800, 1, 0.25)
+    const plateStates = createModal(6)
+    const plate = new Float32Array(4000)
+    for (let i = 0; i < plate.length; i += 1) {
+      plate[i] = modalSample(plateStates, i === 0 ? 1 : 0, 800, 1, 0.25, SAMPLE_RATE, 'plate', 0.5)
+    }
+    const tail = (samples: Float32Array) => rms(samples, 2000, 4000)
+    expect(tail(plate)).toBeGreaterThan(tail(bar) * 1.05)
+    expect(Array.from(bar)).not.toEqual(Array.from(plate))
+  })
+
   it('passes the signal straight through when it has no partials', () => {
     const states = createModal(0)
     expect(modalSample(states, 0.42, 800, 0.5, 0.2, SAMPLE_RATE)).toBe(0.42)

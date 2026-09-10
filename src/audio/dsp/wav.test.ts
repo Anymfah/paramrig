@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { encodeWav } from '@/audio/dsp/wav'
+import { decodeWav, encodeWav } from '@/audio/dsp/wav'
 
 const ascii = (bytes: Uint8Array, at: number, length: number) =>
   String.fromCharCode(...Array.from(bytes.slice(at, at + length)))
@@ -56,4 +56,12 @@ describe('encodeWav', () => {
     expect(readInt16(bytes, 44)).toBe(32767)
     expect(readInt16(bytes, 48)).toBe(-32768)
   })
+})
+
+it('refuses truncated chunks without throwing', () => {
+  const bytes = new ArrayBuffer(44)
+  const raw = new Uint8Array(bytes)
+  for (const [at, text] of [[0, 'RIFF'], [8, 'WAVE'], [12, 'fmt ']] as const) [...text].forEach((char, index) => { raw[at + index] = char.charCodeAt(0) })
+  new DataView(bytes).setUint32(16, 1000, true)
+  expect(decodeWav(bytes)).toHaveProperty('error')
 })

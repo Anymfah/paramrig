@@ -50,3 +50,62 @@ export function encodeWav(stereo: Stereo, sampleRate: number): Uint8Array {
 
   return new Uint8Array(bytes)
 }
+
+export type DecodedWav = { samples: Float32Array; sampleRate: number; channels: number }
+
+/**
+ * A mono stream from a WAV file. Stereo is reduced to the first channel rather than mixed: a
+ * wavetable's cycle is a shape, and mixing two shapes is a third one nobody wrote.
+ *
+ * Only PCM 16 and IEEE float 32 are accepted. Anything else is refused with a reason, not guessed.
+ */
+export function decodeWav(bytes: ArrayBuffer): DecodedWav | { error: string } {
+  if (bytes.byteLength < 44) return { error: 'That file is too small to be a WAV.' }
+  const view = new DataView(bytes)
+  const ascii = (at: number, n: number) => String.fromCharCode(...Array.from({ length: n }, (_, i) => view.getUint8(at + i)))
+  if (ascii(0, 4) !== 'RIFF' || ascii(8, 4) !== 'WAVE') return { error: 'That file is not a WAV.' }
+  let at = 12
+  let format = 0
+  let channels = 0
+  let sampleRate = 0
+  let bits = 0
+  let dataAt = -1
+  let dataBytes = 0
+  while (at + 8 <= view.byteLength) {
+    const id = ascii(at, 4)
+    const size = view.getUint32(at + 4, true)
+    const body = at + 8
+    if (body + size > view.byteLength) return { error: 'That WAV is truncated.' }
+    if (id === 'fmt ') {
+      if (size < 16) return { error: 'That WAV has an invalid format chunk.' }
+      format = view.getUint16(body, true)
+      channels = view.getUint16(body + 2, true)
+      sampleRate = view.getUint32(body + 4, true)
+      bits = view.getUint16(body + 14, true)
+    } else if (id === 'data') {
+      dataAt = body
+      dataBytes = size
+    }
+    at = body + size + (size % 2)
+  }
+  if (dataAt < 0 || channels < 1 || sampleRate < 1) return { error: 'That WAV has no audio data.' }
+  if (format !== 1 && format !== 3) return { error: 'Only PCM 16-bit or 32-bit float WAV files can be imported.' }
+  if (format === 1 && bits !== 16) return { error: 'Only 16-bit PCM WAV files can be imported.' }
+  if (format === 3 && bits !== 32) return { error: 'Only 32-bit float WAV files can be imported.' }
+  const width = bits / 8
+  if (channels > 32 || dataBytes % (width * channels) !== 0) return { error: 'That WAV has invalid audio frames.' }
+  const frames = Math.floor(dataBytes / (width * channels))
+  if (frames < 32) return { error: 'That file is too short to be a wavetable.' }
+  const samples = new Float32Array(frames)
+  for (let i = 0; i < frames; i += 1) {
+    const offset = dataAt + i * width * channels
+    let mono = 0
+    for (let channel = 0; channel < channels; channel += 1) {
+      const value = format === 3 ? view.getFloat32(offset + channel * width, true) : view.getInt16(offset + channel * width, true) / 0x8000
+      if (!Number.isFinite(value)) return { error: 'That WAV contains non-finite samples.' }
+      mono += value / channels
+    }
+    samples[i] = mono
+  }
+  return { samples, sampleRate, channels }
+}

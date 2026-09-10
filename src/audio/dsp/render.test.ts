@@ -292,6 +292,10 @@ describe('a wavetable source', () => {
     expect(Array.from(render(table({ table: 'not-a-table' })))).toEqual(Array.from(render(table({ table: 'sweep' }))))
   })
 
+  it('does not substitute a missing imported table for a built-in one', () => {
+    expect(peak(render(table({ table: 'user:missing-table-id' })))).toBe(0)
+  })
+
   it('holds its harmonics under the rate however high it is played', () => {
     // Six kilohertz leaves room for three harmonics; anything folded down would show as a rise in
     // crossings well below the fundamental.

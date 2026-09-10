@@ -68,10 +68,10 @@ export function createFxUnit(slot: FxSlot, sampleRate: number): FxUnit {
   }
   if (slot.kind === 'delay') {
     unit.delaySamples = Math.max(1, Math.round(Math.max(0.001, slot.time) * sampleRate))
-    unit.pair = [line(unit.delaySamples + 2), line(unit.delaySamples + 2)]
+    unit.pair = [line(sampleRate + 2), line(sampleRate + 2)]
   }
   if (slot.kind === 'reverb') {
-    const scale = (sampleRate / REFERENCE_RATE) * (0.55 + clamp01(slot.size) * 1.1)
+    const scale = (sampleRate / REFERENCE_RATE) * 1.65
     unit.net = LINES.map((seconds) => line(seconds * REFERENCE_RATE * scale + 8))
     unit.diffusers = DIFFUSION.map((seconds) => line(seconds * sampleRate))
     // Long enough to be a tail, short enough that it fits in a sound. The top of this knob used to
@@ -170,6 +170,7 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
   }
 
   if (slot.kind === 'delay') {
+    unit.delaySamples = Math.max(1, Math.round(Math.max(0.001, slot.time) * sampleRate))
     const wetL = readAt(unit.pair[0]!, unit.delaySamples)
     const wetR = readAt(unit.pair[1]!, unit.delaySamples)
     const back = Math.min(0.95, Math.max(0, slot.feedback))
@@ -182,6 +183,8 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
   }
 
   if (slot.kind === 'reverb') {
+    unit.feedback = 0.72 + clamp01(slot.size) * 0.2
+    unit.makeup = Math.sqrt(1 - unit.feedback * unit.feedback)
     let seed = (left + right) * 0.5
     for (const diffuser of unit.diffusers) seed = allpass(diffuser, seed, 0.62)
     const damping = Math.min(0.95, Math.max(0, slot.damping))
@@ -189,7 +192,7 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
     for (let n = 0; n < 4; n += 1) {
       const l = unit.net[n]!
       const moved = Math.sin((2 * Math.PI * WOBBLE[n]! * at) / sampleRate) * unit.wobble
-      taps[n] = readAt(l, l.buffer.length - 8 + moved)
+      taps[n] = readAt(l, Math.round(LINES[n]! * sampleRate * (0.55 + clamp01(slot.size) * 1.1) + 8) - 8 + moved)
     }
     // Householder: every line receives the sum of all four, less twice itself. Energy put into one
     // of them is spread across all of them within two passes.
@@ -236,6 +239,88 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
  */
 const INJECT = 1 / Math.sqrt(4)
 
+export type FxChain = {
+  slots: FxSlot[]
+  units: FxUnit[]
+  width: number
+  tone: number
+  toneG: number
+  lowGain: number
+  highGain: number
+  lowL: number
+  lowR: number
+}
+
+export function createFxChain(fx: { x: FxSlot; y: FxSlot; z: FxSlot; tone: number; width: number }, sampleRate: number): FxChain {
+  const slots = [fx.x, fx.y, fx.z].filter((slot) => slot.kind !== 'off')
+  const tone = Math.min(1, Math.max(-1, fx.tone))
+  return {
+    slots,
+    units: slots.map((slot) => createFxUnit(slot, sampleRate)),
+    width: clamp01(fx.width),
+    tone,
+    toneG: Math.exp((-2 * Math.PI * 700) / sampleRate),
+    lowGain: tone <= 0 ? 1 : 1 - tone * 0.7,
+    highGain: tone >= 0 ? 1 : 1 + tone * 0.7,
+    lowL: 0,
+    lowR: 0,
+  }
+}
+
+/**
+ * Keep the delay lines when only mix, time, or tone moved. Recreate when a kind arrives or leaves,
+ * because those are different memories, not different numbers on the same one.
+ */
+export function refreshFxChain(
+  chain: FxChain,
+  fx: { x: FxSlot; y: FxSlot; z: FxSlot; tone: number; width: number },
+  sampleRate: number,
+): FxChain {
+  const slots = [fx.x, fx.y, fx.z].filter((slot) => slot.kind !== 'off')
+  const same = slots.length === chain.slots.length && slots.every((slot, at) => slot.kind === chain.slots[at]?.kind)
+  if (!same) {
+    const rebuilt = createFxChain(fx, sampleRate)
+    rebuilt.lowL = chain.lowL
+    rebuilt.lowR = chain.lowR
+    return rebuilt
+  }
+  const tone = Math.min(1, Math.max(-1, fx.tone))
+  chain.slots = slots
+  chain.width = clamp01(fx.width)
+  chain.tone = tone
+  chain.lowGain = tone <= 0 ? 1 : 1 - tone * 0.7
+  chain.highGain = tone >= 0 ? 1 : 1 + tone * 0.7
+  return chain
+}
+
+export function fxChainSample(chain: FxChain, left: number, right: number, at: number, sampleRate: number, fx?: { tone: number; width: number }): { left: number; right: number } {
+  if (fx) {
+    const tone = Math.min(1, Math.max(-1, fx.tone))
+    chain.width = clamp01(fx.width)
+    chain.lowGain = tone <= 0 ? 1 : 1 - tone * 0.7
+    chain.highGain = tone >= 0 ? 1 : 1 + tone * 0.7
+  }
+  for (let i = 0; i < chain.slots.length; i += 1) {
+    const slot = chain.slots[i]!
+    const unit = chain.units[i]!
+    const mix = clamp01(slot.mix)
+    fxSample(unit, slot, left, right, at, sampleRate, chain.width)
+    if (slot.mode === 'send') {
+      left += unit.wetL * mix
+      right += unit.wetR * mix
+    } else {
+      left = left * (1 - mix) + unit.wetL * mix
+      right = right * (1 - mix) + unit.wetR * mix
+    }
+  }
+  chain.lowL = left * (1 - chain.toneG) + chain.lowL * chain.toneG
+  chain.lowR = right * (1 - chain.toneG) + chain.lowR * chain.toneG
+  return {
+    left: chain.lowL * chain.lowGain + (left - chain.lowL) * chain.highGain,
+    right: chain.lowR * chain.lowGain + (right - chain.lowR) * chain.highGain,
+  }
+}
+
 /**
  * The three slots and the tone control, over the whole buffer.
  *
@@ -248,42 +333,11 @@ export function applyFx(input: Stereo, fx: { x: FxSlot; y: FxSlot; z: FxSlot; to
   const length = input.left.length
   const outL = new Float32Array(length)
   const outR = new Float32Array(length)
-  const width = clamp01(fx.width)
-
-  const slots = [fx.x, fx.y, fx.z].filter((slot) => slot.kind !== 'off' && clamp01(slot.mix) > 0)
-  const units = slots.map((slot) => createFxUnit(slot, sampleRate))
-
-  // --- tone: one pole a side, tilting the balance rather than cutting a band ---
-  const toneG = Math.exp((-2 * Math.PI * 700) / sampleRate)
-  const tone = Math.min(1, Math.max(-1, fx.tone))
-  const lowGain = tone <= 0 ? 1 : 1 - tone * 0.7
-  const highGain = tone >= 0 ? 1 : 1 + tone * 0.7
-  let lowL = 0
-  let lowR = 0
-
+  const chain = createFxChain(fx, sampleRate)
   for (let i = 0; i < length; i += 1) {
-    let left = input.left[i] ?? 0
-    let right = input.right[i] ?? 0
-
-    for (let at = 0; at < slots.length; at += 1) {
-      const slot = slots[at]!
-      const unit = units[at]!
-      const mix = clamp01(slot.mix)
-      fxSample(unit, slot, left, right, i, sampleRate, width)
-      if (slot.mode === 'send') {
-        left += unit.wetL * mix
-        right += unit.wetR * mix
-      } else {
-        left = left * (1 - mix) + unit.wetL * mix
-        right = right * (1 - mix) + unit.wetR * mix
-      }
-    }
-
-    lowL = left * (1 - toneG) + lowL * toneG
-    lowR = right * (1 - toneG) + lowR * toneG
-    outL[i] = lowL * lowGain + (left - lowL) * highGain
-    outR[i] = lowR * lowGain + (right - lowR) * highGain
+    const next = fxChainSample(chain, input.left[i] ?? 0, input.right[i] ?? 0, i, sampleRate)
+    outL[i] = next.left
+    outR[i] = next.right
   }
-
   return { left: outL, right: outR }
 }

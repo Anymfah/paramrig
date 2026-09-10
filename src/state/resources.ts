@@ -24,3 +24,17 @@ export async function loadResource(id:string):Promise<Blob|null> {
   try { return await new Promise((resolve,reject)=>{const request=db.transaction('assets').objectStore('assets').get(id);request.onsuccess=()=>resolve(request.result instanceof Blob?request.result:null);request.onerror=()=>reject(new Error('Resource could not be read'))}) }
   finally {db.close()}
 }
+
+/** Persist an already identified asset, including its decoding metadata. */
+export async function storeResource(id: string, blob: Blob): Promise<void> {
+  const db = await database()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('assets', 'readwrite')
+      tx.objectStore('assets').put(blob, id)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(new Error('Resource could not be saved. Check available storage.'))
+      tx.onabort = () => reject(new Error('Resource storage was interrupted.'))
+    })
+  } finally { db.close() }
+}

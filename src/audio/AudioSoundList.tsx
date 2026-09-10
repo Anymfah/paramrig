@@ -1,10 +1,11 @@
-import { memo } from 'react'
+import { memo, type KeyboardEvent, type ReactNode } from 'react'
 import { NavRailHead } from '@/shell/NavRailHead'
 import { WaveformView } from '@/audio/WaveformView'
 import { Tooltip } from '@/ui/Tooltip'
 import type { RadialLayer } from '@/rigs/extended-types'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
 import { compactMark } from '@/audio/marks'
+import { moveSoundFocus } from '@/audio/sound-keys'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
@@ -23,7 +24,7 @@ import type { AudioPatch } from '@/audio/types'
  * Compact is a 48 px rail: full names do not fit, so each entry becomes a short mark with the
  * name in a tooltip — the same contract the outliner keeps when it shows icons alone.
  */
-function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wave }: {
+function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wave, deck }: {
   current: string
   snapshots: AudioSnapshot[]
   compact: boolean
@@ -32,18 +33,40 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
   onNavigate: () => void
   /**
    * The waveform, at the foot of the rail. The reference keeps its top bar to one row and has no
-   * picture of the sound at all; this one keeps the picture, but out of the bar and in the column
+   * picture of the sound at all; this one keeps the picture, but out of the column
    * that belongs to the document, where it does not cost the face-plate a pixel of height.
    */
   wave?: { samples: Float32Array; head: number | null; profiles: RadialLayer[]; label: string }
+  /** Hearing and keeping, in a sub-header above the names they act on. */
+  deck?: ReactNode
 }) {
+  const catalog = [
+    ...snapshots.map((snapshot) => ({ id: snapshot.id, label: snapshot.name, patch: () => snapshot.patch })),
+    ...PRESET_GROUPS.flatMap((group) => PRESETS.filter((preset) => preset.group === group).map((preset) => ({
+      id: preset.id,
+      label: preset.label,
+      patch: () => preset.build(),
+    }))),
+  ]
   const choose = (patch: AudioPatch, id: string) => {
     onPatch(patch, id)
     onNavigate()
   }
+  const onKeys = (event: KeyboardEvent<HTMLElement>) => {
+    const items = [...event.currentTarget.querySelectorAll<HTMLElement>('.audio-library__item')]
+    const next = moveSoundFocus(event.nativeEvent, items, 1)
+    if (next === null) return
+    const entry = catalog[next]
+    if (!entry) return
+    choose(entry.patch(), entry.id)
+    const button = items[next]
+    button?.focus()
+    button?.scrollIntoView?.({ block: 'nearest' })
+  }
   return (
-    <nav className="nav-rail audio-library" aria-label="Sounds" data-compact={compact || undefined} inert={inert}>
+    <nav className="nav-rail audio-library" aria-label="Sounds" data-compact={compact || undefined} inert={inert} onKeyDown={onKeys}>
       <NavRailHead compact={compact} noun="sounds" onNavigate={onNavigate} />
+      {deck}
       <div className="audio-library__scroll scroll-area">
       {snapshots.length > 0 ? (
         <div className="audio-library__group">
@@ -54,6 +77,7 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
                 <SoundItem
                   label={snapshot.name}
                   current={snapshot.id === current}
+                  tabIndex={snapshot.id === current || (current === '' && snapshot.id === catalog[0]?.id) ? 0 : -1}
                   compact={compact}
                   onClick={() => choose(snapshot.patch, snapshot.id)}
                 />
@@ -71,6 +95,7 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
                 <SoundItem
                   label={preset.label}
                   current={preset.id === current}
+                  tabIndex={preset.id === current || (current === '' && preset.id === catalog[0]?.id) ? 0 : -1}
                   compact={compact}
                   onClick={() => choose(preset.build(), preset.id)}
                 />
@@ -89,10 +114,11 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
   )
 }
 
-function SoundItem({ label, current, compact, onClick }: {
+function SoundItem({ label, current, compact, tabIndex, onClick }: {
   label: string
   current: boolean
   compact: boolean
+  tabIndex: number
   onClick: () => void
 }) {
   const button = (
@@ -101,6 +127,7 @@ function SoundItem({ label, current, compact, onClick }: {
       className="audio-library__item"
       aria-label={label}
       aria-current={current ? 'true' : undefined}
+      tabIndex={tabIndex}
       onClick={onClick}
     >
       {compact ? <span className="audio-library__mark" aria-hidden="true">{compactMark(label)}</span> : label}

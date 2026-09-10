@@ -2,7 +2,7 @@ import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/
 import { applyTransform, type BindingTransform } from '@/rigs/binding'
 // The controls are the workbench's own, so reading them back is shared with the other two editors.
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
-import { LINEAR } from '@/audio/dsp/curve'
+import { LINEAR, mapAmount } from '@/audio/dsp/curve'
 import {
   AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
   type AudioPropertyType, type FieldSpec, type LayerSection,
@@ -185,14 +185,20 @@ function asNumber(value: ParamValue): number | null {
 function coerce(spec: FieldSpec, value: ParamValue, transform: BindingTransform | undefined, resolve: (id: string) => number): unknown {
   if (spec.type === 'boolean') return Boolean(value)
   if (spec.type === 'option') {
-    return typeof value === 'string' && spec.options?.includes(value) ? value : null
+    return typeof value === 'string' && (spec.options?.includes(value) || spec.accept?.(value)) ? value : null
   }
   if (spec.type === 'curve') {
     return value && typeof value === 'object' && !Array.isArray(value) && (value as { type?: unknown }).type === 'cubic-bezier' ? value : null
   }
   const raw = asNumber(value)
   if (raw === null) return null
-  const next = applyTransform(raw, transform, resolve)
+  const next = transform && typeof transform.from === 'number' && typeof transform.to === 'number'
+    ? mapAmount(raw, transform.from, transform.to, {
+      invert: transform.invert,
+      curve: transform.curve,
+      scale: spec.scale,
+    })
+    : applyTransform(raw, transform, resolve)
   if (!Number.isFinite(next)) return null
   const min = spec.min ?? -Infinity
   const max = spec.max ?? Infinity
@@ -256,6 +262,7 @@ export function resolveAudioValues(document: { id: string; updatedAt: string; pa
   const key = JSON.stringify(values)
   if (cachePatch === document.patch && cacheRig === rig && key === cacheValues && cacheResult) return cacheResult
   const known = new Set(rig.parameters.map((parameter) => parameter.id))
+  const defaults = new Map(rig.parameters.map((parameter) => [parameter.id, parameter.defaultValue]))
   const resolve = (id: string) => {
     const value = values[id]
     if (typeof value !== 'number') throw new Error(`Not a numeric control: ${id}`)
@@ -263,7 +270,12 @@ export function resolveAudioValues(document: { id: string; updatedAt: string; pa
   }
   // The last binding on a property wins, which is what writing them in order gives.
   const resolved = rig.bindings.reduce(
-    (current, binding) => (known.has(binding.parameterId) ? applyAudioBinding(current, binding, values[binding.parameterId] ?? null, resolve) : current),
+    (current, binding) => {
+      // Plate macros are already baked into the saved patch at their default values. A manual
+      // destination edit must survive opening Tune without moving any of those controls.
+      if (/^macro-\d+(?:-d\d+)?$/.test(binding.id) && values[binding.parameterId] === defaults.get(binding.parameterId)) return current
+      return known.has(binding.parameterId) ? applyAudioBinding(current, binding, values[binding.parameterId] ?? null, resolve) : current
+    },
     document.patch,
   )
   cachePatch = document.patch
@@ -390,6 +402,13 @@ function sanitizeBinding(value: unknown, parameterIds: Set<string>): AudioBindin
   if (raw) {
     for (const key of ['min', 'max', 'scale', 'offset'] as const) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) transform[key] = raw[key] as number
+    }
+    if (raw.invert === true) transform.invert = true
+    if (typeof raw.from === 'number' && Number.isFinite(raw.from)) transform.from = raw.from
+    if (typeof raw.to === 'number' && Number.isFinite(raw.to)) transform.to = raw.to
+    if (raw.curve && typeof raw.curve === 'object' && !Array.isArray(raw.curve)) {
+      const curve = raw.curve as { type?: unknown }
+      if (curve.type === 'cubic-bezier') transform.curve = raw.curve as BindingTransform['curve']
     }
     const expression = text(raw.expression, 1000)
     if (expression) transform.expression = expression

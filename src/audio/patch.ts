@@ -1,5 +1,6 @@
 import { AUDIO_FIELDS, FX_SLOTS, INSERT_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
+import { sanitizeGestures } from './gestures.ts'
 import type { AmpSettings, AudioPatch, FilterRouting, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
@@ -48,6 +49,7 @@ export function makeInsert(input: Partial<InsertSlot> = {}): InsertSlot {
     drive: 0, bitDepth: 16, crush: 0, ratio: 2,
     frequency: 900, spread: 0.7, decay: 0.25, partials: 4,
     time: 0.008, feedback: 0.5,
+    profile: 'bar', character: 0.5,
     ...input,
   }
 }
@@ -241,7 +243,7 @@ export function makePatch(duration: number, layers: Layer[], fx: FxInput = {}, m
     return index < 2 ? makeModEnvelope(given) : makeLfo(given)
   })
   const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
-  return { version: PATCH_VERSION, duration, seed, layers: three, mods, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master) }
+  return { version: PATCH_VERSION, duration, seed, layers: three, mods, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master), gestures: [] }
 }
 
 /** The master's own two fields, and the three slots read the way a layer's sections are. */
@@ -287,7 +289,11 @@ export function defaultPatch(): AudioPatch {
 
 function clampField(spec: FieldSpec, value: unknown, fallback: unknown): unknown {
   if (spec.type === 'boolean') return typeof value === 'boolean' ? value : fallback
-  if (spec.type === 'option') return typeof value === 'string' && spec.options?.includes(value) ? value : fallback
+  if (spec.type === 'option') {
+    if (typeof value !== 'string') return fallback
+    if (spec.options?.includes(value) || spec.accept?.(value)) return value
+    return fallback
+  }
   if (spec.type === 'curve') {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return fallback
     const source = value as Record<string, unknown>
@@ -332,7 +338,7 @@ function readLayer(value: unknown, base: Layer): Layer {
  * Each step carries a raw record from version n to n + 1, in order, and `MIGRATIONS[n - 1]` is the
  * step out of version n.
  */
-export const PATCH_VERSION = 6
+export const PATCH_VERSION = 7
 
 /**
  * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
@@ -490,5 +496,6 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
     }),
     fx: readFx(source.fx, base.fx),
     master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,
+    gestures: sanitizeGestures(source.gestures),
   }
 }

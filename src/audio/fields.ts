@@ -9,7 +9,7 @@
  * preview script render a patch to a .wav with no build step.
  */
 
-import { TABLE_NAMES, TABLES } from './dsp/wavetable.ts'
+import { isTableName, TABLE_NAMES, TABLES } from './dsp/wavetable.ts'
 
 export type AudioPropertyType = 'number' | 'boolean' | 'option' | 'curve'
 
@@ -31,6 +31,8 @@ export type FieldSpec = {
   unit?: string
   scale?: 'linear' | 'log'
   options?: readonly string[]
+  /** A value that is not in `options` but is still a legal one — a user wavetable's id. */
+  accept?: (value: string) => boolean
   /**
    * Stored in the patch and edited on the plate, but never read by the engine.
    *
@@ -102,6 +104,7 @@ const SOURCE_FIELDS: Record<string, FieldSpec> = {
   table: {
     type: 'option', label: 'Wavetable', options: TABLE_NAMES,
     optionLabels: Object.fromEntries(TABLE_NAMES.map((name) => [name, TABLES[name]?.label ?? name])),
+    accept: isTableName,
   },
   position: num('Table position', 0, 1),
   pmFrom: {
@@ -179,6 +182,14 @@ const INSERT_FIELDS: Record<string, FieldSpec> = {
   spread: num('Inharmonicity', 0, 1),
   decay: num('Ring', 0.01, 3, 0.001, SECONDS),
   partials: num('Partials', 1, 6, 1),
+  profile: {
+    type: 'option', label: 'Material',
+    options: ['bar', 'plate', 'cavity', 'membrane', 'glass', 'aether'],
+    optionLabels: {
+      bar: 'Bar', plate: 'Plate', cavity: 'Cavity', membrane: 'Membrane', glass: 'Glass', aether: 'Aether',
+    },
+  },
+  character: num('Character', 0, 1),
   time: num('Comb time', 0.0002, 0.05, 0.0001, SECONDS),
   feedback: num('Comb feedback', 0, 0.95),
 }

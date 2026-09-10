@@ -1,3 +1,5 @@
+import type { BodyProfile } from '../types.ts'
+
 /**
  * A struck object.
  *
@@ -29,6 +31,8 @@ export type ModalState = {
   spread: number
   decay: number
   rate: number
+  profile: BodyProfile | ''
+  character: number
   /** 2r·cos(w), r² and the input scaling that takes the frequency out of the level. */
   feedback: number
   damping: number
@@ -38,7 +42,7 @@ export type ModalState = {
 }
 
 export function createModal(partials: number): ModalState[] {
-  return Array.from({ length: partials }, () => ({ y1: 0, y2: 0, frequency: 0, spread: 0, decay: 0, rate: 0, feedback: 0, damping: 0, gain: 0, live: false }))
+  return Array.from({ length: partials }, () => ({ y1: 0, y2: 0, frequency: 0, spread: 0, decay: 0, rate: 0, profile: '', character: -1, feedback: 0, damping: 0, gain: 0, live: false }))
 }
 
 /**
@@ -47,13 +51,58 @@ export function createModal(partials: number): ModalState[] {
  * one, so one control walks from a pitched ring to a clank.
  */
 const BAR = [1, 2.756, 5.404, 8.933, 13.34, 18.64]
+const BAR_DAMP = [1, 1.7, 2.5, 3.4, 4.4, 5.5]
+const BAR_GAIN = [1, 1, 1, 1, 1, 1]
 
-/** Higher partials of a real object die first, and an object where they do not sounds synthetic. */
-const DAMPING = [1, 1.7, 2.5, 3.4, 4.4, 5.5]
+/**
+ * Nearby modes packed close, like a plate rather than a rod. Higher partials live longer than a
+ * bar's, which is why a plate keeps shimmering after a bar would have gone.
+ */
+const PLATE = [1, 1.59, 2.14, 2.30, 2.65, 2.92]
+const PLATE_DAMP = [1, 1.06, 1.12, 1.2, 1.3, 1.42]
+const PLATE_GAIN = [1, 0.92, 0.82, 0.72, 0.62, 0.52]
 
-export function modalPartial(index: number, frequency: number, spread: number): number {
-  const ratio = 1 + ((BAR[index] ?? 1) - 1) * spread
-  return frequency * ratio
+/** A hollow air, the first mode loud and the rest standing as overtones of a cavity. */
+const CAVITY = [1, 1.89, 2.36, 2.63, 3.21, 3.89]
+const CAVITY_DAMP = [1, 1.4, 1.8, 2.2, 2.8, 3.4]
+const CAVITY_GAIN = [1, 0.55, 0.4, 0.28, 0.18, 0.12]
+
+/** A circular membrane: Bessel-ish ratios, the top dying fast. */
+const MEMBRANE = [1, 1.59, 2.14, 2.30, 2.65, 3.50]
+const MEMBRANE_DAMP = [1, 2.1, 3.2, 4.1, 5.2, 6.4]
+const MEMBRANE_GAIN = [1, 0.7, 0.45, 0.35, 0.22, 0.12]
+
+/** Bright, slow to lose its top — the opposite of a membrane. */
+const GLASS = [1, 2.76, 5.2, 8.9, 14.1, 21]
+const GLASS_DAMP = [1, 1.05, 1.15, 1.3, 1.5, 1.8]
+const GLASS_GAIN = [0.7, 1, 0.85, 0.7, 0.55, 0.4]
+
+/** Invented: golden-ratio spacings that no object actually rings at. */
+const AETHER = [1, 1.414, 2.618, 3.142, 4.669, 7.389]
+const AETHER_DAMP = [1, 0.85, 1.2, 1.6, 2.1, 2.8]
+const AETHER_GAIN = [0.85, 1, 0.6, 0.9, 0.45, 0.7]
+
+const PROFILES: Record<BodyProfile, { ratios: number[]; damping: number[]; gains: number[] }> = {
+  bar: { ratios: BAR, damping: BAR_DAMP, gains: BAR_GAIN },
+  plate: { ratios: PLATE, damping: PLATE_DAMP, gains: PLATE_GAIN },
+  cavity: { ratios: CAVITY, damping: CAVITY_DAMP, gains: CAVITY_GAIN },
+  membrane: { ratios: MEMBRANE, damping: MEMBRANE_DAMP, gains: MEMBRANE_GAIN },
+  glass: { ratios: GLASS, damping: GLASS_DAMP, gains: GLASS_GAIN },
+  aether: { ratios: AETHER, damping: AETHER_DAMP, gains: AETHER_GAIN },
+}
+
+export const BODY_PROFILES = Object.keys(PROFILES) as BodyProfile[]
+
+export function bodyProfileOf(value: unknown): BodyProfile {
+  return typeof value === 'string' && Object.hasOwn(PROFILES, value) ? value as BodyProfile : 'bar'
+}
+
+export function modalPartial(index: number, frequency: number, spread: number, profile: BodyProfile = 'bar', character = 0.5): number {
+  const bank = PROFILES[profile] ?? PROFILES.bar!
+  const ratio = bank.ratios[index] ?? 1
+  const colour = Math.min(1, Math.max(0, character))
+  const skewed = 1 + (ratio - 1) * (0.7 + colour * 0.6)
+  return frequency * (1 + (skewed - 1) * spread)
 }
 
 /**
@@ -101,15 +150,19 @@ const REFERENCE_RATE = 44100
  * rates and across four octaves, and it costs one sine where the other cost eight trigonometric
  * calls a tuning.
  */
-function tune(state: ModalState, index: number, frequency: number, spread: number, decay: number, sampleRate: number, nyquist: number): void {
+function tune(state: ModalState, index: number, frequency: number, spread: number, decay: number, sampleRate: number, nyquist: number, profile: BodyProfile, character: number): void {
   state.frequency = frequency
   state.spread = spread
   state.decay = decay
   state.rate = sampleRate
-  const partial = modalPartial(index, frequency, spread)
+  state.profile = profile
+  state.character = character
+  const bank = PROFILES[profile] ?? PROFILES.bar!
+  const partial = modalPartial(index, frequency, spread, profile, character)
   state.live = partial < nyquist
   if (!state.live) return
-  const seconds = Math.max(0.005, decay / (DAMPING[index] ?? 1))
+  const damp = (bank.damping[index] ?? 1) * (0.7 + Math.min(1, Math.max(0, character)) * 0.6)
+  const seconds = Math.max(0.005, decay / damp)
   // r is how much of the ring survives one sample; 0.001 is sixty decibels down.
   const r = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * sampleRate)))
   const w = (2 * Math.PI * partial) / sampleRate
@@ -128,7 +181,7 @@ function tune(state: ModalState, index: number, frequency: number, spread: numbe
    * the number at 44 100 exactly where it was, which is where the library is levelled.
    */
   const reference = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * REFERENCE_RATE)))
-  state.gain = (Math.sin(w) / REFERENCE_LEVEL) * ((1 - r) / (1 - reference))
+  state.gain = (Math.sin(w) / REFERENCE_LEVEL) * ((1 - r) / (1 - reference)) * (bank.gains[index] ?? 1)
 }
 
 export function modalSample(
@@ -138,15 +191,18 @@ export function modalSample(
   spread: number,
   decay: number,
   sampleRate: number,
+  profile: BodyProfile = 'bar',
+  character = 0.5,
+  partials = states.length,
 ): number {
   const nyquist = sampleRate * 0.48
   let sum = 0
   let rang = 0
-  for (let i = 0; i < states.length; i += 1) {
+  for (let i = 0; i < Math.min(states.length, Math.max(1, Math.round(partials))); i += 1) {
     const state = states[i]
     if (!state) continue
-    if (state.frequency !== frequency || state.spread !== spread || state.decay !== decay || state.rate !== sampleRate) {
-      tune(state, i, frequency, spread, decay, sampleRate, nyquist)
+    if (state.frequency !== frequency || state.spread !== spread || state.decay !== decay || state.rate !== sampleRate || state.profile !== profile || state.character !== character) {
+      tune(state, i, frequency, spread, decay, sampleRate, nyquist, profile, character)
     }
     if (!state.live) continue
     rang += 1
