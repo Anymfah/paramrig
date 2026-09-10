@@ -120,6 +120,46 @@ describe('the modulation slots', () => {
   })
 })
 
+describe('the insert slots', () => {
+  it('are three, empty, and the third stands on the far side of the amplifier', () => {
+    const layer = makeLayer()
+    expect([layer.insertA.kind, layer.insertB.kind, layer.insertC.kind]).toEqual(['off', 'off', 'off'])
+    expect([layer.insertA.place, layer.insertB.place, layer.insertC.place]).toEqual(['pre', 'pre', 'post'])
+  })
+
+  it('take the drive and the body a preset still writes the short way', () => {
+    const layer = makeLayer({
+      shaper: { drive: 0.4, bitDepth: 8, crush: 0.2 },
+      resonator: { amount: 0.6, frequency: 7200, spread: 0.3, decay: 0.04, partials: 3 },
+    })
+    expect(layer.insertA).toMatchObject({ kind: 'drive', place: 'pre', drive: 0.4 })
+    expect(layer.insertB).toMatchObject({ kind: 'crusher', place: 'pre', bitDepth: 8, crush: 0.2 })
+    expect(layer.insertC).toMatchObject({ kind: 'body', place: 'post', amount: 0.6, frequency: 7200, partials: 3 })
+  })
+
+  it('stay empty when the shorthand says nothing was turned up', () => {
+    const layer = makeLayer({ shaper: { drive: 0, bitDepth: 16, crush: 0 }, resonator: { amount: 0 } })
+    expect([layer.insertA.kind, layer.insertB.kind, layer.insertC.kind]).toEqual(['off', 'off', 'off'])
+  })
+
+  it('carry a saved layer of one drive and one body into the three slots it is now', () => {
+    const read = sanitizeAudioPatch({
+      version: 2,
+      layers: [{ gain: 0.5, shaper: { drive: 0.3, bitDepth: 16, crush: 0 }, resonator: { amount: 0.8, frequency: 500, spread: 0.2, decay: 0.1, partials: 2 } }],
+    })
+    const layer = read.layers[0]
+    expect(layer?.gain).toBeCloseTo(0.5, 6)
+    expect(layer?.insertA).toMatchObject({ kind: 'drive', place: 'pre', drive: 0.3 })
+    expect(layer?.insertB.kind).toBe('off')
+    expect(layer?.insertC).toMatchObject({ kind: 'body', place: 'post', amount: 0.8, frequency: 500, partials: 2 })
+  })
+
+  it('hold the settings of the kinds they are not, so switching and switching back loses nothing', () => {
+    const read = sanitizeAudioPatch({ layers: [{ insertA: { kind: 'ring', ratio: 3.5, drive: 0.7, time: 12 } }] })
+    expect(read.layers[0]?.insertA).toMatchObject({ kind: 'ring', ratio: 3.5, drive: 0.7, time: 12 })
+  })
+})
+
 describe('carrying an older patch forward', () => {
   it('stamps what this build writes, whatever the file claimed', () => {
     expect(sanitizeAudioPatch({}).version).toBe(PATCH_VERSION)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RESPONSE_CEILING, RESPONSE_FLOOR, filterCurve, filterResponse } from '@/audio/dsp/response'
+import { RESPONSE_CEILING, RESPONSE_FLOOR, filterCurve, filterResponse, insertResponse, insertShape } from '@/audio/dsp/response'
 
 const CUTOFF = 1200
 const at = (curve: Float64Array, frequency: number) =>
@@ -55,5 +55,36 @@ describe('what a filter model does, measured', () => {
 
   it('measures a model once and hands back the same reading after', () => {
     expect(filterResponse('bandpass')).toBe(filterResponse('bandpass'))
+  })
+})
+
+describe('what an insert does, drawn by running one through it', () => {
+  it('leaves the burst alone when the slot is empty', () => {
+    const flat = insertShape('off')
+    // Three cycles in and silence after: the second half of an empty slot is a flat line.
+    expect(Math.max(...Array.from(flat.slice(0, flat.length / 2), Math.abs))).toBeGreaterThan(0.9)
+    expect(Math.max(...Array.from(flat.slice(flat.length / 2 + 4), Math.abs))).toBeLessThan(0.05)
+  })
+
+  it('gives the body and the comb the tail that is the whole point of them', () => {
+    for (const kind of ['body', 'comb'] as const) {
+      const shape = insertShape(kind)
+      const tail = Math.max(...Array.from(shape.slice(Math.round(shape.length * 0.7)), Math.abs))
+      expect(tail, kind).toBeGreaterThan(0.05)
+    }
+  })
+
+  it('fills its box whatever the level the effect actually comes back at', () => {
+    for (const kind of ['off', 'drive', 'crusher', 'ring', 'fold', 'body', 'comb'] as const) {
+      const shape = insertShape(kind)
+      const peak = Math.max(...Array.from(shape, Math.abs))
+      expect(peak, kind).toBeGreaterThan(0.9)
+      expect(peak, kind).toBeLessThanOrEqual(1.0001)
+      for (const value of shape) expect(Number.isFinite(value), kind).toBe(true)
+    }
+  })
+
+  it('draws a kind once and hands back the same drawing after', () => {
+    expect(insertResponse('fold')).toBe(insertResponse('fold'))
   })
 })

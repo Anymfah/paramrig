@@ -2,7 +2,7 @@ import type { AudioPatch, Layer, Stereo } from '../types.ts'
 import { createFilter, filterSample } from './filter.ts'
 import { createNoise, warp, waveAt } from './osc.ts'
 import { tableAt, tableOf, wavetable } from './wavetable.ts'
-import { createShaper, shapeSample } from './shaper.ts'
+import { createInsert, insertSample } from './insert.ts'
 import { curveAt } from './curve.ts'
 import { envelopeAt, fitEnvelope, type FittedEnvelope } from './envelope.ts'
 import { performerAt } from './performer.ts'
@@ -10,7 +10,6 @@ import { applyFx } from './space.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
 import { MAX_VOICES } from '../fields.ts'
-import { createModal, modalSample } from './modal.ts'
 
 /**
  * The whole synthesiser, as one pure function.
@@ -74,13 +73,19 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   const detune = Math.pow(2, cents / 1200)
   const noiseA = createNoise(layer.source.colour, random)
   const noiseB = createNoise(layer.source.colour, streamFor(patch.seed, index + 50))
-  // One filter and one shaper a side: the voices are panned before either of them, so the two
-  // channels are no longer the same signal by the time they get here.
+  // One filter and one of every insert a side: the voices are panned before any of them, so the
+  // two channels are no longer the same signal by the time they get here.
   const filters = [createFilter(layer.filter.kind, sampleRate), createFilter(layer.filter.kind, sampleRate)]
-  const shapers = [createShaper(), createShaper()]
-  const partials = Math.min(6, Math.max(1, Math.round(layer.resonator.partials)))
-  const bodies = [createModal(partials), createModal(partials)]
-  const resonance = Math.min(1, Math.max(0, layer.resonator.amount))
+  /**
+   * The three slots, split by which side of the amplifier they stand on and stripped of the ones
+   * switched off, so the sample loop walks two short lists rather than asking three slots what
+   * kind they are on every sample of every channel.
+   */
+  const chain = [layer.insertA, layer.insertB, layer.insertC].map((slot) => ({
+    slot, left: createInsert(slot, sampleRate), right: createInsert(slot, sampleRate),
+  }))
+  const before = chain.filter((unit) => unit.slot.kind !== 'off' && unit.slot.place !== 'post')
+  const after = chain.filter((unit) => unit.slot.kind !== 'off' && unit.slot.place === 'post')
   const fitted = fitEnvelope(layer.amp, life)
   const nyquist = sampleRate * 0.5
 
@@ -178,33 +183,40 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
 
     const sweep = Math.pow(2, layer.filter.envAmount * curveAt(layer.filter.envCurve, x) + swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff)
     const cutoff = layer.filter.cutoff * sweep
-    const left = shapeSample(shapers[0]!, layer.shaper, filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate))
-    const right = shapeSample(shapers[1]!, layer.shaper, filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate))
+    let left = filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, layer.filter.resonance, sampleRate)
+    let right = filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, layer.filter.resonance, sampleRate)
+    for (let at = 0; at < before.length; at += 1) {
+      const unit = before[at]!
+      left = insertSample(unit.left, unit.slot, left, frequency, sampleRate)
+      right = insertSample(unit.right, unit.slot, right, frequency, sampleRate)
+    }
 
     /*
-     * The envelope shapes the *excitation*, and the body rings on after it.
+     * The amplifier stands in the middle of the slots, and that is the point of `place`.
      *
-     * This was the wrong way round, and it is the whole difference between a struck thing and
-     * filtered noise. With the envelope after the bank, a short envelope cut the ring off, so the
-     * only way to get a tail was to keep the noise running for the length of it — which is not an
-     * object being hit, it is an object being sanded. Struck properly, the excitation is over in
-     * three milliseconds and what you hear afterwards is the body deciding to stop.
+     * A body before it is a filter: the envelope arrives afterwards and cuts the ring off, so the
+     * only way to get a tail is to keep the noise running for the length of it, which is not an
+     * object being hit — it is an object being sanded. The same body after it is a struck thing:
+     * the excitation is over in three milliseconds and what you hear next is the body deciding to
+     * stop. Drive belongs on the other side, before the envelope, where it bites the loud part of
+     * the sound rather than the fade. Anything else is a matter of taste, and taste is what the
+     * switch is for.
      */
     const amplitude = envelopeAt(layer.amp, fitted, t, life)
     // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
     // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
     const tremolo = Math.max(0, 1 + ((swingOf(gainLfo, clock) - 1) / 2) * LFO_RANGE.gain)
-    const hitL = left * amplitude
-    const hitR = right * amplitude
-
-    const bodyL = resonance <= 0 ? hitL
-      : hitL * (1 - resonance) + modalSample(bodies[0]!, hitL, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance
-    const bodyR = resonance <= 0 ? hitR
-      : hitR * (1 - resonance) + modalSample(bodies[1]!, hitR, layer.resonator.frequency, layer.resonator.spread, layer.resonator.decay, sampleRate) * resonance
+    let hitL = left * amplitude
+    let hitR = right * amplitude
+    for (let at = 0; at < after.length; at += 1) {
+      const unit = after[at]!
+      hitL = insertSample(unit.left, unit.slot, hitL, frequency, sampleRate)
+      hitR = insertSample(unit.right, unit.slot, hitR, frequency, sampleRate)
+    }
 
     const level = layer.gain * tremolo
-    out.left[i] = (out.left[i] ?? 0) + bodyL * level
-    out.right[i] = (out.right[i] ?? 0) + bodyR * level
+    out.left[i] = (out.left[i] ?? 0) + hitL * level
+    out.right[i] = (out.right[i] ?? 0) + hitR * level
   }
 }
 

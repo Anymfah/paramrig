@@ -38,15 +38,15 @@ describe('the faces of the plate', () => {
     for (const layout of ['wide', 'medium', 'narrow'] as const) {
       const rows = DEAL[layout]
       const items = rows.flatMap((row) => (row === 'routing' ? [] : row))
-      expect([...items].sort()).toEqual(['amp', 'body', 'filter', 'fx', 'modulators', 'noise', 'osc', 'pitch'])
+      expect([...items].sort()).toEqual(['amp', 'filter', 'fx', 'insert', 'modulators', 'noise', 'osc', 'pitch'])
       expect(rows.filter((row) => row === 'routing')).toHaveLength(1)
       for (const row of rows) if (row !== 'routing') expect(row.length).toBeGreaterThan(0)
     }
     // The wide face is the reference's: the seven panels on one row, the modulators on their own.
-    expect(DEAL.wide[0]).toEqual(['pitch', 'osc', 'noise', 'body', 'filter', 'amp', 'fx'])
+    expect(DEAL.wide[0]).toEqual(['pitch', 'osc', 'noise', 'insert', 'filter', 'amp', 'fx'])
     expect(DEAL.wide[2]).toEqual(['modulators'])
-    // The medium face keeps the body beside the noise and gives the modulator the effects' row.
-    expect(DEAL.medium[0]).toContain('body')
+    // The medium face keeps the inserts beside the noise and gives the modulator the effects' row.
+    expect(DEAL.medium[0]).toContain('insert')
     expect(DEAL.medium[2]).toEqual(['filter', 'amp', 'fx', 'modulators'])
     // The narrow face gives the modulator a row under the routing bar.
     expect(DEAL.narrow[DEAL.narrow.length - 1]).toEqual(['modulators'])

@@ -2009,8 +2009,20 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-picker__cell[data-current]:where([data-highlighted], :hover) { background: var(--accent-subtle); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .fp-picker__cell .fp-menu__mark { display: block; inline-size: 62px; block-size: 33px; overflow: visible; color: inherit; }
 .fp-picker__cell .fp-menu__mark path { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
-/* The line a response is measured against: unity, where nothing has been done to the sound. */
+/* The line a drawing is measured against: unity for a filter, silence for an insert. */
 .fp-picker__cell .fp-menu__floor { stroke-dasharray: 2 3; }
+
+/*
+ * The same drawing standing in a panel rather than in a menu cell.
+ *
+ * It is clipped there and not in the cell: the curve slides along its axis as the cutoff is
+ * turned, and what leaves the box is meant to leave the box rather than spill over the dials.
+ */
+.fp-face { background: var(--fp-wheel); border-radius: 3px; box-shadow: inset 0 0 0 1px var(--fp-hairline); padding: 2px; }
+.fp-face .fp-menu__mark { inline-size: 100%; block-size: 100%; overflow: hidden; color: var(--fp-text); }
+.fp-face .fp-menu__mark path { fill: none; stroke: currentColor; stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
+.fp-face .fp-menu__floor { stroke-dasharray: 2 3; }
+.fp-face .fp-menu__at { stroke: var(--fp-rule); stroke-dasharray: 1.5 2.5; }
 .fp-picker__said {
   display: grid;
   gap: 1px;

@@ -50,7 +50,8 @@ export function parseAudioProperty(property: string): AudioPath | null {
   const patch = AUDIO_FIELDS.patch[property]
   if (patch) return { kind: 'patch', field: property, spec: patch }
 
-  const layer = /^layers\[(\d+)\]\.(?:([a-z]+)\.)?([A-Za-z]+)$/.exec(property)
+  // The section is any word, not a lowercase one: the insert slots are insertA, insertB, insertC.
+  const layer = /^layers\[(\d+)\]\.(?:([a-zA-Z]+)\.)?([A-Za-z]+)$/.exec(property)
   if (layer) {
     const index = Number(layer[1])
     if (!Number.isInteger(index) || index < 0 || index >= LAYER_COUNT) return null
@@ -102,13 +103,23 @@ export function parseAudioProperty(property: string): AudioPath | null {
  * quietly throw away the rig of every patch anyone had built.
  */
 export function carryAudioProperty(property: string, from: number): string {
-  if (from >= 2) return property
-  // One to two: two lists of modulators became one list of slots, the envelopes first.
-  const envelope = /^envelopes\[(\d+)\]\.(.+)$/.exec(property)
-  if (envelope) return `mods[${Number(envelope[1])}].${envelope[2]}`
-  const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(property)
-  if (lfo) return `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
-  return property
+  let carried = property
+  if (from < 2) {
+    // One to two: two lists of modulators became one list of slots, the envelopes first.
+    const envelope = /^envelopes\[(\d+)\]\.(.+)$/.exec(carried)
+    if (envelope) carried = `mods[${Number(envelope[1])}].${envelope[2]}`
+    const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(carried)
+    if (lfo) carried = `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
+  }
+  if (from < 3) {
+    // Two to three: the drive and the resonator became slots. Drive is the first, the two lo-fi
+    // fields the second, the body the third — the same order the patch migration puts them in.
+    const shaper = /^layers\[(\d+)\]\.shaper\.(\w+)$/.exec(carried)
+    if (shaper) carried = `layers[${shaper[1]}].insert${shaper[2] === 'drive' ? 'A' : 'B'}.${shaper[2]}`
+    const resonator = /^layers\[(\d+)\]\.resonator\.(\w+)$/.exec(carried)
+    if (resonator) carried = `layers[${resonator[1]}].insertC.${resonator[2]}`
+  }
+  return carried
 }
 
 /**

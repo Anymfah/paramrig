@@ -1,6 +1,6 @@
 import { AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -20,9 +20,57 @@ export type LayerInput = {
   source?: Partial<SourceSettings>
   pitch?: Partial<PitchSettings>
   filter?: Partial<FilterSettings>
+  /**
+   * The drive and the resonator, still written the way a preset reads best.
+   *
+   * They are two of the seven things an insert slot can be now, and a patch stores three slots.
+   * Kept here as the shorthand they are: `shaper: { drive: 0.35 }` says what it means, where
+   * `insertA: { kind: 'drive', drive: 0.35 }` says how it is filed. Both land in the same place —
+   * drive in A, the crusher in B, the body in C, on the side of the amplifier each was always on.
+   */
   shaper?: Partial<ShaperSettings>
   resonator?: Partial<ResonatorSettings>
+  insertA?: Partial<InsertSlot>
+  insertB?: Partial<InsertSlot>
+  insertC?: Partial<InsertSlot>
   amp?: Partial<AmpSettings>
+}
+
+/** An empty slot carrying the settings of all seven kinds, ready to be any of them. */
+export function makeInsert(input: Partial<InsertSlot> = {}): InsertSlot {
+  return {
+    kind: 'off', place: 'pre', amount: 1,
+    drive: 0, bitDepth: 16, crush: 0, ratio: 2,
+    frequency: 900, spread: 0.7, decay: 0.25, partials: 4,
+    time: 8, feedback: 0.5,
+    ...input,
+  }
+}
+
+/** What a layer's drive becomes: the first slot, or nothing at all if it was never turned up. */
+function drivenSlot(shaper: Partial<ShaperSettings> | undefined): Partial<InsertSlot> {
+  const drive = shaper?.drive ?? 0
+  return drive > 0 ? { kind: 'drive', drive } : {}
+}
+
+/** And its bits and its crush: the second slot, which is a bypass at sixteen bits and no hold. */
+function crushedSlot(shaper: Partial<ShaperSettings> | undefined): Partial<InsertSlot> {
+  const bitDepth = shaper?.bitDepth ?? 16
+  const crush = shaper?.crush ?? 0
+  return bitDepth < 16 || crush > 0 ? { kind: 'crusher', bitDepth, crush } : {}
+}
+
+/** The resonator: the third slot, standing after the amplifier, where it always stood. */
+function bodySlot(resonator: Partial<ResonatorSettings> | undefined): Partial<InsertSlot> {
+  const amount = resonator?.amount ?? 0
+  if (amount <= 0) return { place: 'post' }
+  return {
+    kind: 'body', place: 'post', amount,
+    frequency: resonator?.frequency ?? 900,
+    spread: resonator?.spread ?? 0.7,
+    decay: resonator?.decay ?? 0.25,
+    partials: resonator?.partials ?? 4,
+  }
 }
 
 export function makeLayer(input: LayerInput = {}): Layer {
@@ -38,8 +86,9 @@ export function makeLayer(input: LayerInput = {}): Layer {
       arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
     },
     filter: { kind: 'off', cutoff: 8000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filter },
-    shaper: { drive: 0, bitDepth: 16, crush: 0, ...input.shaper },
-    resonator: { amount: 0, frequency: 900, spread: 0.7, decay: 0.25, partials: 4, ...input.resonator },
+    insertA: makeInsert({ ...drivenSlot(input.shaper), ...input.insertA }),
+    insertB: makeInsert({ ...crushedSlot(input.shaper), ...input.insertB }),
+    insertC: makeInsert({ ...bodySlot(input.resonator), ...input.insertC }),
     amp: { attack: 0.004, hold: 0, decay: 0.12, sustain: 0, release: 0.05, curve: 2, ...input.amp },
   }
 }
@@ -195,7 +244,7 @@ function readLayer(value: unknown, base: Layer): Layer {
  * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
  * is open so that the first change to the shape has somewhere to go.
  */
-export const PATCH_VERSION = 2
+export const PATCH_VERSION = 3
 
 /**
  * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
@@ -221,7 +270,37 @@ function intoSlots(source: Record<string, unknown>): Record<string, unknown> {
   return carried
 }
 
-const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots]
+/**
+ * Two to three: every layer had one drive and one resonator, in an order nobody could change, and
+ * now has three slots that each say what they are. What was there lands where it was — the drive
+ * first, the crusher after it, the body on the far side of the amplifier — so a patch saved
+ * yesterday sounds today exactly as it did, and can be taken apart afterwards.
+ */
+function intoInserts(source: Record<string, unknown>): Record<string, unknown> {
+  const layers = Array.isArray(source.layers) ? source.layers : null
+  if (!layers) return source
+  const carried = layers.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+    const layer = value as Record<string, unknown>
+    // Already a layer of slots, saying nothing about its version: a hand-written test object, or
+    // a file someone trimmed. Carrying it forward again would throw the slots away.
+    if (layer.insertA || layer.insertB || layer.insertC) return layer
+    const shaper = layer.shaper as Partial<ShaperSettings> | undefined
+    const resonator = layer.resonator as Partial<ResonatorSettings> | undefined
+    const next: Record<string, unknown> = {
+      ...layer,
+      insertA: makeInsert(drivenSlot(shaper)),
+      insertB: makeInsert(crushedSlot(shaper)),
+      insertC: makeInsert(bodySlot(resonator)),
+    }
+    delete next.shaper
+    delete next.resonator
+    return next
+  })
+  return { ...source, layers: carried }
+}
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts]
 
 function migrate(source: Record<string, unknown>): Record<string, unknown> {
   const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1

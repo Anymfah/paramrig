@@ -6,16 +6,16 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { INSERT_SLOTS, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
-import { createShaper, shapeSample } from '@/audio/dsp/shaper'
 import { warp } from '@/audio/dsp/osc'
 import { TABLES, TABLE_NAMES, tableAt, tableOf, wavetable } from '@/audio/dsp/wavetable'
-import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse } from '@/audio/dsp/response'
-import type { FilterKind } from '@/audio/types'
+import { RESPONSE_CEILING, RESPONSE_FLOOR, filterResponse, insertResponse } from '@/audio/dsp/response'
+import { createInsert, insertSample } from '@/audio/dsp/insert'
+import type { FilterKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import type { PerformerShape, ShaperSettings } from '@/audio/types'
+import type { PerformerShape } from '@/audio/types'
 import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
 import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
 
@@ -302,15 +302,98 @@ function TableMark({ name }: { name: string }) {
 /** What a filter model does, measured by pushing tones through the filter itself. */
 function FilterMark({ kind }: { kind: FilterKind }) {
   const curve = filterResponse(kind)
-  const span = RESPONSE_CEILING - RESPONSE_FLOOR
-  const d = Array.from(curve, (level, at) => {
-    const x = (at / (curve.length - 1)) * 60 + 2
-    const y = 31 - ((level - RESPONSE_FLOOR) / span) * 28
-    return `${at === 0 ? 'M' : 'L'}${x.toFixed(2)} ${y.toFixed(2)}`
+  const d = Array.from(curve, (level, at) =>
+    `${at === 0 ? 'M' : 'L'}${((at / (curve.length - 1)) * 60 + 2).toFixed(2)} ${responseY(level).toFixed(2)}`).join(' ')
+  return (
+    <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
+      <path className="fp-menu__floor" d={`M2 ${responseY(0).toFixed(2)} H62`} opacity="0.25" />
+      <path d={d} />
+    </svg>
+  )
+}
+
+/** What an insert does to a sound, drawn by running one short burst through the insert itself. */
+function InsertMark({ kind }: { kind: InsertKind }) {
+  const shape = insertResponse(kind)
+  const d = Array.from(shape, (value, at) => {
+    const x = (at / (shape.length - 1)) * 60 + 2
+    return `${at === 0 ? 'M' : 'L'}${x.toFixed(2)} ${(17 - value * 14).toFixed(2)}`
   }).join(' ')
   return (
     <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
       <path className="fp-menu__floor" d="M2 17 H62" opacity="0.25" />
+      <path d={d} />
+    </svg>
+  )
+}
+
+const INSERT_MODELS: { value: InsertKind; label: string; note: string }[] = [
+  { value: 'off', label: 'Off', note: 'Nothing in this slot.' },
+  { value: 'drive', label: 'Drive', note: 'Pushed until it rounds off and bites.' },
+  { value: 'crusher', label: 'Crusher', note: 'Fewer bits, fewer samples. Cheap on purpose.' },
+  { value: 'ring', label: 'Ring', note: 'Multiplied by a tone. Bells, radios, robots.' },
+  { value: 'fold', label: 'Fold', note: 'Turned back at the rails. Harmonics from nowhere.' },
+  { value: 'body', label: 'Body', note: 'Resonances it rings through: a struck thing.' },
+  { value: 'comb', label: 'Comb', note: 'Added to itself a moment later. A pitch, or a tail.' },
+]
+
+/** The three slots, as the panel head and the hints name them. */
+const INSERT_LETTERS = ['A', 'B', 'C'] as const
+
+/**
+ * One slot read off the board.
+ *
+ * Every field of every kind, because that is what the engine is handed: the picture under a dial
+ * and the sound coming out of the speaker are drawn by the same function from the same record,
+ * which is the only way the two cannot disagree.
+ */
+function slotAt(ctx: Ctx, layer: number, slot: number): InsertSlot {
+  const at = (field: string) => `layers[${layer}].${INSERT_SLOTS[slot] ?? 'insertA'}.${field}`
+  return {
+    kind: (read(ctx, at('kind')) ?? 'off') as InsertKind,
+    place: (read(ctx, at('place')) ?? 'pre') as InsertPlace,
+    amount: readNum(ctx, at('amount'), 1),
+    drive: readNum(ctx, at('drive'), 0),
+    bitDepth: readNum(ctx, at('bitDepth'), 16),
+    crush: readNum(ctx, at('crush'), 0),
+    ratio: readNum(ctx, at('ratio'), 2),
+    frequency: readNum(ctx, at('frequency'), 900),
+    spread: readNum(ctx, at('spread'), 0.7),
+    decay: readNum(ctx, at('decay'), 0.25),
+    partials: readNum(ctx, at('partials'), 4),
+    time: readNum(ctx, at('time'), 8),
+    feedback: readNum(ctx, at('feedback'), 0.5),
+  }
+}
+
+/** The slots a layer's oscillator has already been through by the time the amplifier sees it. */
+const beforeAmp = (ctx: Ctx, layer: number) =>
+  INSERT_SLOTS.map((_, slot) => slotAt(ctx, layer, slot)).filter((held) => held.kind !== 'off' && held.place !== 'post')
+
+/** Where a frequency and a level fall in the box every response is drawn in. */
+const responseX = (hz: number) => (Math.log2(Math.min(16000, Math.max(60, hz)) / 60) / Math.log2(16000 / 60)) * 60 + 2
+const responseY = (db: number) => 31 - ((db - RESPONSE_FLOOR) / (RESPONSE_CEILING - RESPONSE_FLOOR)) * 28
+
+/**
+ * The filter's own face: the model's measured curve, slid to the corner it is tuned to.
+ *
+ * The measurement is taken once, at twelve hundred hertz, and these models keep their shape as
+ * they are tuned — so moving the picture along the axis is a truthful account of what turning the
+ * dial does, and it costs a subtraction rather than a second measurement on every frame of a drag.
+ * The upright is the corner itself, which is the number the dial is actually setting.
+ */
+function FilterFace({ kind, cutoff }: { kind: FilterKind; cutoff: number }) {
+  const curve = filterResponse(kind)
+  const shift = responseX(cutoff) - responseX(1200)
+  const d = [
+    `M${(2 - Math.abs(shift) - 4).toFixed(2)} ${responseY(curve[0] ?? 0).toFixed(2)}`,
+    ...Array.from(curve, (db, at) => `L${((at / (curve.length - 1)) * 60 + 2 + shift).toFixed(2)} ${responseY(db).toFixed(2)}`),
+    `L${(62 + Math.abs(shift) + 4).toFixed(2)} ${responseY(curve[curve.length - 1] ?? 0).toFixed(2)}`,
+  ].join(' ')
+  return (
+    <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
+      <path className="fp-menu__floor" d={`M2 ${responseY(0).toFixed(2)} H62`} opacity="0.25" />
+      <path className="fp-menu__at" d={`M${responseX(cutoff).toFixed(2)} 2 V32`} opacity="0.45" />
       <path d={d} />
     </svg>
   )
@@ -565,9 +648,11 @@ const waveOf = (value: unknown): Wave => (typeof value === 'string' && (WAVES as
  * the four and a half milliseconds the sample-and-hold of Crush is counted in, so its steps come
  * out the size they are heard at.
  */
-function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: number, fmRatio: number, shaper?: ShaperSettings, table?: string, position = 0.5, dt = 0.01): string {
+function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: number, fmRatio: number, inserts?: InsertSlot[], table?: string, position = 0.5, dt = 0.01): string {
   const points = 220
-  const state = createShaper()
+  const rate = 44100
+  const held = inserts ?? []
+  const states = held.map((slot) => createInsert(slot, rate))
   const built = table === undefined ? null : wavetable(tableOf(table))
   const steps: string[] = []
   for (let at = 0; at <= points; at += 1) {
@@ -577,7 +662,10 @@ function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: numbe
     // The band a table plays is chosen by the pitch it is played at, so the picture has to be
     // asked at that pitch too: drawn at the glyph's own step it would show harmonics nobody hears.
     const raw = built ? tableAt(built, warp(wrapped, pulseWidth), position, dt) : waveAt(wave, wrapped, 0, pulseWidth)
-    const value = shaper ? shapeSample(state, shaper, raw) : raw
+    let value = raw
+    for (let slot = 0; slot < held.length; slot += 1) {
+      value = insertSample(states[slot]!, held[slot]!, value, dt * rate, rate)
+    }
     steps.push(`${at === 0 ? 'M' : 'L'}${(1 + along * 44).toFixed(2)} ${(11.5 - value * 9.5).toFixed(2)}`)
   }
   return steps.join(' ')
@@ -586,13 +674,13 @@ function wavePath(wave: Wave, pulseWidth: number, cycles: number, fmIndex: numbe
 /** How much of the sound the glyph shows: an octave of pitch is a doubling of the cycles in it. */
 const cyclesAt = (pitch: number) => Math.min(8, Math.max(0.5, pitch / 220))
 
-function WaveGlyph({ kind, wave, pulseWidth = 0.5, pitch = 440, fmIndex = 0, fmRatio = 1, shaper, table, position = 0.5 }: {
+function WaveGlyph({ kind, wave, pulseWidth = 0.5, pitch = 440, fmIndex = 0, fmRatio = 1, inserts, table, position = 0.5 }: {
   kind: unknown; wave: unknown; pulseWidth?: number; pitch?: number; fmIndex?: number; fmRatio?: number
-  shaper?: ShaperSettings; table?: string; position?: number
+  inserts?: InsertSlot[]; table?: string; position?: number
 }) {
   const d = kind === 'noise'
     ? 'M1 11 L4 4 L7 16 L10 7 L13 14 L16 3 L19 13 L22 8 L25 17 L28 5 L31 12 L34 6 L37 15 L40 9 L43 11'
-    : wavePath(waveOf(wave), pulseWidth, cyclesAt(pitch), fmIndex, fmRatio, shaper, kind === 'table' ? table ?? 'sweep' : undefined, position, pitch / 44100)
+    : wavePath(waveOf(wave), pulseWidth, cyclesAt(pitch), fmIndex, fmRatio, inserts, kind === 'table' ? table ?? 'sweep' : undefined, position, pitch / 44100)
   return (
     <svg viewBox="0 0 46 23" className="fp-waveglyph">
       <path d={d} fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" />
@@ -734,9 +822,11 @@ const DEFAULT_MACROS: { label: string; id: string }[] = [
   { label: 'Reso', id: 'layers[0].filter.resonance' },
   { label: 'Attack', id: 'layers[0].amp.attack' },
   { label: 'Release', id: 'layers[0].amp.release' },
-  { label: 'Drive', id: 'layers[0].shaper.drive' },
-  { label: 'Body', id: 'layers[0].resonator.frequency' },
-  { label: 'Ring', id: 'layers[0].resonator.decay' },
+  // Not the insert slots: a macro pointed into a slot that is switched off is a dial that turns
+  // and does nothing, and the eight the reference names are the eight that always do something.
+  { label: 'PM', id: 'layers[0].source.fmIndex' },
+  { label: 'Detune', id: 'layers[0].source.detune' },
+  { label: 'Spread', id: 'layers[0].spread' },
   { label: 'Delay', id: 'fx.delayMix' },
   { label: 'Verb', id: 'fx.reverbMix' },
   { label: 'Width', id: 'fx.width' },
@@ -815,6 +905,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   skin?: 'reference' | 'paramrig'
 }) {
   const [focus, setFocus] = useState(0)
+  /** Which of a layer's three insert slots the panel is showing. Nothing is hidden, only stacked. */
+  const [slot, setSlot] = useState(0)
   const macros = macrosOf(rig)
   const ctx: Ctx = {
     byId: new Map(parameters.map((parameter) => [parameter.id, parameter])),
@@ -954,6 +1046,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     onChange(L(index, 'source.kind'), mode)
   }
   const filterKind = read(ctx, L(f, 'filter.kind'))
+  const inserted = slotAt(ctx, f, slot)
+  const letter = INSERT_LETTERS[slot] ?? 'A'
+  const I = (field: string) => `layers[${f}].${INSERT_SLOTS[slot] ?? 'insertA'}.${field}`
   const colourName = (index: number) => {
     const colour = read(ctx, L(index, 'source.colour'))
     return colour === 'pink' ? 'Pink' : colour === 'metallic' ? 'Metal' : 'White'
@@ -1056,8 +1151,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {/* the head */}
       {wavePicker(0, 149.5)}
       <span role="tablist" aria-label="Oscillator layer" className="fp-tabs">
-        <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1" hint="Edit oscillator 1: the pitch, body, filter and amp envelope panels follow the lit layer.">1</Badge>
-        <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2" hint="Edit oscillator 2: the pitch, body, filter and amp envelope panels follow the lit layer.">2</Badge>
+        <Badge x={281} y={65} kind="hex" tab selected={f === 0} onClick={() => setFocus(0)} label="Oscillator 1" hint="Edit oscillator 1: the pitch, insert, filter and amp envelope panels follow the lit layer.">1</Badge>
+        <Badge x={369.5} y={65} kind="hex" tab selected={f === 1} onClick={() => setFocus(1)} label="Oscillator 2" hint="Edit oscillator 2: the pitch, insert, filter and amp envelope panels follow the lit layer.">2</Badge>
       </span>
       <Text x={324} y={60} kind="title">Osc</Text>
       {wavePicker(1, 391.2)}
@@ -1065,7 +1160,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {/* oscillator 1 */}
       <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
       {sideColumn(0, 104)}
-      <Knob ctx={ctx} x={204.5} y={128.4} id={source(0) === 'table' ? L(0, 'source.position') : L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} table={String(read(ctx, L(0, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(0, 'source.position'), 0.5)} shaper={{ drive: readNum(ctx, L(0, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(0, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(0, 'shaper.crush'), 0) }} />} />
+      <Knob ctx={ctx} x={204.5} y={128.4} id={source(0) === 'table' ? L(0, 'source.position') : L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} table={String(read(ctx, L(0, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(0, 'source.position'), 0.5)} inserts={beforeAmp(ctx, 0)} />} />
       <Text x={166.9} y={184}>Width</Text>
       <Text x={240.7} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={166.9} y={225.5} id={L(0, 'source.pulseWidth')} label="Width" />
@@ -1073,7 +1168,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Fader ctx={ctx} x={298} top={85.5} id={L(0, 'gain')} label="Level1" />
       {/* oscillator 2 */}
       <Fader ctx={ctx} x={352.5} top={85.5} id={L(1, 'gain')} label="Level2" />
-      <Knob ctx={ctx} x={445.8} y={128.2} id={source(1) === 'table' ? L(1, 'source.position') : L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(1, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(1, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(1, 'source.fmRatio'), 1)} table={String(read(ctx, L(1, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(1, 'source.position'), 0.5)} shaper={{ drive: readNum(ctx, L(1, 'shaper.drive'), 0), bitDepth: readNum(ctx, L(1, 'shaper.bitDepth'), 16), crush: readNum(ctx, L(1, 'shaper.crush'), 0) }} />} />
+      <Knob ctx={ctx} x={445.8} y={128.2} id={source(1) === 'table' ? L(1, 'source.position') : L(1, 'pitch.start')} label="Pos2" size="hero" face={<WaveGlyph kind={read(ctx, L(1, 'source.kind'))} wave={read(ctx, L(1, 'source.wave'))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(1, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(1, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(1, 'source.fmRatio'), 1)} table={String(read(ctx, L(1, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(1, 'source.position'), 0.5)} inserts={beforeAmp(ctx, 1)} />} />
       <Text x={409.3} y={184}>Width</Text>
       <Text x={482} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
@@ -1102,8 +1197,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     noise: (
     <Panel x={599.5} y={54} w={95} h={288} label="Noise" tone="noise" gap={16.5}>
       <span role="tablist" aria-label="Noise layer" className="fp-tabs">
-        <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1" hint="Edit noise 1: the pitch, body, filter and amp envelope panels follow the lit layer.">1</Badge>
-        <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2" hint="Edit noise 2: the pitch, body, filter and amp envelope panels follow the lit layer.">2</Badge>
+        <Badge x={604} y={65} kind="noise" tab selected={f === 2} onClick={() => setFocus(2)} label="Noise 1" hint="Edit noise 1: the pitch, insert, filter and amp envelope panels follow the lit layer.">1</Badge>
+        <Badge x={673} y={65} kind="noise" tab selected={f === 3} onClick={() => setFocus(3)} label="Noise 2" hint="Edit noise 2: the pitch, insert, filter and amp envelope panels follow the lit layer.">2</Badge>
       </span>
       <Text x={639} y={59.5} kind="title">Noise</Text>
       <Fader ctx={ctx} x={615} top={87.5} id={L(2, 'gain')} label="Noise 1 level" kind="noise" />
@@ -1118,21 +1213,66 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Knob ctx={ctx} x={663} y={306.7} id={L(3, 'pitch.start')} label="Noise 2 pitch" size="sm" tone="light" />
     </Panel>
     ),
-    body: (
-    <Panel x={696.5} y={54} w={159} h={288} label="Body" gap={2}>
-      <Badge x={707.5} y={65} kind="circle">B</Badge>
-      <Text x={775.8} y={59.5} kind="title">Body</Text>
-      <Text x={731.3} y={83}>Partials</Text>
-      <Knob ctx={ctx} x={731.5} y={121.6} id={L(f, 'resonator.partials')} label="Partials" size="sm" />
-      <Readout x={788} base={96.5} mark="note" value={semitones(readNum(ctx, L(f, 'resonator.frequency'), 440))} label="Body pitch" edit={pitchEdit(L(f, 'resonator.frequency'))} />
-      <Text x={819} y={104}>Spread</Text>
-      <Knob ctx={ctx} x={819} y={138} id={L(f, 'resonator.spread')} label="Spread" size="sm" />
-      <Text x={777} y={168.5}>Amount</Text>
-      <Knob ctx={ctx} x={775.2} y={210} id={L(f, 'resonator.amount')} label="Amount" />
-      <Text x={739.9} y={263.6}>Freq</Text>
-      <Text x={811.4} y={263.6}>Ring</Text>
-      <Knob ctx={ctx} x={739.9} y={305} id={L(f, 'resonator.frequency')} label="Freq" />
-      <Knob ctx={ctx} x={811.4} y={305} id={L(f, 'resonator.decay')} label="Ring" />
+    insert: (
+    <Panel x={696.5} y={54} w={159} h={288} label="Insert" gap={2}>
+      <span role="tablist" aria-label="Insert slot" className="fp-tabs">
+        {INSERT_LETTERS.map((name, index) => (
+          <Badge key={name} x={707.5 + index * 19} y={65} kind="circle" tab selected={slot === index} onClick={() => setSlot(index)}
+            label={`Insert ${name}`} hint={`Show insert ${name}. The three run in the order A, B, C, and each says which side of the amp it stands on.`}>{name}</Badge>
+        ))}
+      </span>
+      <Text x={806} y={59.5} kind="title">Insert</Text>
+      <SlotMenu x={714} y={82} w={124} label={`Insert ${letter} kind`} value={inserted.kind} columns={4}
+        hint="What this slot is. The picture beside each is that effect answering the same short burst."
+        options={INSERT_MODELS.map((model) => ({ ...model, mark: <InsertMark kind={model.value} /> }))}
+        onPick={(next) => onChange(I('kind'), next)} />
+      {inserted.kind === 'off' ? (<>
+        {/* An empty slot is a wire, and the panel says so with the same picture the picker uses
+            rather than leaving a hole where the controls of a kind would be. */}
+        <Icon x={776} y={186} w={124} h={66} className="fp-face"><InsertMark kind="off" /></Icon>
+        <Text x={776} y={246} kind="dim">Nothing in this slot</Text>
+      </>) : (
+        <>
+          <Text x={776} y={116} u onClick={() => onChange(I('place'), inserted.place === 'post' ? 'pre' : 'post')}
+            label={`Insert ${letter} stands ${inserted.place === 'post' ? 'after' : 'before'} the amp`}
+            hint="Which side of the amp envelope this slot stands on. Before it bites the loud part of the sound; after it keeps ringing once the sound has gone.">
+            {inserted.place === 'post' ? 'After the amp' : 'Before the amp'}
+          </Text>
+          <Text x={739.9} y={148}>Amount</Text>
+          <Knob ctx={ctx} x={739.9} y={190} id={I('amount')} label="Amount" />
+          {inserted.kind === 'drive' || inserted.kind === 'fold' ? (<>
+            <Text x={811.4} y={148}>Drive</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('drive')} label="Drive" />
+          </>) : null}
+          {inserted.kind === 'crusher' ? (<>
+            <Text x={811.4} y={148}>Bits</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('bitDepth')} label="Bits" />
+            <Text x={776} y={246}>Crush</Text>
+            <Knob ctx={ctx} x={776} y={288} id={I('crush')} label="Crush" />
+          </>) : null}
+          {inserted.kind === 'ring' ? (<>
+            <Text x={811.4} y={148}>Ratio</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('ratio')} label="Ratio" />
+          </>) : null}
+          {inserted.kind === 'comb' ? (<>
+            <Text x={811.4} y={148}>Time</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('time')} label="Time" />
+            <Text x={776} y={246}>Feedback</Text>
+            <Knob ctx={ctx} x={776} y={288} id={I('feedback')} label="Feedback" />
+          </>) : null}
+          {inserted.kind === 'body' ? (<>
+            <Text x={811.4} y={148}>Freq</Text>
+            <Knob ctx={ctx} x={811.4} y={190} id={I('frequency')} label="Freq" />
+            <Text x={728} y={238}>Ring</Text>
+            <Text x={776} y={238}>Spread</Text>
+            <Text x={824} y={238}>Parts</Text>
+            <Knob ctx={ctx} x={728} y={272} id={I('decay')} label="Ring" size="sm" />
+            <Knob ctx={ctx} x={776} y={272} id={I('spread')} label="Spread" size="sm" />
+            <Knob ctx={ctx} x={824} y={272} id={I('partials')} label="Parts" size="sm" />
+            <Readout x={741} base={322} mark="note" value={semitones(readNum(ctx, I('frequency'), 440))} label="Body pitch" edit={pitchEdit(I('frequency'))} />
+          </>) : null}
+        </>
+      )}
     </Panel>
     ),
     filter: (
@@ -1146,14 +1286,12 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={972.4} y={80}>Reso</Text>
       <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
       <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
-      <Text x={900.2} y={167.5}>Env</Text>
-      <Text x={972.7} y={168.5}>Drive</Text>
-      <Knob ctx={ctx} x={900.2} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
-      <Knob ctx={ctx} x={972.7} y={210.4} id={L(f, 'shaper.drive')} label="Drive" />
-      <Text x={892.6} y={282.1}>Bits</Text>
-      <Text x={980.7} y={280.7}>Crush</Text>
-      <Knob ctx={ctx} x={892.6} y={314} id={L(f, 'shaper.bitDepth')} label="Bits" size="sm" />
-      <Knob ctx={ctx} x={980.7} y={314} id={L(f, 'shaper.crush')} label="Crush" size="sm" />
+      <Text x={936.5} y={167.5}>Env</Text>
+      <Knob ctx={ctx} x={936.5} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
+      {/* What the filter is doing, at the size the drive left behind when it moved out to a slot. */}
+      <Icon x={937} y={286} w={112} h={60} className="fp-face" hint="The model's measured response, standing at the corner the cutoff is set to.">
+        <FilterFace kind={typeof filterKind === 'string' ? filterKind as FilterKind : 'off'} cutoff={readNum(ctx, L(f, 'filter.cutoff'), 8000)} />
+      </Icon>
     </Panel>
     ),
     amp: (

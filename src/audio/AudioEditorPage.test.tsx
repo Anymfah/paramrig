@@ -29,7 +29,7 @@ describe('AudioEditorPage', () => {
   it('lays the panels across the window in the reference order', () => {
     open(arcadeCoin().id)
     const plate = screen.getByRole('group', { name: 'Face-plate' })
-    for (const panel of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX']) {
+    for (const panel of ['Pitch', 'Oscillators', 'Noise', 'Insert', 'Filter', 'Amp', 'FX']) {
       expect(within(plate).getByRole('region', { name: panel })).toBeInTheDocument()
     }
     expect(within(plate).getByRole('group', { name: 'Macros' })).toBeInTheDocument()
@@ -102,7 +102,7 @@ describe('AudioEditorPage', () => {
       open(arcadeCoin().id)
       expect(window.document.querySelector('.fp-stage')).toHaveAttribute('data-layout', 'medium')
       // Every panel is still there, and the amp envelope is the one modulator on show.
-      for (const name of ['Pitch', 'Oscillators', 'Noise', 'Body', 'Filter', 'Amp', 'FX', 'Amp envelope']) {
+      for (const name of ['Pitch', 'Oscillators', 'Noise', 'Insert', 'Filter', 'Amp', 'FX', 'Amp envelope']) {
         expect(screen.getByRole('region', { name })).toBeInTheDocument()
       }
       expect(screen.queryByRole('region', { name: 'Modulator 2' })).toBeNull()
@@ -171,6 +171,36 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('button', { name: 'Oscillator 1 wavetable' })).toHaveTextContent('Sweep')
     expect(screen.queryByRole('radiogroup', { name: 'Oscillator 1 wave' })).toBeNull()
     expect(screen.getByRole('slider', { name: 'Pos1' })).toHaveAttribute('aria-valuemax', '1')
+  })
+
+  it('gives a layer three insert slots, each saying what it is and where it stands', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const panel = () => screen.getByRole('region', { name: 'Insert' })
+    // Nothing is in the first slot of this sound, and the panel says so rather than showing a hole.
+    const slots = within(panel()).getByRole('tablist', { name: 'Insert slot' })
+    expect(within(slots).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['A', 'B', 'C'])
+    await user.click(within(panel()).getByRole('button', { name: 'Insert A kind' }))
+    expect(screen.getAllByRole('menuitem').map((cell) => cell.getAttribute('aria-label'))).toEqual(
+      ['Off', 'Drive', 'Crusher', 'Ring', 'Fold', 'Body', 'Comb'],
+    )
+    await user.click(screen.getByRole('menuitem', { name: 'Comb' }))
+    // The kind brings its own controls, and the side of the amp it stands on is one click away.
+    expect(within(panel()).getByRole('slider', { name: 'Time' })).toBeInTheDocument()
+    expect(within(panel()).getByRole('slider', { name: 'Feedback' })).toBeInTheDocument()
+    const place = within(panel()).getByRole('button', { name: /^Insert A stands/ })
+    expect(place).toHaveTextContent('Before the amp')
+    await user.click(place)
+    expect(within(panel()).getByRole('button', { name: /^Insert A stands/ })).toHaveTextContent('After the amp')
+    // The third slot is its own slot, and holds what it is given rather than what A was given.
+    await user.click(within(slots).getByRole('tab', { name: 'Insert C' }))
+    expect(within(panel()).getByRole('button', { name: 'Insert C kind' })).toHaveTextContent('Off')
+    await user.click(within(panel()).getByRole('button', { name: 'Insert C kind' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Body' }))
+    expect(within(panel()).getByRole('slider', { name: 'Freq' })).toBeInTheDocument()
+    expect(within(panel()).queryByRole('slider', { name: 'Time' })).toBeNull()
+    await user.click(within(slots).getByRole('tab', { name: 'Insert A' }))
+    expect(within(panel()).getByRole('button', { name: 'Insert A kind' })).toHaveTextContent('Comb')
   })
 
   it('offers every filter the engine can run, and gives the choice to the one layer', async () => {
@@ -261,27 +291,27 @@ describe('AudioEditorPage', () => {
     const doc = createAudioDocument()
     open(doc.id)
     const filter = screen.getByRole('region', { name: 'Filter' })
-    const drive = within(filter).getByRole('slider', { name: 'Drive' })
-    // Drive wears macro 9 out of the box; the tenth macro will take it over.
-    expect(within(drive).getByText('9')).toBeInTheDocument()
+    const cutoff = within(filter).getByRole('slider', { name: 'Cutoff' })
+    // Cutoff wears macro 5 out of the box; the tenth macro will take it over.
+    expect(within(cutoff).getByText('5')).toBeInTheDocument()
     const handle = screen.getByRole('button', { name: /^Drag macro 10 onto a control/ })
     const under = document.elementFromPoint
-    document.elementFromPoint = () => drive
+    document.elementFromPoint = () => cutoff
     try {
       fireEvent.pointerDown(handle, { clientX: 10, clientY: 10 })
       fireEvent.pointerUp(handle, { clientX: 20, clientY: 20 })
     } finally {
       document.elementFromPoint = under
     }
-    expect(within(drive).getByText('10')).toBeInTheDocument()
-    expect(within(drive).queryByText('9')).toBeNull()
+    expect(within(cutoff).getByText('10')).toBeInTheDocument()
+    expect(within(cutoff).queryByText('5')).toBeNull()
     const band = screen.getByRole('group', { name: 'Macros' })
-    expect(within(band).getByRole('slider', { name: 'Drive 1' })).toBeInTheDocument()
+    expect(within(band).getByRole('slider', { name: 'Cutoff 1' })).toBeInTheDocument()
     // The rig reaches storage with the patch, bound under the macro's number.
     await waitFor(() => {
       const saved = getAudioDocument(doc.id)
-      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].shaper.drive')
-      expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-9')).toBe(false)
+      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].filter.cutoff')
+      expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-5')).toBe(false)
     })
   })
 

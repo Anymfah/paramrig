@@ -122,20 +122,32 @@ const FILTER_FIELDS: Record<string, FieldSpec> = {
   envCurve: { type: 'curve', label: 'Sweep curve' },
 }
 
-const SHAPER_FIELDS: Record<string, FieldSpec> = {
+/** What an insert slot can be, in the order the picker offers them. */
+export const INSERT_KINDS = ['off', 'drive', 'crusher', 'ring', 'fold', 'body', 'comb'] as const
+
+/**
+ * One insert slot: a kind, a side of the amplifier, and the fields of all seven kinds.
+ *
+ * Every kind's fields are bounded here whether or not its slot is set to that kind, because a slot
+ * remembers what it was — a crusher turned into a drive and back is the crusher it was, and the
+ * numbers it kept in the meantime have to be numbers.
+ */
+const INSERT_FIELDS: Record<string, FieldSpec> = {
+  kind: { type: 'option', label: 'Insert', options: INSERT_KINDS },
+  place: { type: 'option', label: 'Position', options: ['pre', 'post'], optionLabels: { pre: 'Before the amp', post: 'After the amp' } },
+  amount: num('Amount', 0, 1),
   drive: num('Drive', 0, 1),
   bitDepth: num('Bit depth', 1, 16, 1, { unit: 'bit' }),
   crush: num('Sample crush', 0, 1),
-}
-
-const RESONATOR_FIELDS: Record<string, FieldSpec> = {
-  amount: num('Resonance', 0, 1),
+  ratio: num('Ring ratio', 0.01, 16, 0.01),
   // Up to sixteen kilohertz, because the bright end is where this family of sound lives: a
   // modern interface click is mostly air, and a body capped at eight could not reach it.
   frequency: num('Body', 40, 16000, 1, { unit: 'Hz', scale: 'log' }),
   spread: num('Inharmonicity', 0, 1),
   decay: num('Ring', 0.01, 3, 0.001, SECONDS),
   partials: num('Partials', 1, 6, 1),
+  time: num('Comb time', 0.2, 50, 0.1, { unit: 'ms' }),
+  feedback: num('Comb feedback', 0, 0.95),
 }
 
 const AMP_FIELDS: Record<string, FieldSpec> = {
@@ -247,16 +259,20 @@ export const AUDIO_FIELDS = {
   master: MASTER_FIELDS,
 } as const
 
-export type LayerSection = 'root' | 'source' | 'pitch' | 'filter' | 'shaper' | 'resonator' | 'amp'
+export type LayerSection = 'root' | 'source' | 'pitch' | 'filter' | 'insertA' | 'insertB' | 'insertC' | 'amp'
 
 export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
   root: LAYER_FIELDS,
   source: SOURCE_FIELDS,
   pitch: PITCH_FIELDS,
   filter: FILTER_FIELDS,
-  shaper: SHAPER_FIELDS,
-  resonator: RESONATOR_FIELDS,
+  insertA: INSERT_FIELDS,
+  insertB: INSERT_FIELDS,
+  insertC: INSERT_FIELDS,
   amp: AMP_FIELDS,
 }
+
+/** The three slots, in the order the sound meets them. */
+export const INSERT_SLOTS = ['insertA', 'insertB', 'insertC'] as const
 
 /** How many layers a patch has. Fixed, and the parser refuses an index past it. */

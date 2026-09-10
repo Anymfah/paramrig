@@ -29,7 +29,7 @@ export const FACES: Record<Layout, { w: number; h: number }> = {
 export const PLATE = FACES.wide
 
 /** The body's items: the seven panels, and the modulators on show — three on the wide face, one on a folded one. */
-export type Item = 'pitch' | 'osc' | 'noise' | 'body' | 'filter' | 'amp' | 'fx' | 'modulators'
+export type Item = 'pitch' | 'osc' | 'noise' | 'insert' | 'filter' | 'amp' | 'fx' | 'modulators'
 /** A row of the body: panels side by side, or the routing bar. */
 export type Row = Item[] | 'routing'
 /**
@@ -37,9 +37,9 @@ export type Row = Item[] | 'routing'
  * grows with the room in the same proportion as every other; a rule lies between two rows.
  */
 export const DEAL: Record<Layout, Row[]> = {
-  wide: [['pitch', 'osc', 'noise', 'body', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
-  medium: [['pitch', 'osc', 'noise', 'body'], 'routing', ['filter', 'amp', 'fx', 'modulators']],
-  narrow: [['pitch', 'osc', 'noise'], ['body', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
+  wide: [['pitch', 'osc', 'noise', 'insert', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
+  medium: [['pitch', 'osc', 'noise', 'insert'], 'routing', ['filter', 'amp', 'fx', 'modulators']],
+  narrow: [['pitch', 'osc', 'noise'], ['insert', 'filter', 'amp', 'fx'], 'routing', ['modulators']],
 }
 
 /**

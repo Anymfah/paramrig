@@ -1,9 +1,14 @@
 import type { BezierCurve } from '../rigs/types.ts'
 
 /**
- * The patch is a fixed chain, not a graph: three identical layers into shared effects. Nothing is
- * wired, only set. That constraint is the product — a generator whose routing can be rearranged is
- * a small DAW, and a small DAW is not something anyone reaches for to make a button click.
+ * The patch is a chain that can be arranged, not a graph that can be wired.
+ *
+ * It began as a fixed chain — layers into shared effects, nothing routable — on the argument that
+ * a generator whose routing can be rearranged is a small DAW, and nobody reaches for a small DAW
+ * to make a button click. Half of that still holds and half of it did not survive contact: an
+ * insert that cannot be reordered is three knobs pretending to be an effect. So the order is
+ * declared in fields — which slot holds what, and which side of the envelope it stands on — and
+ * never drawn with a mouse. There are no cables here, and there will not be.
  */
 
 export type WaveShape = 'sine' | 'triangle' | 'saw' | 'square'
@@ -79,6 +84,13 @@ export type FilterSettings = {
   envCurve: BezierCurve
 }
 
+/**
+ * Drive, bits and crush, as a preset still writes them.
+ *
+ * Not a stage of the chain any more — `makeLayer` reads this shorthand into two insert slots. It
+ * survives because `shaper: { drive: 0.35 }` says what a preset means, where the slot it becomes
+ * says how the patch files it.
+ */
 export type ShaperSettings = {
   /** 0 is a true bypass, not a gentle one. */
   drive: number
@@ -105,6 +117,9 @@ export type Stereo = { left: Float32Array; right: Float32Array }
 /**
  * A bank of resonances the layer is played through: what turns a click into a struck thing rather
  * than a click. At no amount it is a true bypass.
+ *
+ * The same shorthand as `ShaperSettings`: what a preset writes, read into the third insert slot,
+ * standing after the amplifier where a body has always stood.
  */
 export type ResonatorSettings = {
   amount: number
@@ -114,6 +129,48 @@ export type ResonatorSettings = {
   /** Seconds for the fundamental to fall sixty decibels. */
   decay: number
   partials: number
+}
+
+export type InsertKind = 'off' | 'drive' | 'crusher' | 'ring' | 'fold' | 'body' | 'comb'
+
+/** Which side of the amplifier a slot stands on. */
+export type InsertPlace = 'pre' | 'post'
+
+/**
+ * One of three effects a layer runs through on its way out.
+ *
+ * The drive and the resonator used to be built into every layer, one of each, in an order nobody
+ * could change. They are two of the seven kinds a slot can be now, and the reason it matters is
+ * `place`: the same body ringing before the amplifier is a filter, and after it is a struck
+ * object with a tail. `render.ts` says why in more detail, and it is the difference between a
+ * thing being hit and a thing being sanded.
+ *
+ * A slot carries the fields of every kind it could be, of which the engine reads only its own —
+ * the shape `SourceSettings` and `ModSlot` already have, so that a slot changed to another kind
+ * and back is the slot it was.
+ */
+export type InsertSlot = {
+  kind: InsertKind
+  place: InsertPlace
+  /** How much of the treated sound is heard against the untreated, 0..1. At 0 every kind is a
+   * true bypass, which is what makes a slot safe to leave switched on and turned down. */
+  amount: number
+  /** How hard it is pushed: saturation for `drive`, gain into the reflection for `fold`. */
+  drive: number
+  /** Bits kept, 16 is clean. Read by `crusher`. */
+  bitDepth: number
+  /** 0..1 sample-and-hold, the other half of a lo-fi voice. Read by `crusher`. */
+  crush: number
+  /** The ring modulator's tone, as a multiple of the layer's own pitch. Read by `ring`. */
+  ratio: number
+  /** The resonances, read by `body`. Hertz, then the fields `ResonatorSettings` describes. */
+  frequency: number
+  spread: number
+  decay: number
+  partials: number
+  /** Milliseconds down the line, and how much of it comes back. Read by `comb`. */
+  time: number
+  feedback: number
 }
 
 export type Layer = {
@@ -133,8 +190,10 @@ export type Layer = {
   source: SourceSettings
   pitch: PitchSettings
   filter: FilterSettings
-  shaper: ShaperSettings
-  resonator: ResonatorSettings
+  /** Three effects in a row, each saying what it is and where it stands. */
+  insertA: InsertSlot
+  insertB: InsertSlot
+  insertC: InsertSlot
   amp: AmpSettings
 }
 

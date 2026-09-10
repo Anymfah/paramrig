@@ -124,4 +124,33 @@ describe('carrying a saved document forward', () => {
     expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(['mods[2].rate', 'mods[1].depth'])
     expect(read?.patch.mods[2]).toMatchObject({ kind: 'lfo', enabled: true, rate: 7, target: 'layers[0].cutoff' })
   })
+
+  it('follows the drive and the body into the slots they became', () => {
+    // A document written while every layer had one drive and one resonator, in a fixed order.
+    const older = {
+      version: 1,
+      id: 'older-two',
+      name: 'Older still',
+      patch: { version: 2, duration: 0.3, layers: [{ shaper: { drive: 0.4, bitDepth: 8, crush: 0.1 }, resonator: { amount: 0.5, frequency: 700 } }] },
+      rig: {
+        groups: [{ id: 'g', label: 'Group' }],
+        parameters: [
+          { kind: 'number', id: 'grit', label: 'Grit', group: 'g', min: 0, max: 1, step: 0.01, defaultValue: 0.4 },
+          { kind: 'number', id: 'bits', label: 'Bits', group: 'g', min: 1, max: 16, step: 1, defaultValue: 8 },
+          { kind: 'number', id: 'ring', label: 'Ring', group: 'g', min: 40, max: 16000, step: 1, defaultValue: 700 },
+        ],
+        bindings: [
+          { id: 'a', property: 'layers[0].shaper.drive', parameterId: 'grit' },
+          { id: 'b', property: 'layers[0].shaper.bitDepth', parameterId: 'bits' },
+          { id: 'c', property: 'layers[0].resonator.frequency', parameterId: 'ring' },
+        ],
+      },
+    }
+    const read = sanitizeAudioDocument(older)
+    expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(
+      ['layers[0].insertA.drive', 'layers[0].insertB.bitDepth', 'layers[0].insertC.frequency'],
+    )
+    expect(read?.patch.layers[0]?.insertA).toMatchObject({ kind: 'drive', drive: 0.4 })
+    expect(read?.patch.layers[0]?.insertC).toMatchObject({ kind: 'body', place: 'post', frequency: 700 })
+  })
 })
