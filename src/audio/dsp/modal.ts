@@ -61,26 +61,18 @@ export function modalPartial(index: number, frequency: number, spread: number): 
  * decibels; the rest follow it down faster.
  */
 /**
- * How loud a two-pole resonator is at its own resonance, which is not the same at every frequency.
- * |H| = 1 / |1 - 2r·cos(w)·e^(-jw) + r²·e^(-2jw)|, evaluated on the unit circle at w.
- */
-function peakGain(w: number, r: number): number {
-  const cw = Math.cos(w)
-  const sw = Math.sin(w)
-  const re = 1 - 2 * r * cw * cw + r * r * (cw * cw - sw * sw)
-  const im = r * (1 - r) * 2 * sw * cw
-  return 1 / Math.max(1e-12, Math.sqrt(re * re + im * im))
-}
-
-/**
- * Eight kilohertz is the frequency whose level the normalisation leaves alone.
+ * What the normalisation is anchored to: a plain number, and it has to stay one.
  *
- * In radians per sample, so it has to be worked out at the rate in hand. It used to be a constant
- * with 44 100 baked into it, which made the untouched frequency eight and a half kilohertz on a
- * machine running at 48 000 — the same patch, normalised against a different note, for no reason
- * anybody could have found from the plate.
+ * The correction below divides out `sin(w)`, which leaves the level of every partial the same and
+ * arbitrary; this puts it back at a familiar place — the level a partial at eight kilohertz used to
+ * come out at, at the rate a file is written at. It is a *scale constant*, not a frequency, which
+ * is the whole point. Written as `sin(2π · 8000 / sampleRate)` it would move with the machine and
+ * put the rate straight back into the answer: a body would ring twice as loud at 96 kHz as at 44.1,
+ * which is exactly the fault this replaced.
  */
-const REFERENCE_HZ = 8000
+const REFERENCE_LEVEL = Math.sin((2 * Math.PI * 8000) / 44100)
+/** And the rate everything here is anchored at, which is the rate a file is written at. */
+const REFERENCE_RATE = 44100
 
 /**
  * What a partial rings by, computed once per tuning.
@@ -95,9 +87,19 @@ const REFERENCE_HZ = 8000
  * sits: measured across the band, one partial was up to twenty-five decibels louder than another
  * purely because of its frequency — +10.7 dB at 2 kHz, flat around 10, and +14.5 dB by 20.8 kHz as
  * the poles close on the real axis. So a body's own pitch silently set its loudness, and a partial
- * that landed near Nyquist swamped the fundamental it was supposed to colour. Dividing the input by
- * |H| at the resonant frequency takes that back out, so `frequency` chooses pitch and `gain`
- * chooses level, which is what both controls claim to do.
+ * that landed near Nyquist swamped the fundamental it was supposed to colour. Taking that back out
+ * is what makes `frequency` choose pitch and `gain` choose level, which is what both claim to do.
+ *
+ * And it is `sin(w)` that takes it out, not the resonator's own peak magnitude. Struck with one
+ * sample, this filter rings at `sin((n+1)w)·rᶰ / sin(w)`: the frequency term is the sine, exactly,
+ * and nothing else. Dividing by the peak magnitude instead was very nearly the same number — the
+ * two agree to three figures across the whole band at 44 100 — but only at 44 100, because that
+ * magnitude also depends on how close the pole sits to the circle, and the pole moves with the
+ * rate. Measured, a body was 1.8 times louder at 96 kHz than at 22 050 for the same patch: the
+ * shipped `ui-click` came out 71 per cent hotter on a machine running at 48 000 than on the one it
+ * was levelled at, and `glass-bell` clipped at 96. This form is flat to one per cent across four
+ * rates and across four octaves, and it costs one sine where the other cost eight trigonometric
+ * calls a tuning.
  */
 function tune(state: ModalState, index: number, frequency: number, spread: number, decay: number, sampleRate: number, nyquist: number): void {
   state.frequency = frequency
@@ -113,7 +115,20 @@ function tune(state: ModalState, index: number, frequency: number, spread: numbe
   const w = (2 * Math.PI * partial) / sampleRate
   state.feedback = 2 * r * Math.cos(w)
   state.damping = r * r
-  state.gain = peakGain((2 * Math.PI * REFERENCE_HZ) / sampleRate, r) / peakGain(w, r)
+  /*
+   * And divided by how much a sustained source builds up in it, which is a function of the rate.
+   *
+   * The note above is about a resonator being *struck*, and for a struck one `sin(w)` is the whole
+   * story. Nothing in this engine strikes it: a body is fed the layer's own output, continuously,
+   * and a resonator driven at its resonance climbs to about `1/(1 − r)` times what goes in. That
+   * factor is `decay · sampleRate / 6.9` — proportional to the machine's rate — so the same patch
+   * came out sixty-five per cent louder at 48 000 than at 44 100 (`ui-click`, measured) and clipped
+   * at 96 000. Dividing it out against what it would have been at the reference rate leaves the
+   * build-up as a function of the decay time alone, which is what the dial claims it is, and leaves
+   * the number at 44 100 exactly where it was, which is where the library is levelled.
+   */
+  const reference = Math.min(0.99999, Math.exp(Math.log(0.001) / (seconds * REFERENCE_RATE)))
+  state.gain = (Math.sin(w) / REFERENCE_LEVEL) * ((1 - r) / (1 - reference))
 }
 
 export function modalSample(

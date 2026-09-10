@@ -5,6 +5,7 @@ import { makeLayer, makePatch } from './patch.ts'
 import * as ui from './presets-interface.ts'
 import * as fx from './presets-series.ts'
 import * as morph from './presets-morph.ts'
+import * as show from './presets-showcase.ts'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -955,7 +956,7 @@ export function crystal(): AudioPatch {
 export type PresetGroup =
   | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
   | 'Touch' | 'Surfaces' | 'Signals'
-  | 'Element' | 'Weapon' | 'Morph'
+  | 'Element' | 'Weapon' | 'Morph' | 'Showpiece'
 
 export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
   { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
@@ -1078,13 +1079,23 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'crushed-table', label: 'Crushed Table', group: 'Morph', build: morph.crushedTable },
   { id: 'vowel-sweep', label: 'Vowel Sweep', group: 'Morph', build: morph.vowelSweep },
   { id: 'series-pluck', label: 'Series Pluck', group: 'Morph', build: morph.seriesPluck },
+
+  // Seven that use several of those subsystems at once, and are meant to be listened to rather
+  // than fired: the demonstration the instrument did not have.
+  { id: 'vowel-phrase', label: 'Vowel Phrase', group: 'Showpiece', build: show.vowelPhrase },
+  { id: 'resonant-drop', label: 'Resonant Drop', group: 'Showpiece', build: show.resonantDrop },
+  { id: 'hull-strike', label: 'Hull Strike', group: 'Showpiece', build: show.hullStrike },
+  { id: 'ricochet-pass', label: 'Ricochet Pass', group: 'Showpiece', build: show.ricochetPass },
+  { id: 'metal-cutter', label: 'Metal Cutter', group: 'Showpiece', build: show.metalCutter },
+  { id: 'gravel-bell', label: 'Gravel Bell', group: 'Showpiece', build: show.gravelBell },
+  { id: 'prize-ladder', label: 'Prize Ladder', group: 'Showpiece', build: show.prizeLadder },
 ]
 
 export const PRESET_GROUPS: PresetGroup[] = [
   'Interface', 'Element', 'Weapon',
   'Touch', 'Surfaces', 'Signals',
   'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
-  'Morph',
+  'Morph', 'Showpiece',
 ]
 
 /**

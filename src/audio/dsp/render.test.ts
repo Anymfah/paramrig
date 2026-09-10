@@ -69,6 +69,32 @@ describe('renderPatch', () => {
     }
   }, 30_000)
 
+  /**
+   * And the same question of each channel on its own, which is not the same question.
+   *
+   * Equal-power panning puts a hard-left transient at full scale on the left and at 0.707 of it in
+   * the sum, so everything above — which reads the sum — passes a preset that is sitting on the
+   * clamp in one channel. Four of the seven Showpiece sounds did exactly that while they were being
+   * written, at 1.0000 on one side and under 0.85 in the sum; the exporter found it and no test
+   * did. The clamp is what stops it becoming a click, and a sound leaning on it has lost the top
+   * of its transient whether or not anybody hears a click.
+   *
+   * At the rate a file is written at, and not the reduced one the sweeps above use, because
+   * headroom is the one question where the rate is part of the answer: a high-Q body excited by
+   * noise has a peak that is a draw rather than a number, and at 22 050 `ui-click` reaches the
+   * clamp at any gain worth shipping. What a preset is levelled for is the export.
+   */
+  it('leaves each channel its headroom, not only the sum of the two', () => {
+    for (const preset of PRESETS) {
+      const stereo = renderPatch(preset.build(), SAMPLE_RATE)
+      let pinned = 0
+      for (const channel of [stereo.left, stereo.right]) {
+        for (let i = 0; i < channel.length; i += 1) if (Math.abs(channel[i] ?? 0) >= 0.999) pinned += 1
+      }
+      expect(pinned, `${preset.id} is pinned to the clamp for ${pinned} samples of one channel`).toBe(0)
+    }
+  }, 30_000)
+
   it('makes a sound for every preset', () => {
     for (const preset of PRESETS) {
       expect(peak(render(preset.build(), SCAN_RATE))).toBeGreaterThan(0.05)
