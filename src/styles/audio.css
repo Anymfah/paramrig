@@ -1106,8 +1106,85 @@
   background: var(--accent-subtle);
 }
 
+.audio-library[data-compact] .audio-library__scroll {
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  scrollbar-gutter: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-primary) 22%, transparent) transparent;
+}
+.audio-library[data-compact] .audio-library__scroll::-webkit-scrollbar {
+  width: 1px;
+  height: 1px;
+}
+.audio-library[data-compact] .audio-library__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.audio-library[data-compact] .audio-library__scroll::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-radius: var(--radius-full);
+}
+.audio-library[data-compact] .audio-library__scroll::-webkit-scrollbar-thumb:hover,
+.audio-library[data-compact] .audio-library__scroll::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--text-primary) 40%, transparent);
+}
 .audio-library[data-compact] .audio-library__title {
   display: none;
+}
+.audio-library[data-compact] .audio-library__group + .audio-library__group {
+  margin-block-start: var(--space-1);
+  padding-block-start: var(--space-2);
+  border-block-start: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+.audio-library[data-compact] .audio-library__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 32px;
+  padding: 0;
+  border-radius: 0;
+}
+.audio-library[data-compact] .audio-library__item:hover {
+  background: var(--surface-overlay);
+}
+.audio-library[data-compact] .audio-library__item[aria-current='true'] {
+  background: transparent;
+}
+.audio-library[data-compact] .audio-library__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 1.25rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  transition: color var(--duration-instant) var(--ease-out);
+}
+.audio-library[data-compact] .audio-library__item:hover .audio-library__mark,
+.audio-library[data-compact] .audio-library__item:focus-visible .audio-library__mark {
+  color: var(--text-primary);
+}
+.audio-library[data-compact] .audio-library__item[aria-current='true'] .audio-library__mark {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.audio-library[data-compact] .audio-library__item[aria-current='true']::before {
+  content: '';
+  position: absolute;
+  inset-block: 8px;
+  inset-inline-start: 0;
+  inline-size: 2px;
+  background: var(--text-primary);
+  border-radius: var(--radius-full);
+}
+.audio-library[data-compact] .tt__anchor {
+  display: block;
+  inline-size: 100%;
 }
 
 /*
@@ -1376,7 +1453,7 @@
   --fp-knob-top: #53555a; --fp-knob-bottom: #3c3b40; --fp-knob-rim: #101010; --fp-hand: #c4c2bf; --fp-ring: #505050; --fp-ring-dark: #494949;
   --fp-hero: #3a3c3e; --fp-hero-edge: #414345; --fp-hero-rim: #2c2c2e; --fp-hero-hand: #eae1ca; --fp-face: #a7a7a7;
   --fp-macro-top: #5c5c5c; --fp-macro-bottom: #3c3c3c; --fp-macro-hand: #e9e9e9;
-  --fp-light-top: #a8a7a6; --fp-light-bottom: #6c6b68; --fp-light-hand: #0e0e0e;
+  --fp-light-top: #8e8d8b; --fp-light-bottom: #585755; --fp-light-hand: #0e0e0e;
   --fp-groove: #1e1e1e; --fp-groove-edge: #151515; --fp-red: #db282d; --fp-tray: #404040;
   --fp-src-p: #efa807; --fp-src-e: #4576c4; --fp-src-l: #6fb904; --fp-src-l-edge: #5f9a12; --fp-src-t: #8d52a4; --fp-src-v: #d0708b;
   --fp-slot: #3a3a3a; --fp-slot-edge: #4a4a4a; --fp-slot-open: #2e2e2e; --fp-slot-filled: #121212;
@@ -1408,7 +1485,7 @@
   --fp-knob-top: var(--surface-overlay); --fp-knob-bottom: var(--surface-raised); --fp-knob-rim: var(--fp-edge); --fp-hand: var(--accent); --fp-ring: color-mix(in srgb, var(--text-muted) 45%, var(--surface)); --fp-ring-dark: color-mix(in srgb, var(--text-muted) 45%, var(--surface));
   --fp-hero: var(--surface-overlay); --fp-hero-edge: color-mix(in srgb, var(--surface-overlay) 86%, var(--text-primary)); --fp-hero-rim: var(--fp-edge); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
   --fp-macro-top: var(--surface-overlay); --fp-macro-bottom: var(--surface-raised); --fp-macro-hand: var(--accent);
-  --fp-light-top: var(--text-secondary); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 72%, var(--surface)); --fp-light-hand: var(--surface);
+  --fp-light-top: color-mix(in srgb, var(--text-secondary) 55%, var(--carbon)); --fp-light-bottom: color-mix(in srgb, var(--text-secondary) 38%, var(--surface)); --fp-light-hand: var(--surface);
   --fp-groove: color-mix(in srgb, var(--carbon) 35%, var(--surface)); --fp-groove-edge: var(--fp-edge); --fp-tray: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-tip: var(--surface-overlay); --fp-tip-text: var(--text-primary);
   /* The colours that mean something keep their hue whatever the look: a macro's red, an envelope's blue, an LFO's green, the strip's amber. */
   --fp-red: #e5484d; --fp-red-on-light: #e5484d;
@@ -1611,8 +1688,13 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   box-shadow: 0 0 0 1px var(--rim), inset 0 1px 0 var(--fp-knob-light), var(--fp-knob-shadow);
 }
 .fp-knob[data-size='hero'] .fp-knob__body {
-  background: radial-gradient(circle, #3a3c3e 0 87.5%, #414345 88.5% 98.5%, #2c2c2e 99%);
-  box-shadow: 0 0 0 1px #050505, 0 6px 12px -3px rgba(0, 0, 0, 0.6);
+  background:
+    radial-gradient(circle at 50% 36%, #525456 0 68%, #3c3e40 82%, #484a4c 90%, #2a2a2c 95.5%, #141416 100%);
+  box-shadow:
+    0 0 0 1px var(--fp-hairline),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.28),
+    0 7px 12px -3px rgba(0, 0, 0, 0.7);
 }
 .fp-knob__spin { position: absolute; inset: 0; rotate: var(--turn, 0deg); }
 .fp-knob__hand {
@@ -1626,6 +1708,7 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   background: var(--hand);
 }
 .fp-knob[data-size='hero'] .fp-knob__hand { inset-block-start: 0.5px; border-radius: 1px; }
+.fp-knob[data-size='std'] .fp-knob__hand { inset-block-start: -1px; }
 .fp-knob__face {
   position: absolute;
   inset-inline-start: 50%;
@@ -1645,6 +1728,15 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   font: 700 12px/1 var(--fp-font);
 }
 .fp-knob[data-size='hero'] .fp-knob__digit { inset-block-start: calc(50% + 21px); }
+.fp-knob[data-tone='light'] .fp-knob__digit {
+  display: grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border-radius: 50%;
+  color: var(--fp-red);
+  background: color-mix(in srgb, var(--fp-light-bottom) 62%, var(--fp-knob-rim));
+}
 .fp-knob__value {
   position: absolute;
   inset-block-start: 100%;
@@ -1954,6 +2046,7 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   pointer-events: auto;
 }
 .fp-knob__slot { inset-block-end: 0; }
+.fp-knob[data-tone='light'] .fp-knob__slot { inset-block-start: calc(50% + (var(--d) / 2) + 4px); inset-block-end: auto; }
 .fp-fader__slot { inset-block-start: calc(100% + 1px); }
 .fp-knob[data-mod] .fp-knob__slot, .fp-fader[data-mod] .fp-fader__slot { display: grid; box-shadow: 0 0 0 1px var(--slot); }
 .fp[data-assigning='source'] .fp-knob[data-target] .fp-knob__slot, .fp[data-assigning='source'] .fp-fader[data-target] .fp-fader__slot,

@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { NavRailHead } from '@/shell/NavRailHead'
 import { WaveformView } from '@/audio/WaveformView'
+import { Tooltip } from '@/ui/Tooltip'
 import type { RadialLayer } from '@/rigs/extended-types'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
 import type { AudioSnapshot } from '@/audio/document'
@@ -17,6 +18,9 @@ import type { AudioPatch } from '@/audio/types'
  *
  * The grid of waveform cards is still its own view. This is for reaching a sound you can name;
  * that is for not knowing and looking.
+ *
+ * Compact is a 48 px rail: full names do not fit, so each entry becomes a short mark with the
+ * name in a tooltip — the same contract the outliner keeps when it shows icons alone.
  */
 function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wave }: {
   current: string
@@ -37,7 +41,7 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
     onNavigate()
   }
   return (
-    <nav className="nav-rail audio-library scroll-area" aria-label="Sounds" data-compact={compact || undefined} inert={inert}>
+    <nav className="nav-rail audio-library" aria-label="Sounds" data-compact={compact || undefined} inert={inert}>
       <NavRailHead compact={compact} noun="sounds" onNavigate={onNavigate} />
       <div className="audio-library__scroll scroll-area">
       {snapshots.length > 0 ? (
@@ -46,14 +50,12 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
           <ul className="audio-library__list">
             {snapshots.map((snapshot) => (
               <li key={snapshot.id}>
-                <button
-                  type="button"
-                  className="audio-library__item"
-                  aria-current={snapshot.id === current ? 'true' : undefined}
+                <SoundItem
+                  label={snapshot.name}
+                  current={snapshot.id === current}
+                  compact={compact}
                   onClick={() => choose(snapshot.patch, snapshot.id)}
-                >
-                  {snapshot.name}
-                </button>
+                />
               </li>
             ))}
           </ul>
@@ -65,14 +67,12 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
           <ul className="audio-library__list">
             {PRESETS.filter((preset) => preset.group === group).map((preset) => (
               <li key={preset.id}>
-                <button
-                  type="button"
-                  className="audio-library__item"
-                  aria-current={preset.id === current ? 'true' : undefined}
+                <SoundItem
+                  label={preset.label}
+                  current={preset.id === current}
+                  compact={compact}
                   onClick={() => choose(preset.build(), preset.id)}
-                >
-                  {preset.label}
-                </button>
+                />
               </li>
             ))}
           </ul>
@@ -86,6 +86,38 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
       ) : null}
     </nav>
   )
+}
+
+/** One or two letters that fit the compact rail; the full name lives in the tooltip and aria-label. */
+function compactMark(label: string) {
+  const parts = label.trim().split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) {
+    const a = parts[0]?.[0]
+    const b = parts[1]?.[0]
+    if (a && b) return (a + b).toUpperCase()
+  }
+  return (parts[0]?.[0] ?? '?').toUpperCase()
+}
+
+function SoundItem({ label, current, compact, onClick }: {
+  label: string
+  current: boolean
+  compact: boolean
+  onClick: () => void
+}) {
+  const button = (
+    <button
+      type="button"
+      className="audio-library__item"
+      aria-label={label}
+      aria-current={current ? 'true' : undefined}
+      onClick={onClick}
+    >
+      {compact ? <span className="audio-library__mark" aria-hidden="true">{compactMark(label)}</span> : label}
+    </button>
+  )
+  if (!compact) return button
+  return <Tooltip content={label} side="right">{button}</Tooltip>
 }
 
 /*

@@ -18,7 +18,7 @@ import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio
  * The face-plate, transcribed from the reference at its own scale.
  *
  * Every number in this file is a measurement in CSS pixels off a Retina capture of the reference
- * window: the plate is 1250 wide and 696 tall below its title bar, and each control is placed at
+ * window: the plate is 1250 wide and 744 tall below its title bar, and each control is placed at
  * the coordinates the capture gave for it. Earlier versions laid the same controls out with grids
  * and flex boxes and asked the browser to distribute them, and the browser distributed them
  * differently from the reference every time; a fixed object does not flow, so nothing here does.
@@ -1013,16 +1013,16 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     </Panel>
     ),
     amp: (
-    <Panel x={1018.5} y={54} w={70.5} h={288} label="Amp" tone="bare" gap={1.5}>
+    <Panel x={1018.5} y={54} w={70.5} h={336} label="Amp" tone="bare" gap={1.5}>
       <Text x={1053.5} y={60} kind="title">Amp</Text>
-      <Text x={1053.5} y={83.5}>Level</Text>
-      <Knob ctx={ctx} x={1053} y={121} id="master.gain" label="Level" tone="light" />
-      <Text x={1053.5} y={145.5}>Width</Text>
-      <Knob ctx={ctx} x={1053.3} y={183} id="fx.width" label="Width" tone="light" />
-      <Text x={1053.5} y={207.5}>Limit</Text>
-      <Knob ctx={ctx} x={1053.6} y={245} id="master.limiter" label="Limit" tone="light" />
-      <Text x={1053.5} y={269.5}>Tone</Text>
-      <Knob ctx={ctx} x={1053.6} y={307} id="fx.tone" label="Tone" tone="light" />
+      <Text x={1053.5} y={76}>Level</Text>
+      <Knob ctx={ctx} x={1053} y={112} id="master.gain" label="Level" tone="light" />
+      <Text x={1053.5} y={160}>Width</Text>
+      <Knob ctx={ctx} x={1053.3} y={196} id="fx.width" label="Width" tone="light" />
+      <Text x={1053.5} y={244}>Limit</Text>
+      <Knob ctx={ctx} x={1053.6} y={280} id="master.limiter" label="Limit" tone="light" />
+      <Text x={1053.5} y={328}>Tone</Text>
+      <Knob ctx={ctx} x={1053.6} y={364} id="fx.tone" label="Tone" tone="light" />
     </Panel>
     ),
     fx: (
@@ -1104,9 +1104,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             {/* the left column: how strong, how often, and whether at all */}
             <Text x={36.5 + o} y={Y(26)}>Level</Text>
             <Knob ctx={ctx} x={36 + o} y={Y(64)} id={id('depth')} label="Level" tone="light" />
-            <Text x={36.5 + o} y={Y(104)}>Rate</Text>
-            <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
-            <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{rate.toFixed(2)} cycles</Text>
+            <Text x={36.5 + o} y={Y(112)}>Rate</Text>
+            <Knob ctx={ctx} x={36 + o} y={Y(150)} id={id('rate')} label="Rate" />
+            <Text x={36.5 + o} y={Y(186)} size={11} kind="dim">{rate.toFixed(2)} cycles</Text>
             <Box x={5 + o} y={Y(200)} w={62.5} onClick={() => onPattern?.(index, scene, Array.from({ length: STEP_COUNT }, () => 0))} label={`Clear performer ${index + 1} row ${scene + 1}`} hint="Clear this row: every step back to the floor.">Init</Box>
             <Box x={5 + o} y={Y(222)} w={62.5} selected={bipolar} pressed={bipolar} onClick={() => onChange(id('bipolar'), !bipolar)} label={`Performer ${index + 1} bipolar`} hint={bipolar ? 'Bipolar: half height is rest, the row swings both ways. Click for unipolar.' : 'Unipolar: the floor is rest, the row only pushes. Click for bipolar.'}>{bipolar ? 'Bi' : 'Uni'}</Box>
             <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
@@ -1142,18 +1142,18 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
           <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
           <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
-          <Bracket x0={40} x1={151} top={474} mid={486.5} tip={500} width={8} />
-          <Bracket x0={177.5} x1={287.5} top={474} mid={486.5} tip={500} width={11.5} />
-          <Text x={96} y={496}>A</Text>
-          <Text x={232.4} y={495.5}>D</Text>
-          <Text x={368.6} y={495.5}>R</Text>
-          <Text x={27.6} y={510}>Delay</Text>
-          <Text x={164.8} y={510}>Hold</Text>
-          <Knob ctx={ctx} x={27.8} y={547.1} id={L(f, 'offset')} label="Delay" size="sm" />
-          <Knob ctx={ctx} x={96} y={539.4} id={L(f, 'amp.attack')} label="A" />
-          <Knob ctx={ctx} x={164.6} y={547.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
-          <Knob ctx={ctx} x={232.6} y={540} id={L(f, 'amp.decay')} label="D" />
-          <Knob ctx={ctx} x={369.7} y={539.7} id={L(f, 'amp.release')} label="R" />
+          <Bracket x0={40} x1={151} top={486} mid={498.5} tip={512} width={8} />
+          <Bracket x0={177.5} x1={287.5} top={486} mid={498.5} tip={512} width={11.5} />
+          <Text x={96} y={508}>A</Text>
+          <Text x={232.4} y={507.5}>D</Text>
+          <Text x={368.6} y={507.5}>R</Text>
+          <Text x={27.6} y={522}>Delay</Text>
+          <Text x={164.8} y={522}>Hold</Text>
+          <Knob ctx={ctx} x={27.8} y={559.1} id={L(f, 'offset')} label="Delay" size="sm" />
+          <Knob ctx={ctx} x={96} y={551.4} id={L(f, 'amp.attack')} label="A" />
+          <Knob ctx={ctx} x={164.6} y={559.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
+          <Knob ctx={ctx} x={232.6} y={552} id={L(f, 'amp.decay')} label="D" />
+          <Knob ctx={ctx} x={369.7} y={551.7} id={L(f, 'amp.release')} label="R" />
           <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
           <Text x={40.4} y={592} u>Gate</Text>
           <Block className="fp-plot" x={82} y={595.5} w={318} h={62} hint="The layer's level over time. Drag the handles: attack, hold, decay and sustain, release.">
@@ -1231,8 +1231,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             {/* the right column: how much, and from where in the cycle */}
             <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
             <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
-            <Text x={351.5 + o} y={Y(164)}>Phase</Text>
-            <Knob ctx={ctx} x={351.5 + o} y={Y(188)} id={id('phase')} label="Phase" size="sm" />
+            <Text x={351.5 + o} y={Y(172)}>Phase</Text>
+            <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label="Phase" size="sm" />
             {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
             <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
               {target ? (

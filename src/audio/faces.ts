@@ -21,9 +21,9 @@
 export type Layout = 'wide' | 'medium' | 'narrow'
 /** Each face's width, and the height its rows come to at that width. */
 export const FACES: Record<Layout, { w: number; h: number }> = {
-  wide: { w: 1250, h: 696 },
-  medium: { w: 856, h: 749 },
-  narrow: { w: 695, h: 1038.5 },
+  wide: { w: 1250, h: 744 },
+  medium: { w: 856, h: 797 },
+  narrow: { w: 695, h: 1086.5 },
 }
 /** The reference's face, which everything is measured on. */
 export const PLATE = FACES.wide
