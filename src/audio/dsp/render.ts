@@ -9,7 +9,7 @@ import { performerAt } from './performer.ts'
 import { applyFx } from './fx.ts'
 import { streamFor } from './rng.ts'
 import { createLfoState, LFO_RANGE, lfoAt, readLfoTarget, type LfoDestination, type LfoState } from './lfo.ts'
-import { MAX_VOICES } from '../fields.ts'
+import { MAX_VOICES, MOD_ROUTES, routeAt } from '../fields.ts'
 
 /**
  * The whole synthesiser, as one pure function.
@@ -41,9 +41,9 @@ const FADE_IN_SECONDS = 0.002
  */
 type Slot = AudioPatch['mods'][number]
 type Modulator =
-  | { kind: 'lfo'; lfo: Slot; destination: LfoDestination; state: LfoState; random: () => number }
-  | { kind: 'envelope'; envelope: Slot; destination: LfoDestination; fitted: FittedEnvelope; life: number }
-  | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; pattern: readonly number[]; curves: readonly number[] | undefined; duration: number }
+  | { kind: 'lfo'; lfo: Slot; destination: LfoDestination; depth: number; state: LfoState; random: () => number }
+  | { kind: 'envelope'; envelope: Slot; destination: LfoDestination; depth: number; fitted: FittedEnvelope; life: number }
+  | { kind: 'performer'; performer: AudioPatch['performers'][number]; destination: LfoDestination; depth: number; pattern: readonly number[]; curves: readonly number[] | undefined; duration: number }
 
 /**
  * A modulator's swing at a moment of the patch's clock, at its depth, and the sum of a list of
@@ -60,9 +60,29 @@ function swingOf(entries: Modulator[], clock: number): number {
 }
 
 function swingAt(entry: Modulator, clock: number): number {
-  if (entry.kind === 'lfo') return lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.lfo.depth
-  if (entry.kind === 'envelope') return envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.envelope.depth
-  return performerAt(entry.performer, entry.pattern, entry.curves, clock, entry.duration) * entry.performer.depth
+  // The depth belongs to the route, not to the modulator: one oscillator may drive four things at
+  // once, and a swing that means an octave of pitch means the whole stereo field on a pan.
+  if (entry.kind === 'lfo') return lfoAt(entry.lfo, clock, entry.state, entry.random) * entry.depth
+  if (entry.kind === 'envelope') return envelopeAt(entry.envelope, entry.fitted, clock - entry.envelope.delay, entry.life) * entry.depth
+  return performerAt(entry.performer, entry.pattern, entry.curves, clock, entry.duration) * entry.depth
+}
+
+/**
+ * The places one modulator goes, and how far it moves each of them.
+ *
+ * Read off the flat fields rather than a list, which is how everything in this model is stored: a
+ * slot carries `target`/`depth` and three more pairs, and the ones that are off are not routes.
+ */
+function routesOf(slot: Record<string, unknown>): { target: string; depth: number }[] {
+  const out: { target: string; depth: number }[] = []
+  for (let at = 0; at < MOD_ROUTES; at += 1) {
+    const names = routeAt(at)
+    const target = slot[names.target]
+    if (typeof target !== 'string' || target === 'off') continue
+    const depth = slot[names.depth]
+    out.push({ target, depth: typeof depth === 'number' ? depth : 0 })
+  }
+  return out
 }
 
 /** Equal power, so a sound swept across the field does not dip in the middle. */
@@ -405,22 +425,33 @@ export function renderPatch(patch: AudioPatch, sampleRate: number): Stereo {
   const wired: (Modulator & { layer: number })[] = [
     // One list of slots, each saying which kind it is; the two the kind does not read are left
     // alone, so a slot switched to the other kind and back is the one it was.
+    // One entry per route rather than per modulator: a slot may be pointed at four places at once,
+    // and each of them is an independent swing with its own depth. A route that is off, or that
+    // names something the engine does not have, simply does not appear.
     ...patch.mods.flatMap((slot, index): (Modulator & { layer: number })[] => {
-      const target = slot.enabled ? readLfoTarget(slot.target) : null
-      if (!target) return []
-      if (slot.kind === 'envelope') {
-        const life = Math.max(0.001, patch.duration - Math.max(0, slot.delay))
-        return [{ kind: 'envelope' as const, ...target, envelope: slot, fitted: fitEnvelope(slot, life), life }]
-      }
-      // Its own stream, so a noise modulator is reproducible and independent of the layers'.
-      const random = streamFor(patch.seed, 100 + index)
-      return [{ kind: 'lfo' as const, ...target, lfo: slot, state: createLfoState(random), random }]
+      if (!slot.enabled) return []
+      const life = Math.max(0.001, patch.duration - Math.max(0, slot.delay))
+      const fitted = slot.kind === 'envelope' ? fitEnvelope(slot, life) : null
+      // One stream a slot, not a route: four routes off one noise modulator are four readings of
+      // the same oscillator, which is the whole point of pointing one modulator at four things.
+      const random = slot.kind === 'envelope' ? null : streamFor(patch.seed, 100 + index)
+      return routesOf(slot).flatMap((route): (Modulator & { layer: number })[] => {
+        const where = readLfoTarget(route.target)
+        if (!where) return []
+        const depth = route.depth
+        return fitted
+          ? [{ kind: 'envelope', ...where, depth, envelope: slot, fitted, life }]
+          : [{ kind: 'lfo', ...where, depth, lfo: slot, state: createLfoState(random!), random: random! }]
+      })
     }),
     ...patch.performers.flatMap((performer) => {
-      const target = performer.enabled ? readLfoTarget(performer.target) : null
-      if (!target) return []
+      if (!performer.enabled) return []
       const scene = Math.min(performer.patterns.length - 1, Math.max(0, Math.round(patch.scene)))
-      return [{ kind: 'performer' as const, ...target, performer, pattern: performer.patterns[scene] ?? [], curves: performer.curves?.[scene], duration: patch.duration }]
+      return routesOf(performer).flatMap((route): (Modulator & { layer: number })[] => {
+        const where = readLfoTarget(route.target)
+        if (!where) return []
+        return [{ kind: 'performer', ...where, depth: route.depth, performer, pattern: performer.patterns[scene] ?? [], curves: performer.curves?.[scene], duration: patch.duration }]
+      })
     }),
   ]
   /*

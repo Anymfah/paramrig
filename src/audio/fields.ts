@@ -270,6 +270,46 @@ export const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
  * Depth runs both ways for both, where an oscillator's used to run one way only: a shape that can
  * be turned upside down is worth more than a rule that says it cannot.
  */
+/**
+ * How many places one modulator may go at once.
+ *
+ * A modulator used to have exactly one destination, so pointing an LFO at both a cutoff and a pan
+ * meant spending two of the eight slots on the same oscillator, running at the same rate, and the
+ * two would drift apart the moment either rate was touched. Four is what the plate can draw — a
+ * control shows three rings before they close on its body — and it is the count Massive X settles
+ * on for the same reason.
+ *
+ * Written as flat fields rather than as a list, which is the shape everything else in this model
+ * uses: a slot carries every field it might need and the engine reads the ones that are live. That
+ * keeps `target` and `depth` exactly where they were, so a rig bound to them still works, the
+ * generated documentation still lists them, and a patch saved yesterday needs no migration — the
+ * three extra routes simply arrive switched off.
+ */
+export const MOD_ROUTES = 4
+
+/**
+ * The pair of field names a route reads.
+ *
+ * The first is the plain `target` and `depth`, where they have always been, so a rig bound to one
+ * of them and the generated documentation both keep working. The three that joined it are lettered
+ * from B, the way the insert and filter slots are — and letters rather than digits because a field
+ * name in this model is letters: `parseAudioProperty` matches `[A-Za-z]+`, and a `target2` parses
+ * as nothing at all, reads back as null and is silently dropped on the way to the patch.
+ */
+const ROUTE_LETTERS = ['', 'B', 'C', 'D']
+export const routeAt = (at: number): { target: string; depth: string } =>
+  ({ target: `target${ROUTE_LETTERS[at] ?? ''}`, depth: `depth${ROUTE_LETTERS[at] ?? ''}` })
+
+/** The extra routes' fields, added to whichever table describes a modulator. */
+const extraRoutes = (label: string, depthMin: number): Record<string, FieldSpec> =>
+  Object.fromEntries(Array.from({ length: MOD_ROUTES - 1 }, (_, at) => {
+    const { target, depth } = routeAt(at + 1)
+    return [
+      [target, { type: 'option', label: `${label} ${ROUTE_LETTERS[at + 1]}`, options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS }],
+      [depth, num(`Depth ${ROUTE_LETTERS[at + 1]}`, depthMin, 1)],
+    ]
+  }).flat())
+
 export const MOD_FIELDS: Record<string, FieldSpec> = {
   kind: { type: 'option', label: 'Modulator', options: ['envelope', 'lfo'], optionLabels: { envelope: 'Envelope', lfo: 'Switcher LFO' } },
   enabled: { type: 'boolean', label: 'Enabled' },
@@ -285,6 +325,7 @@ export const MOD_FIELDS: Record<string, FieldSpec> = {
   shape: { type: 'option', label: 'Shape', options: ['sine', 'triangle', 'square', 'saw', 'noise'] },
   rate: num('Rate', 0.1, 40, 0.1, { unit: 'Hz', scale: 'log' }),
   phase: num('Phase', 0, 1),
+  ...extraRoutes('Target', -1),
 }
 
 /**
@@ -301,6 +342,7 @@ export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
   target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
   // Where a drawn point snaps to, which is a drawing aid: the engine plays the row as drawn.
   grid: { ...num('Grid', 0, 8, 1), editorOnly: true },
+  ...extraRoutes('Target', 0),
 }
 
 export const AUDIO_FIELDS = {

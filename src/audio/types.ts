@@ -327,10 +327,23 @@ export type ModKind = 'envelope' | 'lfo'
 export type ModSlot = {
   kind: ModKind
   enabled: boolean
-  /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
+  /**
+   * Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`.
+   *
+   * One modulator may drive four places at once, each with its own depth, because a swing that
+   * means an octave of pitch means something entirely different on a pan. `target`/`depth` is the
+   * first of the four and `target2`/`depth2` onward are the rest — flat fields rather than a list,
+   * which is the shape the whole model uses and what lets a rig bound to `depth` keep working.
+   */
   target: string
   /** −1..1, scaled by whatever it is pointed at. Both ways round, on either kind. */
   depth: number
+  targetB: string
+  depthB: number
+  targetC: string
+  depthC: number
+  targetD: string
+  depthD: number
   /** An envelope's shape, read when the kind is `envelope`. */
   delay: number
   attack: number
@@ -365,6 +378,13 @@ export type Performer = {
   depth: number
   /** Where it goes: `off`, or a layer and a destination, as `layers[0].cutoff`. */
   target: string
+  /** And the three more it may go to at the same time, each with its own depth. */
+  targetB: string
+  depthB: number
+  targetC: string
+  depthC: number
+  targetD: string
+  depthD: number
   /**
    * How many divisions the drawing snaps to, 0 for none.
    *

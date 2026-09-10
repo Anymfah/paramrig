@@ -83,6 +83,46 @@ describe('the modulation slots on the board', () => {
  * replace rather than one you sweep, which the board has always had an exception for and never
  * managed to apply, because nothing ever set the view it looked for.
  */
+/**
+ * The guard for a whole class of silent failure.
+ *
+ * A field's name goes into a property path, and `parseAudioProperty` matches `[A-Za-z]+` — letters
+ * only, deliberately, because a section is told from a field by its shape. Add a field called
+ * `target2` and everything downstream looks right: it is in the table, the board lists its path,
+ * the docs publish it — and it reads back as null and every write to it is dropped, because the
+ * one thing that has to accept the path does not. It cost an afternoon once; it costs a test now.
+ */
+describe('every path the board hands out', () => {
+  it('parses, so nothing can be listed that cannot be read or written', () => {
+    const refused = boardPaths().map(({ property }) => property).filter((property) => !parseAudioProperty(property))
+    expect(refused).toEqual([])
+  })
+
+  it('reads back a value rather than nothing, for every one of them', () => {
+    const values = boardValues(defaultPatch())
+    const empty = boardPaths().map(({ property }) => property).filter((property) => values[property] === undefined || values[property] === null)
+    expect(empty).toEqual([])
+  })
+
+  it('takes a write and gives it back, for every one of them', () => {
+    const blank = defaultPatch()
+    const before = boardValues(blank)
+    const wrong = boardPaths().flatMap(({ property }) => {
+      const spec = parseAudioProperty(property)?.spec
+      if (!spec) return [property]
+      const was = before[property]
+      // Something that is definitely not what is there now, inside the field's own range.
+      const next = spec.type === 'boolean' ? was !== true
+        : spec.type === 'option' ? (spec.options ?? []).find((one) => one !== was)
+        : typeof was === 'number' ? (was === (spec.max ?? 1) ? (spec.min ?? 0) : (spec.max ?? 1)) : undefined
+      if (next === undefined) return []
+      const after = boardValues(setBoardValue(blank, property, next as never))
+      return after[property] === next ? [] : [`${property}: wrote ${JSON.stringify(next)}, read ${JSON.stringify(after[property])}`]
+    })
+    expect(wrong).toEqual([])
+  })
+})
+
 describe('what the board will and will not expose', () => {
   it('keeps a performer’s grid off the board: it snaps the drawing, not the sound', () => {
     expect(boardParameters().some((parameter) => /^performers\[\d+\]\.grid$/.test(parameter.id))).toBe(false)

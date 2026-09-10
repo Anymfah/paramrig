@@ -1645,7 +1645,7 @@
   user-select: none;
 }
 .fp *, .fp *::before, .fp *::after { box-sizing: border-box; }
-.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-pattern, .fp-target, .fp-slot-head, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
+.fp-line, .fp-icon, .fp-bracket, .fp-osc-foot, .fp-plot, .fp-pattern, .fp-slot-head, .fp-shapes, .fp-wheel, .fp-at, .fp-read, .fp-box, .fp-badge, .fp-knob, .fp-knob-empty, .fp-fader, .fp-text, .fp-sources__box { position: absolute; }
 .fp-band, .fp-panel, .fp-routing, .fp-strip { margin: 0; padding: 0; }
 
 /*
@@ -1665,7 +1665,7 @@
 .fp-rule { flex: none; block-size: 1.5px; background: var(--fp-hairline); }
 .fp-panel { position: relative; display: flex; align-items: center; justify-content: center; }
 .fp-panel__body { position: relative; flex: none; }
-.fp-routing { position: relative; display: flex; align-items: center; justify-content: center; flex: 39 1 39px; }
+.fp-routing { position: relative; display: flex; align-items: center; justify-content: center; flex: 22 1 22px; }
 .fp[data-layout='wide'] .fp-routing { justify-content: flex-start; padding-inline-start: 26.95%; }
 .fp-strip { display: flex; align-items: flex-start; flex: 24 1 24px; border-block-start: 1px solid var(--fp-hairline); }
 .fp-strip__din { position: relative; block-size: 23px; }
@@ -1953,18 +1953,51 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-at::after { content: ''; position: absolute; inset-inline-start: 50%; inset-block-start: 50%; inline-size: 5px; block-size: 5px; translate: -50% -50%; border-radius: 50%; background: var(--fp-dim); }
 
 /* The routing bar: the two page tabs, then the modulation sources in their colours. */
-.fp-sources { position: relative; display: flex; block-size: 39px; list-style: none; margin: 0; padding: 0; }
-.fp-source { position: relative; flex: none; inline-size: 40.25px; block-size: 39px; }
-.fp-sources__box { inset-block-start: 20.5px; block-size: 18px; border-radius: 3px; background: var(--fp-tray); }
-.fp-source[data-kind='p'] .fp-text { color: var(--fp-src-p); }
-.fp-source[data-kind='e'] .fp-text { color: var(--fp-src-e); }
-.fp-source[data-kind='l'] .fp-text { color: var(--fp-src-l); }
+.fp-sources { position: relative; display: flex; block-size: 20px; list-style: none; margin: 0; padding: 0; }
+.fp-source { position: relative; flex: none; inline-size: 40.25px; block-size: 20px; }
+.fp-sources__box { inset-block-start: 0; block-size: 20px; border-radius: 3px; background: var(--fp-tray); }
+.fp-source[data-kind='p'] .fp-source__name, .fp-source[data-kind='p'] .fp-text { color: var(--fp-src-p); }
+.fp-source[data-kind='e'] .fp-source__name, .fp-source[data-kind='e'] .fp-text { color: var(--fp-src-e); }
+.fp-source[data-kind='l'] .fp-source__name, .fp-source[data-kind='l'] .fp-text { color: var(--fp-src-l); }
 .fp-source[data-kind='t'] .fp-text { color: var(--fp-src-t); }
 .fp-source[data-kind='v'] .fp-text { color: var(--fp-src-v); }
-.fp-source__grab { cursor: grab; touch-action: none; }
-.fp-source__grab[data-held] { cursor: grabbing; }
-.fp-source__grab:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
-.fp-source__fixed { cursor: not-allowed; }
+/*
+ * One cell, one target: the mark and the name on a line, and the whole thing is the handle.
+ *
+ * The bar used to be two rows — a seventeen-pixel cross above a name — which cost twenty pixels of
+ * plate height and gave the drag a target most people missed. Side by side it is half as tall, and
+ * the thing you press is as wide as the cell.
+ */
+.fp-source__hold {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: grab;
+  touch-action: none;
+  transition: background var(--duration-instant) var(--ease-out);
+}
+.fp-source__hold:hover { background: var(--fp-box); }
+.fp-source__hold[data-held] { background: var(--fp-tray); cursor: grabbing; }
+.fp-source__hold[data-fixed] { cursor: default; }
+.fp-source__hold:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; }
+.fp-source__mark { display: block; line-height: 0; opacity: 0.55; transition: opacity var(--duration-instant) var(--ease-out); }
+.fp-source__hold:hover .fp-source__mark, .fp-source__hold[data-held] .fp-source__mark { opacity: 1; }
+.fp-source__hold[data-fixed] .fp-source__mark { opacity: 0.3; }
+.fp-source__name { font: 400 13px/1 var(--fp-font); font-stretch: var(--fp-stretch); }
+/* A source already spending routes says so with a dot under its name. */
+.fp-source__hold[data-using]::after {
+  content: '';
+  position: absolute;
+  inset-block-end: 1px;
+  inline-size: 3px;
+  block-size: 3px;
+  border-radius: 50%;
+  background: currentColor;
+}
 /* While a modulator is held: its name rides the pointer, and every control that could take it lights up. */
 .fp-ghost { position: absolute; z-index: 10; display: none; padding: 2px 5px; border-radius: 3px; background: var(--fp-tray); color: var(--assign, var(--fp-src-l)); font: 700 13px/1 var(--fp-font); pointer-events: none; }
 .fp[data-assigning] .fp-ghost { display: block; }
@@ -2001,6 +2034,54 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-slot[data-filled]:hover { background: var(--fp-box-text); color: var(--fp-amber-bright); }
 .fp-slot[data-active] { background: var(--fp-ground); box-shadow: -1.5px 0 0 var(--fp-hairline), 0 0 0 2px var(--fp-amber); color: var(--fp-amber-bright); }
 .fp-slot:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 3px; }
+
+/*
+ * Where a modulator goes, in its own panel: a reading, not a control.
+ *
+ * It replaced a select that could only ever name one of the four, and that was a second way of
+ * doing what dragging the handle does. Wraps by the width it is given — a column in the narrow
+ * left of an envelope panel, a row across the foot of a performer's.
+ */
+.fp-routes-of {
+  position: absolute;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px 4px;
+  align-content: flex-start;
+  font: 400 10.5px/1 var(--fp-font);
+  font-stretch: var(--fp-stretch);
+}
+.fp-routes-of__row {
+  display: flex;
+  /* One to a line in a modulator's own column, two across the foot of a performer's: the floor is
+     what a destination, its depth and its cross need to be read rather than guessed at. */
+  flex: 1 1 96px;
+  gap: 3px;
+  align-items: center;
+  min-inline-size: 96px;
+  block-size: 12px;
+  padding-inline: 3px;
+  border-radius: 2px;
+  background: var(--fp-slot);
+  color: var(--fp-text);
+}
+.fp-routes-of__to { flex: 1 1 auto; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fp-routes-of__depth { flex: none; color: var(--fp-readout); font-variant-numeric: tabular-nums; }
+.fp-routes-of__off {
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fp-dim);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fp-routes-of__off:hover { color: var(--fp-red); }
+.fp-routes-of__off:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
+.fp-routes-of__none { color: var(--fp-dim); font-style: italic; }
 
 /* The plots, in the reference's blue, without the chrome the standalone versions carry. */
 .fp-plot { overflow: hidden; }
@@ -2238,33 +2319,6 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .pattern__join[data-held]::after { display: none; }
 .pattern__join:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .pattern__key:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: -1px; pointer-events: auto; }
-
-/* The LFO's target, in the box style, where the reference keeps its gate options. */
-.fp-target { inline-size: 105px; }
-.fp-target .control { display: block; margin: 0; padding: 0; inline-size: 105px; min-inline-size: 0; }
-.fp-target .control__aside, .fp-target .field-reset { display: none; }
-.fp-target .control--select[data-modified] .select-trigger__value { margin-inline-end: 0; }
-.fp-target .select-trigger {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  inline-size: 105px;
-  min-inline-size: 0;
-  max-inline-size: 105px;
-  min-block-size: 0;
-  block-size: 14.5px;
-  margin: 0;
-  padding: 0 3px 0 4px;
-  border: 0;
-  border-radius: 2px;
-  background: var(--fp-box);
-  color: var(--fp-box-text);
-  font: 400 11px/1 var(--fp-font);
-  cursor: pointer;
-}
-.fp-target .select-trigger__label { display: none; }
-.fp-target .select-trigger__value { flex: 1; min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
-.fp-target .select-trigger__icon { inline-size: 8px; block-size: 8px; flex: none; }
 
 /*
  * The modulation slot. While a source is held, every control it could take shows the case it is

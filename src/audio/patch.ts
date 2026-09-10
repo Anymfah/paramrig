@@ -183,6 +183,8 @@ export function makeMod(input: Partial<ModSlot> = {}): ModSlot {
     enabled: false,
     target: 'off',
     depth: 0.3,
+    // The three it may also go to, switched off: a slot carries every field it might need.
+    targetB: 'off', depthB: 0.3, targetC: 'off', depthC: 0.3, targetD: 'off', depthD: 0.3,
     delay: 0, attack: 0.01, hold: 0, decay: 0.2, sustain: 0, release: 0.05, curve: 2,
     shape: 'sine', rate: 5, phase: 0,
     ...input,
@@ -216,6 +218,7 @@ export function makePattern(): number[] {
 export function makePerformer(input: Partial<Performer> = {}): Performer {
   return {
     enabled: false, rate: 1, shape: 'step', bipolar: false, depth: 0.5, target: 'off', grid: 0,
+    targetB: 'off', depthB: 0.5, targetC: 'off', depthC: 0.5, targetD: 'off', depthD: 0.5,
     patterns: Array.from({ length: SCENE_COUNT }, makePattern),
     // Every step joined the way the row says, which is what a performer did before it could say
     // otherwise: the field is new and a patch without it has to sound the same.

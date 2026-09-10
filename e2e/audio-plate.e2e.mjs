@@ -102,8 +102,8 @@ export default run('audio-plate', async ({ page, check, log }) => {
     await page.waitForTimeout(200)
   }
   const cutoff = page.locator('section[aria-label="Filter"] [role="slider"][aria-label="Cutoff"]')
-  await drag(page.getByRole('button', { name: 'Drag L4 onto a control to modulate it' }), cutoff)
-  await drag(page.getByRole('button', { name: 'Drag L5 onto a control to modulate it' }), cutoff)
+  await drag(page.getByRole('button', { name: /^L4,/ }), cutoff)
+  await drag(page.getByRole('button', { name: /^L5,/ }), cutoff)
   const rings = await cutoff.locator('.fp-knob__mod').count()
   check('two sources on one dial wear two rings', rings === 2, String(rings))
   const said = await cutoff.getAttribute('aria-valuetext')

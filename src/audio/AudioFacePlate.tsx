@@ -5,8 +5,7 @@ import type { ParameterDef, ParamValue } from '@/rigs/types'
 import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/AudioKnob'
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
-import { ParameterField } from '@/ui/ParameterField'
-import { FILTER_SLOTS, FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { FILTER_SLOTS, FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, MOD_ROUTES, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT, routeAt } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { warp } from '@/audio/dsp/osc'
@@ -112,32 +111,36 @@ const targetOf = (id: string): string | undefined => {
 function modsOf(ctx: Ctx, target: string | undefined): KnobMod[] {
   if (!target) return []
   const found: KnobMod[] = []
+  /*
+   * Every route of every source, not the first of each.
+   *
+   * A modulator holds four (target, depth) pairs and may be pointed at four places at once, so a
+   * control has to ask each of them rather than asking the slot where it goes. The id carries the
+   * route number because it is what the ring, the menu entry and React's key are all told apart
+   * by: the same oscillator may appear on this control once and on the next one twice.
+   */
+  const routesOf = (id: string, name: string, colour: string, bipolar: boolean) => {
+    if (read(ctx, `${id}.enabled`) === false) return
+    for (let at = 0; at < MOD_ROUTES; at += 1) {
+      const route = routeAt(at)
+      if (read(ctx, `${id}.${route.target}`) !== target) continue
+      found.push({
+        id: `${id}#${at}`, name, colour, bipolar,
+        depth: readNum(ctx, `${id}.${route.depth}`),
+        onDepth: (next) => ctx.onChange(`${id}.${route.depth}`, next),
+        onClear: () => ctx.onChange(`${id}.${route.target}`, 'off'),
+      })
+    }
+  }
   for (let index = 0; index < PERFORMER_COUNT; index += 1) {
-    const id = `performers[${index}]`
-    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
-    found.push({
-      id, name: `P${index + 1}`, colour: SOURCE_COLOUR.p,
-      depth: readNum(ctx, `${id}.depth`),
-      bipolar: read(ctx, `${id}.bipolar`) === true,
-      onDepth: (next) => ctx.onChange(`${id}.depth`, next),
-      onClear: () => ctx.onChange(`${id}.target`, 'off'),
-    })
+    routesOf(`performers[${index}]`, `P${index + 1}`, SOURCE_COLOUR.p, read(ctx, `performers[${index}].bipolar`) === true)
   }
   for (let index = 0; index < MOD_COUNT; index += 1) {
-    const id = `mods[${index}]`
-    if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
-    const envelope = read(ctx, `${id}.kind`) === 'envelope'
-    found.push({
-      id, name: `${envelope ? 'E' : 'L'}${index + 2}`,
-      colour: envelope ? SOURCE_COLOUR.e : SOURCE_COLOUR.l,
-      depth: readNum(ctx, `${id}.depth`),
-      // An envelope happens once and pushes one way, the sign of its depth saying which; an
-      // oscillator swings either side of the value. Drawn the same, the envelope's arc claimed a
-      // swing it does not have and its depth could not be dragged below zero.
-      bipolar: !envelope,
-      onDepth: (next) => ctx.onChange(`${id}.depth`, next),
-      onClear: () => ctx.onChange(`${id}.target`, 'off'),
-    })
+    const envelope = read(ctx, `mods[${index}].kind`) === 'envelope'
+    // An envelope happens once and pushes one way, the sign of its depth saying which; an
+    // oscillator swings either side of the value. Drawn the same, the envelope's arc claimed a
+    // swing it does not have and its depth could not be dragged below zero.
+    routesOf(`mods[${index}]`, `${envelope ? 'E' : 'L'}${index + 2}`, envelope ? SOURCE_COLOUR.e : SOURCE_COLOUR.l, !envelope)
   }
   return found
 }
@@ -735,18 +738,57 @@ function Line({ x, y, w, h = 1, colour = 'var(--fp-hairline)' }: { x: number; y:
   return <span className="fp-line" style={{ ...at(x, y), width: w, height: h, background: colour }} aria-hidden="true" />
 }
 
-/** A modulator's handle in the routing bar: picked up with the pointer and dropped on a control. */
-function Grab({ x, y, label, held, hint, children, ...handlers }: {
-  x: number; y: number; label: string; held?: boolean; hint?: string; children: ReactNode
-  onPointerDown: (event: React.PointerEvent<HTMLElement>) => void
-  onPointerMove?: (event: React.PointerEvent<HTMLElement>) => void
-  onPointerUp: (event: React.PointerEvent<HTMLElement>) => void
-  onPointerCancel: () => void
+/**
+ * Where a modulator goes, and the only way to take it off from its own panel.
+ *
+ * This is what replaced the Target select. A select could name one destination, which stopped
+ * being true the moment a slot could hold four — and it was a second way of doing what dragging
+ * the handle already did, with the two disagreeing about which of the four they meant. What is
+ * left is a reading: the places this modulator is pointed at, how far it moves each of them, and a
+ * cross to take one off. Pointing it somewhere new is the handle in the bar, by pointer or by
+ * keyboard, which is one gesture rather than two.
+ */
+/**
+ * A destination as this list says it: the layer's number and the thing, without the word "Layer".
+ *
+ * `LFO_TARGET_LABELS` writes them out in full for the menus, where a target stands on its own. Here
+ * they are stacked four deep in a hundred pixels, and "Layer" on every line is forty pixels of the
+ * same word four times over — which is what pushed the part that differs into an ellipsis.
+ */
+const shortTarget = (target: string): string => {
+  const full = LFO_TARGET_LABELS[target] ?? target
+  const said = /^Layer (\d+) (.+)$/.exec(full)
+  return said ? `${said[1]} ${said[2]}` : full
+}
+
+function Routes({ ctx, x, y, w, id, name }: {
+  ctx: Ctx; x: number; y: number; w: number; id: (tail: string) => string; name: string
 }) {
   const at = useAt()
+  const live = Array.from({ length: MOD_ROUTES }, (_, index) => routeAt(index))
+    .map((route) => ({ route, target: String(read(ctx, id(route.target)) ?? 'off') }))
+    .filter((one) => one.target !== 'off')
   return (
-    <span className="fp-icon fp-source__grab" role="button" tabIndex={-1} aria-label={label} data-held={held || undefined} data-hint={hint} style={{ ...at(x, y), width: 17.5, height: 14.5 }} {...handlers}>
-      {children}
+    <span className="fp-routes-of" style={{ ...at(x, y), width: w }}>
+      {live.length === 0 ? (
+        <span className="fp-routes-of__none" data-hint={`${name} is pointed at nothing. Drag its handle from the bar onto a knob or fader, or press Enter on the handle and Enter again on the control.`}>
+          Nothing yet
+        </span>
+      ) : live.map(({ route, target }) => (
+        <span key={route.target} className="fp-routes-of__row">
+          <span className="fp-routes-of__to" title={LFO_TARGET_LABELS[target] ?? target}>{shortTarget(target)}</span>
+          <span className="fp-routes-of__depth">{readNum(ctx, id(route.depth)).toFixed(2)}</span>
+          <button
+            type="button"
+            className="fp-routes-of__off"
+            aria-label={`Take ${name} off ${LFO_TARGET_LABELS[target] ?? target}`}
+            data-hint={`Take ${name} off ${LFO_TARGET_LABELS[target] ?? target}. Its depth is kept, so putting it back starts where it left off.`}
+            onClick={() => ctx.onChange(id(route.target), 'off')}
+          >
+            ×
+          </button>
+        </span>
+      ))}
     </span>
   )
 }
@@ -1246,6 +1288,14 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     event.preventDefault()
     setRouted({ x: event.clientX, y: event.clientY, label: control?.getAttribute('aria-label') ?? 'This control', target })
   }
+  /** How many of a source's four routes are pointed at something, for what the bar says about it. */
+  const spent = (source: Source) => {
+    const slot = held(source)
+    if (!slot) return 0
+    return Array.from({ length: MOD_ROUTES }, (_, at) => routeAt(at))
+      .filter((route) => (read(ctx, `${slot.path}.${route.target}`) ?? 'off') !== 'off').length
+  }
+
   /** Where a source's own panel is in the bar, so the menu and the overlay can send you to it. */
   const slotOf = (id: string) => {
     const performer = /^performers\[(\d+)\]$/.exec(id)
@@ -1258,12 +1308,16 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     const id = source.performer !== undefined ? `performers[${source.performer}]` : source.mod !== undefined ? `mods[${source.mod}]` : null
     if (!id) return []
     if (read(ctx, `${id}.enabled`) === false) return []
-    const target = String(read(ctx, `${id}.target`) ?? 'off')
-    if (target === 'off') return []
-    return [{
-      id, index, name: source.id, kind: source.kind,
-      target, depth: readNum(ctx, `${id}.depth`),
-    }]
+    // One line per route: a source pointed at three things is three routings, and an overlay that
+    // showed the first of them would be answering a different question from the one it asks.
+    return Array.from({ length: MOD_ROUTES }, (_, at) => routeAt(at)).flatMap((route) => {
+      const target = String(read(ctx, `${id}.${route.target}`) ?? 'off')
+      if (target === 'off') return []
+      return [{
+        id: `${id}#${route.target}`, index, name: source.id, kind: source.kind,
+        target, depth: readNum(ctx, `${id}.${route.depth}`),
+      }]
+    })
   })
   const page = Math.floor(shown / 3)
   /** Which row the performers play, held on the patch. */
@@ -1284,6 +1338,56 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     setAssigning(what)
     follow(event)
   }
+
+  /**
+   * A source cell: one target for two gestures, told apart by whether the pointer moved.
+   *
+   * Under four pixels it is a click and shows the modulator's panel below; past four it is a drag
+   * and the source is in the air. Both used to have a control of their own — a cross for the drag
+   * and the name for the click — and the cross was seventeen pixels wide before the plate's scale
+   * took a slice off it.
+   */
+  const from = useRef<{ x: number; y: number; moved: boolean } | null>(null)
+  const takeSource = (source: Source, index: number) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLElement>) => {
+      if (event.button && event.button !== 0) return
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      from.current = { x: event.clientX, y: event.clientY, moved: false }
+    },
+    onPointerMove: (event: React.PointerEvent<HTMLElement>) => {
+      const start = from.current
+      if (!start || !held(source)) return
+      if (!start.moved && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) return
+      if (!start.moved) { start.moved = true; setAssigning(source) }
+      follow(event)
+    },
+    onPointerUp: (event: React.PointerEvent<HTMLElement>) => {
+      const start = from.current
+      from.current = null
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+      if (!start || !start.moved) { setShown(index); return }
+      putDown(event)
+    },
+    onPointerCancel: () => { from.current = null; setAssigning(null) },
+    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+      if (event.key === 'Escape') { setAssigning(null); return }
+      const slot = held(source)
+      if (slot && (event.key === 'Delete' || event.key === 'Backspace')) {
+        event.preventDefault()
+        for (let at = 0; at < MOD_ROUTES; at += 1) onChange(`${slot.path}.${routeAt(at).target}`, 'off')
+        return
+      }
+      if (event.key !== 'Enter' && event.key !== ' ') return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!slot) { setShown(index); return }
+      if (assigning?.id === source.id) { setAssigning(null); return }
+      const box = event.currentTarget.getBoundingClientRect()
+      setAssigning(source)
+      setShown(index)
+      follow({ clientX: box.left, clientY: box.bottom })
+    },
+  })
   /**
    * The same two moves without a pointer: pick a macro up, walk to a control, drop it.
    *
@@ -1308,15 +1412,25 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     follow({ clientX: box.left, clientY: box.bottom })
   }
 
-  /** Enter on any control that can hold a macro, while one is held, drops it there. */
+  /** Enter on any control that can take what is held, while something is held, drops it there. */
   const dropCarried = (event: React.KeyboardEvent<HTMLElement>) => {
-    if (!assigning || assigning.kind !== 'm') return
+    if (!assigning) return
     if (event.key === 'Escape') { setAssigning(null); return }
     if (event.key !== 'Enter') return
-    const property = (event.target as HTMLElement | null)?.closest?.('[data-property]')?.getAttribute('data-property')
-    if (!property) return
+    const node = event.target as HTMLElement | null
+    if (assigning.kind === 'm') {
+      const property = node?.closest?.('[data-property]')?.getAttribute('data-property')
+      if (!property) return
+      event.preventDefault()
+      bindMacro(assigning.macro, property)
+      setAssigning(null)
+      return
+    }
+    const slot = held(assigning)
+    const target = node?.closest?.('[data-target]')?.getAttribute('data-target')
+    if (!slot || !target) return
     event.preventDefault()
-    bindMacro(assigning.macro, property)
+    dropSource(slot.path, target)
     setAssigning(null)
   }
 
@@ -1331,11 +1445,27 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
     const slot = assigning ? held(assigning) : null
     if (!slot) { setAssigning(null); return }
     const target = under?.closest?.('[data-target]')?.getAttribute('data-target')
-    if (target) {
-      onChange(`${slot.path}.target`, target)
-      if (read(ctx, `${slot.path}.enabled`) === false) onChange(`${slot.path}.enabled`, true)
-    }
+    if (target) dropSource(slot.path, target)
     setAssigning(null)
+  }
+
+  /**
+   * A source dropped on a control takes the first route it has free, rather than the first route.
+   *
+   * A modulator holds four of them, so dropping an oscillator on a cutoff and then on a pan gives
+   * one oscillator moving two things — which is the whole reason a slot has four. Dropping it on
+   * something it is already pointed at is a no-op rather than a second ring saying the same thing,
+   * and a source with all four spent says so instead of silently replacing one of them.
+   */
+  const dropSource = (path: string, target: string) => {
+    const routes = Array.from({ length: MOD_ROUTES }, (_, at) => routeAt(at))
+    if (routes.some((route) => read(ctx, `${path}.${route.target}`) === target)) return
+    // With all four spent nothing happens, rather than one of them being replaced by surprise. The
+    // handle's own hint counts them, so the bar says why before the drop is attempted.
+    const free = routes.find((route) => (read(ctx, `${path}.${route.target}`) ?? 'off') === 'off')
+    if (!free) return
+    onChange(`${path}.${free.target}`, target)
+    if (read(ctx, `${path}.enabled`) === false) onChange(`${path}.enabled`, true)
   }
   useEffect(() => {
     const stage = stageRef.current
@@ -1735,19 +1865,42 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
         <ul className="fp-sources" role="list" aria-label="Routing">
           <span className="fp-sources__box" aria-hidden="true"
             style={folded ? { left: SOURCE_AT(shown) - 17, width: 34 } : { left: 4.125 + 161 * page, width: 116.5 }} />
-          {SOURCES.map((source, index) => (
-            <li key={source.id} className="fp-source" data-kind={source.kind} data-live="" style={{ marginInlineStart: index % 3 === 0 && index > 0 ? 40.25 : 0 }}>
-              {held(source) ? (
-                <Grab x={20.125} y={9.1} label={`Drag ${source.id} onto a control to modulate it`} held={assigning?.id === source.id} hint={`Drag ${source.id} onto a knob or fader to modulate it. The ones that can take it light up.`}
-                  onPointerDown={pickUp(source)} onPointerMove={assigning?.id === source.id ? follow : undefined} onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}>
-                  <MoveIcon />
-                </Grab>
-              ) : (
-                <Icon x={20.125} y={9.1} w={17.5} h={14.5} className="fp-source__fixed" hint="E1 is the amp envelope: it shapes the layer's level and stays put."><MoveIcon /></Icon>
-              )}
-              <Text x={21.125} y={24} kind="source" onClick={() => setShown(index)} label={`Show modulator ${source.id}`} hint={source.kind === 'p' ? `Show performer ${source.id} below.` : source.kind === 'e' ? `Show envelope ${source.id} below.` : `Show LFO ${source.id} below.`}>{source.id}</Text>
-            </li>
-          ))}
+          {SOURCES.map((source, index) => {
+            const movable = held(source) !== null
+            const using = spent(source)
+            return (
+              <li key={source.id} className="fp-source" data-kind={source.kind} data-live="" style={{ marginInlineStart: index % 3 === 0 && index > 0 ? 40.25 : 0 }}>
+                {/*
+                  * The whole cell is the handle, mark and name together, on one line.
+                  *
+                  * It used to be a seventeen-pixel cross above the name, and the cross was the only
+                  * part that dragged: at the plate's own scale that is a target smaller than a
+                  * fingernail with no hover state on it, so it read as decoration and people
+                  * reached for the name underneath — which only ever opened the panel. One target,
+                  * as wide as the cell, and a click and a drag are told apart by whether the
+                  * pointer moved: click shows the panel below, drag assigns.
+                  */}
+                <span
+                  className="fp-source__hold"
+                  role="button"
+                  tabIndex={0}
+                  data-fixed={movable ? undefined : ''}
+                  data-held={assigning?.id === source.id ? '' : undefined}
+                  data-using={using || undefined}
+                  aria-label={movable
+                    ? `${source.id}, moving ${using} of four. Drag onto a control, or press Enter to pick it up`
+                    : `${source.id}, the amplifier envelope, which stays put`}
+                  data-hint={movable
+                    ? `${source.id} is moving ${using === 0 ? 'nothing yet' : `${using} of the four things it can`}. Drag it onto a knob or fader — or press Enter, then Enter again on the control. Click to show its panel.`
+                    : 'E1 is the amp envelope: it shapes the layer\u2019s level and stays put. Click to show its panel.'}
+                  {...takeSource(source, index)}
+                >
+                  <span className="fp-source__mark" aria-hidden="true"><MoveIcon /></span>
+                  <span className="fp-source__name">{source.id}</span>
+                </span>
+              </li>
+            )
+          })}
         </ul>
         {/*
          * Every routing in the patch, in one list.
@@ -1790,7 +1943,6 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
         const px = SLOT_X[slot] ?? 0
         const pw = slot === 0 ? 413.5 : 417.5
         const id = (tail: string) => `performers[${index}].${tail}`
-        const target = ctx.byId.get(id('target'))
         const on = read(ctx, id('enabled')) !== false
         const shape = (read(ctx, id('shape')) ?? 'step') as PerformerShape
         const bipolar = read(ctx, id('bipolar')) === true
@@ -1835,6 +1987,9 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
             </BoxMenu>
             <Box x={5 + o} y={Y(222)} w={62.5} selected={bipolar} pressed={bipolar} onClick={() => onChange(id('bipolar'), !bipolar)} label={`Performer ${index + 1} bipolar`} hint={bipolar ? 'Bipolar: half height is rest, the row swings both ways. Click for unipolar.' : 'Unipolar: the floor is rest, the row only pushes. Click for bipolar.'}>{bipolar ? 'Bi' : 'Uni'}</Box>
             <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Performer ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+            {/* Under the row, across its width: where this performer goes, and a cross to stop it. */}
+            <Text x={98 + o} y={Y(268)} align="left" u>Moves</Text>
+            <Routes ctx={ctx} x={132 + o} y={Y(262)} w={266} id={id} name={`P${index + 1}`} />
             {/* the row, and how it is read */}
             <span role="radiogroup" aria-label={`Performer ${index + 1} shape`}>
               <Text x={172 + o} y={Y(30)} u={shape === 'step'} checked={shape === 'step'} onClick={() => pickShape('step')} hint="Each step held flat until the next.">Step</Text>
@@ -1850,12 +2005,6 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
               <AudioPattern steps={row} curves={join} shape={shape} bipolar={bipolar} grid={grid} width={318} height={214}
                 name={`Performer ${index + 1} row ${scene + 1}`}
                 onChange={(next) => onPattern?.(index, scene, next)} onCurves={(next) => onCurves?.(index, scene, next)} {...gesture} />
-            </Block>
-            {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
-            <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this performer moves. Pick a target here, or drag the handle above onto a control.">
-              {target ? (
-                <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-              ) : null}
             </Block>
           </Panel>
         )
@@ -1901,7 +2050,6 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
         const pw = slot === 0 ? 413.5 : 417.5
         const id = (tail: string) => `mods[${index}].${tail}`
         const envelope = read(ctx, id('kind')) !== 'lfo'
-        const target = ctx.byId.get(id('target'))
         const on = read(ctx, id('enabled')) !== false
         const shape = read(ctx, id('shape'))
         const cycles = readNum(ctx, id('rate'), 5) * duration
@@ -1937,13 +2085,9 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
                   <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label={`Modulator ${index + 2} decay`} />
                   <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label={`Modulator ${index + 2} release`} />
                   <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
-                  <Text x={38.4 + o} y={Y(208)} u>Target</Text>
-                  <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5} hint="What this envelope moves. Pick a target here, or drag the handle above onto a control.">
-                    {target ? (
-                      <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-                    ) : null}
-                  </Block>
-                  <Box x={10 + o} y={Y(246)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+                  <Text x={38.4 + o} y={Y(206)} u>Moves</Text>
+                  <Routes ctx={ctx} x={10 + o} y={Y(216)} w={105} id={id} name={`E${index + 2}`} />
+                  <Box x={10 + o} y={Y(270)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
                   <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
                     <AudioEnvelope layer={-1} prefix={`mods[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
                   </Block>
@@ -1954,7 +2098,7 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
                   <Text x={36.5 + o} y={Y(104)}>Rate</Text>
                   <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label={`Modulator ${index + 2} rate`} />
                   <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
-                  <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+                  <Box x={5 + o} y={Y(260)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
                   {/* the wheel */}
                   <Text x={193 + o} y={Y(30)}>Shape</Text>
                   <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`Modulator ${index + 2} shape`} onPick={(next) => onChange(id('shape'), next)} />
@@ -1964,12 +2108,8 @@ export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values,
                   <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label={`Modulator ${index + 2} level`} tone="light" />
                   <Text x={351.5 + o} y={Y(172)}>Phase</Text>
                   <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label={`Modulator ${index + 2} phase`} size="sm" />
-                  {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
-                  <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
-                    {target ? (
-                      <ParameterField param={target} value={read(ctx, id('target')) ?? target.defaultValue} onChange={(next) => onChange(id('target'), next)} {...gesture} />
-                    ) : null}
-                  </Block>
+                  <Text x={36.5 + o} y={Y(191)} u>Moves</Text>
+                  <Routes ctx={ctx} x={5 + o} y={Y(203)} w={105} id={id} name={`L${index + 2}`} />
               </>
             )}
           </Panel>

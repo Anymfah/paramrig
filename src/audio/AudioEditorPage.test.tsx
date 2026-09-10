@@ -18,6 +18,32 @@ beforeEach(() => {
   localStorage.clear()
 })
 
+/** A source's cell pressed and released where it was: the gesture that shows its panel below. */
+const showPanel = (id: string) => {
+  const cell = screen.getByRole('button', { name: new RegExp(`^${id},`) })
+  fireEvent.pointerDown(cell, { clientX: 10, clientY: 10 })
+  fireEvent.pointerUp(cell, { clientX: 10, clientY: 10 })
+}
+
+/**
+ * A source dragged from the routing bar onto a control.
+ *
+ * Down, moved, up — the move matters. The whole cell is one target now and a press that does not
+ * travel is a click that shows the modulator's panel, so a test that only pressed and released
+ * would be testing the other gesture.
+ */
+const dropOn = (handle: HTMLElement, onto: HTMLElement) => {
+  const under = document.elementFromPoint
+  document.elementFromPoint = () => onto
+  try {
+    fireEvent.pointerDown(handle, { clientX: 10, clientY: 10 })
+    fireEvent.pointerMove(handle, { clientX: 40, clientY: 40 })
+    fireEvent.pointerUp(handle, { clientX: 40, clientY: 40 })
+  } finally {
+    document.elementFromPoint = under
+  }
+}
+
 const open = (id: string) => render(
   <MemoryRouter>
     <AudioEditorPage documentId={id} mode="edit" onMode={() => undefined} />
@@ -107,7 +133,7 @@ describe('AudioEditorPage', () => {
       }
       expect(screen.queryByRole('region', { name: 'Modulator 2' })).toBeNull()
       // A source's name brings its modulator alone; the trio is the wide face's.
-      fireEvent.click(screen.getByRole('button', { name: 'Show modulator L5' }))
+      showPanel('L5')
       expect(screen.getByRole('region', { name: 'Modulator 5' })).toBeInTheDocument()
       expect(screen.queryByRole('region', { name: 'Modulator 4' })).toBeNull()
       expect(screen.queryByRole('region', { name: 'Amp envelope' })).toBeNull()
@@ -137,10 +163,9 @@ describe('AudioEditorPage', () => {
     open(arcadeCoin().id)
     // The plate opens on the envelopes; the performers are a click away, first in the bar.
     expect(screen.queryByRole('region', { name: 'Performer 1' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Show modulator P1' }))
+    showPanel('P1')
     for (const name of ['Performer 1', 'Performer 2', 'Performer 3']) expect(screen.getByRole('region', { name })).toBeInTheDocument()
     const panel = screen.getByRole('region', { name: 'Performer 1' })
-    expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
     expect(within(panel).getByRole('slider', { name: 'Performer 1 level' })).toBeInTheDocument()
     // A step drawn by the keyboard lands in the patch's row for the scene that plays.
     const steps = within(within(panel).getByRole('group', { name: 'Performer 1 row 1' })).getAllByRole('slider', { name: /^Step \d+$/ })
@@ -252,7 +277,7 @@ describe('AudioEditorPage', () => {
     expect(within(routing).getAllByRole('listitem').map((entry) => entry.textContent)).toEqual(
       ['P1', 'P2', 'P3', 'E1', 'E2', 'E3', 'L4', 'L5', 'L6', 'L7', 'L8', 'L9'],
     )
-    await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
+    showPanel('L4')
     const panel = screen.getByRole('region', { name: 'Modulator 4' })
     // An oscillator has a rate; the envelope it can become has stages instead.
     expect(within(panel).getByRole('slider', { name: 'Modulator 4 rate' })).toBeInTheDocument()
@@ -263,16 +288,14 @@ describe('AudioEditorPage', () => {
     expect(within(routing).getAllByRole('listitem')[6]).toHaveTextContent('E4')
   })
 
-  it('says what a modulator is doing, and that it is doing it to nothing yet', async () => {
-    const user = userEvent.setup()
+  it('says what a modulator is doing, and that it is doing it to nothing yet', () => {
     open(arcadeCoin().id)
     // The plate opens on the envelopes; the LFOs are a page away, reached by their names.
     expect(screen.getByRole('region', { name: 'Modulator 2' })).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: 'Modulator 4' })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
+    showPanel('L4')
     for (const name of ['Modulator 4', 'Modulator 5', 'Modulator 6']) {
       const panel = screen.getByRole('region', { name })
-      expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
       expect(within(panel).getByRole('slider', { name: `${name} level` })).toBeInTheDocument()
     }
     // The routing bar lists the reference's nine sources, all of them this engine's: the amp
@@ -292,18 +315,13 @@ describe('AudioEditorPage', () => {
     const cutoff = within(filter).getByRole('slider', { name: 'Cutoff' })
     expect(cutoff).toHaveAttribute('data-target', 'layers[0].cutoff')
     expect(cutoff.querySelector('.fp-knob__mod')).toBeNull()
-    const handle = screen.getByRole('button', { name: 'Drag L4 onto a control to modulate it' })
-    const under = document.elementFromPoint
-    document.elementFromPoint = () => cutoff
-    try {
-      fireEvent.pointerDown(handle, { clientX: 10, clientY: 10 })
-      fireEvent.pointerUp(handle, { clientX: 20, clientY: 20 })
-    } finally {
-      document.elementFromPoint = under
-    }
+    dropOn(screen.getByRole('button', { name: /^L4,/ }), cutoff)
     expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
-    fireEvent.click(screen.getByRole('button', { name: 'Show modulator L4' }))
-    expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('combobox', { name: 'Target' })).toHaveTextContent('Layer 1 cutoff')
+    // And its own panel reads back where it went, which is what replaced the Target select. The
+    // row is written short — four of these stack in a hundred pixels — and carries the full name.
+    showPanel('L4')
+    const row = within(screen.getByRole('region', { name: 'Modulator 4' })).getByText('1 cutoff')
+    expect(row).toHaveAttribute('title', 'Layer 1 cutoff')
   })
 
   /** Four destinations was most of the reason a dropped modulator seemed to do nothing. */
@@ -318,21 +336,65 @@ describe('AudioEditorPage', () => {
     expect(where('Oscillators', 'Fall')).not.toHaveAttribute('data-target')
   })
 
+  /**
+   * The Target select is gone, and this is what took its place.
+   *
+   * A select could name one destination, which stopped being true the moment a slot could hold
+   * four — and it was a second way of doing what the handle already did, with the two disagreeing
+   * about which of the four they meant. Now: drag the handle as many times as there are places to
+   * put it, read them back in the panel, take one off with its cross.
+   */
+  it('puts one modulator on several controls at once, and reads them back', () => {
+    open(arcadeCoin().id)
+    const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
+    const reso = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Reso' })
+    const handle = () => screen.getByRole('button', { name: /^L4,/ })
+    expect(handle()).toHaveAccessibleName(/moving 0 of four/)
+
+    dropOn(handle(), cutoff)
+    dropOn(handle(), reso)
+    expect(handle()).toHaveAccessibleName(/moving 2 of four/)
+    expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+    expect(reso).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+    expect(screen.getByRole('button', { name: /routed$/ })).toHaveTextContent('2 routed')
+
+    // Its panel lists both, and dropping it where it already is does not make a third.
+    showPanel('L4')
+    const panel = screen.getByRole('region', { name: 'Modulator 4' })
+    expect(within(panel).getByText('1 cutoff')).toBeInTheDocument()
+    expect(within(panel).getByText('1 resonance')).toBeInTheDocument()
+    dropOn(handle(), cutoff)
+    expect(handle()).toHaveAccessibleName(/moving 2 of four/)
+
+    // And the cross beside one takes that one off, leaving the other where it is.
+    fireEvent.click(within(panel).getByRole('button', { name: 'Take L4 off Layer 1 cutoff' }))
+    expect(screen.getByRole('button', { name: /routed$/ })).toHaveTextContent('1 routed')
+    expect(cutoff).not.toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+    expect(reso).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated'))
+  })
+
+  /**
+   * The bar's cell is one target for two gestures, and neither may fire the other. It used to be a
+   * seventeen-pixel cross for the drag with the name below it for the click, and the cross was the
+   * part nobody could hit.
+   */
+  it('tells a click on a source from a drag of it', () => {
+    open(arcadeCoin().id)
+    const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
+    // A press that does not travel shows the panel and assigns nothing.
+    showPanel('L4')
+    expect(screen.getByRole('region', { name: 'Modulator 4' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /routed$/ })).toHaveTextContent('Nothing routed')
+    // One that travels assigns and does not change which panel is shown.
+    dropOn(screen.getByRole('button', { name: /^L4,/ }), cutoff)
+    expect(screen.getByRole('button', { name: /routed$/ })).toHaveTextContent('1 routed')
+  })
+
   /** One arc said the first source was the only one, which was a picture that lied about the sound. */
   it('wears one ring a source when two are pointed at the same dial, and says so', () => {
     open(arcadeCoin().id)
     const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
-    const drop = (handle: string) => {
-      const grab = screen.getByRole('button', { name: `Drag ${handle} onto a control to modulate it` })
-      const under = document.elementFromPoint
-      document.elementFromPoint = () => cutoff
-      try {
-        fireEvent.pointerDown(grab, { clientX: 10, clientY: 10 })
-        fireEvent.pointerUp(grab, { clientX: 20, clientY: 20 })
-      } finally {
-        document.elementFromPoint = under
-      }
-    }
+    const drop = (handle: string) => dropOn(screen.getByRole('button', { name: new RegExp(`^${handle},`) }), cutoff)
     drop('L4')
     expect(cutoff.querySelectorAll('.fp-knob__mod')).toHaveLength(1)
     drop('L5')
@@ -344,15 +406,7 @@ describe('AudioEditorPage', () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
-    const grab = screen.getByRole('button', { name: 'Drag L4 onto a control to modulate it' })
-    const under = document.elementFromPoint
-    document.elementFromPoint = () => cutoff
-    try {
-      fireEvent.pointerDown(grab, { clientX: 10, clientY: 10 })
-      fireEvent.pointerUp(grab, { clientX: 20, clientY: 20 })
-    } finally {
-      document.elementFromPoint = under
-    }
+    dropOn(screen.getByRole('button', { name: /^L4,/ }), cutoff)
     // The bar keeps the count, and the list names the source, the control and how far it swings.
     const overlay = screen.getByRole('button', { name: /routed$/ })
     expect(overlay).toHaveTextContent('1 routed')

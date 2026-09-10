@@ -187,3 +187,59 @@ describe('the destinations the plate gained', () => {
     expect(level(renderPatch(pointed('layers[0].pan'), 22050))).toBeGreaterThan(level(still))
   })
 })
+
+/**
+ * One modulator, several places at once.
+ *
+ * A slot used to carry a single destination, so an oscillator wanted on a cutoff and on a pan cost
+ * two of the eight slots — two oscillators, at rates that drift apart the moment either is touched,
+ * which is not the same sound. A slot carries four routes now, each with a depth of its own,
+ * because a swing that means an octave of pitch means the whole stereo field on a pan.
+ */
+describe('a modulator on several destinations', () => {
+  const held = (over = {}, mods: object[] = []) => makePatch(0.4, [makeLayer({
+    gain: 0.7,
+    source: { kind: 'tone', wave: 'saw', ...over },
+    pitch: { start: 300 },
+    filter: { kind: 'lowpass', cutoff: 2000, resonance: 0.3 },
+    amp: { attack: 0.004, hold: 0.3, decay: 0.04, sustain: 0.9, release: 0.05, curve: 1.5 },
+  })], {}, { limiter: 0 }, 1, mods)
+  const swung = (over: object) => renderPatch(held({}, [{ ...makeLfo(), enabled: true, shape: 'sine' as const, rate: 8, ...over }]), 44100)
+  const rms = (samples: Float32Array) => Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length)
+
+  it('hears every route, and each one changes the sound again', () => {
+    const one = swung({ target: 'layers[0].cutoff', depth: 0.8 })
+    const two = swung({ target: 'layers[0].cutoff', depth: 0.8, targetB: 'layers[0].pan', depthB: 1 })
+    const three = swung({ target: 'layers[0].cutoff', depth: 0.8, targetB: 'layers[0].pan', depthB: 1, targetC: 'layers[0].resonance', depthC: 0.5 })
+    expect(Array.from(two.left)).not.toEqual(Array.from(one.left))
+    expect(Array.from(three.left)).not.toEqual(Array.from(two.left))
+    // The pan route is the one that has to move the image, and only the pan route can.
+    expect(Math.abs(rms(one.left) - rms(one.right))).toBeLessThan(0.002)
+    expect(Math.abs(rms(two.left) - rms(two.right))).toBeGreaterThan(0.01)
+  })
+
+  it('gives each route its own depth, so one can be deep and another shallow', () => {
+    const deep = swung({ target: 'layers[0].cutoff', depth: 0.2, targetB: 'layers[0].pan', depthB: 1 })
+    const shallow = swung({ target: 'layers[0].cutoff', depth: 0.2, targetB: 'layers[0].pan', depthB: 0.1 })
+    expect(Math.abs(rms(deep.left) - rms(deep.right))).toBeGreaterThan(Math.abs(rms(shallow.left) - rms(shallow.right)))
+  })
+
+  it('reads one oscillator, not four: the routes move together', () => {
+    // Two routes of one noise modulator against two modulators of the same shape and rate. The
+    // pair share a stream, so the two destinations move as one; two slots would not.
+    const shared = swung({ shape: 'noise', rate: 20, target: 'layers[0].cutoff', depth: 0.9, targetB: 'layers[0].gain', depthB: 0.9 })
+    const apart = renderPatch(held({}, [
+      { ...makeLfo(), enabled: true, shape: 'noise', rate: 20, target: 'layers[0].cutoff', depth: 0.9 },
+      { ...makeLfo(), enabled: true, shape: 'noise', rate: 20, target: 'layers[0].gain', depth: 0.9 },
+    ]), 44100)
+    expect(Array.from(shared.left)).not.toEqual(Array.from(apart.left))
+  })
+
+  it('ignores a route that is off, and a slot that is off whatever its routes say', () => {
+    const still = swung({ target: 'layers[0].cutoff', depth: 0.8 })
+    const padded = swung({ target: 'layers[0].cutoff', depth: 0.8, targetB: 'off', depthB: 1, targetC: 'off', targetD: 'off' })
+    expect(Array.from(padded.left)).toEqual(Array.from(still.left))
+    const dark = swung({ enabled: false, target: 'layers[0].cutoff', depth: 0.8, targetB: 'layers[0].pan', depthB: 1 })
+    expect(Array.from(dark.left)).toEqual(Array.from(renderPatch(held(), 44100).left))
+  })
+})
