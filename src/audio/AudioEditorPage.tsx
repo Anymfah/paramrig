@@ -186,6 +186,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     setPatch(next)
     if (!gestureRef.current) setHeard(next)
   }, [patch])
+  /** The other side of the A/B, and which side is the one on screen. */
+  const [spare, setSpare] = useState<AudioPatch | null>(null)
+  const [side, setSide] = useState<'a' | 'b'>('a')
   const paint = useMemo(() => redraw('patterns'), [redraw])
   const joinUp = useMemo(() => redraw('curves'), [redraw])
 
@@ -331,6 +334,45 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           autoPlay={autoPlay}
           onAutoPlay={setAuto}
           tools={
+            <>
+            {/*
+              * A and B: the same page, two sounds, one keystroke apart.
+              *
+              * Judging a change to a two-hundred-millisecond sound by memory does not work — by the
+              * time the second one has played, the first is a feeling rather than a sound. B starts
+              * as a copy of A, so the first thing anybody does with it is change one number and
+              * flip back and forth.
+              */}
+            <div className="audio-ab" role="group" aria-label="A and B">
+              {(['a', 'b'] as const).map((which) => (
+                <Tooltip key={which} content={which === side ? `${which.toUpperCase()} is the sound you are on` : `Switch to ${which.toUpperCase()}`}>
+                  <button
+                    type="button"
+                    className="btn btn--quiet btn--sm audio-ab__side"
+                    aria-pressed={which === side}
+                    onClick={() => {
+                      if (which === side || !patch) return
+                      const other = spare ?? patch
+                      setSpare(patch)
+                      setSide(which)
+                      setTouched(true)
+                      commit(other)
+                    }}
+                  >
+                    {which.toUpperCase()}
+                  </button>
+                </Tooltip>
+              ))}
+              <Tooltip content={`Copy ${side.toUpperCase()} onto the other side`}>
+                <button
+                  type="button"
+                  className="btn btn--quiet btn--sm"
+                  onClick={() => { if (patch) setSpare(patch) }}
+                >
+                  Copy
+                </button>
+              </Tooltip>
+            </div>
             <AudioSoundBar
               current={preset}
               snapshots={snapshots}
@@ -342,6 +384,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
               onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
               onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000))) }}
             />
+            </>
           }
         />
         <div className="audio-views" role="tablist" aria-label="Views">

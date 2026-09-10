@@ -120,15 +120,24 @@ Numbers, position and dimensions, color and appearance, choices, text and typogr
 profiles, resources, scene instruments, actions, collections, value sources and animation.
 [`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) has the contracts and the limits.
 
-### Two editors that carry their own controls
+### Three editors that carry their own controls
 
 A document can be a drawing, or a drawing that carries a rig. Bind an element's property to a
-parameter and the document becomes tunable without leaving it.
+parameter and the document becomes tunable without leaving it. The same is true of a 3D scene and
+of a sound.
 
 | Vector documents | 3D scenes |
 | --- | --- |
 | <img src="assets/readme/vector.webp" alt="The vector editor on a poster document, one shape selected, and the poster's own controllers on the right"> | <img src="assets/readme/scene.webp" alt="The 3D scene editor on the desk study, with its bindings and the scene's own controllers on the right"> |
 | Paths, networks and planar regions, text, frames, guides, boolean operations, export presets. Fills, strokes, effects and node positions can all be bound to a controller. | Objects, modifiers, lights, cameras, materials and world settings, with the same binding vocabulary. Edit and Tune share one WebGL context. |
+
+**Sound effects.** Four layers — two oscillators, two noise generators — each with wavetables or
+plain shapes, a filter of eight models, three insert slots and an amplifier envelope; eight
+modulation slots that are each an envelope or an oscillator; three performers with a drawn row of
+sixteen steps; three master effects. The engine is a pure function of a patch and a sample rate,
+with no Web Audio in it, so what you hear while tuning and what lands in the exported file cannot
+drift apart. [`/docs/audio-rigs`](https://app.paramrig.com/docs/audio-rigs) has the paths a control
+can be bound to.
 
 ### Timeline, snapshots, history
 

@@ -19,6 +19,7 @@ const DocsPage = lazy(async () => ({ default: (await import('@/docs/DocsPage')).
 const ControlsPage = lazy(async () => ({ default: (await import('@/docs/ControlsPage')).ControlsPage }))
 const SceneRigsPage = lazy(async () => ({ default: (await import('@/docs/SceneRigsPage')).SceneRigsPage }))
 const VectorRigsPage = lazy(async () => ({ default: (await import('@/docs/VectorRigsPage')).VectorRigsPage }))
+const AudioRigsPage = lazy(async () => ({ default: (await import('@/docs/AudioRigsPage')).AudioRigsPage }))
 const WebConnectPage = lazy(async () => ({ default: (await import('@/web/WebConnectPage')).WebConnectPage }))
 
 export function App() {
@@ -42,6 +43,7 @@ export function App() {
           <Route path="/docs/controls" element={<ControlsPage />} />
           <Route path="/docs/vector-rigs" element={<VectorRigsPage />} />
           <Route path="/docs/scene-rigs" element={<SceneRigsPage />} />
+          <Route path="/docs/audio-rigs" element={<AudioRigsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

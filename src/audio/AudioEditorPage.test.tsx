@@ -398,6 +398,41 @@ describe('AudioEditorPage', () => {
     })
   })
 
+  it('keeps a second sound on the other side, and swaps between them', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const ab = screen.getByRole('group', { name: 'A and B' })
+    expect(within(ab).getByRole('button', { name: 'A' })).toHaveAttribute('aria-pressed', 'true')
+    const cutoff = () => within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
+    const was = cutoff().getAttribute('aria-valuenow')
+    // B starts as a copy of A, so the first change to it is the thing being compared.
+    await user.click(within(ab).getByRole('button', { name: 'B' }))
+    expect(within(ab).getByRole('button', { name: 'B' })).toHaveAttribute('aria-pressed', 'true')
+    cutoff().focus()
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}')
+    const other = cutoff().getAttribute('aria-valuenow')
+    expect(other).not.toBe(was)
+    // And A is where it was left, not where B went.
+    await user.click(within(ab).getByRole('button', { name: 'A' }))
+    expect(cutoff().getAttribute('aria-valuenow')).toBe(was)
+    await user.click(within(ab).getByRole('button', { name: 'B' }))
+    expect(cutoff().getAttribute('aria-valuenow')).toBe(other)
+  })
+
+  it('finds a sound by name or by family, and says how many are left', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    await user.click(screen.getByRole('tab', { name: 'Sounds' }))
+    const browser = screen.getByRole('tabpanel')
+    const all = within(browser).getAllByRole('button').length
+    await user.type(within(browser).getByRole('searchbox', { name: 'Find a sound' }), 'laser')
+    expect(within(browser).getAllByRole('button').length).toBeLessThan(all)
+    expect(within(browser).getByRole('button', { name: /Laser/ })).toBeInTheDocument()
+    await user.clear(within(browser).getByRole('searchbox', { name: 'Find a sound' }))
+    await user.type(within(browser).getByRole('searchbox', { name: 'Find a sound' }), 'nothing is called this')
+    expect(within(browser).getByText(/Nothing here is called that/)).toBeInTheDocument()
+  })
+
   it('picks a sound from the browser', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
