@@ -1091,11 +1091,20 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'prize-ladder', label: 'Prize Ladder', group: 'Showpiece', build: show.prizeLadder },
 ]
 
+/**
+ * The order every list shows, and the order the stepping arrows walk.
+ *
+ * Showpiece is first because it is the one family that is not for working with: it is what you
+ * play to find out what the instrument does, and a demonstration at the bottom of a list of a
+ * hundred and thirteen is a demonstration nobody reaches. The working families follow, in the
+ * order somebody looking for a sound would think of them.
+ */
 export const PRESET_GROUPS: PresetGroup[] = [
+  'Showpiece',
   'Interface', 'Element', 'Weapon',
   'Touch', 'Surfaces', 'Signals',
   'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
-  'Morph', 'Showpiece',
+  'Morph',
 ]
 
 /**
