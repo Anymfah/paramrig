@@ -8,6 +8,11 @@ import { run, BASE } from './lib.mjs'
  * drawn at the wrong scale all pass there. This script is for the half a browser has to say.
  */
 export default run('audio-plate', async ({ page, check, log }) => {
+  // From the example as it ships, every run. This script turns knobs, and the editor writes what
+  // it is given four hundred milliseconds later — so without this the second run starts wherever
+  // the first one left off and the checks below drift.
+  await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' })
+  await page.evaluate(() => localStorage.removeItem('paramrig.audio-documents.v1'))
   await page.goto(`${BASE}/r/audio-example-arcade-coin`, { waitUntil: 'networkidle' })
   await page.waitForSelector('.fp')
   await page.waitForTimeout(600)
@@ -73,10 +78,18 @@ export default run('audio-plate', async ({ page, check, log }) => {
   const onB = await page.textContent('section[aria-label="Filter"] button[aria-label="Filter model"]')
   check('B holds its own model, not a second view of A', onB?.trim() === 'Off', String(onB))
   const way = page.locator('section[aria-label="Filter"] button[aria-label^="Filter routing"]')
-  check('and the two start as one filter', (await way.textContent())?.trim() === 'One filter', String(await way.textContent()))
+  // Asking to see B is asking for two filters: while the routing says One filter, B is not in the
+  // sound at all, so the tab that opens its panel puts it after A rather than opening a panel of
+  // controls that change nothing.
+  check('and asking for B puts B in the sound', (await way.textContent())?.trim() === 'B after A', String(await way.textContent()))
   await way.click()
   await page.waitForTimeout(200)
-  check('which is one click from being two', (await way.textContent())?.trim() === 'B after A', String(await way.textContent()))
+  check('and the word steps on to the next arrangement', (await way.textContent())?.trim() === 'A and B at once', String(await way.textContent()))
+  const balance = page.locator('section[aria-label="Filter"] [role="slider"][aria-label^="Balance"]')
+  check('where the balance is live rather than dimmed', (await balance.getAttribute('data-idle')) === null, String(await balance.getAttribute('aria-label')))
+  await way.click()
+  await page.waitForTimeout(200)
+  check('and dimmed again where nothing reads it', (await balance.getAttribute('data-idle')) !== null, String(await balance.getAttribute('aria-label')))
 
   // 3. A modulator dropped on a dial lands, and the dial says so.
   const drag = async (from, to) => {
@@ -129,6 +142,59 @@ export default run('audio-plate', async ({ page, check, log }) => {
   await page.click('.audio-transport__play')
   await page.waitForTimeout(150)
   check('the play button is reachable and nothing threw on it', true, '')
+
+  /*
+   * 6. The top bar, at the widths where it stops fitting.
+   *
+   * This is the one thing only a browser can answer: whether a row that overflows is drawn across
+   * the row after it. Between about 1410 and 1530 pixels the transport was wider than the space
+   * the bar left it, spilled to the right with nothing to clip it, and the view tabs — later in
+   * the source, so painted on top — covered the Auto button entirely. On a 1440-wide laptop with
+   * the rail open, auto-play could not be switched off with a mouse.
+   */
+  for (const width of [1400, 1440, 1470, 1500, 1600]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.waitForTimeout(250)
+    const bar = await page.evaluate(() => {
+      const auto = document.querySelector('.audio-transport__auto')
+      const play = document.querySelector('.audio-transport__play')
+      const box = auto.getBoundingClientRect()
+      let reached = 0
+      for (let x = 2; x < box.width; x += 6) {
+        for (let y = 2; y < box.height; y += 6) {
+          const under = document.elementFromPoint(box.left + x, box.top + y)
+          if (under === auto || auto.contains(under)) reached += 1
+        }
+      }
+      const anchor = play.closest('.tt__anchor')
+      return {
+        reached,
+        spill: Math.round(play.getBoundingClientRect().width - anchor.getBoundingClientRect().width),
+        overflow: Math.round(document.querySelector('.audio-transport').scrollWidth - document.querySelector('.audio-transport').clientWidth),
+      }
+    })
+    log(`MEASURE bar at ${width}: ${JSON.stringify(bar)}`)
+    check(`at ${width} the Auto button can be clicked`, bar.reached > 0, JSON.stringify(bar))
+    check(`at ${width} the play button stays inside its anchor`, bar.spill <= 1, JSON.stringify(bar))
+  }
+  // And at a phone's width, where the anchor used to collapse to nothing and the meter was drawn
+  // straight across the play triangle.
+  await page.setViewportSize({ width: 500, height: 900 })
+  await page.waitForTimeout(250)
+  const narrow = await page.evaluate(() => {
+    const play = document.querySelector('.audio-transport__play')
+    const meter = document.querySelector('.audio-meter')
+    const a = play.getBoundingClientRect()
+    const b = meter.getBoundingClientRect()
+    return {
+      spill: Math.round(a.width - play.closest('.tt__anchor').getBoundingClientRect().width),
+      overlap: Math.round(Math.min(a.right, b.right) - Math.max(a.left, b.left)),
+    }
+  })
+  log(`MEASURE bar at 500: ${JSON.stringify(narrow)}`)
+  check('at 500 the play button keeps its own room', narrow.spill <= 1, JSON.stringify(narrow))
+  check('and the meter is not drawn across it', narrow.overlap <= 0, JSON.stringify(narrow))
+  await page.setViewportSize({ width: 1280, height: 900 })
 
   check('and nothing threw along the way', errors.length === 0, errors.join(' · '))
 })

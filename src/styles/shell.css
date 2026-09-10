@@ -319,6 +319,9 @@
  * usual content was a report that nothing had gone wrong.
  */
 .editor-notice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
   margin: 0;
   padding: var(--space-2) var(--space-4);
   background: var(--surface-raised);

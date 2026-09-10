@@ -1,5 +1,6 @@
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import type { ParameterDef } from '@/rigs/types'
+import { spoken } from '@/audio/readable'
 import type { KnobMod } from '@/audio/AudioKnob'
 
 /**
@@ -69,8 +70,10 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
   const slotOrigin = useRef({ y: 0, depth: 0 })
   const slotDragging = useRef(false)
 
-  const nudge = (direction: 1 | -1, coarse: boolean) => {
-    const step = (param.step > 0 ? param.step : 0.01) * (coarse ? 10 : 1)
+  // Ten steps for an arrow and one for a fine press, which is the way round the knob has it: shift
+  // was the coarse press here and the fine press there, on two controls of the same plate.
+  const nudge = (direction: 1 | -1, fine: boolean) => {
+    const step = (param.step > 0 ? param.step : 0.01) * (fine ? 1 : 10)
     onChange(Math.min(param.max, Math.max(param.min, Number((value + direction * step).toFixed(6)))))
   }
 
@@ -84,7 +87,7 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       aria-valuemin={param.min}
       aria-valuemax={param.max}
       aria-valuenow={value}
-      aria-valuetext={`${value}${param.unit ?? ''}${mods.length === 0 ? '' : mods.length === 1 ? `, modulated ${Math.round(mod!.depth * 100)} per cent by ${mod!.name}` : `, modulated by ${mods.length} sources`}`}
+      aria-valuetext={`${spoken(param, value)}${mods.length === 0 ? '' : mods.length === 1 ? `, modulated ${Math.round(mod!.depth * 100)} per cent by ${mod!.name}` : `, modulated by ${mods.length} sources`}`}
       data-target={target}
       data-property={property}
       data-mod={mod ? '' : undefined}
@@ -106,10 +109,15 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       <span className="fp-fader__track" aria-hidden="true" />
       {/* One bar a source, stepping away from the groove, so two of them are two of them. */}
       {mods.map((held, at) => {
+        // Half the span either side of the cap when the source swings both ways, half the span on
+        // one side when it swings one — the same half in both branches. A one-way source used to be
+        // drawn over the whole span, twice as far as a two-way source of the same depth, which is
+        // twice as far as the same source is drawn on a knob and twice as far as the engine moves
+        // it: `swingAt` gives an envelope and an LFO the same depth against the same range.
         const span = Math.abs(held.depth) * travel
         const one = held.bipolar === false
-        const from = Math.max(7.5, one ? (held.depth >= 0 ? centre - span : centre) : centre - span / 2)
-        const to = Math.min(7.5 + travel, one ? (held.depth >= 0 ? centre : centre + span) : centre + span / 2)
+        const from = Math.max(7.5, one ? (held.depth >= 0 ? centre - span / 2 : centre) : centre - span / 2)
+        const to = Math.min(7.5 + travel, one ? (held.depth >= 0 ? centre : centre + span / 2) : centre + span / 2)
         if (to - from <= 0.5) return null
         return <span key={held.id} className="fp-fader__mod" aria-hidden="true"
           style={{ top: from, height: to - from, background: held.colour, insetInlineStart: `calc(50% + ${4.5 + at * 3}px)` }} />
@@ -130,8 +138,11 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
             mod.onDepth(Math.min(1, Math.max(oneWay ? -1 : 0, slotOrigin.current.depth + (slotOrigin.current.y - event.clientY) / 150)))
           } : undefined}
           onPointerUp={mod ? (event) => { if (!slotDragging.current) return; slotDragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId); onGestureEnd?.() } : undefined}
-          onPointerCancel={() => { slotDragging.current = false }}
-          onDoubleClick={mod?.onClear}>
+          // Cancel closes the gesture exactly as up does. A touch drag the browser takes over for a
+          // scroll fires this and nothing else — and a gesture left open stops the page hearing
+          // its own edits and folds everything that follows into one undo step.
+          onPointerCancel={mod ? (event) => { if (!slotDragging.current) return; slotDragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId); onGestureEnd?.() } : undefined}
+          onDoubleClick={mod ? (event) => { event.stopPropagation(); mod.onClear?.() } : undefined}>
           {mod ? mod.depth.toFixed(2) : ''}
         </span>
       ) : null}

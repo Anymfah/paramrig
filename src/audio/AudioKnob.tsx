@@ -1,5 +1,6 @@
 import { Fragment, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { ParameterDef } from '@/rigs/types'
+import { readable, spoken } from '@/audio/readable'
 
 /**
  * A knob, to the reference's anatomy — this time measured, not remembered.
@@ -38,7 +39,7 @@ const ring = (radius: number) => `M${point(135, radius)} A${radius} ${radius} 0 
 /** How far in each further source is drawn. Three fit before the rings reach the body. */
 const STEP_IN = 6
 
-export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, dots, target, property, mods = [], onGestureStart, onGestureEnd }: {
+export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark', face, digit, style, inert, idle, dots, target, property, mods = [], onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
@@ -51,6 +52,13 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
   style?: CSSProperties
   /** Drawn where the reference draws it and wired to nothing; says so, and takes no gesture. */
   inert?: boolean
+  /**
+   * Wired, but not read by the arrangement the patch is in at this moment — a filter balance while
+   * only one filter is running, a detune on a layer that makes noise. It still turns and still
+   * remembers, because the arrangement is one click away; it is dimmed, and it says what would
+   * make it do something. Dead-looking is better than dead-and-looking-alive.
+   */
+  idle?: string
   /** Two dots at the ends of the arc: the reference's mark for a bipolar range. */
   dots?: boolean
   /** The modulation target this control stands for, if a modulator may be dropped on it. */
@@ -80,6 +88,34 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       : param.min + clamped * (param.max - param.min)
     const step = param.step > 0 ? param.step : 0.001
     return Math.min(param.max, Math.max(param.min, Number((Math.round(raw / step) * step).toFixed(6))))
+  }
+
+  /**
+   * One arrow press, in whatever the parameter's own units are.
+   *
+   * It used to nudge the *fraction* by a fiftieth, and then the value it produced was rounded back
+   * onto the parameter's step — so on anything with fewer than twenty-five steps across its range
+   * the press landed on the value it started from and nothing moved. Shift, a tenth of that, was
+   * dead on nearly every knob in the instrument: Reso, Pan, Sustain, Spread, Gain. And the whole
+   * fraction is recomputed from the value each press, so nothing accumulated either — the key was
+   * dead rather than slow. Ten steps for an arrow, one for a fine press, and a press always lands
+   * on the neighbouring step whatever the range.
+   */
+  const stepped = (direction: number, fine: boolean) => {
+    const step = param.step > 0 ? param.step : (param.max - param.min) / 100
+    // A fiftieth of the range for a plain press, one step for a fine one — and never less than a
+    // step either way, which is the whole fix: a fiftieth of five is a tenth, and a tenth of a
+    // dial whose step is one rounds back to where it started.
+    const by = fine ? step : Math.max(step, (param.max - param.min) / 50)
+    const wanted = value + direction * by
+    // A log knob keeps its fraction nudge, where a step in hertz means something different at each
+    // end: a fiftieth of the sweep, floored at one step so it can never stand still.
+    if (log) {
+      const byFraction = fromFraction(toFraction(value) + direction * (fine ? 0.002 : 0.02))
+      return byFraction === value ? Math.min(param.max, Math.max(param.min, wanted)) : byFraction
+    }
+    const rounded = Number((Math.round(wanted / step) * step).toFixed(6))
+    return Math.min(param.max, Math.max(param.min, rounded))
   }
 
   const fraction = toFraction(value)
@@ -141,7 +177,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
     onGestureEnd?.()
   }
 
-  const shown = param.step >= 1 ? value.toFixed(0) : value >= 1000 ? value.toFixed(0) : value.toFixed(2)
+  const shown = readable(param, value)
 
   return (
     <div
@@ -151,16 +187,18 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
       role={inert ? 'img' : 'slider'}
       tabIndex={inert ? -1 : 0}
       data-inert={inert || undefined}
+      data-idle={idle ? '' : undefined}
+      data-hint={idle || undefined}
       data-dots={dots || undefined}
       data-target={target}
       data-property={property}
       data-mod={mod ? '' : undefined}
       data-mods={mods.length > 1 ? mods.length : undefined}
-      aria-label={inert ? `${param.label}, not wired` : param.label || param.id}
+      aria-label={inert ? `${param.label}, not wired` : idle ? `${param.label || param.id}, ${idle}` : param.label || param.id}
       aria-valuemin={inert ? undefined : param.min}
       aria-valuemax={inert ? undefined : param.max}
       aria-valuenow={inert ? undefined : value}
-      aria-valuetext={inert ? undefined : `${shown}${param.unit ? ` ${param.unit}` : ''}${mods.length === 0 ? '' : mods.length === 1 ? `, modulated ${Math.round(mod!.depth * 100)} per cent by ${mod!.name}` : `, modulated by ${mods.length} sources`}`}
+      aria-valuetext={inert ? undefined : `${spoken(param, value)}${mods.length === 0 ? '' : mods.length === 1 ? `, modulated ${Math.round(mod!.depth * 100)} per cent by ${mod!.name}` : `, modulated by ${mods.length} sources`}`}
       style={{ ...style, '--turn': `${fraction * 270 - 135}deg` } as CSSProperties}
       onPointerDown={inert ? undefined : down}
       onPointerMove={inert ? undefined : move}
@@ -177,7 +215,7 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
           mod.onDepth(Math.min(1, Math.max(mod.bipolar === false ? -1 : 0, mod.depth + (forward ? 1 : -1) * 0.02)))
           return
         }
-        onChange(fromFraction(fraction + (forward ? 1 : -1) * (event.shiftKey ? 0.002 : 0.02)))
+        onChange(stepped(forward ? 1 : -1, event.shiftKey))
       }}
     >
       {/* The arc: 270 degrees from half-past seven, one device pixel, standing off the body. */}
@@ -207,7 +245,10 @@ export function AudioKnob({ param, value, onChange, size = 'std', tone = 'dark',
         <span className="fp-knob__slot" aria-hidden="true" data-many={mods.length > 1 || undefined}
           style={mod ? { '--slot': mod.colour } as CSSProperties : undefined}
           onPointerDown={mod ? depthDown(mod) : undefined} onPointerMove={mod ? depthMove : undefined} onPointerUp={mod ? depthUp : undefined} onPointerCancel={mod ? depthUp : undefined}
-          onDoubleClick={mod?.onClear}>
+          // Stopped here, or the same gesture also reaches the body's own double-click and puts the
+          // parameter back to the blank patch's value — one click, two edits, one of them nobody
+          // asked for.
+          onDoubleClick={mod ? (event) => { event.stopPropagation(); mod.onClear?.() } : undefined}>
           {mod ? mod.depth.toFixed(2) : ''}
         </span>
       ) : null}

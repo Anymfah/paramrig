@@ -50,10 +50,21 @@ describe('modalSample', () => {
     expect(rung.every((value) => Number.isFinite(value))).toBe(true)
   })
 
-  /** A partial above Nyquist is skipped rather than folded back down as a whine. */
+  /**
+   * A partial above Nyquist is skipped rather than folded back down as a whine.
+   *
+   * The assertion used to be `< 20`, which is the "did not blow up" test one line above wearing a
+   * different name: take the Nyquist check out of `modal.ts` altogether and this still passed. It
+   * asks the real question now — the body's own partials fold to audible tones when they are kept,
+   * so what is heard is measured, and a bank whose partials all sit above the ceiling is silent.
+   */
   it('drops a partial that would not fit under the rate', () => {
-    const rung = strike(6, 6000, 1, 0.3)
-    expect(rung.every((value) => Math.abs(value) < 20)).toBe(true)
+    const loudest = (samples: Float32Array) => samples.reduce((most, value) => Math.max(most, Math.abs(value)), 0)
+    // Every partial of a body at 21 kHz is above this rate's ceiling, so there is nothing to ring:
+    // the bank passes the one sample of excitation and then nothing at all.
+    expect(loudest(strike(6, 21000, 1, 0.3).slice(1))).toBeLessThan(1e-6)
+    // The same body two octaves down has partials that fit, and rings on after the strike.
+    expect(loudest(strike(6, 5000, 1, 0.3).slice(1))).toBeGreaterThan(0.01)
   })
 
   it('passes the signal straight through when it has no partials', () => {

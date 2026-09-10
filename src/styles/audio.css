@@ -561,6 +561,9 @@
 .envelope__handle {
   cursor: grab;
   outline: none;
+  /* A handle is dragged, so the browser must not read the first few pixels as a page scroll —
+     on a touch screen it took the gesture away and the stage moved instead of the envelope. */
+  touch-action: none;
 }
 
 .envelope__grab {
@@ -718,7 +721,10 @@
   block-size: calc(max(var(--level, 0) * 100%, 2px));
   border-radius: 1px;
   background: var(--accent);
-  transition: block-size 60ms linear;
+  transition: block-size var(--duration-instant, 60ms) linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .audio-meter__side { transition: none; }
 }
 .audio-meter__side[data-hot] { background: var(--danger); }
 
@@ -1435,7 +1441,11 @@
 .audio-bar__history { display: flex; gap: var(--space-1); }
 
 /* The transport in one row: no picture, the four figures inline, the tools beside them. */
-.audio-transport[data-compact] { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-3); padding: 0; background: transparent; border: 0; }
+.audio-transport[data-compact] { display: flex; flex-wrap: nowrap; align-items: center; gap: var(--space-3); padding: 0; background: transparent; border: 0; overflow: hidden; }
+/* The play button is the flex item's *child*: the tooltip anchor between them shrinks to nothing
+   and lets the button spill over the meter beside it. Hold the anchor open instead, the way the
+   stepper already does. */
+.audio-transport .tt__anchor:has(.audio-transport__play) { flex: none; }
 .audio-transport[data-compact] .audio-transport__figures { display: flex; gap: var(--space-3); margin: 0; }
 .audio-transport[data-compact] .audio-transport__figures > div { display: flex; gap: 0.3rem; align-items: baseline; }
 .audio-transport[data-compact] .audio-transport__figures dt { font-size: 0.5625rem; }
@@ -1443,17 +1453,24 @@
 .audio-transport[data-compact] .audio-transport__notice { display: none; }
 
 /*
- * The bar in one row needs about 1370 pixels inside its padding with everything on it, and 1140
+ * The bar in one row needs about 1370 pixels inside its padding with everything on it, and 1280
  * without the four figures. Short of the first, the figures go — they say in numbers what the
  * picture in the rail already shows. Short of the second, the bar is two rows: the name, the views
  * and the history above, and the transport, the row you play from, below at the full width, with
  * the figures back while that row has room for them. A phone's width loses the stepping chevrons
  * too; the menu still lists every sound.
+ *
+ * The second figure used to be 72rem, which is where it was guessed rather than measured: between
+ * about 1410 and 1530 pixels the transport was already wider than the space left for it, spilled
+ * to the right with nothing to clip it, and the view tabs — later in the source — painted over the
+ * top of the Auto button. On a 1440-wide laptop with the rail open, auto-play could not be
+ * switched off with a mouse at all. The overflow rule below is the belt to that braces: a row that
+ * does not fit is cut off at its own edge rather than drawn across its neighbour.
  */
 @container (width < 86rem) {
   .audio-transport[data-compact] .audio-transport__figures { display: none; }
 }
-@container (width < 72rem) {
+@container (width < 80rem) {
   .audio-bar { padding-block: var(--space-2); }
   .audio-bar .audio-transport { order: 1; flex: 1 0 100%; }
   .audio-transport[data-compact] .audio-transport__figures { display: flex; }
@@ -1489,8 +1506,12 @@
   --fp-ground: #262626; --fp-panel: #323232; --fp-panel-dark: #242424; --fp-hairline: #050505; --fp-line: #282828;
   --fp-text: #a5a39a; --fp-title: #a7a7a7; --fp-text-bright: #c0c1bd; --fp-text-hover: #d4d4d4; --fp-dim: #838383; --fp-rule: #8a8a8a; --fp-rule-light: #989897; --fp-readout: #7d7e7e;
   --fp-box: #545454; --fp-box-text: #1e1e1e; --fp-box-on: #9a9a9a; --fp-box-hover: #626262; --fp-box-on-hover: #a6a6a6;
-  --fp-badge: #999999; --fp-badge-text: #111111; --fp-badge-off: #6a6a6a; --fp-badge-hover: #7e7e7e; --fp-badge-edge: #b8b8b8;
+  --fp-badge: #999999; --fp-badge-text: #111111; --fp-badge-off: #4a4a4a; --fp-badge-off-text: #d0d0d0; --fp-badge-hover: #5a5a5a; --fp-badge-edge: #b8b8b8;
   --fp-knob-top: #53555a; --fp-knob-bottom: #3c3b40; --fp-knob-rim: #101010; --fp-hand: #c4c2bf; --fp-ring: #505050; --fp-ring-dark: #494949;
+  /* The disc a macro's number sits on, and the red it is written in — a pair, because either one
+     alone is a guess. A saturated red on a mid grey is about two to one whichever way round it is
+     put; a pale red on a dark disc is eight, and still unmistakably the macros' colour. */
+  --fp-digit-disc: #1b1b1b; --fp-digit-ink: #ff9d9d;
   --fp-hero: #3a3c3e; --fp-hero-edge: #414345; --fp-hero-rim: #2c2c2e; --fp-hero-hand: #eae1ca; --fp-face: #a7a7a7;
   --fp-macro-top: #5c5c5c; --fp-macro-bottom: #3c3c3c; --fp-macro-hand: #e9e9e9;
   --fp-light-top: #8e8d8b; --fp-light-bottom: #585755; --fp-light-hand: #0e0e0e;
@@ -1520,7 +1541,8 @@
   --fp-ground: var(--surface); --fp-panel: var(--surface-raised); --fp-panel-dark: color-mix(in srgb, var(--surface-inset) 85%, var(--carbon)); --fp-hairline: var(--border-hairline); --fp-line: var(--rule);
   --fp-text: var(--text-secondary); --fp-title: var(--text-muted); --fp-text-bright: var(--text-primary); --fp-text-hover: var(--accent-hover); --fp-dim: var(--text-muted); --fp-rule: var(--text-muted); --fp-rule-light: var(--border-strong); --fp-readout: var(--text-muted); --fp-readout-hover: var(--text-primary);
   --fp-box: color-mix(in srgb, var(--surface-overlay) 80%, var(--text-primary)); --fp-box-text: var(--text-primary); --fp-box-on: var(--accent); --fp-box-on-text: var(--text-on-accent); --fp-box-hover: color-mix(in srgb, var(--surface-overlay) 65%, var(--text-primary)); --fp-box-on-hover: var(--accent-hover);
-  --fp-badge: var(--text-secondary); --fp-badge-text: var(--surface); --fp-badge-off: color-mix(in srgb, var(--text-muted) 45%, var(--surface)); --fp-badge-hover: var(--text-muted); --fp-badge-edge: var(--text-primary);
+  --fp-badge: var(--text-secondary); --fp-badge-text: var(--surface); --fp-badge-off: color-mix(in srgb, var(--text-muted) 28%, var(--surface)); --fp-badge-off-text: var(--text-primary); --fp-badge-hover: color-mix(in srgb, var(--text-muted) 40%, var(--surface)); --fp-badge-edge: var(--text-primary);
+  --fp-digit-disc: color-mix(in srgb, var(--carbon) 74%, var(--fp-light-bottom)); --fp-digit-ink: #ff9d9d;
   --fp-edge: color-mix(in srgb, var(--carbon) 60%, var(--surface-raised));
   --fp-knob-top: var(--surface-overlay); --fp-knob-bottom: var(--surface-raised); --fp-knob-rim: var(--fp-edge); --fp-hand: var(--accent); --fp-ring: color-mix(in srgb, var(--text-muted) 45%, var(--surface)); --fp-ring-dark: color-mix(in srgb, var(--text-muted) 45%, var(--surface));
   --fp-hero: var(--surface-overlay); --fp-hero-edge: color-mix(in srgb, var(--surface-overlay) 86%, var(--text-primary)); --fp-hero-rim: var(--fp-edge); --fp-hero-hand: var(--accent); --fp-face: var(--text-secondary);
@@ -1562,8 +1584,9 @@
   background: radial-gradient(circle at 50% 36%, var(--fp-hero-edge) 0 68%, var(--fp-hero) 82%, var(--fp-hero-edge) 90%, var(--fp-hero-rim) 95.5%, var(--fp-edge) 100%);
   box-shadow: 0 0 0 1px var(--fp-edge), inset 0 1px 0 var(--fp-knob-light), inset 0 -1px 0 color-mix(in srgb, var(--carbon) 35%, transparent), var(--fp-knob-shadow);
 }
-/* A macro's number stays red on a light knob too; on the light theme those knobs are dark, and the red is a light one. */
-.fp-stage[data-skin='paramrig'] .fp-knob[data-tone='light'] .fp-knob__digit { color: var(--fp-red-on-light); }
+/* A macro's number stays red on a light knob too. It carries its own disc rather than borrowing the
+   knob's, because the knob's is a mid grey on the light theme and no red reads on a mid grey: the
+   pale red that was here measured 1.65 to one, which is a colour, not a number anyone can read. */
 
 @font-face {
   font-family: 'Roboto';
@@ -1705,6 +1728,10 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
 .fp-knob[data-tone='light'] { --ring: 47px; --d: 29.5px; --hand-w: 3.5px; --hand-h: 8px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --rim: var(--fp-knob-rim); --hand: var(--fp-light-hand); --ringc: var(--fp-ring-dark); }
 .fp-knob[data-size='sm'][data-tone='light'] { --ring: 40px; --d: 21px; --hand-w: 3px; --hand-h: 6.5px; --top: var(--fp-light-top); --bottom: var(--fp-light-bottom); --ringc: var(--fp-slot); }
 .fp-knob[data-inert] { cursor: default; }
+/* Wired, but nothing reads it while the patch is arranged the way it is. Still turnable — the
+   arrangement is one click away — and quiet enough not to be read as live. */
+.fp-knob[data-idle] { opacity: 0.42; }
+.fp-knob[data-idle]:hover, .fp-knob[data-idle]:focus-within { opacity: 0.72; }
 .fp-knob[data-dots]::before, .fp-knob[data-dots]::after { content: ''; position: absolute; inline-size: 2.5px; block-size: 2.5px; border-radius: 50%; background: #6e6e6e; inset-block-start: calc(85.36% - 1.25px); }
 .fp-knob[data-dots]::before { inset-inline-start: calc(14.64% - 1.25px); }
 .fp-knob[data-dots]::after { inset-inline-start: calc(85.36% - 1.25px); }
@@ -1774,8 +1801,8 @@ button.fp-text:focus-visible { outline: 1px solid var(--focus-ring); outline-off
   inline-size: 18px;
   block-size: 18px;
   border-radius: 50%;
-  color: var(--fp-red);
-  background: color-mix(in srgb, var(--fp-light-bottom) 62%, var(--fp-knob-rim));
+  color: var(--fp-digit-ink);
+  background: var(--fp-digit-disc);
 }
 .fp-knob__value {
   position: absolute;
@@ -1873,7 +1900,11 @@ button.fp-box:focus-visible { outline: 1px solid var(--focus-ring); outline-offs
 .fp-badge[data-kind='square'] { inline-size: 11px; block-size: 11px; font-size: 9px; box-shadow: inset 0 0 0 0.5px var(--fp-badge-edge); }
 .fp-badge[data-kind='noise'] { inline-size: 18px; block-size: 17px; border-radius: 1.5px; clip-path: polygon(0 0, 100% 0, 100% 36%, 87% 36%, 87% 62%, 100% 62%, 100% 100%, 0 100%, 0 62%, 13% 62%, 13% 36%, 0 36%); }
 button.fp-badge { cursor: pointer; touch-action: manipulation; }
-.fp-badge[role='tab'] { background: var(--fp-badge-off); color: var(--fp-badge-text); }
+/* A tab that is not the one you are on is quiet, not faint: the same chip in a lower key, with
+   text that still reads. It used to be the loud chip's near-black lettering on a mid grey — two
+   to one in the light theme, which is a number, not a letter you can read. Exactly one of a row
+   is filled; the rest step down a rung rather than fade out. */
+.fp-badge[role='tab'] { background: var(--fp-badge-off); color: var(--fp-badge-off-text); }
 .fp-badge[role='tab'][aria-selected='true'] { background: var(--fp-badge); color: var(--fp-badge-text); }
 .fp-badge[role='tab']:hover { background: var(--fp-badge-hover); }
 .fp-badge[role='tab'][aria-selected='true']:hover { background: var(--fp-title); }
@@ -1959,10 +1990,14 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   color: var(--fp-amber-dim);
   font: 400 13px/21.5px var(--fp-font);
   text-align: start;
-  cursor: default;
+  /* Every one of the twelve is a live button — clicking an empty row is how you choose the row you
+     are about to draw on — and eleven of the twelve are empty on a fresh patch. The pointer and the
+     hover used to be gated behind `data-filled`, so almost the whole strip looked inert. */
+  cursor: pointer;
 }
 .fp-slot { box-shadow: -1.5px 0 0 var(--fp-hairline); }
-.fp-slot[data-filled] { background: var(--fp-slot-filled); cursor: pointer; }
+.fp-slot:hover { background: var(--fp-box-text); color: var(--fp-amber-bright); }
+.fp-slot[data-filled] { background: var(--fp-slot-filled); }
 .fp-slot[data-filled]:hover { background: var(--fp-box-text); color: var(--fp-amber-bright); }
 .fp-slot[data-active] { background: var(--fp-ground); box-shadow: -1.5px 0 0 var(--fp-hairline), 0 0 0 2px var(--fp-amber); color: var(--fp-amber-bright); }
 .fp-slot:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 3px; }
@@ -1975,8 +2010,14 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
 .fp-plot .envelope__floor { display: none; }
 .fp-plot .envelope__fill { fill: var(--fp-plot-fill); }
 .fp-plot .envelope__line { stroke: var(--fp-plot-line); stroke-width: 1.5; }
-.fp-plot .envelope__dot { display: none; }
+/* The dot the standalone plot draws takes its colours from `--section`, which is a token of the
+   workspace's columns and does not exist inside the plate: `fill` fell back to black and `stroke`
+   to none, so the one thing that says where a handle is was an invisible black disc on a dark
+   curve. Re-pointed at the plot's own pair, beside its siblings above. */
+.fp-plot .envelope__dot { display: none; fill: var(--fp-panel); stroke: var(--fp-plot-line); }
 .fp-plot .envelope__handle:hover .envelope__dot, .fp-plot .envelope__handle:focus-visible .envelope__dot { display: block; }
+.fp-plot .envelope__handle:hover .envelope__dot { fill: var(--fp-plot-line); }
+.fp-plot .envelope__handle:focus-visible .envelope__dot { stroke: var(--focus-ring); }
 .fp-plot .envelope__read { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /*

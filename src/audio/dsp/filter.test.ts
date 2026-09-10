@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createFilter, filterSample } from '@/audio/dsp/filter'
 import { makeLayer, makePatch } from '@/audio/patch'
+import { EASE_OUT, LINEAR } from '@/audio/dsp/curve'
 import { monoSum, renderPatch } from '@/audio/dsp/render'
 import type { FilterKind } from '@/audio/types'
 
@@ -194,5 +195,86 @@ describe('two filters and what they do to each other', () => {
     expect(middle).toBeLessThan(Math.max(allA, allB) * 1.2)
     // All of A is A alone: the balance is a crossfade, not a blend that leaves something behind.
     expect(allA).toBeCloseTo(heard({ filterA: settings.filterA, routing: 'single' }), 6)
+  })
+})
+
+/**
+ * The ladder rings and does not sing.
+ *
+ * The file has always said resonance stops short of self-oscillation, and for a long time it did
+ * not: a sample of delay in the feedback loop is phase lag in proportion to the cutoff, so the
+ * loop turned right round far below the gain the filter was designed against and broke into a
+ * whistle that never decayed. The threshold moved with the sample rate, which is why the library's
+ * thumbnails and the randomiser's levelling both saw a peak the real render did not have.
+ */
+describe('the ladder', () => {
+  it('never keeps ringing on its own, at any rate or resonance', () => {
+    for (const rate of [16000, 22050, 44100, 48000]) {
+      for (const resonance of [0.3, 0.7, 1]) {
+        for (const cutoff of [200, 1700, Math.min(12000, rate * 0.4)]) {
+          const state = createFilter('ladder', rate)
+          let tail = 0
+          for (let i = 0; i < rate; i += 1) {
+            const out = filterSample(state, 'ladder', i === 0 ? 1 : 0, cutoff, resonance, rate)
+            if (i > rate * 0.5) tail = Math.max(tail, Math.abs(out))
+          }
+          expect(tail, `${rate} Hz, resonance ${resonance}, cutoff ${cutoff}`).toBeLessThan(1e-4)
+        }
+      }
+    }
+  })
+
+  it('still has a resonance worth turning up', () => {
+    const at = (resonance: number) => {
+      const state = createFilter('ladder', SAMPLE_RATE)
+      let peak = 0
+      for (let i = 0; i < 4000; i += 1) {
+        const out = filterSample(state, 'ladder', Math.sin((2 * Math.PI * 1000 * i) / SAMPLE_RATE), 1000, resonance, SAMPLE_RATE)
+        if (i > 2000) peak = Math.max(peak, Math.abs(out))
+      }
+      return peak
+    }
+    expect(at(0.9)).toBeGreaterThan(at(0) * 1.5)
+  })
+})
+
+/**
+ * A filter's own envelope, which had no test anywhere — neither in the DSP nor in the render, so
+ * the whole of `envAmount` and `envCurve` could have been deleted without a red line.
+ */
+describe('the filter envelope', () => {
+  const swept = (over: object) => {
+    const out = monoSum(renderPatch(makePatch(0.4, [makeLayer({
+      gain: 0.6,
+      source: { kind: 'noise', colour: 'white' },
+      amp: { attack: 0.002, hold: 0.34, decay: 0.02, sustain: 1, release: 0.02, curve: 1 },
+      ...over,
+    })]), 44100))
+    const window = (from: number, to: number) => {
+      let energy = 0
+      let count = 0
+      for (let i = Math.round(from * out.length); i < Math.round(to * out.length); i += 1) { energy += (out[i] ?? 0) ** 2; count += 1 }
+      return Math.sqrt(energy / Math.max(1, count))
+    }
+    return { early: window(0.05, 0.2), late: window(0.6, 0.8) }
+  }
+
+  it('opens the corner over the life of the sound, and closes it the other way', () => {
+    const flat = swept({ filterA: { kind: 'lowpass', cutoff: 600, resonance: 0.2, envAmount: 0 } })
+    const up = swept({ filterA: { kind: 'lowpass', cutoff: 600, resonance: 0.2, envAmount: 3 } })
+    const down = swept({ filterA: { kind: 'lowpass', cutoff: 4000, resonance: 0.2, envAmount: -3 } })
+    expect(flat.late / flat.early).toBeCloseTo(1, 1)
+    expect(up.late).toBeGreaterThan(up.early * 1.5)
+    expect(down.late).toBeLessThan(down.early * 0.7)
+  })
+
+  it('takes the shape of the curve it is given, not only its ends', () => {
+    const base = { kind: 'lowpass' as const, cutoff: 600, resonance: 0.2, envAmount: 3 }
+    const linear = swept({ filterA: { ...base, envCurve: LINEAR } })
+    const eased = swept({ filterA: { ...base, envCurve: EASE_OUT } })
+    // Both open, and an eased sweep is most of the way there while a straight one is still low.
+    expect(linear.late).toBeGreaterThan(linear.early)
+    expect(eased.late).toBeGreaterThan(eased.early)
+    expect(eased.early).toBeGreaterThan(linear.early * 1.2)
   })
 })

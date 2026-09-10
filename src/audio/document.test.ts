@@ -153,4 +153,47 @@ describe('carrying a saved document forward', () => {
     expect(read?.patch.layers[0]?.insertA).toMatchObject({ kind: 'drive', drive: 0.4 })
     expect(read?.patch.layers[0]?.insertC).toMatchObject({ kind: 'body', place: 'post', frequency: 700 })
   })
+
+  it('follows the master effects into the slots they became', () => {
+    const older = {
+      version: 1,
+      id: 'older-three',
+      name: 'Older again',
+      patch: { version: 3, duration: 0.3, fx: { delayMix: 0.4, delayTime: 0.08, reverbMix: 0.3, flangerMix: 0.2 } },
+      rig: {
+        groups: [{ id: 'g', label: 'Group' }],
+        parameters: [
+          { kind: 'number', id: 'echo', label: 'Echo', group: 'g', min: 0, max: 1, step: 0.01, defaultValue: 0.4 },
+          { kind: 'number', id: 'room', label: 'Room', group: 'g', min: 0, max: 1, step: 0.01, defaultValue: 0.3 },
+          { kind: 'number', id: 'jet', label: 'Jet', group: 'g', min: 0, max: 1, step: 0.01, defaultValue: 0.2 },
+        ],
+        bindings: [
+          { id: 'a', property: 'fx.delayMix', parameterId: 'echo' },
+          { id: 'b', property: 'fx.reverbSize', parameterId: 'room' },
+          { id: 'c', property: 'fx.flangerRate', parameterId: 'jet' },
+        ],
+      },
+    }
+    const read = sanitizeAudioDocument(older)
+    expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(['fx.y.mix', 'fx.z.size', 'fx.x.rate'])
+  })
+
+  it('follows a layer’s one filter into the first of the two it became', () => {
+    const older = {
+      version: 1,
+      id: 'older-four',
+      name: 'Older yet',
+      patch: { version: 4, duration: 0.3, layers: [{ filter: { kind: 'lowpass', cutoff: 900, resonance: 0.5 } }] },
+      rig: {
+        groups: [{ id: 'g', label: 'Group' }],
+        parameters: [
+          { kind: 'number', id: 'corner', label: 'Corner', group: 'g', min: 20, max: 20000, step: 1, defaultValue: 900 },
+        ],
+        bindings: [{ id: 'a', property: 'layers[0].filter.cutoff', parameterId: 'corner' }],
+      },
+    }
+    const read = sanitizeAudioDocument(older)
+    expect(read?.rig?.bindings.map((binding) => binding.property)).toEqual(['layers[0].filterA.cutoff'])
+    expect(read?.patch.layers[0]?.filterA.cutoff).toBeCloseTo(900, 6)
+  })
 })

@@ -16,18 +16,6 @@ import { encodeWav } from '../src/audio/dsp/wav.ts'
 
 const SAMPLE_RATE = 44100
 
-function measure(samples) {
-  let peak = 0
-  let sum = 0
-  for (let i = 0; i < samples.length; i += 1) {
-    const value = samples[i]
-    const size = Math.abs(value)
-    if (size > peak) peak = size
-    sum += value * value
-  }
-  return { peak, rms: Math.sqrt(sum / Math.max(1, samples.length)) }
-}
-
 const dB = (value) => (value <= 0 ? '-inf' : `${(20 * Math.log10(value)).toFixed(1)} dB`)
 
 async function main() {
@@ -41,7 +29,12 @@ async function main() {
     const file = path.join(out, `${preset.id}.wav`)
     await fs.writeFile(file, encodeWav(stereo, SAMPLE_RATE))
     const { peak, rms } = stereoLevels(stereo)
-    const clipped = [...stereo.left, ...stereo.right].filter((v) => Math.abs(v) >= 0.999).length
+    // Counted in place. Spreading two Float32Arrays into one boxed JS array built and threw away
+    // a third of a million elements per preset to count a handful of them.
+    let clipped = 0
+    for (const channel of [stereo.left, stereo.right]) {
+      for (let i = 0; i < channel.length; i += 1) if (Math.abs(channel[i]) >= 0.999) clipped += 1
+    }
     rows.push({ id: preset.id, seconds: patch.duration, peak, rms, clipped, file })
   }
 

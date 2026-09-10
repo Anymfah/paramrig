@@ -104,6 +104,26 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
   }
 
   /**
+   * Where each handle's hit area sits, which is not always where its dot is drawn.
+   *
+   * A stage of zero length puts its handle exactly on top of the one before it — and a fresh
+   * modulator envelope has a hold of zero, so its attack could not be grabbed at all: the hold's
+   * circle covered it entirely. The dots stay at the values they are drawing; the invisible discs
+   * behind them are pushed right until each has a strip of its own, nearest first.
+   */
+  const apart = (() => {
+    const order: Handle[] = ['attack', 'hold', 'decay', 'release']
+    const out = { attack: 0, hold: 0, decay: 0, release: 0 } as Record<Handle, number>
+    let floor = -Infinity
+    for (const id of order) {
+      const wanted = Math.max(spots[id].cx, floor)
+      out[id] = wanted - spots[id].cx
+      floor = wanted + 15
+    }
+    return out
+  })()
+
+  /**
    * The stage being dragged wins, and only its neighbours give way — in order, and only as far as
    * they have to.
    *
@@ -151,9 +171,21 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
   }, [amp, root, life, onChange])
 
   const fromPointer = (event: React.PointerEvent<SVGSVGElement>, handle: Handle) => {
+    /*
+     * Normalised by the box as it is drawn, not by the box as it is laid out.
+     *
+     * `getBoundingClientRect` includes every ancestor transform and the plate carries a
+     * `scale()`; `width` comes from a ResizeObserver's contentRect, which does not. Mixing the two
+     * meant the drag ran at the wrong rate everywhere the plate was not at exactly 1 — and since
+     * release is measured backwards from the end, on a large window the release handle ran away
+     * from the pointer rather than towards it. The fader compensates by reading `--fp-scale`; the
+     * ratio of the two boxes says the same thing without having to know the plate is there.
+     */
     const rect = event.currentTarget.getBoundingClientRect()
-    const seconds = ((event.clientX - rect.left - pad) / plotW) * life
-    const level = 1 - (event.clientY - rect.top - pad) / plotH
+    const acrossX = rect.width > 0 ? width / rect.width : 1
+    const acrossY = rect.height > 0 ? height / rect.height : 1
+    const seconds = (((event.clientX - rect.left) * acrossX - pad) / plotW) * life
+    const level = 1 - ((event.clientY - rect.top) * acrossY - pad) / plotH
     write(handle, seconds, handle === 'decay' ? level : null)
   }
 
@@ -216,7 +248,7 @@ export function AudioEnvelope({ layer, values, duration, onChange, onGestureStar
             aria-valuetext={spots[id].text}
             onKeyDown={(event) => nudge(id, event)}
           >
-            <circle className="envelope__grab" cx={spots[id].cx} cy={spots[id].cy} r={14} />
+            <circle className="envelope__grab" cx={spots[id].cx + apart[id]} cy={spots[id].cy} r={14} />
             <circle className="envelope__dot" cx={spots[id].cx} cy={spots[id].cy} r={4} />
           </g>
         ))}

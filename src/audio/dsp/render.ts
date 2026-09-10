@@ -22,7 +22,16 @@ import { MAX_VOICES } from '../fields.ts'
  * It is also why the tests need no browser: this file runs in Node.
  */
 
-/** Two milliseconds of ramp in, so a layer that opens on a full-amplitude sample does not tick. */
+/**
+ * Two milliseconds of ramp in, so a layer that opens on a full-amplitude sample does not tick.
+ *
+ * Applied twice, in two different places, and both are needed. The master applies it to the head
+ * of the buffer, which is where the sum starts. A layer with an `offset` starts somewhere else
+ * entirely, and used to arrive there on a step: a square wave delayed by a quarter of a second
+ * with no attack went from silence to a third of full scale between one sample and the next, and
+ * a step is a click. Layers that begin at the head are left to the master's ramp rather than being
+ * given a second one, so nothing that was already smooth changes.
+ */
 const FADE_IN_SECONDS = 0.002
 
 /**
@@ -108,6 +117,8 @@ function renderLayer(
 
   const start = Math.round(offset * sampleRate)
   const end = Math.min(out.left.length, Math.round(patch.duration * sampleRate))
+  // Only a layer that begins away from the head opens itself; the head is the master's job.
+  const opening = start > 0 ? Math.max(1, Math.round(FADE_IN_SECONDS * sampleRate)) : 0
 
   /**
    * One oscillator is one oscillator: thin, because there is nothing for it to beat against, and
@@ -119,6 +130,10 @@ function renderLayer(
   const voices = Math.min(MAX_VOICES, Math.max(1, Math.round(layer.source.voices)))
   const spreadCents = layer.source.detune / 1200
   const width = Math.min(1, Math.max(0, layer.spread))
+  // The two noise sources, mixed as a rotation rather than as a fade: cosine on the common one,
+  // sine on the difference, so the pair keeps its power wherever the knob is.
+  const spreadA = Math.cos(width * (Math.PI / 4))
+  const spreadB = Math.sin(width * (Math.PI / 4))
   const ratios: number[] = []
   const sides: { left: number; right: number }[] = []
   for (let voice = 0; voice < voices; voice += 1) {
@@ -132,6 +147,11 @@ function renderLayer(
   // Radians of phase deviation, expressed in cycles for the oscillator that reads it.
   const fmDepth = layer.source.fmIndex / (Math.PI * 2)
   const still = pan(layer.pan)
+  const panSum = still.left + still.right
+  // Read once, because each of them decides whether a curve is solved at all inside the loop.
+  const slideBy = layer.pitch.slide
+  const aEnvelope = layer.filterA.envAmount
+  const bEnvelope = layer.filterB.envAmount
   // Built once for the layer, and only when it is the kind that plays one: the first sound that
   // reaches for a table pays about forty milliseconds for the whole library, and no sound after it does.
   const table = layer.source.kind === 'table' ? wavetable(tableOf(layer.source.table)) : null
@@ -158,7 +178,7 @@ function renderLayer(
     const clock = i / sampleRate
 
     const vibrato = layer.pitch.vibratoDepth * Math.sin(2 * Math.PI * layer.pitch.vibratoRate * t)
-    const slide = layer.pitch.slide * curveAt(layer.pitch.slideCurve, x)
+    const slide = slideBy === 0 ? 0 : slideBy * curveAt(layer.pitch.slideCurve, x)
     const arpeggio = x >= layer.pitch.arpeggioAt ? layer.pitch.arpeggioRatio : 1
     const wobble = swingOf(pitchLfo, clock) * LFO_RANGE.pitch
     const wanted = layer.pitch.start * Math.pow(2, (slide + vibrato) / 12 + wobble) * arpeggio * detune
@@ -171,8 +191,12 @@ function renderLayer(
       const a = noiseA.next(dt)
       const b = noiseB.next(dt)
       // Fully correlated at no spread, two independent sources at full: the widest a noise gets.
-      rawL = a * still.left
-      rawR = (a * (1 - width) + b * width) * still.right
+      // The two are mixed at equal power and symmetrically, which they were not: the left took
+      // the first source whole while the right took a straight crossfade of two *independent*
+      // ones, and the sum of two independent halves is not one — it falls to 0.707 at the middle
+      // of the knob. Turning the spread dragged the image three decibels left and back again.
+      rawL = (a * spreadA + b * spreadB) * still.left
+      rawR = (a * spreadA - b * spreadB) * still.right
     } else {
       // Width and position are the same knob at heart — how far along the shape sits — so one
       // modulator swing moves whichever of the two this source reads.
@@ -204,7 +228,13 @@ function renderLayer(
           read = shifted < 0 ? shifted + 1 : shifted
         }
         const value = table
-          ? tableAt(table, warp(read, duty), position, step)
+          // The rate the *phase* is moving at, which is not the rate the oscillator is stepping
+          // at once the shape is skewed: `warp` squeezes half a cycle into as little as a
+          // twentieth of it, so the local slope runs up to ten times `step`. Handing the band
+          // chooser the plain step picked a band band-limited for a pitch ten times lower than the
+          // one being played, and everything it held folded. The steepest slope of `warp` is
+          // 1/(2·min(w, 1−w)), so that is the increment the band has to survive.
+          ? tableAt(table, warp(read, duty), position, step / (2 * Math.min(duty, 1 - duty)))
           : waveAt(layer.source.wave, read, step, duty)
         const side = sides[voice] ?? still
         rawL += value * side.left
@@ -223,22 +253,29 @@ function renderLayer(
      * the same number is a way of getting that wrong.
      */
     const swing = swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff
+    const swingUp = Math.pow(2, swing)
     const lift = resoLfo.length === 0 ? 0 : swingOf(resoLfo, clock) * LFO_RANGE.resonance
-    const held = (settings: Layer['filterA']) => ({
-      cutoff: settings.cutoff * Math.pow(2, settings.envAmount * curveAt(settings.envCurve, x) + swing),
-      resonance: lift === 0 ? settings.resonance : Math.min(1, Math.max(0, settings.resonance + lift)),
-    })
-    const a = held(layer.filterA)
-    let left = filterSample(filters[0]!, layer.filterA.kind, rawL, a.cutoff, a.resonance, sampleRate)
-    let right = filterSample(filters[1]!, layer.filterA.kind, rawR, a.cutoff, a.resonance, sampleRate)
+    // Written out rather than through a helper: a closure and its result object per filter per
+    // sample is exactly the garbage the note on `swingOf` says was taken out of this loop. And the
+    // curve is only solved when something reads it — an eight-step Newton solve whose answer is
+    // multiplied by zero was nine per cent of the render, on the thread the plate draws on.
+    const aCut = layer.filterA.cutoff * (aEnvelope === 0
+      ? swingUp
+      : Math.pow(2, layer.filterA.envAmount * curveAt(layer.filterA.envCurve, x) + swing))
+    const aRes = lift === 0 ? layer.filterA.resonance : Math.min(1, Math.max(0, layer.filterA.resonance + lift))
+    let left = filterSample(filters[0]!, layer.filterA.kind, rawL, aCut, aRes, sampleRate)
+    let right = filterSample(filters[1]!, layer.filterA.kind, rawR, aCut, aRes, sampleRate)
     if (routing !== 'single') {
-      const b = held(layer.filterB)
+      const bCut = layer.filterB.cutoff * (bEnvelope === 0
+        ? swingUp
+        : Math.pow(2, layer.filterB.envAmount * curveAt(layer.filterB.envCurve, x) + swing))
+      const bRes = lift === 0 ? layer.filterB.resonance : Math.min(1, Math.max(0, layer.filterB.resonance + lift))
       if (routing === 'series') {
-        left = filterSample(second[0]!, layer.filterB.kind, left, b.cutoff, b.resonance, sampleRate)
-        right = filterSample(second[1]!, layer.filterB.kind, right, b.cutoff, b.resonance, sampleRate)
+        left = filterSample(second[0]!, layer.filterB.kind, left, bCut, bRes, sampleRate)
+        right = filterSample(second[1]!, layer.filterB.kind, right, bCut, bRes, sampleRate)
       } else {
-        left = left * (1 - across) + filterSample(second[0]!, layer.filterB.kind, rawL, b.cutoff, b.resonance, sampleRate) * across
-        right = right * (1 - across) + filterSample(second[1]!, layer.filterB.kind, rawR, b.cutoff, b.resonance, sampleRate) * across
+        left = left * (1 - across) + filterSample(second[0]!, layer.filterB.kind, rawL, bCut, bRes, sampleRate) * across
+        right = right * (1 - across) + filterSample(second[1]!, layer.filterB.kind, rawR, bCut, bRes, sampleRate) * across
       }
     }
     for (let at = 0; at < before.length; at += 1) {
@@ -259,10 +296,20 @@ function renderLayer(
      * the sound rather than the fade. Anything else is a matter of taste, and taste is what the
      * switch is for.
      */
-    const amplitude = envelopeAt(layer.amp, fitted, t, life)
-    // A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
-    // twice the level, which is not a tremolo — it is a patch that clips on the upstroke.
-    const tremolo = Math.max(0, 1 + ((swingOf(gainLfo, clock) - 1) / 2) * LFO_RANGE.gain)
+    const amplitude = envelopeAt(layer.amp, fitted, t, life) * (opening === 0 ? 1 : Math.min(1, (i - start) / opening))
+    /*
+     * A gain modulator only ducks. Written as `1 + v * depth` it spent half of every cycle at
+     * twice the level, which is not a tremolo — it is a patch that clips on the upstroke. So the
+     * modulator's own top is the layer's level and everything below it takes level away.
+     *
+     * And that is only true when there IS a modulator. Without the guard the sum of an empty list
+     * is zero, which the formula reads as "the modulator is sitting at its middle" and ducks by
+     * six decibels — so every layer in the instrument played at half the level its own dial said,
+     * for as long as nobody pointed anything at it. The library was levelled against that, and is
+     * levelled again here.
+     */
+    const tremolo = gainLfo.length === 0 ? 1
+      : Math.max(0, 1 + ((swingOf(gainLfo, clock) - 1) / 2) * LFO_RANGE.gain)
     let hitL = left * amplitude
     let hitR = right * amplitude
     for (let at = 0; at < after.length; at += 1) {
@@ -274,7 +321,14 @@ function renderLayer(
 
     // Kept before the level: a layer used only as a modulator is turned down to nothing and still
     // modulates, which is how a modulator oscillator is meant to work.
-    if (capture) capture[i] = (hitL + hitR) * 0.5
+    //
+    // And kept before the *position*. The pair has already been through the pan law, so halving
+    // its sum handed back a unit oscillator as 0.707 when the layer was centred and as 0.5 when
+    // it was hard over: switching a carrier from its own sine to another layer quietly lost three
+    // decibels of index, and then moving the modulator layer's pan — a layer at gain zero, which
+    // nobody can hear — retuned the carrier. Dividing by the two gains it was multiplied by gives
+    // back the amplitude the oscillator actually made.
+    if (capture) capture[i] = (hitL + hitR) / panSum
 
     const level = layer.gain * tremolo
     if (panLfo.length === 0) {
@@ -285,13 +339,23 @@ function renderLayer(
        * A pan modulator turns the layer's own sum, not each of its voices.
        *
        * The voices are spread across the field before anything else happens, and re-panning every
-       * one of them per sample would cost a sine and a cosine each. Turning what they add up to
-       * moves the whole image the same way for two, and at rest the two gains are cos and sin of
-       * forty-five degrees — which times root two is one, so a layer nobody points at is untouched.
+       * one of them per sample would cost a sine and a cosine each. Rotating what they add up to
+       * moves the whole image the same way for all of them and keeps the width between them.
+       *
+       * A rotation, and not a second pan law over the first. Multiplying the already-panned pair
+       * by `pan(swing)` is a product of two laws rather than a change of position: a layer at hard
+       * right has nothing in its left channel to begin with, so the modulator could only turn the
+       * right one up and down — a tremolo, and a three decibel boost at that, on a control whose
+       * whole promise is that a layer crosses the field. The angle here is the difference between
+       * where the layer sits and where the modulator has moved it to, so at rest it is zero, at
+       * the edges it stops, and the level never changes.
        */
-      const turn = pan(Math.min(1, Math.max(-1, swingOf(panLfo, clock) * LFO_RANGE.pan)))
-      out.left[i] = (out.left[i] ?? 0) + hitL * level * turn.left * Math.SQRT2
-      out.right[i] = (out.right[i] ?? 0) + hitR * level * turn.right * Math.SQRT2
+      const moved = Math.min(1, Math.max(-1, layer.pan + swingOf(panLfo, clock) * LFO_RANGE.pan))
+      const turn = (moved - layer.pan) * (Math.PI / 4)
+      const cos = Math.cos(turn)
+      const sin = Math.sin(turn)
+      out.left[i] = (out.left[i] ?? 0) + (hitL * cos - hitR * sin) * level
+      out.right[i] = (out.right[i] ?? 0) + (hitL * sin + hitR * cos) * level
     }
   }
 }

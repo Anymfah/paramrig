@@ -154,7 +154,8 @@ export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: Audi
     })),
   ),
   ...Object.entries(AUDIO_FIELDS.mod).map(([field, spec]) => ({ property: `mods[i].${field}`, label: spec.label, type: spec.type })),
-  ...Object.entries(AUDIO_FIELDS.performer).map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
+  ...Object.entries(AUDIO_FIELDS.performer).filter(([, spec]) => !spec.editorOnly)
+    .map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
   ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
   ...FX_SLOTS.flatMap((slot) =>
     Object.entries(AUDIO_FIELDS.fxSlot).map(([field, spec]) => ({ property: `fx.${slot}.${field}`, label: spec.label, type: spec.type }))),
@@ -316,6 +317,9 @@ export function parameterForAudioProperty(options: {
   const path = parseAudioProperty(options.property)
   if (!path) return null
   const { spec } = path
+  // A field the engine never reads is not something to hand anybody a dial for: it would turn, be
+  // saved, be published in the docs, and change no sound. The plate still edits it directly.
+  if (spec.editorOnly) return null
   const base = { id: options.id, label: options.label, group: options.group }
   const value = currentAudioValue(options.patch, options.property)
 
@@ -332,8 +336,11 @@ export function parameterForAudioProperty(options: {
         ...(spec.previews?.[choice] ? { preview: spec.previews[choice] } : {}),
       })),
       defaultValue: typeof value === 'string' && choices.includes(value) ? value : (choices[0] ?? ''),
-      // A shape is recognised faster than the word for it, and these are shapes.
-      ...(spec.previews ? { view: 'visual' as const } : {}),
+      // A shape is recognised faster than the word for it, and these are shapes — but only when
+      // every option has one. A table that covers four of nine kinds used to turn the whole strip
+      // visual, and the five without a picture were drawn as five identical blank swatches, which
+      // is worse than the plain list of names it replaced.
+      ...(spec.previews && choices.every((choice) => spec.previews?.[choice]) ? { view: 'visual' as const } : {}),
     }
   }
   if (spec.type === 'curve') {
@@ -352,6 +359,10 @@ export function parameterForAudioProperty(options: {
     ...(spec.unit ? { unit: spec.unit } : {}),
     ...(spec.scale ? { scale: spec.scale } : {}),
     ...(spec.unit === 'ms' ? { units: TIME_UNITS } : {}),
+    // The seed is a number you replace, not one you sweep. `boardParameters` has always had an
+    // exception for it — `view !== 'seed'` — but nothing ever set that view, so the exception was
+    // dead code and the seed came out of the board as a dial with ten thousand steps on it.
+    ...(options.property === 'seed' ? { view: 'seed' as const } : {}),
   }
 }
 

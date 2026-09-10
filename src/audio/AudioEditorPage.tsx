@@ -57,6 +57,8 @@ const VIEWS: { id: ViewId; label: string }[] = [
  * and scene editors set: that column belongs to the document you have open, not to the ones you
  * do not. Stepping through sounds while watching the panels change is how anyone finds one.
  */
+type Step = { patch: AudioPatch; preset: string; touched: boolean }
+
 export function AudioEditorPage({ documentId, mode, onMode }: {
   documentId: string
   mode: AudioMode
@@ -68,8 +70,16 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [rig, setRig] = useState<AudioRig | undefined>(() => getAudioDocument(documentId)?.rig)
   const [patch, setPatch] = useState<AudioPatch | null>(() => loaded?.patch ?? null)
   const [name, setName] = useState(loaded?.name ?? '')
-  const [past, setPast] = useState<AudioPatch[]>([])
-  const [future, setFuture] = useState<AudioPatch[]>([])
+  /**
+   * One step of the history: the sound, and which saved sound the bar was naming when it was taken.
+   *
+   * The selection used to be left out, so an undo put a patch on screen under somebody else's name
+   * with no "· edited" beside it — and Replace writes to whatever the name says, so one press
+   * afterwards overwrote a saved sound with a patch that never came from it. A step has to carry
+   * everything the step changed.
+   */
+  const [past, setPast] = useState<Step[]>([])
+  const [future, setFuture] = useState<Step[]>([])
   const [notice, setNotice] = useState('')
   const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
   const [skin, setSkin] = useState<AudioSkin>(() => readAudioPrefs().look)
@@ -102,7 +112,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   // Playback is owned here rather than in the transport, because the waveform in the rail needs
   // the same playhead and two of these would be two audio pipelines. Above the early return, as
   // every hook must be.
-  const transport = useTransport(samples, rate)
+  const transport = useTransport(samples, rate, autoPlay)
   const mono = useMemo(() => monoSum(samples), [samples])
 
   useEffect(() => () => disposePlayback(), [])
@@ -131,12 +141,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     const current = latest.current ?? patch
     if (!current) return
     setDirty(true)
-    setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+    setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
     setFuture([])
     latest.current = next
     setPatch(next)
     setHeard(next)
-  }, [patch])
+  }, [patch, preset, touched])
 
   const change = useCallback((property: string, value: ParamValue) => {
     const current = latest.current ?? patch
@@ -148,7 +158,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     // One drag is one undo step: the patch is captured when the gesture opens, not per frame.
     if (!gestureRef.current || !capturedRef.current) {
       capturedRef.current = true
-      setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+      setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
       setFuture([])
     }
     const next = setBoardValue(current, property, value)
@@ -157,7 +167,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     // Held back only while a pointer is down on a control; a typed value or an arrow key is
     // discrete and should be heard as soon as it lands.
     if (!gestureRef.current) setHeard(next)
-  }, [patch])
+  }, [patch, preset, touched])
 
   /**
    * A performer's row redrawn: one drag is one undo step, as a knob's is.
@@ -173,7 +183,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     setTouched(true)
     if (!gestureRef.current || !capturedRef.current) {
       capturedRef.current = true
-      setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
+      setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
       setFuture([])
     }
     const next: AudioPatch = {
@@ -185,12 +195,27 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     latest.current = next
     setPatch(next)
     if (!gestureRef.current) setHeard(next)
-  }, [patch])
-  /** The other side of the A/B, and which side is the one on screen. */
-  const [spare, setSpare] = useState<AudioPatch | null>(null)
+  }, [patch, preset, touched])
+  /**
+   * The other side of the A/B — its sound and its history both — and which side is on screen.
+   *
+   * A side owns its own past. When only the patch was kept, flipping went through `commit`, which
+   * pushes an undo step: one Undo after a flip wrote the sound you had just left onto the side you
+   * had just arrived at, and both sides ended up holding the same patch. Flipping is not an edit,
+   * and the past you can walk back through is the past of the side you are standing on.
+   */
+  const [spare, setSpare] = useState<{ patch: AudioPatch; past: Step[]; future: Step[] } | null>(null)
   const [side, setSide] = useState<'a' | 'b'>('a')
   const paint = useMemo(() => redraw('patterns'), [redraw])
   const joinUp = useMemo(() => redraw('curves'), [redraw])
+
+  const step = useCallback((to: Step) => {
+    latest.current = to.patch
+    setPatch(to.patch)
+    setHeard(to.patch)
+    setPreset(to.preset)
+    setTouched(to.touched)
+  }, [])
 
   const undo = useCallback(() => {
     const previous = past[past.length - 1]
@@ -198,11 +223,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!previous || !current) return
     setDirty(true)
     setPast((stack) => stack.slice(0, -1))
-    setFuture((ahead) => [current, ...ahead].slice(0, HISTORY_LIMIT))
-    latest.current = previous
-    setPatch(previous)
-    setHeard(previous)
-  }, [past, patch])
+    setFuture((ahead) => [{ patch: current, preset, touched }, ...ahead].slice(0, HISTORY_LIMIT))
+    step(previous)
+  }, [past, patch, preset, touched, step])
 
   const redo = useCallback(() => {
     const next = future[0]
@@ -210,11 +233,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!next || !current) return
     setDirty(true)
     setFuture((ahead) => ahead.slice(1))
-    setPast((stack) => [...stack, current].slice(-HISTORY_LIMIT))
-    latest.current = next
-    setPatch(next)
-    setHeard(next)
-  }, [future, patch])
+    setPast((stack) => [...stack, { patch: current, preset, touched }].slice(-HISTORY_LIMIT))
+    step(next)
+  }, [future, patch, preset, touched, step])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -247,10 +268,35 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     setTouched(false)
   }, [patch, preset, snapshots])
 
+  /**
+   * A kept sound removed, and a way back for as long as the notice is on screen.
+   *
+   * Snapshots are not in the undo history — the history is patches — so a mis-aimed click on the
+   * small trash icon *inside* the row you load a sound from used to be final, four hundred
+   * milliseconds later on disk, with Undo still enabled and undoing something else entirely.
+   * Removing is still one click, because confirming every delete is worse; it is the going back
+   * that was missing.
+   */
+  const [removed, setRemoved] = useState<{ at: number; entry: AudioSnapshot } | null>(null)
   const forget = useCallback((id: string) => {
+    // Read from the list rather than from inside an updater, as everything else here does: an
+    // updater has to be pure, and StrictMode runs it twice to make sure of it.
+    const at = snapshots.findIndex((entry) => entry.id === id)
+    const entry = snapshots[at]
+    if (!entry) return
     setDirty(true)
-    setSnapshots((kept) => kept.filter((entry) => entry.id !== id))
-  }, [])
+    setSnapshots((kept) => kept.filter((one) => one.id !== id))
+    setRemoved({ at, entry })
+    setNotice(`Removed ${entry.name}.`)
+  }, [snapshots])
+
+  const putBack = useCallback(() => {
+    if (!removed) return
+    setDirty(true)
+    setSnapshots((kept) => [...kept.slice(0, removed.at), removed.entry, ...kept.slice(removed.at)].slice(-MAX_SNAPSHOTS))
+    setRemoved(null)
+    setNotice('')
+  }, [removed])
 
   /**
    * The same sound kept again under the name it already has. Without it every experiment on a
@@ -271,6 +317,37 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     writeAudioPrefs(withAutoPlay(readAudioPrefs(), next))
   }, [])
 
+  /*
+   * Everything below is held still on purpose.
+   *
+   * The playhead is state on this component, so the whole page re-renders sixty times a second
+   * while a sound is playing. The face-plate is a hundred absolutely positioned controls with an
+   * SVG apiece and the rail is ninety-two rows; both are memoised, and a memo only bails out if
+   * every prop it is handed is the same object as last time. A callback written inline in the JSX
+   * is a new object every frame, and defeats it silently.
+   */
+  const began = useCallback(() => { gestureRef.current = true; capturedRef.current = false }, [])
+  const ended = useCallback(() => {
+    gestureRef.current = false
+    capturedRef.current = false
+    if (latest.current) setHeard(latest.current)
+  }, [])
+  const writeRig = useCallback((next: AudioRig) => { setRig(next); setDirty(true) }, [])
+  const seed = patch?.seed ?? 0
+  const load = useCallback((next: AudioPatch, id: string) => {
+    setPreset(id)
+    setTouched(false)
+    commit({ ...next, seed })
+  }, [commit, seed])
+  const patterns = useMemo(() => patch?.performers.map((performer) => performer.patterns) ?? [], [patch])
+  const curves = useMemo(() => patch?.performers.map((performer) => performer.curves) ?? [], [patch])
+  const shownPatch = heard ?? patch
+  const profiles = useMemo(() => (shownPatch ? layerProfiles(shownPatch) : []), [shownPatch])
+  const wave = useMemo(
+    () => ({ samples: mono, head: transport.head, profiles, label: loaded?.name ?? '' }),
+    [mono, transport.head, profiles, loaded],
+  )
+
   if (!loaded || !patch) {
     return (
       <WorkspaceShell rigs={listRigs()} hideInspector>
@@ -283,13 +360,6 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   }
 
   const exposed = rig?.parameters.length ?? 0
-  const shownPatch = heard ?? patch
-  const began = () => { gestureRef.current = true; capturedRef.current = false }
-  const ended = () => {
-    gestureRef.current = false
-    capturedRef.current = false
-    if (latest.current) setHeard(latest.current)
-  }
 
   return (
     <WorkspaceShell
@@ -305,8 +375,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           compact={compact}
           inert={inert}
           onNavigate={onNavigate}
-          onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
-          wave={{ samples: mono, head: transport.head, profiles: layerProfiles(shownPatch), label: loaded.name }}
+          onPatch={load}
+          wave={wave}
         />
       )}
     >
@@ -330,7 +400,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           samples={samples}
           sampleRate={rate}
           name={loaded.name}
-          patch={shownPatch}
+          patch={shownPatch ?? undefined}
           autoPlay={autoPlay}
           onAutoPlay={setAuto}
           tools={
@@ -351,12 +421,19 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                     className="btn btn--quiet btn--sm audio-ab__side"
                     aria-pressed={which === side}
                     onClick={() => {
-                      if (which === side || !patch) return
-                      const other = spare ?? patch
-                      setSpare(patch)
+                      const current = latest.current ?? patch
+                      if (which === side || !current) return
+                      const mine = { patch: current, past, future }
+                      const other = spare ?? mine
+                      setSpare(mine)
+                      setPast(other.past)
+                      setFuture(other.future)
                       setSide(which)
                       setTouched(true)
-                      commit(other)
+                      setDirty(true)
+                      latest.current = other.patch
+                      setPatch(other.patch)
+                      setHeard(other.patch)
                     }}
                   >
                     {which.toUpperCase()}
@@ -367,7 +444,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 <button
                   type="button"
                   className="btn btn--quiet btn--sm"
-                  onClick={() => { if (patch) setSpare(patch) }}
+                  // The other side becomes this sound, and starts its own history there: the steps
+                  // it had led to a sound it no longer holds.
+                  onClick={() => { const current = latest.current ?? patch; if (current) setSpare({ patch: current, past: [], future: [] }) }}
                 >
                   Copy
                 </button>
@@ -377,12 +456,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
               current={preset}
               snapshots={snapshots}
               touched={touched}
-              onPatch={(next, id) => { setPreset(id); setTouched(false); commit({ ...next, seed: patch.seed }) }}
+              onPatch={load}
               onRemove={forget}
               onSnapshot={keep}
               onOverwrite={overwrite}
-              onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000))) }}
-              onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000))) }}
+              onRandom={() => { setPreset(''); setTouched(false); commit(randomPatch(Math.floor(Math.random() * 100000), rate)) }}
+              onMutate={() => { setTouched(true); commit(mutatePatch(patch, Math.floor(Math.random() * 100000), undefined, rate)) }}
             />
             </>
           }
@@ -440,7 +519,10 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
       </div>
       {/* Always in the tree so a screen reader keeps the live region, but no height until it has
           something to say. A permanent band reporting that nothing is wrong is a band of nothing. */}
-      <p className="editor-notice" role="status" aria-label="Editor notice" data-empty={notice.length === 0}>{notice}</p>
+      <p className="editor-notice" role="status" aria-label="Editor notice" data-empty={notice.length === 0}>
+        {notice}
+        {removed ? <Button size="sm" variant="quiet" onClick={putBack}>Undo</Button> : null}
+      </p>
       <div className="audio-body" id="main" tabIndex={-1}>
         <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
           {view === 'sounds' ? (
@@ -460,11 +542,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
                 onGestureStart={began}
                 onGestureEnd={ended}
                 rig={rig}
-                onRig={(next) => { setRig(next); setDirty(true) }}
+                onRig={writeRig}
                 skin={skin}
-                patterns={patch.performers.map((performer) => performer.patterns)}
+                patterns={patterns}
                 onPattern={paint}
-                curves={patch.performers.map((performer) => performer.curves)}
+                curves={curves}
                 onCurves={joinUp}
               />
             </div>

@@ -123,3 +123,66 @@ describe('the master effects', () => {
     }
   })
 })
+
+/**
+ * Three things the slot rack promises and nothing was checking: that the order of the slots is the
+ * order of the chain, that the master width reaches the kinds that read it, and that a patch is
+ * the same effect on a machine running at another rate.
+ */
+describe('the rack', () => {
+  it('chains x, then y, then z — the same pair swapped is a different sound', () => {
+    const drive = { kind: 'reverb' as const, mode: 'insert' as const, mix: 0.8, size: 0.4, damping: 0.3 }
+    const sweep = { kind: 'flanger' as const, mode: 'insert' as const, mix: 0.8, depth: 0.9, rate: 1.5, feedback: 0.6 }
+    const first = applyFx(burst(), master({ x: drive, y: sweep }), RATE)
+    const second = applyFx(burst(), master({ x: sweep, y: drive }), RATE)
+    let biggest = 0
+    for (let at = 0; at < first.left.length; at += 1) biggest = Math.max(biggest, Math.abs((first.left[at] ?? 0) - (second.left[at] ?? 0)))
+    expect(biggest).toBeGreaterThan(0.01)
+  })
+
+  it('hands the master width to the kinds that read it', () => {
+    const apart = (out: Stereo) => {
+      let sum = 0
+      for (let at = 0; at < out.left.length; at += 1) sum += Math.abs((out.left[at] ?? 0) - (out.right[at] ?? 0))
+      return sum
+    }
+    for (const kind of ['delay', 'reverb'] as const) {
+      const narrow = applyFx(burst(), { ...master({ x: { kind, mode: 'insert', mix: 1, time: 0.05, feedback: 0.5 } }), width: 0 }, RATE)
+      const wide = applyFx(burst(), { ...master({ x: { kind, mode: 'insert', mix: 1, time: 0.05, feedback: 0.5 } }), width: 1 }, RATE)
+      expect(apart(wide), kind).not.toBeCloseTo(apart(narrow), 3)
+    }
+  })
+
+  /**
+   * The phaser used to be the one kind written in fractions of the sample rate rather than in
+   * hertz, so the same patch phased two octaves lower on a thumbnail than in the room. Measured
+   * by where the response dips: a notch is a frequency, and a frequency does not move with a rate.
+   */
+  it('puts a phaser’s notches at the same frequencies whatever the rate', () => {
+    const response = (rate: number) => {
+      const slot = makeFxSlot({ kind: 'phaser', mode: 'insert', mix: 0.5, rate: 0, depth: 0, feedback: 0 })
+      const levels: number[] = []
+      // Up to 2.2 kHz, which at 22 050 is still a tenth of the way from the top: a first-order
+      // allpass's own phase runs out near Nyquist, and comparing there measures the model rather
+      // than the tuning. Below it the two curves agree to about a hundredth; when the sweep was a
+      // fraction of the rate they were an octave apart and nothing here was close.
+      for (let hz = 200; hz <= 2200; hz += 100) {
+        const unit = createFxUnit(slot, rate)
+        const total = Math.round(rate * 0.2)
+        let peak = 0
+        for (let at = 0; at < total; at += 1) {
+          const value = Math.sin((2 * Math.PI * hz * at) / rate)
+          fxSample(unit, slot, value, value, at, rate, 0.6)
+          if (at > total * 0.5) peak = Math.max(peak, Math.abs(value * 0.5 + unit.wetL * 0.5))
+        }
+        levels.push(peak)
+      }
+      return levels
+    }
+    const low = response(22050)
+    const high = response(44100)
+    // The whole curve, not the deepest point: a phaser has several notches and which one is
+    // deepest is a coin toss between two that are within a percent of each other.
+    low.forEach((level, at) => expect(Math.abs(level - (high[at] ?? 0)), `${200 + at * 100} Hz`).toBeLessThan(0.03))
+  })
+})

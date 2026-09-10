@@ -78,7 +78,7 @@ function drawnAt(kind: InsertKind): InsertSlot {
     kind, place: 'pre', amount: 1,
     drive: 0.22, bitDepth: 2, crush: 0.14, ratio: 0.5,
     frequency: 320, spread: 0.6, decay: 0.2, partials: 4,
-    time: 7, feedback: 0.86,
+    time: 0.007, feedback: 0.86,
   }
   if (kind === 'fold') slot.drive = 0.05
   // A comb heard fully wet is a delay; what makes it a comb is hearing it against the dry sound.

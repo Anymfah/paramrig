@@ -37,7 +37,7 @@ export function tableSweep(): AudioPatch {
       amp: { attack: 0.02, hold: 0.25, decay: 0.4, sustain: 0.35, release: 0.2, curve: 1.4 },
     }),
   ], { z: { kind: 'reverb', mode: 'send', mix: 0.16, size: 0.5, damping: 0.45 }, tone: 0.1, width: 0.7 },
-     { gain: 3 }, [],
+     { gain: 1.516182 }, [],
      [{ enabled: true, target: 'layers[0].pulseWidth', depth: 1, attack: 0.02, hold: 0.05, decay: 0.7, sustain: 0.9, release: 0.1, curve: 1.1 }])
 }
 
@@ -56,7 +56,7 @@ export function glassBell(): AudioPatch {
       amp: { attack: 0.001, hold: 0.004, decay: 0.05, sustain: 0, release: 0.03, curve: 3 },
     }),
   ], { z: { kind: 'reverb', mode: 'send', mix: 0.22, size: 0.6, damping: 0.35 }, tone: 0.25, width: 0.8 },
-     { gain: 0.24 })
+     { gain: 0.121656 })
 }
 
 /** Four poles and a comb after the amplifier: an engine that keeps turning over. */
@@ -68,10 +68,10 @@ export function growlEngine(): AudioPatch {
       source: { kind: 'table', table: 'growl', position: 0.6, voices: 2, detune: 22 },
       pitch: { start: 78, vibratoRate: 5.5, vibratoDepth: 0.4, jitter: 8 },
       filter: { kind: 'ladder', cutoff: 620, resonance: 0.55, envAmount: 1.2, envCurve: EASE_OUT },
-      insertB: { kind: 'comb', place: 'post', amount: 0.3, time: 11, feedback: 0.66 },
+      insertB: { kind: 'comb', place: 'post', amount: 0.3, time: 0.011, feedback: 0.66 },
       amp: { attack: 0.06, hold: 0.5, decay: 0.3, sustain: 0.6, release: 0.25, curve: 1.2 },
     }),
-  ], { tone: -0.25, width: 0.5 }, { gain: 3 })
+  ], { tone: -0.25, width: 0.5 }, { gain: 1.516196 })
 }
 
 /** A tone multiplied by another: the one shape a filter can never arrive at. */
@@ -103,7 +103,7 @@ export function foldBuzz(): AudioPatch {
       filter: { kind: 'lowpass', cutoff: 3200, resonance: 0.3, envAmount: -1.5, envCurve: EASE_OUT },
       amp: { attack: 0.004, hold: 0.08, decay: 0.3, sustain: 0.2, release: 0.12, curve: 1.8 },
     }),
-  ], { tone: -0.1, width: 0.5 }, { gain: 1.94 })
+  ], { tone: -0.1, width: 0.5 }, { gain: 0.9811 })
 }
 
 /** A notch walked across the band by an oscillator: a phaser made out of a filter. */
@@ -117,7 +117,7 @@ export function notchSweep(): AudioPatch {
       filter: { kind: 'notch', cutoff: 700, resonance: 0.6 },
       amp: { attack: 0.1, hold: 0.6, decay: 0.4, sustain: 0.7, release: 0.3, curve: 1 },
     }),
-  ], { tone: 0.2, width: 0.9 }, { gain: 1.82 },
+  ], { tone: 0.2, width: 0.9 }, { gain: 0.921699 },
      [{ enabled: true, shape: 'triangle', rate: 0.9, depth: 0.55, target: 'layers[0].cutoff' }])
 }
 
@@ -140,7 +140,7 @@ export function crossBell(): AudioPatch {
       amp: { attack: 0.001, hold: 0.03, decay: 0.28, sustain: 0, release: 0.1, curve: 2.6 },
     }),
   ], { z: { kind: 'reverb', mode: 'send', mix: 0.18, size: 0.45, damping: 0.4 }, tone: 0.2, width: 0.75 },
-     { gain: 1.67 })
+     { gain: 0.845886 })
 }
 
 /** Copies that never quite agree, which is the whole of a chorus. */
@@ -158,7 +158,7 @@ export function chorusPad(): AudioPatch {
     x: { kind: 'chorus', mode: 'insert', mix: 0.55, rate: 0.7, depth: 0.6 },
     z: { kind: 'reverb', mode: 'send', mix: 0.24, size: 0.7, damping: 0.5 },
     tone: 0.05, width: 0.9,
-  }, { gain: 3 })
+  }, { gain: 1.527833 })
 }
 
 /** Notches that move, which is softer than a comb that moves and the reason both exist. */
@@ -175,7 +175,7 @@ export function phaserSweep(): AudioPatch {
   ], {
     x: { kind: 'phaser', mode: 'insert', mix: 0.6, rate: 0.45, depth: 0.85, feedback: 0.55 },
     tone: -0.05, width: 0.8,
-  }, { gain: 1.63 })
+  }, { gain: 0.824802 })
 }
 
 /** Pushed apart rather than made louder: the one effect that changes nothing you can hear in mono. */
@@ -201,7 +201,7 @@ export function wideRiser(): AudioPatch {
     x: { kind: 'widener', mode: 'insert', mix: 0.7, width: 0.8, rate: 0.2 },
     z: { kind: 'reverb', mode: 'send', mix: 0.2, size: 0.75, damping: 0.4 },
     tone: 0.1, width: 0.95,
-  }, { gain: 3 })
+  }, { gain: 1.522602 })
 }
 
 /** A drawn row on a grid, with two of its steps held: a sequence rather than a shape. */
@@ -219,7 +219,7 @@ export function stepSequence(): AudioPatch {
       amp: { attack: 0.004, hold: 1.2, decay: 0.2, sustain: 0.9, release: 0.15, curve: 1 },
     }),
   ], { y: { kind: 'delay', mode: 'send', mix: 0.18, time: 0.1, feedback: 0.35 }, tone: 0.15, width: 0.7 },
-     { gain: 1.68 }, [], [],
+     { gain: 0.852481 }, [], [],
      [{
        enabled: true, rate: 2, shape: 'line', bipolar: false, depth: 0.7, target: 'layers[0].pitch', grid: 4,
        patterns: Array.from({ length: 12 }, (_, scene) => (scene === 0 ? row : Array.from({ length: 16 }, () => 0))),
@@ -242,7 +242,7 @@ export function vowelSweep(): AudioPatch {
       amp: { attack: 0.05, hold: 0.7, decay: 0.3, sustain: 0.8, release: 0.25, curve: 1 },
     }),
   ], { z: { kind: 'reverb', mode: 'send', mix: 0.14, size: 0.4, damping: 0.5 }, tone: 0.1, width: 0.7 },
-     { gain: 3 },
+     { gain: 1.528229 },
      [{ enabled: true, shape: 'triangle', rate: 0.7, depth: 0.8, target: 'layers[0].cutoff' }])
 }
 
@@ -260,7 +260,7 @@ export function seriesPluck(): AudioPatch {
       amp: { attack: 0.002, hold: 0.02, decay: 0.4, sustain: 0.1, release: 0.15, curve: 2.2 },
     }),
   ], { y: { kind: 'delay', mode: 'send', mix: 0.16, time: 0.11, feedback: 0.3 }, tone: 0.15, width: 0.6 },
-     { gain: 3 })
+     { gain: 1.529318 })
 }
 
 /** Bits thrown away on purpose, and a table underneath to throw away. */
@@ -275,5 +275,5 @@ export function crushedTable(): AudioPatch {
       filter: { kind: 'lowpass', cutoff: 4200, resonance: 0.3 },
       amp: { attack: 0.003, hold: 0.06, decay: 0.35, sustain: 0.15, release: 0.12, curve: 2 },
     }),
-  ], { tone: 0.1, width: 0.55 }, { gain: 2.3 })
+  ], { tone: 0.1, width: 0.55 }, { gain: 1.162059 })
 }

@@ -31,6 +31,15 @@ export type FieldSpec = {
   unit?: string
   scale?: 'linear' | 'log'
   options?: readonly string[]
+  /**
+   * Stored in the patch and edited on the plate, but never read by the engine.
+   *
+   * A field like this is real — it is saved, and it changes what the editor does — but exposing it
+   * as a rig control would hand somebody a dial that moves and changes no sound, which is the one
+   * thing `parseAudioProperty` says this layer exists to prevent. So it stays out of the generated
+   * documentation and out of the exposed-control builder, and the plate reads it like any other.
+   */
+  editorOnly?: true
 }
 
 /** Seconds are stored; milliseconds are what anyone actually reads on an envelope. */
@@ -170,7 +179,7 @@ const INSERT_FIELDS: Record<string, FieldSpec> = {
   spread: num('Inharmonicity', 0, 1),
   decay: num('Ring', 0.01, 3, 0.001, SECONDS),
   partials: num('Partials', 1, 6, 1),
-  time: num('Comb time', 0.2, 50, 0.1, { unit: 'ms' }),
+  time: num('Comb time', 0.0002, 0.05, 0.0001, SECONDS),
   feedback: num('Comb feedback', 0, 0.95),
 }
 
@@ -290,7 +299,8 @@ export const PERFORMER_FIELDS: Record<string, FieldSpec> = {
   bipolar: { type: 'boolean', label: 'Bipolar' },
   depth: num('Depth', 0, 1),
   target: { type: 'option', label: 'Target', options: LFO_TARGETS, optionLabels: LFO_TARGET_LABELS },
-  grid: num('Grid', 0, 8, 1),
+  // Where a drawn point snaps to, which is a drawing aid: the engine plays the row as drawn.
+  grid: { ...num('Grid', 0, 8, 1), editorOnly: true },
 }
 
 export const AUDIO_FIELDS = {

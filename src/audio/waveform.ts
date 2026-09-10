@@ -62,3 +62,39 @@ export function levels(samples: Float32Array): { peak: number; rms: number } {
 export function decibels(value: number): string {
   return value <= 0 ? '—' : `${(20 * Math.log10(value)).toFixed(1)} dB`
 }
+
+/**
+ * The level a meter shows at one point in the buffer, a channel each.
+ *
+ * The fall is what makes a meter readable — a needle that followed the waveform of a two-hundred
+ * millisecond sound would be a blur — but it does not have to be *remembered*. Reading backwards
+ * from the playhead with a weight that fades gives the same held-and-let-down shape as a decay
+ * applied frame by frame, and gives it as a function of the buffer alone: the same instant reads
+ * the same whether the meter arrives at it playing, scrubbing, or rendered twice over by React.
+ */
+export function meterAt(
+  stereo: { left: Float32Array; right: Float32Array },
+  at: number,
+  sampleRate: number,
+): { left: number; right: number } {
+  const rate = Math.max(1, sampleRate)
+  const head = Math.min(Math.max(0, Math.round(at)), stereo.left.length - 1)
+  if (head < 0) return { left: 0, right: 0 }
+  // Eighty-five milliseconds to fall by a factor of e, and nothing before three of those is
+  // audible in the needle: the weight there is under five per cent of full scale.
+  const fall = 0.085
+  const back = Math.min(head + 1, Math.round(rate * fall * 3))
+  const step = Math.exp(-1 / (rate * fall))
+  let weight = 1
+  let left = 0
+  let right = 0
+  for (let i = 0; i < back; i += 1) {
+    const index = head - i
+    const l = Math.abs(stereo.left[index] ?? 0) * weight
+    const r = Math.abs(stereo.right[index] ?? 0) * weight
+    if (l > left) left = l
+    if (r > right) right = r
+    weight *= step
+  }
+  return { left, right }
+}

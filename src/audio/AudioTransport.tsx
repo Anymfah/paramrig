@@ -1,12 +1,39 @@
-import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
-import { IconPlay, IconStart } from '@/ui/icons'
+import { useMemo, type CSSProperties, type ReactNode } from 'react'
+import { IconDownload, IconPlay, IconStart } from '@/ui/icons'
+import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
 import { WaveformView } from '@/audio/WaveformView'
-import { decibels, stereoLevels } from '@/audio/waveform'
-import { monoSum } from '@/audio/dsp/render'
+import { decibels, meterAt, stereoLevels } from '@/audio/waveform'
+import { monoSum, renderPatch } from '@/audio/dsp/render'
+import { encodeWav } from '@/audio/dsp/wav'
 import { usePlayKey, type Transport } from '@/audio/useTransport'
 import { layerProfiles } from '@/audio/profiles'
 import type { AudioPatch, Stereo } from '@/audio/types'
+
+/**
+ * The rate a file is written at, whatever the machine happens to play at.
+ *
+ * `playback.ts` says this in as many words — a file has to mean the same thing on a machine that is
+ * not this one — and until now nothing in the application wrote one: the encoder existed, was
+ * tested, and was reachable only from a Node script. A generator of sound effects that cannot hand
+ * you the sound is missing its last step.
+ */
+const EXPORT_RATE = 44100
+
+/** A file name from a sound's name: lower case, words joined by hyphens, nothing else. */
+const fileName = (name: string) =>
+  `${name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'sound'}.wav`
+
+function saveWav(patch: AudioPatch, name: string): void {
+  const blob = new Blob([encodeWav(renderPatch(patch, EXPORT_RATE), EXPORT_RATE) as BlobPart], { type: 'audio/wav' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = fileName(name)
+  link.click()
+  // Freed on the next turn of the loop: revoking it in the same one races the click in Safari.
+  setTimeout(() => URL.revokeObjectURL(url), 0)
+}
 
 /**
  * The transport, and the one loud control on the page.
@@ -39,52 +66,26 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
   const seconds = samples.left.length / Math.max(1, sampleRate)
   // The picture and the numbers are of the sum: what is drawn is what the room hears, not one side.
   const mono = useMemo(() => monoSum(samples), [samples])
-  const { peak, rms } = stereoLevels(samples)
-  const first = useRef(true)
-
+  // Walks the whole buffer, and this component re-renders on every frame of the playhead.
+  const { peak, rms } = useMemo(() => stereoLevels(samples), [samples])
   /**
    * The level at the playhead, a channel each, held and let down rather than followed exactly.
    *
-   * A window of a millisecond and a half is short enough to show a transient and long enough not
-   * to flicker on a single sample. The fall is what makes it readable: a meter that tracked the
-   * waveform would be a blur on a sound this short.
+   * It used to be a ref carried from frame to frame, written while rendering. That is a lie React
+   * is entitled to catch: a component rendered twice for the same playhead let the needle down
+   * twice, and a re-render from anything else — a knob moved during playback — let it down again
+   * out of time. `meterAt` reads the fall out of the buffer instead, so the needle is a function
+   * of where the playhead is and nothing else.
    */
-  const held = useRef({ left: 0, right: 0 })
-  const live = (() => {
-    if (!playing || head === null) {
-      held.current = { left: 0, right: 0 }
-      return held.current
-    }
-    const at = Math.round(head * sampleRate)
-    const window = Math.max(1, Math.round(sampleRate * 0.0015))
-    let left = 0
-    let right = 0
-    for (let i = Math.max(0, at - window); i < Math.min(samples.left.length, at + 1); i += 1) {
-      left = Math.max(left, Math.abs(samples.left[i] ?? 0))
-      right = Math.max(right, Math.abs(samples.right[i] ?? 0))
-    }
-    held.current = {
-      left: Math.max(left, held.current.left * 0.82),
-      right: Math.max(right, held.current.right * 0.82),
-    }
-    return held.current
-  })()
+  const live = playing && head !== null
+    ? meterAt(samples, head * sampleRate, sampleRate)
+    : { left: 0, right: 0 }
 
   // Space retriggers rather than toggling. These sounds are two hundred milliseconds long: nobody
   // needs to stop one, they need to hear it again, and waiting for the tail before the next press
   // does anything turns a comparison into a queue. The button still toggles, so there is a way to
   // stop a long tail.
   usePlayKey(play)
-
-  useEffect(() => {
-    // Not on arrival: a workspace that starts making noise the moment it opens is a workspace
-    // people turn off. Auto-play answers a change, and there has not been one yet.
-    if (first.current) {
-      first.current = false
-      return
-    }
-    if (autoPlay) play()
-  }, [samples, autoPlay, play])
 
   return (
     <div className="audio-transport" data-compact={compact || undefined}>
@@ -120,6 +121,11 @@ export function AudioTransport({ samples, sampleRate, name, patch, autoPlay, onA
         <div><dt>Rate</dt><dd>{Math.round(sampleRate / 1000)} kHz</dd></div>
       </dl>
       {tools}
+      {patch ? (
+        <Tooltip content={`Save this sound as a ${EXPORT_RATE / 1000} kHz WAV`}>
+          <IconButton label="Save as WAV" onClick={() => saveWav(patch, name)}><IconDownload /></IconButton>
+        </Tooltip>
+      ) : null}
       <Tooltip content={autoPlay ? 'Every change plays itself' : 'Changes are silent until you press play'}>
         <button
           type="button"

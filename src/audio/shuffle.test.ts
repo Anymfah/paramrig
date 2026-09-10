@@ -106,3 +106,45 @@ describe('mutatePatch', () => {
     expect(before).toEqual(copy)
   })
 })
+
+/**
+ * What a variation is allowed to move, and what it must not.
+ *
+ * `mutatePatch` used to walk every number in the patch, the patch's own three included. `duration`
+ * is the length of the sound rather than a quality of it, and a random walk inside 0.02 to 4
+ * seconds walks towards the floor: five presses turned a half-second sound into a click. `seed`
+ * re-rolls every jitter at once, which is a different sound, and `scene` chooses which pattern is
+ * playing. And nothing was levelling the result, so one press in ten came back clipped.
+ */
+describe('what a variation leaves alone', () => {
+  it('never moves the length, the seed or the pattern, however many times it is asked', () => {
+    let patch = coin()
+    const { duration, seed, scene } = patch
+    for (let step = 0; step < 25; step += 1) patch = mutatePatch(patch, step, 0.4)
+    expect(patch.duration).toBe(duration)
+    expect(patch.seed).toBe(seed)
+    expect(patch.scene).toBe(scene)
+  })
+
+  it('moves what the sound is made of, including the parts that move it', () => {
+    const before = coin()
+    const after = mutatePatch(before, 5)
+    expect(after.master.gain).not.toBe(before.master.gain)
+    const moved = (a: object, b: object) => JSON.stringify(a) !== JSON.stringify(b)
+    expect(moved(after.mods, before.mods) || moved(after.fx, before.fx)).toBe(true)
+  })
+
+  it('comes back at about the level it went in at, and never clipped', () => {
+    const loudest = (patch: ReturnType<typeof coin>) =>
+      peak(monoSum(renderPatch(patch, SAMPLE_RATE)))
+    let patch = coin()
+    const before = loudest(patch)
+    for (let step = 0; step < 12; step += 1) {
+      patch = mutatePatch(patch, step)
+      const now = loudest(patch)
+      expect(now, `step ${step}`).toBeLessThanOrEqual(1)
+      expect(now, `step ${step}`).toBeGreaterThan(before * 0.4)
+      expect(now, `step ${step}`).toBeLessThan(before * 2.5)
+    }
+  }, 30_000)
+})

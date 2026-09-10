@@ -65,7 +65,7 @@ export function selectTap(): AudioPatch {
     delayTime: 0.033, delayFeedback: 0.45, delayMix: 0.55,
     reverbMix: 0, reverbSize: 0.1, reverbDamping: 0.9,
     tone: 0.3, width: 0.5,
-  }, { gain: 0.3614, fadeOut: 0.012 })
+  }, { gain: 0.182273, fadeOut: 0.012 })
 }
 
 /**
@@ -107,7 +107,7 @@ export function selectConfirm(): AudioPatch {
     delayTime: 0.042, delayFeedback: 0.3, delayMix: 0.58,
     reverbMix: 0.07, reverbSize: 0.18, reverbDamping: 0.86,
     tone: 0.4, width: 0.7,
-  }, { gain: 0.3535, fadeOut: 0.016 })
+  }, { gain: 0.179155, fadeOut: 0.016 })
 }
 
 /**
@@ -151,7 +151,7 @@ export function selectCommit(): AudioPatch {
     delayTime: 0.08, delayFeedback: 0.3, delayMix: 0.5,
     reverbMix: 0.14, reverbSize: 0.34, reverbDamping: 0.72,
     tone: 0.25, width: 0.6,
-  }, { gain: 0.4188, fadeOut: 0.018 }, [
+  }, { gain: 0.210869, fadeOut: 0.018 }, [
     { enabled: true, shape: 'sine', rate: 7, depth: 0.55, phase: 0.25, target: 'layers[1].gain' },
     { enabled: true, shape: 'sine', rate: 9, depth: 0.3, target: 'layers[2].cutoff' },
   ])
@@ -202,7 +202,7 @@ export function stepAdvance(): AudioPatch {
     reverbDamping: 0.9,
     tone: 0.35,
     width: 0.55,
-  }, { gain: 0.893, fadeOut: 0.016 }, 1, [])
+  }, { gain: 0.448055, fadeOut: 0.016 }, 1, [])
 }
 
 /**
@@ -243,7 +243,7 @@ export function leverEngage(): AudioPatch {
     delayTime: 0.052, delayFeedback: 0.16, delayMix: 0.56,
     reverbMix: 0.05, reverbSize: 0.14, reverbDamping: 0.86,
     tone: 0.2, width: 0.6,
-  }, { gain: 0.6631, fadeOut: 0.014 })
+  }, { gain: 0.333852, fadeOut: 0.014 })
 }
 
 /**
@@ -286,7 +286,7 @@ export function leverRelease(): AudioPatch {
     delayTime: 0.056, delayFeedback: 0.28, delayMix: 0.56,
     reverbMix: 0.05, reverbSize: 0.14, reverbDamping: 0.86,
     tone: 0.08, width: 0.6,
-  }, { gain: 0.4998, fadeOut: 0.016 })
+  }, { gain: 0.25209, fadeOut: 0.016 })
 }
 
 /**
@@ -327,7 +327,7 @@ export function checkMark(): AudioPatch {
     delayTime: 0.042, delayFeedback: 0.46, delayMix: 0.45,
     reverbMix: 0.04, reverbSize: 0.1, reverbDamping: 0.9,
     tone: 0.3, width: 0.55,
-  }, { gain: 0.7333, fadeOut: 0.01 })
+  }, { gain: 0.376744, fadeOut: 0.01 })
 }
 
 /* ------------------------------------------------------------------ Alerts */
@@ -364,7 +364,7 @@ export function denyDeflect(): AudioPatch {
       amp: { attack: 0.0004, hold: 0.008, decay: 0.07, sustain: 0.18, release: 0.09, curve: 2.5 },
     }),
   ], { delayTime: 0.026, delayFeedback: 0.5, delayMix: 0.44, tone: 0.35, width: 0.22 },
-     { gain: 0.5328, fadeOut: 0.018 }, 1, [
+     { gain: 0.332696, fadeOut: 0.018 }, 1, [
        { enabled: true, shape: 'square', rate: 34, depth: 1, phase: 0, target: 'layers[1].gain' },
        { enabled: true, shape: 'square', rate: 22, depth: 1, phase: 0.25, target: 'layers[2].gain' },
      ])
@@ -402,7 +402,7 @@ export function denyLockout(): AudioPatch {
       amp: { attack: 0.0005, hold: 0.014, decay: 0.1, sustain: 0.24, release: 0.13, curve: 2.3 },
     }),
   ], { delayTime: 0.053, delayFeedback: 0.72, delayMix: 0.5, tone: 0.28, width: 0.16 },
-     { gain: 0.4086, fadeOut: 0.02 }, 1, [
+     { gain: 0.207347, fadeOut: 0.02 }, 1, [
        { enabled: true, shape: 'square', rate: 19, depth: 1, phase: 0, target: 'layers[1].gain' },
        { enabled: true, shape: 'square', rate: 9.5, depth: 1, phase: 0.5, target: 'layers[2].gain' },
      ])
@@ -419,7 +419,7 @@ export function denyLockout(): AudioPatch {
 export function warnNotice(): AudioPatch {
   return patch(0.42, [
     makeLayer({
-      gain: 0.9,
+      gain: 0.586957,
       spread: 0.3,
       offset: 0.005,
       source: { kind: 'noise', colour: 'white' },
@@ -428,7 +428,7 @@ export function warnNotice(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.0012, decay: 0.003, sustain: 0, release: 0.0015, curve: 2.6 },
     }),
     makeLayer({
-      gain: 0.9,
+      gain: 0.586957,
       spread: 0.3,
       offset: 0.05,
       source: { kind: 'noise', colour: 'white' },
@@ -437,7 +437,7 @@ export function warnNotice(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.001, decay: 0.0028, sustain: 0, release: 0.0014, curve: 2.7 },
     }),
     makeLayer({
-      gain: 2.3,
+      gain: 1.5,
       spread: 0.3,
       offset: 0.095,
       source: { kind: 'noise', colour: 'white' },
@@ -449,7 +449,7 @@ export function warnNotice(): AudioPatch {
     delayTime: 0.03, delayFeedback: 0.72, delayMix: 0.95,
     reverbMix: 0.05, reverbSize: 0.14, reverbDamping: 0.9,
     tone: 0.3, width: 0.45,
-  }, { gain: 0.3615, fadeOut: 0.014 })
+  }, { gain: 0.279498, fadeOut: 0.014 })
 }
 
 /**
@@ -492,7 +492,7 @@ export function warnCaution(): AudioPatch {
     delayTime: 0.031, delayFeedback: 0.3, delayMix: 0.3,
     reverbMix: 0.06, reverbSize: 0.16, reverbDamping: 0.88,
     tone: 0.3, width: 0.5,
-  }, { gain: 0.4947, fadeOut: 0.014 }, [
+  }, { gain: 0.249686, fadeOut: 0.014 }, [
     { enabled: true, shape: 'square', rate: 16, depth: 1, target: 'layers[1].gain' },
     { enabled: true, shape: 'square', rate: 16, depth: 1, phase: 0.88, target: 'layers[2].gain' },
   ])
@@ -538,7 +538,7 @@ export function warnCritical(): AudioPatch {
     delayTime: 0.028, delayFeedback: 0.3, delayMix: 0.1,
     reverbMix: 0.05, reverbSize: 0.15, reverbDamping: 0.88,
     tone: 0.3, width: 0.5,
-  }, { gain: 0.5291, fadeOut: 0.014 }, [
+  }, { gain: 0.368185, fadeOut: 0.014 }, [
     { enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0, target: 'layers[0].gain' },
     { enabled: true, shape: 'square', rate: 9, depth: 1, phase: 0.5, target: 'layers[1].gain' },
   ])
@@ -589,7 +589,7 @@ export function fragmentSpray(): AudioPatch {
     delayTime: 0.024, delayFeedback: 0.44, delayMix: 0.44,
     reverbMix: 0.08, reverbSize: 0.18, reverbDamping: 0.82,
     tone: 0.2, width: 0.7,
-  }, { gain: 0.2456, fadeOut: 0.02 }, 1, [
+  }, { gain: 0.19527, fadeOut: 0.02 }, 1, [
     { enabled: true, shape: 'square', rate: 36, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'square', rate: 28, depth: 1, phase: 0.4, target: 'layers[2].gain' },
   ])
@@ -634,7 +634,7 @@ export function fragmentTumble(): AudioPatch {
     delayTime: 0.145, delayFeedback: 0.62, delayMix: 0.52,
     reverbMix: 0.14, reverbSize: 0.42, reverbDamping: 0.72,
     tone: 0.15, width: 0.8,
-  }, { gain: 0.8605, fadeOut: 0.03 }, 1, [
+  }, { gain: 0.706838, fadeOut: 0.03 }, 1, [
     { enabled: true, shape: 'noise', rate: 9, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 6, depth: 1, target: 'layers[1].gain' },
   ])
@@ -679,7 +679,7 @@ export function fragmentSettle(): AudioPatch {
     delayTime: 0.072, delayFeedback: 0.74, delayMix: 0.5,
     reverbMix: 0.12, reverbSize: 0.32, reverbDamping: 0.76,
     tone: 0.25, width: 0.6,
-  }, { gain: 0.4367, fadeOut: 0.03 }, 1, [
+  }, { gain: 0.336845, fadeOut: 0.03 }, 1, [
     { enabled: true, shape: 'noise', rate: 26, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 34, depth: 1, target: 'layers[2].gain' },
   ])
@@ -727,7 +727,7 @@ export function packetStream(): AudioPatch {
     delayTime: 0.031, delayFeedback: 0.34, delayMix: 0.5,
     reverbMix: 0.08, reverbSize: 0.2, reverbDamping: 0.8,
     tone: 0.1, width: 0.7,
-  }, { gain: 0.4806, fadeOut: 0.02 }, 1, [
+  }, { gain: 0.449703, fadeOut: 0.02 }, 1, [
     { enabled: true, shape: 'square', rate: 18, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'square', rate: 37, depth: 0.9, phase: 0.35, target: 'layers[1].gain' },
   ])
@@ -769,7 +769,7 @@ export function rasterScan(): AudioPatch {
     delayTime: 0.047, delayFeedback: 0.3, delayMix: 0.4,
     reverbMix: 0.14, reverbSize: 0.35, reverbDamping: 0.7,
     tone: 0.2, width: 0.75,
-  }, { gain: 1.108, fadeOut: 0.03 }, 1, [
+  }, { gain: 1.092626, fadeOut: 0.03 }, 1, [
     { enabled: true, shape: 'square', rate: 19, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'square', rate: 22, depth: 0.9, phase: 0.5, target: 'layers[1].gain' },
   ])
@@ -813,7 +813,7 @@ export function handshake(): AudioPatch {
     delayTime: 0.068, delayFeedback: 0.42, delayMix: 0.45,
     reverbMix: 0.16, reverbSize: 0.4, reverbDamping: 0.72,
     tone: 0.15, width: 0.5,
-  }, { gain: 0.4693, fadeOut: 0.025 }, 1, [
+  }, { gain: 0.352826, fadeOut: 0.025 }, 1, [
     { enabled: true, shape: 'square', rate: 11, depth: 0.35, target: 'layers[0].pitch' },
     { enabled: true, shape: 'square', rate: 29, depth: 0.95, phase: 0.2, target: 'layers[1].gain' },
   ])
@@ -851,7 +851,7 @@ export function ambientDrift(): AudioPatch {
       amp: { attack: 0.0006, hold: 0.005, decay: 0.07, sustain: 0.3, release: 0.25, curve: 1.6 },
     }),
   ], { delayTime: 0.23, delayFeedback: 0.4, delayMix: 0.22, reverbMix: 0.4, reverbSize: 0.95, reverbDamping: 0.3, tone: 0.05, width: 0.75 },
-     { gain: 2.07, fadeOut: 0.03 }, [
+     { gain: 1.923526, fadeOut: 0.03 }, [
        { enabled: true, shape: 'noise', rate: 13, depth: 0.9, target: 'layers[1].gain' },
        { enabled: true, shape: 'square', rate: 11, depth: 0.55, target: 'layers[2].gain' },
      ])
@@ -893,7 +893,7 @@ export function containmentField(): AudioPatch {
       amp: { attack: 0.002, hold: 0.02, decay: 0.2, sustain: 0.55, release: 0.3, curve: 2 },
     }),
   ], { delayTime: 0.045, delayFeedback: 0.35, delayMix: 0.3, reverbMix: 0.18, reverbSize: 0.5, reverbDamping: 0.6, tone: 0.15, width: 0.35 },
-     { gain: 1.244, limiter: 0.4, fadeOut: 0.025 }, [
+     { gain: 0.741519, limiter: 0.4, fadeOut: 0.025 }, [
        { enabled: true, shape: 'triangle', rate: 6.5, depth: 0.65, target: 'layers[1].gain' },
        { enabled: true, shape: 'square', rate: 24, depth: 0.85, target: 'layers[2].gain' },
      ])
@@ -932,7 +932,7 @@ export function pressureSwell(): AudioPatch {
       amp: { attack: 0.0008, hold: 0.004, decay: 0.12, sustain: 0.35, release: 0.4, curve: 2 },
     }),
   ], { delayTime: 0.16, delayFeedback: 0.42, delayMix: 0.3, reverbMix: 0.35, reverbSize: 0.9, reverbDamping: 0.35, tone: 0.1, width: 0.85 },
-     { gain: 2.954, limiter: 0.35, fadeOut: 0.03 }, [
+     { gain: 2.48526, limiter: 0.35, fadeOut: 0.03 }, [
        { enabled: true, shape: 'triangle', rate: 4.5, depth: 0.35, target: 'layers[1].gain' },
        { enabled: true, shape: 'sine', rate: 3, depth: 0.4, target: 'layers[2].gain' },
      ])
@@ -979,7 +979,7 @@ export function chargePrime(): AudioPatch {
     delayTime: 0.021, delayFeedback: 0.24, delayMix: 0.4,
     reverbMix: 0.07, reverbSize: 0.2, reverbDamping: 0.8,
     tone: 0.4, width: 0.55,
-  }, { gain: 0.2639, fadeOut: 0.02 }, 1, [
+  }, { gain: 0.133135, fadeOut: 0.02 }, 1, [
     { enabled: true, shape: 'square', rate: 34, depth: 1, target: 'layers[0].gain' },
   ])
 }
@@ -1023,7 +1023,7 @@ export function chargeCycle(): AudioPatch {
     delayTime: 0.028, delayFeedback: 0.3, delayMix: 0.45,
     reverbMix: 0.1, reverbSize: 0.35, reverbDamping: 0.7,
     tone: 0.35, width: 0.65,
-  }, { gain: 0.4735, fadeOut: 0.02 }, 1, [
+  }, { gain: 0.273605, fadeOut: 0.02 }, 1, [
     { enabled: true, shape: 'square', rate: 23, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'triangle', rate: 23, depth: 0.2, phase: 0.25, target: 'layers[1].cutoff' },
   ])
@@ -1069,7 +1069,7 @@ export function chargeOverload(): AudioPatch {
     delayTime: 0.034, delayFeedback: 0.36, delayMix: 0.5,
     reverbMix: 0.14, reverbSize: 0.45, reverbDamping: 0.6,
     tone: 0.3, width: 0.75,
-  }, { gain: 0.287, fadeOut: 0.02 }, 1, [
+  }, { gain: 0.182214, fadeOut: 0.02 }, 1, [
     { enabled: true, shape: 'saw', rate: 19, depth: 1, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 14, depth: 0.12, target: 'layers[1].pitch' },
   ])
@@ -1112,7 +1112,7 @@ export function plasmaBolt(): AudioPatch {
     delayTime: 0.038, delayFeedback: 0.32, delayMix: 0.42,
     reverbMix: 0.2, reverbSize: 0.5, reverbDamping: 0.2,
     tone: 0.1, width: 0.6,
-  }, { gain: 1.167, fadeOut: 0.03 }, [
+  }, { gain: 0.739797, fadeOut: 0.03 }, [
     { enabled: true, shape: 'triangle', rate: 34, depth: 0.8, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 40, depth: 0.7, target: 'layers[1].gain' },
   ])
@@ -1155,7 +1155,7 @@ export function plasmaLance(): AudioPatch {
     delayTime: 0.052, delayFeedback: 0.42, delayMix: 0.5,
     reverbMix: 0.3, reverbSize: 0.7, reverbDamping: 0.12,
     tone: 0.08, width: 0.65,
-  }, { gain: 1.194, fadeOut: 0.04 }, [
+  }, { gain: 0.783347, fadeOut: 0.04 }, [
     { enabled: true, shape: 'sine', rate: 22, depth: 0.8, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 34, depth: 0.7, target: 'layers[1].gain' },
   ])
@@ -1199,7 +1199,7 @@ export function plasmaCannon(): AudioPatch {
     delayTime: 0.07, delayFeedback: 0.5, delayMix: 0.55,
     reverbMix: 0.28, reverbSize: 0.68, reverbDamping: 0.34,
     tone: 0.05, width: 0.7,
-  }, { gain: 0.8376, fadeOut: 0.06 }, [
+  }, { gain: 0.472869, fadeOut: 0.06 }, [
     { enabled: true, shape: 'square', rate: 9, depth: 0.8, target: 'layers[0].gain' },
     { enabled: true, shape: 'noise', rate: 26, depth: 0.7, target: 'layers[1].gain' },
   ])
@@ -1231,7 +1231,7 @@ export function pulseRifle(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 4200, resonance: 0.12 },
       resonator: { amount: 0.5, frequency: 6200, spread: 0.4, decay: 0.02, partials: 3 },
       amp: { attack: 0.0002, hold: 0.0015, decay: 0.02, sustain: 0, release: 0.014, curve: 3 } }),
-  ], { reverbMix: 0.1, reverbSize: 0.3, reverbDamping: 0.45, tone: 0.18, width: 0.55 }, { gain: 0.3991, fadeOut: 0.02 }, 1, [])
+  ], { reverbMix: 0.1, reverbSize: 0.3, reverbDamping: 0.45, tone: 0.18, width: 0.55 }, { gain: 0.201655, fadeOut: 0.02 }, 1, [])
 }
 
 /** The same shot with the weight of something larger: the body an octave down and four times as
@@ -1257,7 +1257,7 @@ export function pulseCannon(): AudioPatch {
       resonator: { amount: 0.45, frequency: 5200, spread: 0.45, decay: 0.035, partials: 3 },
       amp: { attack: 0.0002, hold: 0.003, decay: 0.05, sustain: 0, release: 0.035, curve: 2.9 } }),
   ], { reverbMix: 0.2, reverbSize: 0.55, reverbDamping: 0.5, tone: 0.08, width: 0.6 },
-     { gain: 0.1261, fadeOut: 0.02, limiter: 0.75 }, 1, [])
+     { gain: 0.063729, fadeOut: 0.02, limiter: 0.75 }, 1, [])
 }
 
 /** Three of the shot, spaced by a delay rather than played, so the rate is a property of the
@@ -1280,7 +1280,7 @@ export function pulseRepeater(): AudioPatch {
       filter: { kind: 'highpass', cutoff: 5400, resonance: 0.12 },
       amp: { attack: 0.0002, hold: 0.0008, decay: 0.009, sustain: 0, release: 0.006, curve: 3.2 } }),
   ], { delayTime: 0.105, delayFeedback: 0.5, delayMix: 0.62, reverbMix: 0.1, reverbSize: 0.32,
-       reverbDamping: 0.6, tone: 0.05, width: 0.55 }, { gain: 0.9848, fadeOut: 0.02 }, 1, [])
+       reverbDamping: 0.6, tone: 0.05, width: 0.55 }, { gain: 0.498707, fadeOut: 0.02 }, 1, [])
 }
 
 /**
@@ -1308,7 +1308,7 @@ export function reloadClip(): AudioPatch {
       resonator: { amount: 1, frequency: 820, spread: 0.6, decay: 0.06, partials: 5 },
       shaper: { drive: 0.14, bitDepth: 16, crush: 0 },
       amp: { attack: 0.0003, hold: 0.004, decay: 0.014, sustain: 0, release: 0.01, curve: 2.7 } }),
-  ], { reverbMix: 0.16, reverbSize: 0.36, reverbDamping: 0.55, tone: 0.05, width: 0.6 }, { gain: 0.1612, fadeOut: 0.02 }, 1, [])
+  ], { reverbMix: 0.16, reverbSize: 0.36, reverbDamping: 0.55, tone: 0.05, width: 0.6 }, { gain: 0.0816, fadeOut: 0.02 }, 1, [])
 }
 
 /** The same three events on a longer mechanism: the travel is a sustained band sweeping down
@@ -1332,7 +1332,7 @@ export function reloadCycle(): AudioPatch {
       resonator: { amount: 1, frequency: 700, spread: 0.62, decay: 0.075, partials: 5 },
       shaper: { drive: 0.18, bitDepth: 16, crush: 0 },
       amp: { attack: 0.0003, hold: 0.005, decay: 0.018, sustain: 0, release: 0.012, curve: 2.6 } }),
-  ], { reverbMix: 0.2, reverbSize: 0.45, reverbDamping: 0.5, tone: 0, width: 0.65 }, { gain: 0.1598, fadeOut: 0.02 }, 1, [])
+  ], { reverbMix: 0.2, reverbSize: 0.45, reverbDamping: 0.5, tone: 0, width: 0.65 }, { gain: 0.080787, fadeOut: 0.02 }, 1, [])
 }
 
 /** The heaviest of the three. The seat lands at four hundred and eighty hertz six tenths of a
@@ -1357,7 +1357,7 @@ export function reloadBreech(): AudioPatch {
       shaper: { drive: 0.24, bitDepth: 16, crush: 0 },
       amp: { attack: 0.0004, hold: 0.006, decay: 0.024, sustain: 0, release: 0.016, curve: 2.5 } }),
   ], { reverbMix: 0.24, reverbSize: 0.55, reverbDamping: 0.45, tone: -0.05, width: 0.6 },
-     { gain: 0.118, fadeOut: 0.02, limiter: 0.7 }, 1, [])
+     { gain: 0.059906, fadeOut: 0.02, limiter: 0.7 }, 1, [])
 }
 
 /**
@@ -1395,7 +1395,7 @@ export function morphRobotic(): AudioPatch {
       amp: { attack: 0.0004, hold: 0.002, decay: 0.004, sustain: 0, release: 0.002, curve: 2.8 },
     }),
   ], { delayTime: 0.043, delayFeedback: 0.3, delayMix: 0.45, reverbMix: 0.1, reverbSize: 0.22, reverbDamping: 0.8, tone: 0.2, width: 0.6 },
-     { gain: 0.9077, fadeOut: 0.02 }, 1, [
+     { gain: 0.465187, fadeOut: 0.02 }, 1, [
        { enabled: true, shape: 'square', rate: 19, depth: 1, phase: 0, target: 'layers[0].gain' },
        { enabled: true, shape: 'square', rate: 27, depth: 1, phase: 0.5, target: 'layers[1].gain' },
      ])
@@ -1438,7 +1438,7 @@ export function morphMetal(): AudioPatch {
       amp: { attack: 0.0005, hold: 0.002, decay: 0.005, sustain: 0, release: 0.002, curve: 2.8 },
     }),
   ], { delayTime: 0.062, delayFeedback: 0.45, delayMix: 0.5, reverbMix: 0.14, reverbSize: 0.3, reverbDamping: 0.72, tone: 0.22, width: 0.65 },
-     { gain: 0.9994, fadeOut: 0.02 }, 1, [
+     { gain: 1.005981, fadeOut: 0.02 }, 1, [
        { enabled: true, shape: 'noise', rate: 26, depth: 0.85, target: 'layers[0].gain' },
        { enabled: true, shape: 'square', rate: 17, depth: 0.9, phase: 0.2, target: 'layers[2].gain' },
      ])
@@ -1477,7 +1477,7 @@ export function impactSnap(): AudioPatch {
     delayTime: 0.022, delayFeedback: 0.85, delayMix: 0.65,
     reverbMix: 0.24, reverbSize: 0.35, reverbDamping: 0.4,
     tone: 0.2, width: 0.55,
-  }, { fadeOut: 0.02, gain: 1.002 }, 1, [])
+  }, { fadeOut: 0.02, gain: 0.508852 }, 1, [])
 }
 
 /**
@@ -1513,7 +1513,7 @@ export function impactStrike(): AudioPatch {
     delayTime: 0.043, delayFeedback: 0.86, delayMix: 0.68,
     reverbMix: 0.28, reverbSize: 0.5, reverbDamping: 0.4,
     tone: 0.12, width: 0.6,
-  }, { fadeOut: 0.06, gain: 1.043 }, 1, [])
+  }, { fadeOut: 0.06, gain: 0.52672 }, 1, [])
 }
 
 /**
@@ -1549,5 +1549,5 @@ export function impactSlam(): AudioPatch {
     delayTime: 0.078, delayFeedback: 0.88, delayMix: 0.8,
     reverbMix: 0.5, reverbSize: 0.62, reverbDamping: 0.32,
     tone: 0.05, width: 0.65,
-  }, { fadeOut: 0.12, gain: 1.33 }, 1, [])
+  }, { fadeOut: 0.12, gain: 0.670918 }, 1, [])
 }

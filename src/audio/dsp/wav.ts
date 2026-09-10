@@ -1,5 +1,5 @@
 /**
- * A mono 16-bit PCM file, written by hand.
+ * An interleaved stereo 16-bit PCM file, written by hand.
  *
  * There is no encoder dependency here and there should not be: the format is a 44-byte header and
  * the samples, and every library that wraps it costs more to audit than the thing it wraps. It

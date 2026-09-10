@@ -2,7 +2,7 @@ import { IconChevronRight, IconDice, IconSave, IconSnapshot, IconWave } from '@/
 import { IconButton } from '@/ui/Button'
 import { Tooltip } from '@/ui/Tooltip'
 import { AudioSoundMenu } from '@/audio/AudioSoundMenu'
-import { PRESETS } from '@/audio/presets'
+import { PRESET_ORDER } from '@/audio/presets'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
@@ -25,8 +25,9 @@ export function AudioSoundBar({ current, snapshots, touched, onPatch, onRemove, 
   onMutate: () => void
 }) {
   const saved = snapshots.find((snapshot) => snapshot.id === current)
+  // The order the grid, the menu and the rail all show, not the order the file was written in.
   const all = [
-    ...PRESETS.map((preset) => ({ id: preset.id, patch: preset.build })),
+    ...PRESET_ORDER.map((preset) => ({ id: preset.id, patch: preset.build })),
     ...snapshots.map((snapshot) => ({ id: snapshot.id, patch: () => snapshot.patch })),
   ]
   const step = (by: number) => {

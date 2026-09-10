@@ -64,7 +64,7 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
                   aria-current={preset.id === current ? 'true' : undefined}
                   onClick={() => onPatch(preset.build(), preset.id)}
                 >
-                  <AudioThumb patch={patch} />
+                  <AudioThumb patch={patch} id={preset.id} />
                   <span className="sound-card__name">{preset.label}</span>
                 </button>
               </li>
@@ -89,7 +89,7 @@ export function AudioPresetsView({ current, snapshots, onPatch, onRemove }: {
                   aria-current={snapshot.id === current ? 'true' : undefined}
                   onClick={() => onPatch(snapshot.patch, snapshot.id)}
                 >
-                  <AudioThumb patch={snapshot.patch} />
+                  <AudioThumb patch={snapshot.patch} id={`${snapshot.id}:${snapshot.createdAt}`} />
                   <span className="sound-card__name">{snapshot.name}</span>
                 </button>
                 <button

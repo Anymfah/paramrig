@@ -4,6 +4,7 @@ import { WaveformView } from '@/audio/WaveformView'
 import { Tooltip } from '@/ui/Tooltip'
 import type { RadialLayer } from '@/rigs/extended-types'
 import { PRESETS, PRESET_GROUPS } from '@/audio/presets'
+import { compactMark } from '@/audio/marks'
 import type { AudioSnapshot } from '@/audio/document'
 import type { AudioPatch } from '@/audio/types'
 
@@ -86,17 +87,6 @@ function SoundList({ current, snapshots, compact, inert, onPatch, onNavigate, wa
       ) : null}
     </nav>
   )
-}
-
-/** One or two letters that fit the compact rail; the full name lives in the tooltip and aria-label. */
-function compactMark(label: string) {
-  const parts = label.trim().split(/\s+/).filter(Boolean)
-  if (parts.length >= 2) {
-    const a = parts[0]?.[0]
-    const b = parts[1]?.[0]
-    if (a && b) return (a + b).toUpperCase()
-  }
-  return (parts[0]?.[0] ?? '?').toUpperCase()
 }
 
 function SoundItem({ label, current, compact, onClick }: {

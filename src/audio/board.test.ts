@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BOARD_CATEGORIES, MODULATION_CATEGORIES, boardGroups, boardParameters, boardPaths, boardValues, setBoardValue } from '@/audio/board'
-import { parseAudioProperty } from '@/audio/rig'
+import { AUDIO_PROPERTY_PATHS, parseAudioProperty } from '@/audio/rig'
 import { defaultPatch } from '@/audio/patch'
 import { coin } from '@/audio/presets'
 
@@ -24,7 +24,11 @@ describe('the board', () => {
 
   it('builds one control a field, keyed by its own path', () => {
     const parameters = boardParameters()
-    expect(parameters).toHaveLength(boardPaths().length)
+    // Every path but the handful the engine never reads: a control for one of those would turn,
+    // be saved, be published in the docs, and change no sound.
+    const editorOnly = boardPaths().filter(({ property }) => parseAudioProperty(property)?.spec.editorOnly).length
+    expect(editorOnly).toBeGreaterThan(0)
+    expect(parameters).toHaveLength(boardPaths().length - editorOnly)
     expect(new Set(parameters.map((parameter) => parameter.id)).size).toBe(parameters.length)
     expect(parameters.every((parameter) => parameter.label.length > 0)).toBe(true)
   })
@@ -70,3 +74,26 @@ describe('the modulation slots on the board', () => {
   })
 })
 
+
+/**
+ * Two promises the board makes about what it hands out.
+ *
+ * A control the engine never reads is a dial that turns and changes no sound, which is the one
+ * thing `parseAudioProperty` says this layer exists to prevent — and the seed is a number you
+ * replace rather than one you sweep, which the board has always had an exception for and never
+ * managed to apply, because nothing ever set the view it looked for.
+ */
+describe('what the board will and will not expose', () => {
+  it('keeps a performer’s grid off the board: it snaps the drawing, not the sound', () => {
+    expect(boardParameters().some((parameter) => /^performers\[\d+\]\.grid$/.test(parameter.id))).toBe(false)
+    expect(AUDIO_PROPERTY_PATHS.some((path) => path.property === 'performers[i].grid')).toBe(false)
+    // Still stored and still readable, because the plate edits it like anything else.
+    expect(Object.keys(boardValues(defaultPatch()))).toContain('performers[0].grid')
+  })
+
+  it('gives the seed a stepper and a dice rather than a ten-thousand-step dial', () => {
+    const seed = boardParameters().find((parameter) => parameter.id === 'seed')
+    expect(seed?.kind).toBe('number')
+    expect(seed && 'view' in seed ? seed.view : undefined).toBe('seed')
+  })
+})

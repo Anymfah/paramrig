@@ -42,13 +42,18 @@ export function createInsert(slot: InsertSlot, sampleRate: number): InsertState 
  * whole character: clipping adds the harmonics that were nearly there already, folding adds ones
  * that were not, which is why a folded sine sounds like an instrument nobody has and a clipped one
  * sounds like a broken amplifier.
+ *
+ * Which is why the reflection is written in closed form rather than as a loop with a guard on it.
+ * The loop reflected eight times and then gave up and clamped — and since the drive multiplies by
+ * as much as sixteen before the fold, anything past 1.0625 came out of it flat at one. The folder
+ * turned into the clipper it exists not to be, over exactly the part of the wave it is for, and
+ * every resonant filter in front of one hands it numbers that size. This is a triangle wave read
+ * at the input's own amplitude: the same answer wherever the loop finished, and an answer at all
+ * where it did not.
  */
 function fold(x: number): number {
-  let value = x
-  for (let guard = 0; guard < 8 && (value > 1 || value < -1); guard += 1) {
-    value = value > 1 ? 2 - value : -2 - value
-  }
-  return Math.min(1, Math.max(-1, value))
+  const quarter = (x + 1) / 4
+  return 4 * Math.abs(quarter - Math.round(quarter)) - 1
 }
 
 /**
@@ -72,9 +77,13 @@ export function insertSample(
   if (slot.kind === 'drive') {
     wet = saturate(input, slot.drive)
   } else if (slot.kind === 'crusher') {
-    wet = crushSample(state.shaper, slot.bitDepth, slot.crush, input)
+    wet = crushSample(state.shaper, slot.bitDepth, slot.crush, input, sampleRate)
   } else if (slot.kind === 'ring') {
-    const step = (frequency * Math.min(16, Math.max(0.01, slot.ratio))) / sampleRate
+    // Stopped just under Nyquist, as the layer's own pitch already is. Left unbounded, a ratio of
+    // sixteen on a two kilohertz layer asked for a carrier at thirty-two — which does not exist at
+    // this rate, and what came back was its mirror image at twelve. The knob ran backwards past
+    // the fold, and on a layer that slides the fold point moved during the sound.
+    const step = Math.min(0.49, (frequency * Math.min(16, Math.max(0.01, slot.ratio))) / sampleRate)
     state.phase = (state.phase + step) % 1
     wet = input * Math.sin(state.phase * Math.PI * 2)
   } else if (slot.kind === 'fold') {
@@ -82,7 +91,7 @@ export function insertSample(
   } else if (slot.kind === 'body' && state.body) {
     wet = modalSample(state.body, input, slot.frequency, slot.spread, slot.decay, sampleRate)
   } else if (slot.kind === 'comb' && state.line) {
-    const delay = Math.max(1, Math.min(MAX_COMB_SECONDS, slot.time / 1000) * sampleRate)
+    const delay = Math.max(1, Math.min(MAX_COMB_SECONDS, slot.time) * sampleRate)
     const back = readAt(state.line, delay)
     const feedback = Math.min(0.95, Math.max(0, slot.feedback))
     write(state.line, input + back * feedback)

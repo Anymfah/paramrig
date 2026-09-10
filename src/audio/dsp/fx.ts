@@ -25,6 +25,9 @@ const WOBBLE = [0.11, 0.17, 0.23, 0.29]
 const DIFFUSION = [0.0043, 0.0077, 0.0113, 0.0151]
 /** How many stages a phaser sweeps. Four is the classic; six is the one that sounds expensive. */
 const PHASER_STAGES = 6
+/** Where the notches travel between, in hertz — the range a phaser is recognisable over. */
+const PHASER_LOW = 200
+const PHASER_HIGH = 8000
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
@@ -36,6 +39,10 @@ export type FxUnit = {
   /** The reverb's four, and what each of them held last time round. */
   net: Line[]
   held: number[]
+  /** Where the four lines are read this sample. Kept on the unit because a fresh array and a
+      fresh closure per sample is a third of what the reverb costs, and this file's own opening
+      line says there is no allocation between samples. */
+  taps: Float64Array
   diffusers: Line[]
   /** The phaser's poles, one array a side, and what came back round. */
   poles: Float64Array
@@ -51,7 +58,7 @@ export type FxUnit = {
 export function createFxUnit(slot: FxSlot, sampleRate: number): FxUnit {
   const unit: FxUnit = {
     wetL: 0, wetR: 0,
-    pair: [], net: [], held: [0, 0, 0, 0], diffusers: [],
+    pair: [], net: [], held: [0, 0, 0, 0], diffusers: [], taps: new Float64Array(4),
     poles: new Float64Array(PHASER_STAGES * 2),
     backL: 0, backR: 0,
     feedback: 0, makeup: 1, wobble: 0, delaySamples: 1,
@@ -67,8 +74,12 @@ export function createFxUnit(slot: FxSlot, sampleRate: number): FxUnit {
     const scale = (sampleRate / REFERENCE_RATE) * (0.55 + clamp01(slot.size) * 1.1)
     unit.net = LINES.map((seconds) => line(seconds * REFERENCE_RATE * scale + 8))
     unit.diffusers = DIFFUSION.map((seconds) => line(seconds * sampleRate))
-    // Long enough to be a tail, short enough that a half-second effect is not still ringing.
-    unit.feedback = 0.72 + clamp01(slot.size) * 0.26
+    // Long enough to be a tail, short enough that it fits in a sound. The top of this knob used to
+    // put the loop at 0.98 while the lines were also at their longest, and the two multiply: the
+    // tail ran seventeen seconds, where the longest patch this instrument can render is four. The
+    // top forty per cent of the knob did not make a longer reverb, it made the same one cut off
+    // harder by the fade — a chop, not a decay. It now tops out at about four seconds.
+    unit.feedback = 0.72 + clamp01(slot.size) * 0.2
     unit.makeup = Math.sqrt(1 - unit.feedback * unit.feedback)
     unit.wobble = 2.5 * (sampleRate / REFERENCE_RATE)
   }
@@ -89,7 +100,12 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
     // millisecond it is metal, at fifteen it is two players who cannot quite agree.
     const chorus = slot.kind === 'chorus'
     const base = (chorus ? 0.012 : 0.0005) * sampleRate
-    const span = (chorus ? 0.006 : 0.006) * sampleRate * clamp01(slot.depth)
+    // Two milliseconds on a flanger, six on a chorus. Both arms of this used to read 0.006, which is
+    // half an unfinished edit: the base delays were separated and the spans were not, so a flanger
+    // whose base is half a millisecond swept out to six and a half — thirteen times its own base,
+    // its first notch walking from a kilohertz down to seventy-seven hertz — and stopped being a
+    // flanger at the top of the Depth knob. A comb stays a comb across the whole range now.
+    const span = (chorus ? 0.006 : 0.002) * sampleRate * clamp01(slot.depth)
     const turn = (2 * Math.PI * slot.rate * at) / sampleRate
     const offset = width * 0.25 * Math.PI * 2
     const back = chorus ? 0 : Math.min(0.95, Math.max(0, slot.feedback))
@@ -111,11 +127,31 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
      * and the other like a jet, and why this is written out rather than borrowed from the pair above.
      */
     const turn = (2 * Math.PI * slot.rate * at) / sampleRate
-    const sweep = 0.5 + 0.48 * clamp01(slot.depth) * Math.sin(turn)
-    const coefficient = (1 - sweep) / (1 + sweep)
+    /*
+     * The sweep is a frequency, and it is pre-warped before it becomes a coefficient.
+     *
+     * It used to be a bare number between 0.02 and 0.98 dropped straight into the bilinear form,
+     * where it stands in for tan(pi·fc/fs) — which means the notches sat at a fixed fraction of
+     * the sample rate and moved with it. The same patch phased at 1.9 kHz on a 44.1 machine and
+     * 2.0 on a 48, was drawn on the thumbnail at 16 kHz nearly two octaves below what anyone
+     * heard, and was levelled by the randomiser against a third figure again. Everything else in
+     * this file is written in seconds; this is written in hertz for the same reason.
+     */
+    const hz = PHASER_LOW * Math.pow(PHASER_HIGH / PHASER_LOW, 0.5 + 0.48 * clamp01(slot.depth) * Math.sin(turn))
+    const warped = Math.tan((Math.PI * Math.min(hz, sampleRate * 0.45)) / sampleRate)
+    const coefficient = (1 - warped) / (1 + warped)
+    /*
+     * Taken back round with a minus.
+     *
+     * Six allpasses have a phase of zero at DC — each stage passes it untouched — so a plus makes
+     * the loop purely regenerative down there, at a gain of 1/(1 − feed) that has nothing to do
+     * with where the notches are. The Feed knob was a thirteen-decibel bass boost that did not
+     * move with the sweep, and then the master limiter squashed what it made. Inverted, the
+     * resonances land on the notches and travel with them, which is what the knob is for.
+     */
     const back = Math.min(0.9, Math.max(0, slot.feedback))
-    let l = left + unit.backL * back
-    let r = right + unit.backR * back
+    let l = left - unit.backL * back
+    let r = right - unit.backR * back
     for (let stage = 0; stage < PHASER_STAGES; stage += 1) {
       const kept = unit.poles[stage] ?? 0
       const outL = -coefficient * l + kept
@@ -149,11 +185,12 @@ export function fxSample(unit: FxUnit, slot: FxSlot, left: number, right: number
     let seed = (left + right) * 0.5
     for (const diffuser of unit.diffusers) seed = allpass(diffuser, seed, 0.62)
     const damping = Math.min(0.95, Math.max(0, slot.damping))
-    const taps = [0, 1, 2, 3].map((n) => {
+    const taps = unit.taps
+    for (let n = 0; n < 4; n += 1) {
       const l = unit.net[n]!
       const moved = Math.sin((2 * Math.PI * WOBBLE[n]! * at) / sampleRate) * unit.wobble
-      return readAt(l, l.buffer.length - 8 + moved)
-    })
+      taps[n] = readAt(l, l.buffer.length - 8 + moved)
+    }
     // Householder: every line receives the sum of all four, less twice itself. Energy put into one
     // of them is spread across all of them within two passes.
     const sum = (taps[0]! + taps[1]! + taps[2]! + taps[3]!) * 0.5

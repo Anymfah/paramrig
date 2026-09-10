@@ -38,9 +38,36 @@ export type AudioDocument = {
   updatedAt: string
 }
 
+/**
+ * The store, parsed once per state it is actually in.
+ *
+ * Every call sanitises every document in it, and sanitising a document sanitises its patch and all
+ * twenty-four of its kept sounds — hundreds of clamps against the field table. The library page
+ * asks for this list on every render, and so does the workspace shell behind the sound editor, so
+ * it was being rebuilt on every frame of a knob drag. Keyed on the raw text rather than on a
+ * timestamp: another tab writing changes the text, and nothing else can change it without going
+ * through `writeAll` below.
+ */
+let lastRaw: string | null = null
+let lastRead: Record<string, AudioDocument> = {}
+
 function readAll(): Record<string, AudioDocument> {
-  return readStore(STORAGE_KEY, sanitizeAudioDocument)
+  let raw: string | null = null
+  try {
+    raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY) ?? ''
+  } catch { raw = null }
+  if (raw === null || raw !== lastRaw) {
+    lastRead = readStore(STORAGE_KEY, sanitizeAudioDocument)
+    lastRaw = raw
+  }
+  // A shallow copy, because `saveAudioDocument` writes into what this hands back. The documents
+  // inside it are shared and treated as immutable everywhere, as they already were.
+  return { ...lastRead }
 }
+
+/** The patches the app ships, built once: they are the same objects every time they are asked for. */
+let lastShipped: AudioDocument[] | null = null
+const shipped = () => (lastShipped ??= BUNDLED_PATCHES.map((build) => build()))
 
 function writeAll(documents: Record<string, AudioDocument>): StorageResult {
   return writeStore(STORAGE_KEY, documents)
@@ -94,7 +121,9 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
   // is moved with it, where sanitising alone would have deleted it for no longer parsing.
   const rig = sanitizeAudioRig(carriedRig(source.rig, claimedVersion(source.patch)))
   const snapshots = (Array.isArray(source.snapshots) ? source.snapshots : [])
-    .slice(0, MAX_SNAPSHOTS)
+    // A window rather than the whole file: every row costs a patch to sanitise, and a document
+    // that claims a hundred thousand of them should not be able to spend a minute proving it.
+    .slice(-MAX_SNAPSHOTS * 2)
     .flatMap((entry) => {
       if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
       const row = entry as Record<string, unknown>
@@ -107,6 +136,11 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
         patch: sanitizeAudioPatch(row.patch),
       }]
     })
+    // The end of the list, not the start. The strip appends and keeps the last twenty-four, so
+    // taking the first twenty-four of a longer file threw away the newest sounds and kept the
+    // ones the cap had already decided should give way. Cut after the unreadable rows are gone,
+    // so a file with a bad entry in it does not come back one short.
+    .slice(-MAX_SNAPSHOTS)
   return {
     version: 1,
     id,
@@ -125,28 +159,28 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
  */
 export function listAudioDocuments(): AudioDocument[] {
   const stored = readAll()
-  const bundled = BUNDLED_PATCHES.map((build) => build()).filter((document) => !stored[document.id])
+  const bundled = shipped().filter((document) => !stored[document.id])
   return [...Object.values(stored), ...bundled].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
 }
 
 export function getAudioDocument(id: string): AudioDocument | null {
   const stored = readAll()[id]
   if (stored) return stored
-  const bundled = BUNDLED_PATCHES.map((build) => build()).find((document) => document.id === id)
+  const bundled = shipped().find((document) => document.id === id)
   return bundled ? sanitizeAudioDocument(bundled) : null
 }
 
 export function isBundledAudioDocument(id: string): boolean {
-  return BUNDLED_PATCHES.some((build) => build().id === id) && !readAll()[id]
+  return shipped().some((entry) => entry.id === id) && !readAll()[id]
 }
 
 /** Whether a document is a bundled one that nothing has altered, down to the last number. */
 function unchangedBundle(document: AudioDocument): boolean {
-  const shipped = BUNDLED_PATCHES.map((build) => build()).find((entry) => entry.id === document.id)
+  const original = shipped().find((entry) => entry.id === document.id)
   // Both sides sanitised: the comparison is of content, and one side arriving with its keys in
   // another order is not a change. It used to compare the shipped patch against the raw document,
   // so any change to what the sanitiser emits made an example start copying itself into storage.
-  return !!shipped && JSON.stringify(sanitizeAudioDocument(shipped)) === JSON.stringify(sanitizeAudioDocument(document))
+  return !!original && JSON.stringify(sanitizeAudioDocument(original)) === JSON.stringify(sanitizeAudioDocument(document))
 }
 
 export function saveAudioDocument(document: AudioDocument): StorageResult {

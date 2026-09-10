@@ -155,8 +155,11 @@ describe('the insert slots', () => {
   })
 
   it('hold the settings of the kinds they are not, so switching and switching back loses nothing', () => {
-    const read = sanitizeAudioPatch({ layers: [{ insertA: { kind: 'ring', ratio: 3.5, drive: 0.7, time: 12 } }] })
-    expect(read.layers[0]?.insertA).toMatchObject({ kind: 'ring', ratio: 3.5, drive: 0.7, time: 12 })
+    // Stamped with the current version, so the reader takes the record as written rather than
+    // carrying it forward: a patch with no version at all is a version-one patch, and one of the
+    // steps between then and now moves a comb's time out of milliseconds.
+    const read = sanitizeAudioPatch({ version: PATCH_VERSION, layers: [{ insertA: { kind: 'ring', ratio: 3.5, drive: 0.7, time: 0.012 } }] })
+    expect(read.layers[0]?.insertA).toMatchObject({ kind: 'ring', ratio: 3.5, drive: 0.7, time: 0.012 })
   })
 })
 
@@ -177,5 +180,73 @@ describe('carrying an older patch forward', () => {
     const read = sanitizeAudioPatch({ version: 1, layers: [{ gain: 0.25, pitch: { start: 220 } }] })
     expect(read.layers[0]?.gain).toBeCloseTo(0.25, 6)
     expect(read.layers[0]?.pitch.start).toBeCloseTo(220, 6)
+  })
+})
+
+/**
+ * The steps nothing was walking.
+ *
+ * Four of the five migrations had no test of their own — only the first, and only for the mods.
+ * A migration is the one piece of this codebase that can destroy somebody's work, so each of them
+ * gets a file from before it here.
+ */
+describe('every step of the seam', () => {
+  it('three to four: the master effects become slots, and keep the sound they had', () => {
+    const read = sanitizeAudioPatch({
+      version: 3,
+      fx: { delayTime: 0.08, delayFeedback: 0.55, delayMix: 0.4, reverbMix: 0.3, reverbSize: 0.7, reverbDamping: 0.2, flangerMix: 0.25, flangerRate: 1.5, flangerDepth: 0.8, tone: 0.2, width: 0.7 },
+    })
+    const kinds = [read.fx.x.kind, read.fx.y.kind, read.fx.z.kind]
+    expect(kinds).toContain('delay')
+    expect(kinds).toContain('reverb')
+    expect(kinds).toContain('flanger')
+    const delay = [read.fx.x, read.fx.y, read.fx.z].find((slot) => slot.kind === 'delay')
+    expect(delay).toMatchObject({ mix: 0.4, feedback: 0.55 })
+    expect(delay?.time).toBeCloseTo(0.08, 6)
+    // What is left at the master is left at the master.
+    expect(read.fx.tone).toBeCloseTo(0.2, 6)
+    expect(read.fx.width).toBeCloseTo(0.7, 6)
+  })
+
+  it('four to five: one filter becomes A, and the arrangement says so', () => {
+    const read = sanitizeAudioPatch({
+      version: 4,
+      layers: [{ filter: { kind: 'bandpass', cutoff: 1200, resonance: 0.6 } }],
+    })
+    expect(read.layers[0]?.filterA).toMatchObject({ kind: 'bandpass', resonance: 0.6 })
+    expect(read.layers[0]?.filterA.cutoff).toBeCloseTo(1200, 6)
+    expect(read.layers[0]?.routing).toBe('single')
+  })
+
+  it('five to six: a comb’s time stops being the one thing written in milliseconds', () => {
+    const read = sanitizeAudioPatch({
+      version: 5,
+      layers: [{ insertA: { kind: 'comb', place: 'post', amount: 0.3, time: 11, feedback: 0.66 } }],
+    })
+    expect(read.layers[0]?.insertA.time).toBeCloseTo(0.011, 9)
+    // And a file already written the new way is left where it is.
+    const now = sanitizeAudioPatch({ version: PATCH_VERSION, layers: [{ insertA: { kind: 'comb', time: 0.011 } }] })
+    expect(now.layers[0]?.insertA.time).toBeCloseTo(0.011, 9)
+  })
+
+  it('carries a version-one file the whole way without losing anything on the road', () => {
+    const read = sanitizeAudioPatch({
+      version: 1,
+      duration: 0.5,
+      layers: [{
+        gain: 0.6,
+        shaper: { drive: 0.5, bitDepth: 16, crush: 0 },
+        filter: { kind: 'lowpass', cutoff: 900, resonance: 0.4 },
+      }],
+      envelopes: [{ enabled: true, target: 'layers[0].cutoff', depth: 0.5 }],
+      fx: { delayMix: 0.2, delayTime: 0.1 },
+    })
+    expect(read.version).toBe(PATCH_VERSION)
+    expect(read.layers[0]?.gain).toBeCloseTo(0.6, 6)
+    expect(read.layers[0]?.insertA).toMatchObject({ kind: 'drive', drive: 0.5 })
+    expect(read.layers[0]?.filterA).toMatchObject({ kind: 'lowpass', resonance: 0.4 })
+    expect(read.layers[0]?.routing).toBe('single')
+    expect(read.mods[0]).toMatchObject({ kind: 'envelope', enabled: true, target: 'layers[0].cutoff' })
+    expect([read.fx.x.kind, read.fx.y.kind, read.fx.z.kind]).toContain('delay')
   })
 })

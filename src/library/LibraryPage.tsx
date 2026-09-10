@@ -371,7 +371,7 @@ function RigThumb({ rig }: { rig: RigManifest }) {
     if (!stored) return null
     // A rigged patch is shown the way its controls rest, which is what it sounds like new.
     const patch = stored.rig ? resolveAudioValues(stored, audioRigDefaults(stored.rig)) : stored.patch
-    return <AudioThumb patch={patch} />
+    return <AudioThumb patch={patch} id={`${id}:${stored.updatedAt}`} />
   }
   if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
   if (id === 'tidal-planet') return <PlanetMark />

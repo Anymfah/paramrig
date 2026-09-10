@@ -27,8 +27,8 @@ export function AudioRigPreview({ documentId, values, name }: {
   const patch = useMemo(() => (document ? resolveAudioValues(document, values) : null), [document, values])
   const shown = useDeferredValue(patch)
   const samples = useMemo(() => (shown ? renderPatch(shown, rate) : { left: new Float32Array(0), right: new Float32Array(0) }), [shown, rate])
-  const transport = useTransport(samples, rate)
   const [autoPlay, setAutoPlay] = useState(() => readAudioPrefs().autoPlay)
+  const transport = useTransport(samples, rate, autoPlay)
 
   const setAuto = useCallback((next: boolean) => {
     setAutoPlay(next)

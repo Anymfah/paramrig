@@ -6,7 +6,7 @@ import { AudioEditorPage } from '@/audio/AudioEditorPage'
 import { createAudioDocument, getAudioDocument, isBundledAudioDocument, saveAudioDocument } from '@/audio/document'
 import { AudioRigPreview } from '@/renderers/audio/AudioRigPreview'
 import { arcadeCoin } from '@/rigs/examples/arcade-coin'
-import { PRESETS } from '@/audio/presets'
+import { PRESET_ORDER } from '@/audio/presets'
 
 /**
  * The page in a browser with no audio device — which jsdom is, and which some real browsers are.
@@ -141,7 +141,7 @@ describe('AudioEditorPage', () => {
     for (const name of ['Performer 1', 'Performer 2', 'Performer 3']) expect(screen.getByRole('region', { name })).toBeInTheDocument()
     const panel = screen.getByRole('region', { name: 'Performer 1' })
     expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
-    expect(within(panel).getByRole('slider', { name: 'Level' })).toBeInTheDocument()
+    expect(within(panel).getByRole('slider', { name: 'Performer 1 level' })).toBeInTheDocument()
     // A step drawn by the keyboard lands in the patch's row for the scene that plays.
     const steps = within(within(panel).getByRole('group', { name: 'Performer 1 row 1' })).getAllByRole('slider', { name: /^Step \d+$/ })
     expect(steps).toHaveLength(16)
@@ -255,11 +255,11 @@ describe('AudioEditorPage', () => {
     await user.click(screen.getByRole('button', { name: 'Show modulator L4' }))
     const panel = screen.getByRole('region', { name: 'Modulator 4' })
     // An oscillator has a rate; the envelope it can become has stages instead.
-    expect(within(panel).getByRole('slider', { name: 'Rate' })).toBeInTheDocument()
-    expect(within(panel).queryByRole('slider', { name: 'Hold' })).toBeNull()
+    expect(within(panel).getByRole('slider', { name: 'Modulator 4 rate' })).toBeInTheDocument()
+    expect(within(panel).queryByRole('slider', { name: 'Modulator 4 hold' })).toBeNull()
     await user.click(within(panel).getByRole('button', { name: 'Modulator 4 kind' }))
     await user.click(screen.getByRole('menuitem', { name: 'Envelope' }))
-    expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('slider', { name: 'Hold' })).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Modulator 4' })).getByRole('slider', { name: 'Modulator 4 hold' })).toBeInTheDocument()
     expect(within(routing).getAllByRole('listitem')[6]).toHaveTextContent('E4')
   })
 
@@ -273,7 +273,7 @@ describe('AudioEditorPage', () => {
     for (const name of ['Modulator 4', 'Modulator 5', 'Modulator 6']) {
       const panel = screen.getByRole('region', { name })
       expect(within(panel).getByRole('combobox', { name: 'Target' })).toBeInTheDocument()
-      expect(within(panel).getByRole('slider', { name: 'LFO Level' })).toBeInTheDocument()
+      expect(within(panel).getByRole('slider', { name: `${name} level` })).toBeInTheDocument()
     }
     // The routing bar lists the reference's nine sources, all of them this engine's: the amp
     // envelope, two free envelopes, six LFOs. A name shows its trio of panels.
@@ -377,7 +377,7 @@ describe('AudioEditorPage', () => {
     const cutoff = within(filter).getByRole('slider', { name: 'Cutoff' })
     // Cutoff wears macro 5 out of the box; the tenth macro will take it over.
     expect(within(cutoff).getByText('5')).toBeInTheDocument()
-    const handle = screen.getByRole('button', { name: /^Drag macro 10 onto a control/ })
+    const handle = screen.getByRole('button', { name: /^Macro 10/ })
     const under = document.elementFromPoint
     document.elementFromPoint = () => cutoff
     try {
@@ -397,6 +397,32 @@ describe('AudioEditorPage', () => {
       expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-5')).toBe(false)
     })
   })
+
+  /**
+   * The same two moves from the keyboard, which is the only route a rig has: a macro is what
+   * exposes a control, and the Tune button only appears once something is exposed. Until this
+   * existed, none of it could be reached without a pointer.
+   */
+  it('picks a macro up and puts it down with the keyboard', async () => {
+    const user = userEvent.setup()
+    const doc = createAudioDocument()
+    open(doc.id)
+    const reso = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Reso' })
+    const handle = screen.getByRole('button', { name: /^Macro 12/ })
+    handle.focus()
+    await user.keyboard('{Enter}')
+    reso.focus()
+    await user.keyboard('{Enter}')
+    expect(within(reso).getByText('12')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(getAudioDocument(doc.id)?.rig?.bindings.find((binding) => binding.id === 'macro-12')?.property)
+        .toBe('layers[0].filterA.resonance')
+    })
+    // And Delete frees it again.
+    screen.getByRole('button', { name: /^Macro 12/ }).focus()
+    await user.keyboard('{Delete}')
+    expect(within(reso).queryByText('12')).toBeNull()
+  }, 15_000)
 
   it('keeps a second sound on the other side, and swaps between them', async () => {
     const user = userEvent.setup()
@@ -470,6 +496,12 @@ describe('AudioEditorPage', () => {
     expect(screen.getByRole('button', { name: /^Sound:/ })).toBeInTheDocument()
   })
 
+  /** The length as the transport prints it, so a test can name a sound by what it reads. */
+  const lengthOf = (at: number) => {
+    const { duration } = PRESET_ORDER[at]!.build()
+    return duration < 1 ? `${Math.round(duration * 1000)} ms` : `${duration.toFixed(2)} s`
+  }
+
   /** Stepping is how these get used: you rarely know which sound you want, only that not this one. */
   it('steps through the sounds, one undoable step each', async () => {
     const user = userEvent.setup()
@@ -477,11 +509,11 @@ describe('AudioEditorPage', () => {
     expect(screen.getByText('450 ms')).toBeInTheDocument()
     const next = screen.getByRole('button', { name: 'Next sound' })
     await user.click(next)
-    expect(screen.getByText('450 ms')).toBeInTheDocument()
+    expect(screen.getByText(lengthOf(0))).toBeInTheDocument()
     await user.click(next)
-    expect(screen.getByText('350 ms')).toBeInTheDocument()
+    expect(screen.getByText(lengthOf(1))).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Undo' }))
-    expect(screen.getByText('450 ms')).toBeInTheDocument()
+    expect(screen.getByText(lengthOf(0))).toBeInTheDocument()
   }, 15_000)
 
   it('steps backwards too, wrapping round the end of the list', async () => {
@@ -489,8 +521,9 @@ describe('AudioEditorPage', () => {
     open(arcadeCoin().id)
     await user.click(screen.getByRole('button', { name: 'Previous sound' }))
     // Read from the list rather than written down, so adding a preset does not silently make this
-    // assert the wrong one.
-    const last = PRESETS[PRESETS.length - 1]!.build()
+    // assert the wrong one — and from the order the arrows actually walk, which is the order every
+    // list on screen shows rather than the order the file was written in.
+    const last = PRESET_ORDER[PRESET_ORDER.length - 1]!.build()
     const shown = last.duration < 1 ? `${Math.round(last.duration * 1000)} ms` : `${last.duration.toFixed(2)} s`
     expect(screen.getByText(shown)).toBeInTheDocument()
   })
@@ -504,6 +537,10 @@ describe('AudioEditorPage', () => {
     await user.click(screen.getByRole('button', { name: /^Sound:/ }))
     const saved = await screen.findByRole('menuitem', { name: /Sound 1/ })
     await user.click(within(saved).getByRole('button', { name: 'Remove Sound 1' }))
+    // The menu is still open, so this is the row going rather than the menu closing over it. It
+    // used to be asserted with the menu shut, which passed for a while when the trash icon was
+    // loading the sound instead of removing it.
+    expect(screen.getByRole('menu', { name: /^Sound:/ })).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /Sound 1/ })).toBeNull()
   })
 
@@ -547,8 +584,10 @@ describe('AudioEditorPage', () => {
     for (const handle of ['Attack, layer 1', 'Hold, layer 1', 'Decay and sustain, layer 1', 'Release, layer 1']) {
       expect(within(layer).getByRole('slider', { name: handle })).toBeInTheDocument()
     }
-    // The curve dial wears the reference's name, Shape, rather than the field's.
-    expect(within(layer).getByRole('slider', { name: 'Shape' })).toBeInTheDocument()
+    // The curve dial is drawn with the reference's word, Shape; what it is called out loud says
+    // which layer's it is, because three envelopes are on the plate at once.
+    expect(within(layer).getByText('Shape')).toBeInTheDocument()
+    expect(within(layer).getByRole('slider', { name: 'Layer 1 envelope shape' })).toBeInTheDocument()
   })
 
   it('reads the envelope out in numbers beside the shape', () => {
@@ -636,4 +675,59 @@ describe('AudioRigPreview', () => {
     // the example ships with.
     expect(screen.getByText('800 ms')).toBeInTheDocument()
   })
+})
+
+/**
+ * The history, and the two things that used to fall out of it.
+ *
+ * A step was only ever the patch, so an undo across a load left the bar naming a sound the patch
+ * on screen did not come from — and Replace writes to whatever the bar names. And a kept sound
+ * removed by a mis-aimed click on the small trash icon inside the row was gone, four hundred
+ * milliseconds later on disk, with Undo still enabled and undoing something else.
+ */
+describe('the history', () => {
+  it('redoes what it undid, and stops when there is nothing left', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const next = screen.getByRole('button', { name: 'Next sound' })
+    const { duration: first } = PRESET_ORDER[0]!.build()
+    const { duration: second } = PRESET_ORDER[1]!.build()
+    const shown = (seconds: number) => (seconds < 1 ? `${Math.round(seconds * 1000)} ms` : `${seconds.toFixed(2)} s`)
+    await user.click(next)
+    await user.click(next)
+    expect(screen.getByText(shown(second))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(screen.getByText(shown(first))).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Redo' }))
+    expect(screen.getByText(shown(second))).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Redo' })).toHaveAttribute('aria-disabled', 'true')
+  }, 20_000)
+
+  it('takes the name of the sound back with the sound', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const next = screen.getByRole('button', { name: 'Next sound' })
+    await user.click(next)
+    const first = screen.getByRole('button', { name: /^Sound:/ }).textContent
+    await user.click(next)
+    expect(screen.getByRole('button', { name: /^Sound:/ }).textContent).not.toBe(first)
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(screen.getByRole('button', { name: /^Sound:/ }).textContent).toBe(first)
+  }, 20_000)
+
+  it('gives a removed sound back while the notice is still up', async () => {
+    const user = userEvent.setup()
+    open(createAudioDocument().id)
+    await user.click(screen.getByRole('button', { name: 'Keep this sound' }))
+    await user.click(screen.getByRole('button', { name: /^Sound:/ }))
+    const row = await screen.findByRole('menuitem', { name: /Sound 1/ })
+    await user.click(within(row).getByRole('button', { name: /Remove/i }))
+    // The menu stays open — removing one of several is not a reason to close it — and while it is
+    // open the rest of the page is hidden from the accessibility tree, so it has to be let go of.
+    await user.keyboard('{Escape}')
+    expect(screen.getByRole('status', { name: 'Editor notice' })).toHaveTextContent('Removed Sound 1')
+    await user.click(within(screen.getByRole('status', { name: 'Editor notice' })).getByRole('button', { name: 'Undo' }))
+    await user.click(screen.getByRole('button', { name: /^Sound:/ }))
+    expect(await screen.findByRole('menuitem', { name: /Sound 1/ })).toBeInTheDocument()
+  }, 20_000)
 })

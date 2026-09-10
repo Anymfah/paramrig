@@ -1,4 +1,4 @@
-import { AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, FX_SLOTS, INSERT_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
 import type { AmpSettings, AudioPatch, FilterRouting, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
@@ -47,7 +47,7 @@ export function makeInsert(input: Partial<InsertSlot> = {}): InsertSlot {
     kind: 'off', place: 'pre', amount: 1,
     drive: 0, bitDepth: 16, crush: 0, ratio: 2,
     frequency: 900, spread: 0.7, decay: 0.25, partials: 4,
-    time: 8, feedback: 0.5,
+    time: 0.008, feedback: 0.5,
     ...input,
   }
 }
@@ -326,10 +326,10 @@ function readLayer(value: unknown, base: Layer): Layer {
  * parses. Between them, a rename silently throws away someone's exposed controls. A step here is
  * how a rename stops doing that: it moves the old shape to the new one before anything is read.
  *
- * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
- * is open so that the first change to the shape has somewhere to go.
+ * Each step carries a raw record from version n to n + 1, in order, and `MIGRATIONS[n - 1]` is the
+ * step out of version n.
  */
-export const PATCH_VERSION = 5
+export const PATCH_VERSION = 6
 
 /**
  * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
@@ -420,7 +420,33 @@ function intoTwoFilters(source: Record<string, unknown>): Record<string, unknown
   return { ...source, layers: carried }
 }
 
-const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts, intoFxSlots, intoTwoFilters]
+/**
+ * Five to six: a comb insert's delay was the one time in this instrument stored in milliseconds.
+ *
+ * Every other one is in seconds, and `rig.ts` hands a field labelled `ms` the seconds-to-
+ * milliseconds units so a control can be read in either — which meant a comb time of eleven was
+ * offered to Tune as eleven *seconds* and shown on the plate as eleven thousand milliseconds. One
+ * field disagreeing with the convention is worse than either convention, so it joins the rest.
+ */
+function intoSeconds(source: Record<string, unknown>): Record<string, unknown> {
+  const layers = Array.isArray(source.layers) ? source.layers : null
+  if (!layers) return source
+  const carried = layers.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+    const layer = { ...(value as Record<string, unknown>) }
+    for (const slot of INSERT_SLOTS) {
+      const insert = layer[slot]
+      if (!insert || typeof insert !== 'object' || Array.isArray(insert)) continue
+      const held = insert as Record<string, unknown>
+      if (typeof held.time !== 'number') continue
+      layer[slot] = { ...held, time: held.time / 1000 }
+    }
+    return layer
+  })
+  return { ...source, layers: carried }
+}
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts, intoFxSlots, intoTwoFilters, intoSeconds]
 
 function migrate(source: Record<string, unknown>): Record<string, unknown> {
   const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1

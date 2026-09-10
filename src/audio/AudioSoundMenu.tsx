@@ -64,13 +64,24 @@ export function AudioSoundMenu({ current, snapshots, touched, onPatch, onRemove 
               onSelect={() => onPatch(snapshot.patch, snapshot.id)}
             >
               <span className="audio-sounds__name">{snapshot.name}</span>
-              {/* Inside the row rather than beside it, and it has to stop the row from also
-                  firing — selecting a sound you meant to delete is the worst of both. */}
+              {/*
+                * Inside the row rather than beside it, and it has to stop the row from also firing
+                * — selecting a sound you meant to delete is the worst of both.
+                *
+                * Both ends of the gesture, which is the part that was missing. A menu item sets a
+                * flag on pointer down and, if it never saw one, synthesises a click on itself at
+                * pointer up — the way a menu opened by a press-and-drag selects what you let go
+                * over. Stopping only the pointer down left that flag unset, so letting go over the
+                * trash icon clicked the *row*: the sound loaded, the menu closed, and the remove
+                * handler never ran at all. Stopping the pointer up as well leaves the button's own
+                * click the only thing that happens.
+                */}
               <button
                 type="button"
                 className="audio-sounds__remove"
                 aria-label={`Remove ${snapshot.name}`}
                 onPointerDown={(event) => event.stopPropagation()}
+                onPointerUp={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.preventDefault()
                   event.stopPropagation()

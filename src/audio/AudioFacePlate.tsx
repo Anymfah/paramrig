@@ -1,4 +1,4 @@
-import { Fragment, createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react'
+import { Fragment, createContext, memo, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { tooltipDelay } from '@/ui/tooltipDelay'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
@@ -16,7 +16,7 @@ import { createInsert, insertSample } from '@/audio/dsp/insert'
 import type { FilterKind, FxKind, InsertKind, InsertPlace, InsertSlot } from '@/audio/types'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { PerformerShape } from '@/audio/types'
-import { DEFAULT_RIG_GROUP, controlId, parseAudioProperty, type AudioRig } from '@/audio/rig'
+import { DEFAULT_RIG_GROUP, controlId, emptyAudioRig, parseAudioProperty, type AudioRig } from '@/audio/rig'
 import { DEAL, FACES, fitPlate, plateBox, type Item, type Layout } from '@/audio/faces'
 
 /**
@@ -131,6 +131,10 @@ function modsOf(ctx: Ctx, target: string | undefined): KnobMod[] {
       id, name: `${envelope ? 'E' : 'L'}${index + 2}`,
       colour: envelope ? SOURCE_COLOUR.e : SOURCE_COLOUR.l,
       depth: readNum(ctx, `${id}.depth`),
+      // An envelope happens once and pushes one way, the sign of its depth saying which; an
+      // oscillator swings either side of the value. Drawn the same, the envelope's arc claimed a
+      // swing it does not have and its depth could not be dragged below zero.
+      bipolar: !envelope,
       onDepth: (next) => ctx.onChange(`${id}.depth`, next),
       onClear: () => ctx.onChange(`${id}.target`, 'off'),
     })
@@ -210,10 +214,12 @@ function Text({ x, y, size = 13, align = 'center', kind, u, onClick, checked, la
   return <span className="fp-text" data-align={align} data-kind={kind} data-u={u || undefined} data-hint={hint} style={style}>{children}</span>
 }
 
-function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, inert, dots }: {
+function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, inert, idle, dots }: {
   ctx: Ctx; x: number; y: number; id: string; label: string; size?: KnobSize; tone?: KnobTone; digit?: string | number; face?: ReactNode; param?: Num
   /** Drawn where the reference draws it, wired to nothing: the fraction of the turn it shows. */
   inert?: number
+  /** Wired, but nothing reads it in the arrangement the patch is in: why, in a few words. */
+  idle?: string
   /** The two dots at the ends of the arc that mark a bipolar range. */
   dots?: boolean
 }) {
@@ -234,6 +240,7 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
       size={size}
       tone={tone}
       digit={shownDigit}
+      idle={idle}
       face={face}
       target={target}
       property={size === 'macro' ? undefined : id}
@@ -353,6 +360,20 @@ function InsertMark({ kind }: { kind: InsertKind }) {
   )
 }
 
+/**
+ * The field to wake, for the three kinds whose resting value is an exact bypass.
+ *
+ * `saturate` returns its input at drive 0, `crushSample` skips the quantiser at sixteen bits, and
+ * a fold with no drive folds nothing — so picking Drive, Crusher or Fold on a fresh slot changed
+ * the sound by not one sample, and the slot read as broken. A slot that has been that kind before
+ * keeps whatever it was left at; only one still sitting at the silent value is given something.
+ */
+const WOKEN: Record<string, { field: 'drive' | 'bitDepth' | 'crush'; silent: number; value: number }> = {
+  drive: { field: 'drive', silent: 0, value: 0.4 },
+  fold: { field: 'drive', silent: 0, value: 0.4 },
+  crusher: { field: 'bitDepth', silent: 16, value: 8 },
+}
+
 const INSERT_MODELS: { value: InsertKind; label: string; note: string }[] = [
   { value: 'off', label: 'Off', note: 'Nothing in this slot.' },
   { value: 'drive', label: 'Drive', note: 'Pushed until it rounds off and bites.' },
@@ -396,11 +417,20 @@ const FX_MODELS: { value: FxKind; label: string; note: string }[] = [
   { value: 'widener', label: 'Widener', note: 'Pushes the two channels apart.' },
 ]
 
-/** The three dials each kind puts in its row, small, large, small — the reference's own shape. */
+/**
+ * The three dials each kind puts in its row, small, large, small — the reference's own shape.
+ *
+ * Chosen from what `fxSample` actually reads for that kind, which they were not: the phaser was
+ * given a Feed dial and no Depth, and depth is where its notches travel — the thing that makes a
+ * phaser a phaser. Its feedback stays at the resting 0.3, which is a usable resonance now that it
+ * is taken round with the right sign, and the flanger's stays at 0.4 for the same reason: three
+ * dials is the row's shape, and a field that is fixed at a good value is better than a dial that
+ * is fixed at nothing. Both remain reachable by binding a macro to them.
+ */
 const FX_KNOBS: Record<string, { field: string; label: string }[]> = {
   flanger: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'depth', label: 'Depth' }],
   chorus: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'depth', label: 'Depth' }],
-  phaser: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'feedback', label: 'Feed' }],
+  phaser: [{ field: 'rate', label: 'Rate' }, { field: 'mix', label: 'Mix' }, { field: 'depth', label: 'Depth' }],
   delay: [{ field: 'time', label: 'Time' }, { field: 'mix', label: 'Mix' }, { field: 'feedback', label: 'Feed' }],
   reverb: [{ field: 'size', label: 'Size' }, { field: 'mix', label: 'Mix' }, { field: 'damping', label: 'Damp' }],
   widener: [{ field: 'width', label: 'Spread' }, { field: 'mix', label: 'Mix' }, { field: 'rate', label: 'Rate' }],
@@ -532,14 +562,25 @@ function slotAt(ctx: Ctx, layer: number, slot: number): InsertSlot {
     spread: readNum(ctx, at('spread'), 0.7),
     decay: readNum(ctx, at('decay'), 0.25),
     partials: readNum(ctx, at('partials'), 4),
-    time: readNum(ctx, at('time'), 8),
+    time: readNum(ctx, at('time'), 0.008),
     feedback: readNum(ctx, at('feedback'), 0.5),
   }
 }
 
-/** The slots a layer's oscillator has already been through by the time the amplifier sees it. */
+/**
+ * The slots a layer's oscillator has already been through by the time the amplifier sees it, less
+ * the two that cannot be drawn.
+ *
+ * The glyph is a window about five milliseconds wide. A comb's shortest delay is longer than that,
+ * so inside the window it has nothing to hand back and the drawing goes flat; a body's ring starts
+ * many times louder than the excitation, so the drawing leaves the box. Neither is what those two
+ * do to the sound — it is what a five-millisecond look at them shows — so the glyph keeps the four
+ * that shape a waveform where it stands and leaves the two that work in time to the ear.
+ */
+const DRAWN_INSERTS = ['drive', 'fold', 'crusher', 'ring']
 const beforeAmp = (ctx: Ctx, layer: number) =>
-  INSERT_SLOTS.map((_, slot) => slotAt(ctx, layer, slot)).filter((held) => held.kind !== 'off' && held.place !== 'post')
+  INSERT_SLOTS.map((_, slot) => slotAt(ctx, layer, slot))
+    .filter((held) => held.place !== 'post' && DRAWN_INSERTS.includes(held.kind))
 
 /** Where a frequency and a level fall in the box every response is drawn in. */
 const responseX = (hz: number) => (Math.log2(Math.min(16000, Math.max(60, hz)) / 60) / Math.log2(16000 / 60)) * 60 + 2
@@ -734,7 +775,11 @@ type Edit = {
  * the baseline. Given an edit, it is a control: a vertical drag moves the number, a double-click
  * puts it back, and the arrow keys step it.
  */
-function Readout({ x, base, mark, value, label, edit }: { x: number; base: number; mark: 'note' | 'ratio' | 'none'; value: number; label?: string; edit?: Edit }) {
+function Readout({ x, base, mark, value, label, edit, ctx }: {
+  x: number; base: number; mark: 'note' | 'ratio' | 'none'; value: number; label?: string; edit?: Edit
+  /** The gesture callbacks, so one drag is one undo step here as it is on a dial. */
+  ctx?: Pick<Ctx, 'onGestureStart' | 'onGestureEnd'>
+}) {
   const at = useAt()
   const origin = useRef({ y: 0, start: 0 })
   const dragging = useRef(false)
@@ -782,10 +827,13 @@ function Readout({ x, base, mark, value, label, edit }: { x: number; base: numbe
         event.currentTarget.setPointerCapture?.(event.pointerId)
         dragging.current = true
         origin.current = { y: event.clientY, start: edit.get() }
+        // One drag is one undo step, as it is on a dial. Without this the history took a step per
+        // frame of the drag, so getting back to where you started was eight presses of Undo.
+        ctx?.onGestureStart?.()
       }}
       onPointerMove={(event) => { if (dragging.current) edit.set(clamp(origin.current.start + (origin.current.y - event.clientY) * edit.perPx)) }}
-      onPointerUp={(event) => { if (!dragging.current) return; dragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId) }}
-      onPointerCancel={() => { dragging.current = false }}
+      onPointerUp={(event) => { if (!dragging.current) return; dragging.current = false; event.currentTarget.releasePointerCapture?.(event.pointerId); ctx?.onGestureEnd?.() }}
+      onPointerCancel={() => { if (!dragging.current) return; dragging.current = false; ctx?.onGestureEnd?.() }}
       onDoubleClick={edit.reset}
       onKeyDown={(event) => {
         const forward = event.key === 'ArrowUp' || event.key === 'ArrowRight'
@@ -1042,7 +1090,12 @@ const macroBindingId = (index: number) => `macro-${index + 1}`
 
 /** The macros a rig describes: by the binding ids the plate writes, or by order for a rig made elsewhere. */
 function macrosOf(rig: AudioRig | undefined): Macro[] {
-  if (!rig || rig.bindings.length === 0) return DEFAULT_MACROS
+  // No rig at all is a document that has never been touched, and it starts from the sixteen above.
+  // A rig with nothing bound is a different thing entirely — somebody took the last macro off —
+  // and it used to be told apart from neither: the defaults came back, sixteen dials claiming to
+  // drive properties that the document no longer bound to anything.
+  if (!rig) return DEFAULT_MACROS
+  if (rig.bindings.length === 0) return Array.from({ length: MACRO_COUNT }, () => ({ label: '' }))
   const numbered = rig.bindings.some((binding) => /^macro-\d+$/.test(binding.id))
   return Array.from({ length: MACRO_COUNT }, (_, index) => {
     const binding = numbered ? rig.bindings.find((entry) => entry.id === macroBindingId(index)) : rig.bindings[index]
@@ -1059,7 +1112,16 @@ const macroLabel = (property: string) => {
   return layer ? `${label} ${Number(layer[1]) + 1}` : label
 }
 
-export function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, curves, onCurves, rig, onRig, skin }: {
+/**
+ * Memoised, because the page it sits on re-renders on every frame of playback.
+ *
+ * The playhead is state on the editor page, so a sound playing means sixty renders a second of
+ * everything under it — and this is a hundred absolutely positioned controls with an SVG apiece.
+ * None of its props change while a sound plays. Every one of them has to be handed in as the same
+ * object each time for that to hold, which is why the page builds them with `useCallback` and
+ * `useMemo` rather than writing them into the JSX.
+ */
+export const AudioFacePlate = memo(function AudioFacePlate({ parameters, values, duration, onChange, onGestureStart, onGestureEnd, patterns, onPattern, curves, onCurves, rig, onRig, skin }: {
   parameters: ParameterDef[]
   values: Record<string, ParamValue>
   duration: number
@@ -1091,12 +1153,26 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
   /**
    * The rig, rebuilt from the macro table: a control for every macro that drives something,
    * bound under the macro's number, with the property's current value as the control's default.
+   *
+   * Only the sixteen are rebuilt. Everything else the rig carries — a control somebody exposed
+   * from Tune, the group it was filed under, an inspector category, a binding with a transform on
+   * it — is handed straight back. This used to return a rig built from the macro table and nothing
+   * else, so dropping one macro on a dial silently deleted every other control the document had.
    */
   const writeRig = (table: Macro[]) => {
     if (!onRig) return
-    const parameters: ParameterDef[] = []
-    const bindings: AudioRig['bindings'] = []
-    const taken = new Set<string>()
+    const base = rig ?? emptyAudioRig()
+    // Which bindings are the band's own. Numbered when the plate wrote them; otherwise the first
+    // sixteen by order, which is exactly the set `macrosOf` was showing when this table was made.
+    const numbered = base.bindings.some((entry) => /^macro-\d+$/.test(entry.id))
+    const mine = new Set((numbered
+      ? base.bindings.filter((entry) => /^macro-\d+$/.test(entry.id))
+      : base.bindings.slice(0, MACRO_COUNT)).map((entry) => entry.id))
+    const bindings = base.bindings.filter((entry) => !mine.has(entry.id))
+    const letGo = new Set(base.bindings.filter((entry) => mine.has(entry.id)).map((entry) => entry.parameterId))
+    const stillDriven = new Set(bindings.map((entry) => entry.parameterId))
+    const parameters = base.parameters.filter((entry) => !letGo.has(entry.id) || stillDriven.has(entry.id))
+    const taken = new Set(parameters.map((entry) => entry.id))
     table.forEach((macro, at) => {
       if (!macro.id) return
       const source = ctx.byId.get(macro.id)
@@ -1106,7 +1182,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       parameters.push({ ...source, id, label: macro.label, group: DEFAULT_RIG_GROUP.id, defaultValue: (values[macro.id] ?? source.defaultValue) as never } as ParameterDef)
       bindings.push({ id: macroBindingId(at), property: macro.id, parameterId: id })
     })
-    onRig({ groups: [DEFAULT_RIG_GROUP], parameters, bindings })
+    const groups = base.groups.some((group) => group.id === DEFAULT_RIG_GROUP.id) ? base.groups : [...base.groups, DEFAULT_RIG_GROUP]
+    onRig({ ...base, groups, parameters, bindings })
   }
   /**
    * A macro dropped on a control takes that property; a property carries one macro at most, so
@@ -1207,6 +1284,42 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     setAssigning(what)
     follow(event)
   }
+  /**
+   * The same two moves without a pointer: pick a macro up, walk to a control, drop it.
+   *
+   * Binding a macro is what exposes a parameter to Tune and to the SDK, and the Tune button only
+   * appears once something is exposed — so with the number reachable by pointer alone, a keyboard
+   * user could not build a rig at all. Enter picks up and drops, Escape puts back, Delete frees.
+   * A held macro lights every control that can take it, which it already did for the pointer.
+   */
+  const carry = (index: number) => (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault()
+      unbindMacro(index)
+      return
+    }
+    if (event.key === 'Escape') { setAssigning(null); return }
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    event.stopPropagation()
+    if (assigning?.kind === 'm' && assigning.macro === index) { setAssigning(null); return }
+    const box = event.currentTarget.getBoundingClientRect()
+    setAssigning({ id: `M${index + 1}`, kind: 'm', macro: index })
+    follow({ clientX: box.left, clientY: box.bottom })
+  }
+
+  /** Enter on any control that can hold a macro, while one is held, drops it there. */
+  const dropCarried = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!assigning || assigning.kind !== 'm') return
+    if (event.key === 'Escape') { setAssigning(null); return }
+    if (event.key !== 'Enter') return
+    const property = (event.target as HTMLElement | null)?.closest?.('[data-property]')?.getAttribute('data-property')
+    if (!property) return
+    event.preventDefault()
+    bindMacro(assigning.macro, property)
+    setAssigning(null)
+  }
+
   const putDown = (event: React.PointerEvent<HTMLElement>) => {
     const under = typeof document.elementFromPoint === 'function' ? document.elementFromPoint(event.clientX, event.clientY) : null
     if (assigning && assigning.kind === 'm') {
@@ -1368,13 +1481,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     pitch: (
     <Panel x={0} y={54} w={67} h={288} label="Pitch" tone="bare">
       <Text x={32} y={59.5} kind="title">Pitch</Text>
-      <Readout x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
+      <Readout ctx={ctx} x={-18} base={96.5} mark="none" value={semitones(readNum(ctx, L(f, 'pitch.start'), 440))} label={`Layer ${f + 1} pitch`} edit={pitchEdit(L(f, 'pitch.start'))} />
       <Text x={32} y={104}>Arp Ratio</Text>
       <Knob ctx={ctx} x={32} y={138} id={L(f, 'pitch.arpeggioRatio')} label="Arp Ratio" size="sm" />
       <Text x={32} y={160}>Arp At</Text>
       <Knob ctx={ctx} x={32} y={194} id={L(f, 'pitch.arpeggioAt')} label="Arp At" size="sm" />
       <Text x={32} y={216}>Detune</Text>
-      <Knob ctx={ctx} x={32} y={250} id={L(f, 'source.detune')} label="Detune" size="sm" />
+      <Knob ctx={ctx} x={32} y={250} id={L(f, 'source.detune')} label="Detune" size="sm"
+        idle={source(f) === 'noise' ? 'detune spreads a layer\u2019s unison copies, and a noise layer has none' : undefined} />
       <Text x={31.8} y={272}>Time</Text>
       <Knob ctx={ctx} x={31.5} y={306} id="duration" label="Time" tone="light" />
     </Panel>
@@ -1391,7 +1505,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       {wavePicker(1, 391.2)}
       <Line x={325} y={54} w={1} h={215.5} colour="var(--fp-hairline)" />
       {/* oscillator 1 */}
-      <Readout x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
+      <Readout ctx={ctx} x={72.5} base={96.5} mark="note" value={semitones(readNum(ctx, L(0, 'pitch.start'), 440))} label="Oscillator 1 pitch" edit={pitchEdit(L(0, 'pitch.start'))} />
       {sideColumn(0, 104)}
       <Knob ctx={ctx} x={204.5} y={128.4} id={source(0) === 'table' ? L(0, 'source.position') : L(0, 'pitch.start')} label="Pos1" size="hero" face={<WaveGlyph kind={read(ctx, L(0, 'source.kind'))} wave={read(ctx, L(0, 'source.wave'))} pulseWidth={readNum(ctx, L(0, 'source.pulseWidth'), 0.5)} pitch={readNum(ctx, L(0, 'pitch.start'), 440)} fmIndex={readNum(ctx, L(0, 'source.fmIndex'), 0)} fmRatio={readNum(ctx, L(0, 'source.fmRatio'), 1)} table={String(read(ctx, L(0, 'source.table')) ?? 'sweep')} position={readNum(ctx, L(0, 'source.position'), 0.5)} inserts={beforeAmp(ctx, 0)} />} />
       <Text x={166.9} y={184}>Width</Text>
@@ -1406,7 +1520,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={482} y={184.5}>Slide</Text>
       <Knob ctx={ctx} x={409.3} y={225.5} id={L(1, 'source.pulseWidth')} label="Width" />
       <Knob ctx={ctx} x={482} y={226.3} id={L(1, 'pitch.slide')} label="Slide" />
-      <Readout x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} label="Oscillator 2 pitch" edit={pitchEdit(L(1, 'pitch.start'))} />
+      <Readout ctx={ctx} x={518} base={96.5} mark="note" value={semitones(readNum(ctx, L(1, 'pitch.start'), 440))} label="Oscillator 2 pitch" edit={pitchEdit(L(1, 'pitch.start'))} />
       {sideColumn(1, 547.5)}
       {/* the foot, with its notched rim: phase modulation between the two */}
       <svg className="fp-osc-foot" viewBox="0 0 515 14" style={{ left: 0, top: 203, width: 515, height: 14 }} aria-hidden="true">
@@ -1414,7 +1528,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <path d="M0 1.5 H61.5 L77.5 13.5 H437.5 L453.5 1.5 H515" fill="none" style={{ stroke: 'var(--fp-line)' }} strokeWidth="1" />
       </svg>
       {read(ctx, L(0, 'source.pmFrom')) === undefined || read(ctx, L(0, 'source.pmFrom')) === 'internal' ? (
-        <Readout x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
+        <Readout ctx={ctx} x={70.5} base={289} mark="ratio" value={readNum(ctx, L(0, 'source.fmRatio'), 1)} label="Oscillator 1 modulator ratio" edit={ratioEdit(L(0, 'source.fmRatio'))} />
       ) : null}
       {pmWord(0, 100)}
       <Text x={203.8} y={280} u onClick={() => cycleWave(0)} label={`Oscillator 1 wave: ${WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(0, 'source.wave')))]}</Text>
@@ -1428,7 +1542,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={447.3} y={280} u onClick={() => cycleWave(1)} label={`Oscillator 2 wave: ${WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}`} hint="The oscillator's wave. Click to step to the next.">{WAVE_NAMES[waveOf(read(ctx, L(1, 'source.wave')))]}</Text>
       <Icon x={445.9} y={314.4} w={35} h={35}><WaveDisc wave={waveOf(read(ctx, L(1, 'source.wave')))} pulseWidth={readNum(ctx, L(1, 'source.pulseWidth'), 0.5)} /></Icon>
       {read(ctx, L(1, 'source.pmFrom')) === undefined || read(ctx, L(1, 'source.pmFrom')) === 'internal' ? (
-        <Readout x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
+        <Readout ctx={ctx} x={512.5} base={289} mark="ratio" value={readNum(ctx, L(1, 'source.fmRatio'), 1)} label="Oscillator 2 modulator ratio" edit={ratioEdit(L(1, 'source.fmRatio'))} />
       ) : null}
       {pmWord(1, 542)}
     </Panel>
@@ -1464,7 +1578,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <SlotMenu x={714} y={82} w={124} label={`Insert ${letter} kind`} value={inserted.kind} columns={4}
         hint="What this slot is. The picture beside each is that effect answering the same short burst."
         options={INSERT_MODELS.map((model) => ({ ...model, mark: <InsertMark kind={model.value} /> }))}
-        onPick={(next) => onChange(I('kind'), next)} />
+        onPick={(next) => {
+          onChange(I('kind'), next)
+          // Three of the seven rest at a value that is an exact bypass — drive 0, sixteen bits,
+          // no crush — so choosing them did nothing at all and the slot looked broken. A slot that
+          // has been that kind before keeps whatever it was left at; one that has not is given
+          // something to be heard as. Everything else is audible where it stands.
+          const wake = WOKEN[next]
+          if (wake && inserted[wake.field] === wake.silent) onChange(I(wake.field), wake.value)
+        }} />
       {inserted.kind === 'off' ? (<>
         {/* An empty slot is a wire, and the panel says so with the same picture the picker uses
             rather than leaving a hole where the controls of a kind would be. */}
@@ -1508,7 +1630,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Knob ctx={ctx} x={728} y={272} id={I('decay')} label="Ring" size="sm" />
             <Knob ctx={ctx} x={776} y={272} id={I('spread')} label="Spread" size="sm" />
             <Knob ctx={ctx} x={824} y={272} id={I('partials')} label="Parts" size="sm" />
-            <Readout x={741} base={322} mark="note" value={semitones(readNum(ctx, I('frequency'), 440))} label="Body pitch" edit={pitchEdit(I('frequency'))} />
+            <Readout ctx={ctx} x={741} base={322} mark="note" value={semitones(readNum(ctx, I('frequency'), 440))} label="Body pitch" edit={pitchEdit(I('frequency'))} />
           </>) : null}
         </>
       )}
@@ -1518,8 +1640,14 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
       <span role="tablist" aria-label="Filter slot" className="fp-tabs">
         {FILTER_LETTERS.map((name, index) => (
-          <Badge key={name} x={866 + index * 19} y={65} kind="circle" tab selected={filterSlot === index} onClick={() => setFilterSlot(index)}
-            label={`Filter ${name}`} hint={`Show filter ${name}. What the two do to each other is the word under them.`}>{name}</Badge>
+          <Badge key={name} x={866 + index * 19} y={65} kind="circle" tab selected={filterSlot === index}
+            // Clicking B while only one filter is running is a request for two of them: the tab
+            // used to open a panel of controls that changed nothing at all, which is the same
+            // thing as a broken filter as far as anybody turning the knobs can tell.
+            onClick={() => { setFilterSlot(index); if (index === 1 && routing === 'single') onChange(`layers[${f}].routing`, 'series') }}
+            label={`Filter ${name}`} hint={index === 1 && routing === 'single'
+              ? 'Show filter B, and put it after A — while the routing is One filter, B is not in the sound.'
+              : `Show filter ${name}. What the two do to each other is the word under them.`}>{name}</Badge>
         ))}
       </span>
       <SlotMenu x={905} y={58} w={100} label="Filter model" columns={3}
@@ -1534,7 +1662,8 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <Text x={900.5} y={167.5}>Env</Text>
       <Knob ctx={ctx} x={900.5} y={209.6} id={F('envAmount')} label="Env" />
       <Text x={972.4} y={168}>Balance</Text>
-      <Knob ctx={ctx} x={972.4} y={209.6} id={`layers[${f}].filterMix`} label="Balance" />
+      <Knob ctx={ctx} x={972.4} y={209.6} id={`layers[${f}].filterMix`} label="Balance"
+        idle={routing === 'parallel' ? undefined : 'nothing to balance until the two filters run side by side'} />
       <Text x={936.5} y={250} u onClick={() => onChange(`layers[${f}].routing`, ROUTINGS[(ROUTINGS.indexOf(routing) + 1) % ROUTINGS.length] ?? 'single')}
         label={`Filter routing: ${ROUTING_NAMES[routing] ?? 'One filter'}`}
         hint="What the two filters do to each other. One is A alone; B after A is one shape rather than two; both at once, balanced, is what makes vowels and phasing. Click to step to the next.">
@@ -1677,9 +1806,9 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             <Text x={203.3 + o} y={Y(5)} kind="title">Performer</Text>
             {/* the left column: how strong, how often, and whether at all */}
             <Text x={36.5 + o} y={Y(26)}>Level</Text>
-            <Knob ctx={ctx} x={36 + o} y={Y(64)} id={id('depth')} label="Level" tone="light" />
+            <Knob ctx={ctx} x={36 + o} y={Y(64)} id={id('depth')} label={`Performer ${index + 1} level`} tone="light" />
             <Text x={36.5 + o} y={Y(112)}>Rate</Text>
-            <Knob ctx={ctx} x={36 + o} y={Y(150)} id={id('rate')} label="Rate" />
+            <Knob ctx={ctx} x={36 + o} y={Y(150)} id={id('rate')} label={`Performer ${index + 1} rate`} />
             <Text x={36.5 + o} y={Y(186)} size={11} kind="dim">{rate.toFixed(2)} cycles</Text>
             <BoxMenu x={5 + o} y={Y(200)} w={62.5} text="Init" label={`Start performer ${index + 1} row ${scene + 1} from a shape`}
               hint="Start this row from a shape rather than from nothing, or copy it into another of the twelve.">
@@ -1705,7 +1834,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
               </DropdownMenu.Sub>
             </BoxMenu>
             <Box x={5 + o} y={Y(222)} w={62.5} selected={bipolar} pressed={bipolar} onClick={() => onChange(id('bipolar'), !bipolar)} label={`Performer ${index + 1} bipolar`} hint={bipolar ? 'Bipolar: half height is rest, the row swings both ways. Click for unipolar.' : 'Unipolar: the floor is rest, the row only pushes. Click for bipolar.'}>{bipolar ? 'Bi' : 'Uni'}</Box>
-            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
+            <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Performer ${index + 1} on`} hint={on ? 'This performer is running. Click to switch it off.' : 'This performer is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
             {/* the row, and how it is read */}
             <span role="radiogroup" aria-label={`Performer ${index + 1} shape`}>
               <Text x={172 + o} y={Y(30)} u={shape === 'step'} checked={shape === 'step'} onClick={() => pickShape('step')} hint="Each step held flat until the next.">Step</Text>
@@ -1740,10 +1869,10 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Text x={209} y={413.5}>Spread</Text>
           <Text x={257.5} y={413.5}>Sustain</Text>
           <Text x={370.5} y={413}>Env Level</Text>
-          <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label="Shape" size="sm" />
+          <Knob ctx={ctx} x={71.7} y={451.6} id={L(f, 'amp.curve')} label={`Layer ${f + 1} envelope shape`} size="sm" />
           <Knob ctx={ctx} x={119.6} y={450.9} id={L(f, 'pan')} label="Pan" size="sm" />
           <Knob ctx={ctx} x={208.5} y={451.7} id={L(f, 'spread')} label="Spread" size="sm" />
-          <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label="Sustain" size="sm" />
+          <Knob ctx={ctx} x={256.4} y={450.8} id={L(f, 'amp.sustain')} label={`Layer ${f + 1} sustain`} size="sm" />
           <Knob ctx={ctx} x={369.1} y={450.8} id={L(f, 'gain')} label="Env Level" tone="light" />
           <Bracket x0={40} x1={151} top={486} mid={498.5} tip={512} width={8} />
           <Bracket x0={177.5} x1={287.5} top={486} mid={498.5} tip={512} width={11.5} />
@@ -1752,11 +1881,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
           <Text x={368.6} y={507.5}>R</Text>
           <Text x={27.6} y={522}>Delay</Text>
           <Text x={164.8} y={522}>Hold</Text>
-          <Knob ctx={ctx} x={27.8} y={559.1} id={L(f, 'offset')} label="Delay" size="sm" />
-          <Knob ctx={ctx} x={96} y={551.4} id={L(f, 'amp.attack')} label="A" />
-          <Knob ctx={ctx} x={164.6} y={559.2} id={L(f, 'amp.hold')} label="Hold" size="sm" />
-          <Knob ctx={ctx} x={232.6} y={552} id={L(f, 'amp.decay')} label="D" />
-          <Knob ctx={ctx} x={369.7} y={551.7} id={L(f, 'amp.release')} label="R" />
+          <Knob ctx={ctx} x={27.8} y={559.1} id={L(f, 'offset')} label={`Layer ${f + 1} delay`} size="sm" />
+          <Knob ctx={ctx} x={96} y={551.4} id={L(f, 'amp.attack')} label={`Layer ${f + 1} attack`} />
+          <Knob ctx={ctx} x={164.6} y={559.2} id={L(f, 'amp.hold')} label={`Layer ${f + 1} hold`} size="sm" />
+          <Knob ctx={ctx} x={232.6} y={552} id={L(f, 'amp.decay')} label={`Layer ${f + 1} decay`} />
+          <Knob ctx={ctx} x={369.7} y={551.7} id={L(f, 'amp.release')} label={`Layer ${f + 1} release`} />
           <Line x={0} y={583.5} w={413.5} h={1} colour="var(--fp-line)" />
           <Text x={40.4} y={592} u>Gate</Text>
           <Block className="fp-plot" x={82} y={595.5} w={318} h={62} hint="The layer's level over time. Drag the handles: attack, hold, decay and sustain, release.">
@@ -1794,19 +1923,19 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                   <Text x={95.65 + o} y={Y(29.5)}>Shape</Text>
                   <Text x={232.45 + o} y={Y(29.5)}>Sustain</Text>
                   <Text x={370.5 + o} y={Y(29)}>Env Level</Text>
-                  <Knob ctx={ctx} x={95.65 + o} y={Y(67.6)} id={id('curve')} label="Shape" size="sm" />
-                  <Knob ctx={ctx} x={232.45 + o} y={Y(66.8)} id={id('sustain')} label="Sustain" size="sm" />
-                  <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label="Env Level" tone="light" dots />
+                  <Knob ctx={ctx} x={95.65 + o} y={Y(67.6)} id={id('curve')} label={`Modulator ${index + 2} shape amount`} size="sm" />
+                  <Knob ctx={ctx} x={232.45 + o} y={Y(66.8)} id={id('sustain')} label={`Modulator ${index + 2} sustain`} size="sm" />
+                  <Knob ctx={ctx} x={369.1 + o} y={Y(66.8)} id={id('depth')} label={`Modulator ${index + 2} level`} tone="light" dots />
                   <Text x={96 + o} y={Y(116)}>A</Text>
                   <Text x={232.4 + o} y={Y(115.5)}>D</Text>
                   <Text x={368.6 + o} y={Y(115.5)}>R</Text>
                   <Text x={27.6 + o} y={Y(126)}>Delay</Text>
                   <Text x={164.8 + o} y={Y(126)}>Hold</Text>
-                  <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label="Delay" size="sm" />
-                  <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label="A" />
-                  <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label="Hold" size="sm" />
-                  <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label="D" />
-                  <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label="R" />
+                  <Knob ctx={ctx} x={27.8 + o} y={Y(163.1)} id={id('delay')} label={`Modulator ${index + 2} delay`} size="sm" />
+                  <Knob ctx={ctx} x={96 + o} y={Y(155.4)} id={id('attack')} label={`Modulator ${index + 2} attack`} />
+                  <Knob ctx={ctx} x={164.6 + o} y={Y(163.2)} id={id('hold')} label={`Modulator ${index + 2} hold`} size="sm" />
+                  <Knob ctx={ctx} x={232.6 + o} y={Y(156)} id={id('decay')} label={`Modulator ${index + 2} decay`} />
+                  <Knob ctx={ctx} x={369.7 + o} y={Y(155.7)} id={id('release')} label={`Modulator ${index + 2} release`} />
                   <Line x={px} y={Y(199.5)} w={417.5} h={1} colour="var(--fp-line)" />
                   <Text x={38.4 + o} y={Y(208)} u>Target</Text>
                   <Block className="fp-target" x={10 + o} y={Y(225)} w={105} h={14.5} hint="What this envelope moves. Pick a target here, or drag the handle above onto a control.">
@@ -1816,25 +1945,25 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                   </Block>
                   <Box x={10 + o} y={Y(246)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This envelope is running. Click to switch it off.' : 'This envelope is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
                   <Block className="fp-plot" x={124 + o} y={Y(211.5)} w={276} h={62} off={!on} hint="This envelope over time. Drag the handles to shape it.">
-                    <AudioEnvelope layer={-1} prefix={`envelopes[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
+                    <AudioEnvelope layer={-1} prefix={`mods[${index}]`} offsetId={id('delay')} name={`envelope ${index + 2}`} values={values} duration={duration} onChange={onChange} height={62} pad={1} {...gesture} />
                   </Block>
               </>
             ) : (
               <>
                   {/* the left column: how fast, and whether at all */}
                   <Text x={36.5 + o} y={Y(104)}>Rate</Text>
-                  <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label="Rate" />
+                  <Knob ctx={ctx} x={36 + o} y={Y(142)} id={id('rate')} label={`Modulator ${index + 2} rate`} />
                   <Text x={36.5 + o} y={Y(178)} size={11} kind="dim">{cycles.toFixed(1)} cycles</Text>
                   <Box x={5 + o} y={Y(252)} w={62.5} selected={on} pressed={on} onClick={() => onChange(id('enabled'), !on)} label={`Modulator ${index + 2} on`} hint={on ? 'This LFO is running. Click to switch it off.' : 'This LFO is off. Click to switch it on; dropping it on a control switches it on too.'}>On</Box>
                   {/* the wheel */}
                   <Text x={193 + o} y={Y(30)}>Shape</Text>
                   <ShapeWheel x={193 + o} y={Y(152)} value={typeof shape === 'string' ? shape : 'sine'} label={`Modulator ${index + 2} shape`} onPick={(next) => onChange(id('shape'), next)} />
-                  <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label="Shape" options={LFO_SHAPES} size="mid" />
+                  <OptionKnob ctx={ctx} x={193 + o} y={Y(152)} id={id('shape')} label={`Modulator ${index + 2} shape`} options={LFO_SHAPES} size="mid" />
                   {/* the right column: how much, and from where in the cycle */}
                   <Text x={351.5 + o} y={Y(26)}>LFO Level</Text>
-                  <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label="LFO Level" tone="light" />
+                  <Knob ctx={ctx} x={351.5 + o} y={Y(64)} id={id('depth')} label={`Modulator ${index + 2} level`} tone="light" />
                   <Text x={351.5 + o} y={Y(172)}>Phase</Text>
-                  <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label="Phase" size="sm" />
+                  <Knob ctx={ctx} x={351.5 + o} y={Y(196)} id={id('phase')} label={`Modulator ${index + 2} phase`} size="sm" />
                   {/* where it goes, for a keyboard; the pointer drops the handle from the routing bar */}
                   <Block className="fp-target" x={140.5 + o} y={Y(269)} w={105} h={14.5} hint="What this LFO moves. Pick a target here, or drag the handle above onto a control.">
                     {target ? (
@@ -1855,6 +1984,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}
         onPointerOver={hintFrom} onPointerOut={(event) => { const next = hintOf(event.relatedTarget); if (next !== hinted) setHinted(next) }}
         onPointerDown={() => setHinted(null)} onFocus={hintFrom} onBlur={() => setHinted(null)}
+        onKeyDown={dropCarried}
         onContextMenu={askRouting}>
         <Hint target={hinted} />
         <Routed at={routed} mods={routed ? modsOf(ctx, routed.target) : []}
@@ -1878,14 +2008,15 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
                     return (
                       <span key={index} className="fp-macro" data-wired={macro.id ? '' : undefined}>
                       <span className="fp-macro__box">
-                        <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={-1}
-                          aria-label={`Drag macro ${index + 1} onto a control to assign it${macro.id ? `; double-click to free it from ${macro.label}` : ''}`}
-                          data-hint={macro.id ? `Macro ${index + 1} turns ${macro.label}. Drag the number onto another control to move it; double-click to free it.` : `Drag this number onto any knob or fader: macro ${index + 1} will turn it, and the patch exposes it.`}
+                        <span className="fp-text fp-macro__grab" data-align="center" data-kind="digit" role="button" tabIndex={0}
+                          aria-label={`Macro ${index + 1}${macro.id ? `, turning ${macro.label}` : ', free'}. Enter picks it up, Enter on a control drops it${macro.id ? ', Delete frees it' : ''}`}
+                          data-hint={macro.id ? `Macro ${index + 1} turns ${macro.label}. Drag the number onto another control to move it, or press Enter to pick it up; double-click or Delete frees it.` : `Drag this number onto any knob or fader, or press Enter and then Enter again on the control: macro ${index + 1} will turn it, and the patch exposes it.`}
                           data-held={assigning?.kind === 'm' && assigning.macro === index ? '' : undefined}
                           style={{ left: 40.5 - 28.3, top: 19.5 - 13 * CAP }}
                           onPointerDown={pickUp({ id: `M${index + 1}`, kind: 'm', macro: index })}
                           onPointerMove={assigning?.kind === 'm' && assigning.macro === index ? follow : undefined}
                           onPointerUp={putDown} onPointerCancel={() => setAssigning(null)}
+                          onKeyDown={carry(index)}
                           onDoubleClick={() => unbindMacro(index)}>
                           {index + 1}
                         </span>
@@ -1939,4 +2070,4 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       </div>
     </div>
   )
-}
+})

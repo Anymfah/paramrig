@@ -346,3 +346,106 @@ describe('modulation envelopes', () => {
     expect(nowhere).toEqual(still)
   })
 })
+
+/**
+ * The things the engine was found doing that it should not have been.
+ *
+ * Each of these is a measurement of a bug that shipped: a control that moved the level instead of
+ * the image, an image that leaned to one side, a modulator whose position retuned its carrier, a
+ * layer that opened on a step. They are here so that the fix is not one somebody can undo by
+ * accident, since none of them fails any of the sweeps above.
+ */
+describe('the shape of a layer in the field', () => {
+  const rms = (samples: Float32Array) => Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / Math.max(1, samples.length))
+  const held = (over: object = {}, mods: object[] = []) => makePatch(
+    0.3,
+    [makeLayer({
+      gain: 1,
+      source: { kind: 'tone', wave: 'sine' },
+      pitch: { start: 200 },
+      filterA: { kind: 'off' },
+      amp: { attack: 0.001, hold: 0.25, decay: 0.01, sustain: 1, release: 0.01, curve: 1 },
+      ...over,
+    }), silentLayer(), silentLayer()],
+    { reverbMix: 0, delayMix: 0, flangerMix: 0 },
+    { gain: 1, limiter: 0, fadeOut: 0.001 },
+    1,
+    mods,
+  )
+  const panLfo = (depth: number) => [{ ...makeMod(), kind: 'lfo' as const, enabled: true, shape: 'sine' as const, rate: 4, depth, target: 'layers[0].pan' }]
+
+  it('turns a layer without changing how loud it is, wherever it already sits', () => {
+    for (const pan of [0, 0.5, 1]) {
+      const flat = renderPatch(held({ pan }), SAMPLE_RATE)
+      const moved = renderPatch(held({ pan }, panLfo(1)), SAMPLE_RATE)
+      const before = Math.hypot(rms(flat.left), rms(flat.right))
+      const after = Math.hypot(rms(moved.left), rms(moved.right))
+      expect(after / before, `pan ${pan}`).toBeCloseTo(1, 2)
+    }
+  })
+
+  it('lets a hard-panned layer cross the field, which is what the depth says it does', () => {
+    const still = renderPatch(held({ pan: 1 }), SAMPLE_RATE)
+    const swept = renderPatch(held({ pan: 1 }, panLfo(1)), SAMPLE_RATE)
+    expect(rms(still.left)).toBeCloseTo(0, 5)
+    expect(rms(swept.left)).toBeGreaterThan(rms(swept.right) * 0.2)
+  })
+
+  it('keeps a spread noise layer in the middle at every width', () => {
+    const noise = (spread: number) => renderPatch(held({ spread, source: { kind: 'noise', colour: 'white' } }), SAMPLE_RATE)
+    for (const spread of [0, 0.25, 0.5, 0.75, 1]) {
+      const out = noise(spread)
+      expect(rms(out.right) / rms(out.left), `spread ${spread}`).toBeCloseTo(1, 1)
+    }
+  })
+
+  it('hands a phase modulator on at full amplitude, whatever that layer is panned to', () => {
+    const carrier = (pan: number) => renderPatch(makePatch(
+      0.3,
+      [
+        makeLayer({ gain: 0, pan, source: { kind: 'tone', wave: 'sine' }, pitch: { start: 200 }, filterA: { kind: 'off' }, amp: { attack: 0.001, hold: 0.25, decay: 0.01, sustain: 1, release: 0.01, curve: 1 } }),
+        makeLayer({ gain: 1, source: { kind: 'tone', wave: 'sine', pmFrom: 'layer0', fmIndex: 6, fmFall: 0 }, pitch: { start: 200 }, filterA: { kind: 'off' }, amp: { attack: 0.001, hold: 0.25, decay: 0.01, sustain: 1, release: 0.01, curve: 1 } }),
+        silentLayer(),
+      ],
+      { reverbMix: 0, delayMix: 0, flangerMix: 0 },
+      { gain: 1, limiter: 0, fadeOut: 0.001 },
+      1,
+    ), SAMPLE_RATE)
+    // A layer at gain zero is inaudible; moving it should not be able to change the sound at all.
+    expect(Array.from(carrier(1).left)).toEqual(Array.from(carrier(0).left))
+    expect(Array.from(carrier(-0.5).left)).toEqual(Array.from(carrier(0).left))
+  })
+
+  it('opens a delayed layer on a ramp rather than on a step', () => {
+    const late = renderPatch(makePatch(
+      0.5,
+      [makeLayer({
+        gain: 1,
+        offset: 0.25,
+        source: { kind: 'tone', wave: 'square' },
+        pitch: { start: 60 },
+        filterA: { kind: 'off' },
+        amp: { attack: 0, hold: 0.1, decay: 0.01, sustain: 1, release: 0.01, curve: 1 },
+      }), silentLayer(), silentLayer()],
+      { reverbMix: 0, delayMix: 0, flangerMix: 0 },
+      { gain: 1, limiter: 0, fadeOut: 0.001 },
+      1,
+    ), SAMPLE_RATE)
+    const at = Math.round(0.25 * SAMPLE_RATE)
+    let step = 0
+    for (let i = at - 4; i < at + 4; i += 1) step = Math.max(step, Math.abs((late.left[i] ?? 0) - (late.left[i - 1] ?? 0)))
+    expect(step).toBeLessThan(0.05)
+  })
+
+  it('hears which side of the amplifier an insert stands on', () => {
+    // A strike three milliseconds long, so what is left afterwards is the body and nothing else.
+    const struck = { gain: 0.4, amp: { attack: 0.0005, hold: 0.002, decay: 0.008, sustain: 0, release: 0.004, curve: 2 } }
+    const body = { kind: 'body' as const, amount: 1, frequency: 900, spread: 0.4, decay: 0.25, partials: 3 }
+    const before = render(held({ ...struck, insertA: { ...body, place: 'pre' as const } }))
+    const after = render(held({ ...struck, insertA: { ...body, place: 'post' as const } }))
+    expect(Array.from(before)).not.toEqual(Array.from(after))
+    // A body after the amplifier rings past the envelope; before it, the envelope cuts it off.
+    const tail = (samples: Float32Array) => peak(samples.slice(Math.round(0.1 * SAMPLE_RATE)))
+    expect(tail(after)).toBeGreaterThan(tail(before) * 4)
+  })
+})

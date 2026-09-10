@@ -20,12 +20,17 @@ export type Transport = {
   stop: () => void
 }
 
-export function useTransport(samples: Stereo, sampleRate: number): Transport {
+export function useTransport(samples: Stereo, sampleRate: number, autoPlay = false): Transport {
   const [playing, setPlaying] = useState(false)
   const [head, setHead] = useState<number | null>(null)
   const [silent, setSilent] = useState(false)
   const frameRef = useRef(0)
+  const first = useRef(true)
   const seconds = samples.left.length / Math.max(1, sampleRate)
+  // Read at the moment a buffer arrives, never depended on: turning Auto on is not a request to
+  // hear the sound that is already on screen, it is a request about the next change.
+  const wanted = useRef(autoPlay)
+  wanted.current = autoPlay
 
   const stop = useCallback(() => {
     cancelAnimationFrame(frameRef.current)
@@ -56,8 +61,26 @@ export function useTransport(samples: Stereo, sampleRate: number): Transport {
     frameRef.current = requestAnimationFrame(step)
   }, [samples, sampleRate, seconds])
 
-  // A new buffer is a different sound; whatever was playing is the old one.
-  useEffect(() => { stop() }, [samples, stop])
+  /**
+   * A new buffer is a different sound; whatever was playing is the old one — and if Auto is on,
+   * the new one is what you asked to hear.
+   *
+   * Both halves belong to one effect. They used to be split, the stop here and the play in the
+   * transport bar below, and React runs a child's effects before its parent's: every auto-play
+   * started a sound and had it stopped five milliseconds later by this line. Auto did nothing at
+   * all, silently, for as long as it existed.
+   *
+   * Not on arrival: a workspace that makes noise the moment it opens is a workspace people turn
+   * off. Auto answers a change, and there has not been one yet.
+   */
+  useEffect(() => {
+    stop()
+    if (first.current) {
+      first.current = false
+      return
+    }
+    if (wanted.current) play()
+  }, [samples, stop, play])
   useEffect(() => stop, [stop])
 
   return { playing, head, silent, play, stop }

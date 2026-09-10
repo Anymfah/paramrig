@@ -1,4 +1,4 @@
-import { AUDIO_FIELDS, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, FX_SLOTS, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { makeLayer, makePatch, silentLayer } from './patch.ts'
 import { mulberry32 } from './dsp/rng.ts'
 import { EASE_OUT, LINEAR } from './dsp/curve.ts'
@@ -29,25 +29,45 @@ const chance = (random: () => number, odds: number) => random() < odds
 const WAVES: WaveShape[] = ['sine', 'triangle', 'saw', 'square']
 const COLOURS: NoiseColour[] = ['white', 'pink', 'metallic']
 
+/** The loudest thing in a patch, as it will actually be heard. */
+function peakOf(patch: AudioPatch, sampleRate: number): number {
+  const heard = monoSum(renderPatch(patch, sampleRate))
+  let peak = 0
+  for (let i = 0; i < heard.length; i += 1) {
+    const size = Math.abs(heard[i] ?? 0)
+    if (size > peak) peak = size
+  }
+  return peak
+}
+
 /**
  * What a drawn patch actually comes out at, and the make-up that lands it where it belongs.
  *
  * The dice cannot know how loud what they drew will be: a lone noise layer behind a four-pole
  * filter is twenty-five decibels quieter than the same draw with a tone in front of it, and a
  * button that hands back silence one press in a hundred is a button people stop trusting. So the
- * patch is rendered once, at half the rate — a quarter of the work, and every peak that matters
- * to a level is under eleven kilohertz — and the master gain is moved to put the result where a
- * sound should sit. It is the one place in this file that listens to what it made.
+ * patch is rendered once and the master gain is moved to put the result where a sound should sit.
+ * It is the one place in this file that listens to what it made.
+ *
+ * Two things it gets right that are easy to get wrong.
+ *
+ * It listens at the rate the sound will be played at. Half the rate was a quarter of the work and
+ * looked safe — but a resonant filter or a ring modulator sitting above eleven kilohertz is not
+ * there at all in a 22 050 render, and that is exactly what a nudge to a resonance produces.
+ *
+ * And it listens with the master out of the way — limiter off, and the gain turned right down.
+ * What leaves the master is limited and then clamped, so at any ordinary gain it reads 1.0 whether
+ * the sound is a hair over or ten times over: a make-up worked out from that number can only ever
+ * take a quarter off, and a draw that arrived four times too loud came back three times too loud.
+ * Rendered a good six octaves below the clamp, nothing touches the signal on its way out, and the
+ * peak divided back up is the true one. Everything after the gain is linear, so it is exact.
  */
-function fit(patch: AudioPatch): AudioPatch {
-  const heard = monoSum(renderPatch(patch, 22050))
-  let peak = 0
-  for (let i = 0; i < heard.length; i += 1) {
-    const size = Math.abs(heard[i] ?? 0)
-    if (size > peak) peak = size
-  }
-  if (peak <= 1e-6) return patch
-  const gain = Math.min(3, Math.max(0.05, (patch.master.gain * 0.75) / peak))
+const PROBE_GAIN = 1 / 64
+
+function fit(patch: AudioPatch, sampleRate = 44100, target = 0.75): AudioPatch {
+  const raw = peakOf({ ...patch, master: { ...patch.master, gain: PROBE_GAIN, limiter: 0 } }, sampleRate) / PROBE_GAIN
+  if (raw <= 1e-6) return patch
+  const gain = Math.min(3, Math.max(0.05, target / raw))
   return { ...patch, master: { ...patch.master, gain } }
 }
 
@@ -141,7 +161,7 @@ function bodyLayer(random: () => number): Layer {
   })
 }
 
-export function randomPatch(seed: number): AudioPatch {
+export function randomPatch(seed: number, sampleRate = 44100): AudioPatch {
   const random = mulberry32(seed)
   const duration = logBetween(random, 0.09, 1.1)
   return fit(makePatch(
@@ -167,12 +187,21 @@ export function randomPatch(seed: number): AudioPatch {
     // everything it touches; the limiter keeps a dense one from going over.
     { gain: 1.6, limiter: 0.8, fadeOut: 0.01 },
     Math.floor(random() * 9999),
-  ))
+  ), sampleRate)
 }
 
 type Branch = { table: Record<string, FieldSpec>; source: Record<string, unknown> }
 
-/** Every field of the patch, paired with the object holding it, so a walk can write in place. */
+/**
+ * Every field a variation may touch, paired with the object holding it, so a walk can write in
+ * place.
+ *
+ * The patch's own three are not here on purpose. `duration` is the length of the sound rather than
+ * a quality of it, and it is the one field a repeated nudge destroys: a random walk inside 0.02
+ * to 4 seconds is a walk towards the floor, so five presses of Vary turned a half-second sound
+ * into a click. `seed` re-rolls every jitter at once, which is a different sound and is what
+ * Randomize is for, and `scene` chooses which pattern is playing, not how it sounds.
+ */
 function branches(patch: AudioPatch): Branch[] {
   const layers = patch.layers.flatMap((layer) =>
     (Object.keys(LAYER_SECTIONS) as LayerSection[]).map((section) => ({
@@ -181,8 +210,15 @@ function branches(patch: AudioPatch): Branch[] {
     })),
   )
   return [
-    { table: AUDIO_FIELDS.patch, source: patch as unknown as Record<string, unknown> },
     ...layers,
+    // What moves the sound moves with it: the depths and rates of the modulators, and the mix and
+    // time of every master effect. Without these a variation only ever nudged the static half of
+    // a patch, and a sound whose character is its movement came back unchanged.
+    ...patch.mods.map((mod) => ({ table: AUDIO_FIELDS.mod, source: mod as unknown as Record<string, unknown> })),
+    ...FX_SLOTS.map((slot) => ({
+      table: AUDIO_FIELDS.fxSlot,
+      source: patch.fx[slot] as unknown as Record<string, unknown>,
+    })),
     { table: AUDIO_FIELDS.fx, source: patch.fx as unknown as Record<string, unknown> },
     { table: AUDIO_FIELDS.master, source: patch.master as unknown as Record<string, unknown> },
   ]
@@ -194,7 +230,7 @@ function branches(patch: AudioPatch): Branch[] {
  * and options are left alone: flipping a layer off or a filter to another kind is not a variation
  * of a sound, it is a different sound, and that is what Randomize is for.
  */
-export function mutatePatch(patch: AudioPatch, seed: number, amount = 0.12): AudioPatch {
+export function mutatePatch(patch: AudioPatch, seed: number, amount = 0.12, sampleRate = 44100): AudioPatch {
   const random = mulberry32(seed)
   const next = structuredClone(patch)
   for (const { table, source } of branches(next)) {
@@ -209,5 +245,12 @@ export function mutatePatch(patch: AudioPatch, seed: number, amount = 0.12): Aud
       source[field] = spec.step && spec.step >= 1 ? Math.round(moved) : moved
     }
   }
-  return next
+  // Levelled like a drawn patch, and for the same reason: the dice do not know what they made. A
+  // nudge to a resonance or a drive changes the peak by more than the make-up gain allows for, and
+  // a Vary that hands back a clipped sound one press in ten is a button people stop pressing.
+  //
+  // Levelled to where the sound it came from sat, not to a house level: a variation of something
+  // deliberately quiet is a quiet sound, and arriving at three quarters of full scale would make
+  // the A/B comparison this button exists for a comparison of loudness.
+  return fit(next, sampleRate, Math.min(0.9, Math.max(0.1, peakOf(patch, sampleRate))))
 }

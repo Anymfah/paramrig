@@ -21,8 +21,18 @@ export function saturate(x: number, drive: number): number {
   return Math.tanh(x * k) / Math.tanh(k)
 }
 
-/** The other half: fewer bits, then fewer samples. */
-export function crushSample(state: ShaperState, bitDepth: number, crush: number, input: number): number {
+/**
+ * The other half: fewer bits, then fewer samples.
+ *
+ * The hold is a *time*, taken from the rate, not a count of samples. It used to be a count, and a
+ * count is not a sound: the editor renders at whatever rate the machine's audio device runs at, so
+ * the same patch held for 63 samples at 44 100 and for 63 samples at 48 000 — a rate a semitone
+ * and a half apart, on the same knob, for the reason that the machine was a Mac. The reference is
+ * 44 100, so a patch made before this reads exactly as it did.
+ */
+const CRUSH_REFERENCE_RATE = 44100
+
+export function crushSample(state: ShaperState, bitDepth: number, crush: number, input: number, sampleRate = CRUSH_REFERENCE_RATE): number {
   let value = input
   const bits = Math.min(16, Math.max(1, Math.round(bitDepth)))
   if (bits < 16) {
@@ -31,7 +41,7 @@ export function crushSample(state: ShaperState, bitDepth: number, crush: number,
   }
   const held = Math.min(1, Math.max(0, crush))
   if (held > 0) {
-    const hold = 1 + Math.round(held * 63)
+    const hold = Math.max(1, Math.round((1 + held * 63) * (sampleRate / CRUSH_REFERENCE_RATE)))
     if (state.countdown <= 0) {
       state.held = value
       state.countdown = hold

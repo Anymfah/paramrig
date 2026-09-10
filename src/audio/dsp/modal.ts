@@ -72,8 +72,15 @@ function peakGain(w: number, r: number): number {
   return 1 / Math.max(1e-12, Math.sqrt(re * re + im * im))
 }
 
-/** Eight kilohertz is the frequency whose level the normalisation leaves alone. */
-const REFERENCE_W = (2 * Math.PI * 8000) / 44100
+/**
+ * Eight kilohertz is the frequency whose level the normalisation leaves alone.
+ *
+ * In radians per sample, so it has to be worked out at the rate in hand. It used to be a constant
+ * with 44 100 baked into it, which made the untouched frequency eight and a half kilohertz on a
+ * machine running at 48 000 — the same patch, normalised against a different note, for no reason
+ * anybody could have found from the plate.
+ */
+const REFERENCE_HZ = 8000
 
 /**
  * What a partial rings by, computed once per tuning.
@@ -106,7 +113,7 @@ function tune(state: ModalState, index: number, frequency: number, spread: numbe
   const w = (2 * Math.PI * partial) / sampleRate
   state.feedback = 2 * r * Math.cos(w)
   state.damping = r * r
-  state.gain = peakGain(REFERENCE_W, r) / peakGain(w, r)
+  state.gain = peakGain((2 * Math.PI * REFERENCE_HZ) / sampleRate, r) / peakGain(w, r)
 }
 
 export function modalSample(

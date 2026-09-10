@@ -13,8 +13,8 @@ import type { FilterKind } from '../types.ts'
 /**
  * What a filter remembers.
  *
- * The state-variable models need two numbers; the ladder needs four, one per pole, plus what it
- * fed back; the comb needs a buffer as long as its lowest note. They share one struct rather than
+ * The state-variable models need two numbers; the ladder needs four, one per pole; the comb needs
+ * a buffer as long as its lowest note. They share one struct rather than
  * a union because the renderer makes these once per layer per channel and never looks inside
  * them, and a union would make every call site ask which shape it holds.
  */
@@ -22,7 +22,6 @@ export type FilterState = {
   ic1: number
   ic2: number
   poles: Float64Array
-  fed: number
   line: Float32Array | null
   at: number
 }
@@ -37,7 +36,6 @@ export function createFilter(kind: FilterKind = 'off', sampleRate = 44100): Filt
     // Four for the ladder's poles, six more for the formant's three band-passes: two integrators
     // apiece, and a filter that is one of these is never the other.
     poles: new Float64Array(10),
-    fed: 0,
     line: kind === 'comb' ? new Float32Array(Math.ceil(sampleRate / LOWEST) + 2) : null,
     at: 0,
   }
@@ -151,16 +149,32 @@ export function filterSample(
   const g = Math.tan((Math.PI * fc) / sampleRate)
 
   /*
-   * Four poles and a feedback path, which is the shape every ladder has had since 1965. The
-   * feedback is a sample old and soft-clipped: resolving it in the moment as well would be more
-   * faithful and would also let a swept cutoff at high resonance run away, and this is a filter in
-   * a generator, not a filter someone is playing.
+   * Four poles and a feedback path, which is the shape every ladder has had since 1965 — and the
+   * feedback is resolved in the moment, like the poles it runs around.
+   *
+   * It used to be a sample old and soft-clipped, on the reasoning that a delayed loop is the safe
+   * one. It is the opposite. A sample of delay is phase lag in proportion to the cutoff, so the
+   * loop reaches half a turn far below the gain this filter was designed against and the thing
+   * breaks into a whistle: at full resonance anything above 762 Hz oscillated forever, and the
+   * tanh only decided how loud the whistle was. Since the threshold moves with the sample rate,
+   * the randomiser's half-rate measurement and the library's 16 kHz thumbnails saw a self-
+   * oscillation the real render did not — a drawn sound was levelled against a phantom peak twice
+   * its own and came out six decibels quiet.
+   *
+   * Each pole is a one-pole with instantaneous gain G = g/(1+g), so the cascade has a closed form:
+   * with S the four poles' zero-input contribution, y = (G⁴·input + S)/(1 + k·G⁴). That is stable
+   * for every k below four, and the resonance stops at 3.6 — so the note above about a filter
+   * that never rings on its own is true now, rather than being what the code was aiming at.
    */
   if (kind === 'ladder') {
     const amount = Math.min(1, Math.max(0, resonance)) * 3.6
-    const u = input - amount * Math.tanh(state.fed)
+    const gain = g / (1 + g)
+    const squared = gain * gain
+    const quartic = squared * squared
+    const zeroIn = (1 - gain) * (squared * gain * (state.poles[0] ?? 0) + squared * (state.poles[1] ?? 0) + gain * (state.poles[2] ?? 0) + (state.poles[3] ?? 0))
+    const resolved = (quartic * input + zeroIn) / (1 + amount * quartic)
+    const u = input - amount * resolved
     const y = pole(state, 3, pole(state, 2, pole(state, 1, pole(state, 0, u, g), g), g), g)
-    state.fed = y
     // Feedback takes the bottom out as it goes up — nine decibels of it at half resonance, which
     // is the ladder everyone knows and also a filter that goes quiet when you turn a knob that
     // says nothing about level. Put back what the feedback took.

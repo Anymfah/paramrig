@@ -93,10 +93,26 @@ describe('a modulated render', () => {
     expect(Array.from(render(idle))).toEqual(Array.from(render(held())))
   })
 
+  /** The held part of the sound, with the envelope's own attack and release left out of it. */
+  const sustained = (samples: Float32Array) =>
+    samples.slice(Math.round(samples.length * 0.15), Math.round(samples.length * 0.7))
+
   it('moves the level when it is pointed at a gain', () => {
-    const plain = wander(render(held()))
-    const shaken = wander(render(held({}, [lfo({ rate: 8, depth: 0.8 })])))
+    // Measured across the held part rather than the whole sound. The envelope moves the level too,
+    // and by more than a tremolo does — this used to compare the whole buffer, and passed only
+    // because a layer with no gain modulator was rendering six decibels down, which made the
+    // modulated one look louder. What a gain modulator adds is movement where there was none.
+    const plain = wander(sustained(render(held())))
+    const shaken = wander(sustained(render(held({}, [lfo({ rate: 8, depth: 0.8 })]))))
     expect(shaken).toBeGreaterThan(plain * 1.5)
+  })
+
+  it('only ever ducks, so pointing something at a gain cannot make a layer louder', () => {
+    const loudest = (samples: Float32Array) => samples.reduce((most, value) => Math.max(most, Math.abs(value)), 0)
+    const plain = loudest(render(held()))
+    for (const depth of [0.2, 0.5, 0.8, 1]) {
+      expect(loudest(render(held({}, [lfo({ rate: 8, depth })]))), `depth ${depth}`).toBeLessThanOrEqual(plain)
+    }
   })
 
   it('changes the sound when it is pointed at a cutoff', () => {

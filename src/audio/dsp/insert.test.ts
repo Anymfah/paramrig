@@ -9,7 +9,7 @@ const slot = (over: Partial<InsertSlot> = {}): InsertSlot => ({
   kind: 'off', place: 'pre', amount: 1,
   drive: 0, bitDepth: 16, crush: 0, ratio: 2,
   frequency: 900, spread: 0.7, decay: 0.25, partials: 4,
-  time: 8, feedback: 0.5,
+  time: 0.008, feedback: 0.5,
   ...over,
 })
 
@@ -101,7 +101,7 @@ describe('an insert slot', () => {
   })
 
   it('repeats what it was given a moment later, which a comb is for', () => {
-    const held = slot({ kind: 'comb', time: 5, feedback: 0.8, amount: 1 })
+    const held = slot({ kind: 'comb', time: 0.005, feedback: 0.8, amount: 1 })
     const state = createInsert(held, RATE)
     const delay = Math.round(0.005 * RATE)
     const out: number[] = []
@@ -122,5 +122,64 @@ describe('an insert slot', () => {
         expect(Math.abs(value), kind).toBeLessThan(12)
       }
     }
+  })
+})
+
+/** The three units that were quietly doing something other than what their names say. */
+describe('the units, at their limits', () => {
+  it('keeps folding above the rails instead of turning into a clipper', () => {
+    const held = slot({ kind: 'fold', amount: 1, drive: 1 })
+    const state = createInsert(held, RATE)
+    const at = (value: number) => insertSample(state, held, value, TONE, RATE)
+    // Sixteen times the input reaches the folder, so anything over about a sixteenth is folded
+    // several times over — the loop that used to be here gave up after eight and clamped, and
+    // every one of these came back at exactly one.
+    const hot = [1.1, 1.2, 1.5, 2, 5].map(at)
+    expect(hot.every((value) => Math.abs(value) < 0.9999), hot.join(' ')).toBe(true)
+    expect(new Set(hot.map((value) => value.toFixed(4))).size).toBeGreaterThan(1)
+    // And it is still the same fold where the loop did terminate: a triangle, exact at its corners.
+    expect(at(0)).toBeCloseTo(0, 6)
+    expect(at(1 / 16)).toBeCloseTo(1, 6)
+    expect(at(2 / 16)).toBeCloseTo(0, 6)
+    expect(at(3 / 16)).toBeCloseTo(-1, 6)
+  })
+
+  it('stops a ring modulator’s carrier under Nyquist rather than folding it back', () => {
+    const heard = (ratio: number) => {
+      const held = slot({ kind: 'ring', amount: 1, ratio })
+      const state = createInsert(held, RATE)
+      // The input held at one, so what comes back is the bare carrier: count its zero crossings.
+      let crossings = 0
+      let previous = 0
+      for (let i = 0; i < RATE; i += 1) {
+        const value = insertSample(state, held, 1, 2000, RATE)
+        if (previous <= 0 && value > 0) crossings += 1
+        previous = value
+      }
+      return crossings
+    }
+    // 2000 Hz times eight is 16 kHz and fits; times sixteen is 32 kHz and does not. The knob used
+    // to run backwards past the fold — sixteen came back lower than eight.
+    expect(heard(8)).toBeGreaterThan(15000)
+    expect(heard(16)).toBeGreaterThanOrEqual(heard(8))
+    expect(heard(16)).toBeLessThan(RATE * 0.5)
+  })
+
+  it('crushes at the same rate whatever the machine plays at', () => {
+    const holds = (rate: number) => {
+      const held = slot({ kind: 'crusher', amount: 1, bitDepth: 16, crush: 0.5 })
+      const state = createInsert(held, rate)
+      let changes = 0
+      let previous = NaN
+      for (let i = 0; i < rate; i += 1) {
+        const value = insertSample(state, held, Math.sin((2 * Math.PI * 300 * i) / rate), TONE, rate)
+        if (value !== previous) changes += 1
+        previous = value
+      }
+      return changes
+    }
+    // Per second, at two rates. It used to be a count of samples, so the same knob crushed a tone
+    // and a half apart on a machine at 48 000 and one at 44 100.
+    expect(holds(48000) / holds(44100)).toBeCloseTo(1, 1)
   })
 })

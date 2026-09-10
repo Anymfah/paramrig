@@ -59,7 +59,7 @@ export function focusHover(): AudioPatch {
       amp: { attack: 0.0004, hold: 0.002, decay: 0.012, sustain: 0, release: 0.024, curve: 2.9 },
     }),
   ], { reverbMix: 0.05, reverbSize: 0.18, reverbDamping: 0.8, width: 0.85, tone: 0.4 },
-     { gain: 0.6836 }, [
+     { gain: 0.344941 }, [
        { enabled: true, shape: 'noise', rate: 38, depth: 0.55, target: 'layers[1].cutoff' },
        { enabled: true, shape: 'noise', rate: 26, depth: 0.5, target: 'layers[1].gain' },
      ])
@@ -95,7 +95,7 @@ export function focusArm(): AudioPatch {
       amp: { attack: 0.0005, hold: 0.008, decay: 0.03, sustain: 0.3, release: 0.05, curve: 2.9 },
     }),
   ], { reverbMix: 0.1, reverbSize: 0.2, reverbDamping: 0.78, width: 0.75, tone: 0.15 },
-     { gain: 0.6241 }, [{ enabled: true, shape: 'square', rate: 26, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
+     { gain: 0.314765 }, [{ enabled: true, shape: 'square', rate: 26, depth: 1, phase: 0.55, target: 'layers[1].gain' }])
 }
 
 /**
@@ -134,7 +134,7 @@ export function focusRing(): AudioPatch {
       amp: { attack: 0.004, hold: 0.008, decay: 0.03, sustain: 0.22, release: 0.07, curve: 2.2 },
     }),
   ], { reverbMix: 0.08, reverbSize: 0.2, reverbDamping: 0.78, width: 0.8, tone: 0.3 },
-     { gain: 1.031 }, [{ enabled: true, shape: 'triangle', rate: 4.2, depth: 0.45, target: 'layers[2].cutoff' }])
+     { gain: 0.520047 }, [{ enabled: true, shape: 'triangle', rate: 4.2, depth: 0.45, target: 'layers[2].cutoff' }])
 }
 
 /**
@@ -171,7 +171,7 @@ export function inputKey(): AudioPatch {
       resonator: { amount: 0.55, frequency: 10400, spread: 0.1, decay: 0.02, partials: 2 },
       amp: { attack: 0.0002, hold: 0, decay: 0.005, sustain: 0, release: 0.003, curve: 3.2 },
     }),
-  ], { reverbMix: 0, width: 0.3, tone: 0.05 }, { gain: 1.502 })
+  ], { reverbMix: 0, width: 0.3, tone: 0.05 }, { gain: 0.758587 })
 }
 
 /**
@@ -207,7 +207,7 @@ export function inputAccept(): AudioPatch {
       amp: { attack: 0.005, hold: 0.004, decay: 0.075, sustain: 0, release: 0.05, curve: 2.2 },
     }),
   ], { reverbMix: 0.09, reverbSize: 0.18, reverbDamping: 0.8, width: 0.7, tone: 0.3 },
-     { gain: 0.4153 }, [{ enabled: true, shape: 'sine', rate: 9, depth: 0.55, phase: 0.25, target: 'layers[1].gain' }])
+     { gain: 0.209814 }, [{ enabled: true, shape: 'sine', rate: 9, depth: 0.55, phase: 0.25, target: 'layers[1].gain' }])
 }
 
 /**
@@ -247,7 +247,7 @@ export function inputValidate(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.0008, decay: 0.0025, sustain: 0, release: 0.001, curve: 2.8 },
     }),
   ], { reverbMix: 0.11, reverbSize: 0.2, reverbDamping: 0.78, width: 0.85, tone: 0.35 },
-     { gain: 0.7052 }, [
+     { gain: 0.355712 }, [
        { enabled: true, shape: 'square', rate: 22, depth: 1, phase: 0.2, target: 'layers[1].gain' },
        { enabled: true, shape: 'noise', rate: 22, depth: 0.6, phase: 0.6, target: 'layers[1].cutoff' },
      ])
@@ -290,7 +290,7 @@ export function discloseRow(): AudioPatch {
       amp: { attack: 0.001, hold: 0.003, decay: 0.05, sustain: 0, release: 0.04, curve: 2.4 },
     }),
   ], { reverbMix: 0.1, reverbSize: 0.16, reverbDamping: 0.75, width: 0.7, tone: 0.45 },
-     { gain: 0.7873 }, [])
+     { gain: 0.400896 }, [])
 }
 
 /**
@@ -326,7 +326,7 @@ export function panelSlide(): AudioPatch {
       amp: { attack: 0.0015, hold: 0.006, decay: 0.08, sustain: 0, release: 0.06, curve: 2.4 },
     }),
   ], { reverbMix: 0.13, reverbSize: 0.28, reverbDamping: 0.7, width: 0.82, tone: 0.3 },
-     { gain: 0.7058 }, [{ enabled: true, shape: 'saw', rate: 15, depth: 0.9, phase: 0.1, target: 'layers[1].gain' }])
+     { gain: 0.3556 }, [{ enabled: true, shape: 'saw', rate: 15, depth: 0.9, phase: 0.1, target: 'layers[1].gain' }])
 }
 
 /**
@@ -363,7 +363,7 @@ export function overlayOpen(): AudioPatch {
       amp: { attack: 0.0004, hold: 0.0012, decay: 0.004, sustain: 0, release: 0.0015, curve: 2.8 },
     }),
   ], { reverbMix: 0.34, reverbSize: 0.7, reverbDamping: 0.42, width: 0.92, tone: 0.3 },
-     { gain: 0.8304 }, [
+     { gain: 0.418856 }, [
        { enabled: true, shape: 'sine', rate: 0.8, depth: 0.35, target: 'layers[1].cutoff' },
        { enabled: true, shape: 'triangle', rate: 1.9, depth: 0.55, phase: 0.6, target: 'layers[2].gain' },
      ])
@@ -405,7 +405,7 @@ export function panelShut(): AudioPatch {
       amp: { attack: 0.001, hold: 0.004, decay: 0.11, sustain: 0, release: 0.06, curve: 2.6 },
     }),
   ], { delayMix: 0.14, delayTime: 0.042, delayFeedback: 0.16, reverbMix: 0.1, reverbSize: 0.2, reverbDamping: 0.78, width: 0.62, tone: 0.05 },
-     { gain: 0.4959 }, [])
+     { gain: 0.250028 }, [])
 }
 
 /**
@@ -443,7 +443,7 @@ export function drawerRetract(): AudioPatch {
       amp: { attack: 0.0006, hold: 0.004, decay: 0.012, sustain: 0, release: 0.03, curve: 2.5 },
     }),
   ], { delayMix: 0.1, delayTime: 0.035, delayFeedback: 0.25, reverbMix: 0.12, reverbSize: 0.3, reverbDamping: 0.7, width: 0.7, tone: 0.18 },
-     { gain: 0.332 }, [
+     { gain: 0.16795 }, [
        { enabled: true, shape: 'noise', rate: 34, depth: 1, target: 'layers[1].gain' },
        { enabled: true, shape: 'noise', rate: 21, depth: 0.55, target: 'layers[1].cutoff' },
      ])
@@ -478,7 +478,7 @@ export function sheetCollapse(): AudioPatch {
       amp: { attack: 0.002, hold: 0.01, decay: 0.17, sustain: 0, release: 0.04, curve: 2 },
     }),
   ], { reverbMix: 0.22, reverbSize: 0.45, reverbDamping: 0.55, width: 0.9, tone: 0.15 },
-     { gain: 0.9094 }, [])
+     { gain: 0.45908 }, [])
 }
 
 /* ------------------------------------------------------------------ Signals */
@@ -513,7 +513,7 @@ export function progressStart(): AudioPatch {
       amp: { attack: 0.02, hold: 0.05, decay: 0.1, sustain: 0.3, release: 0.12, curve: 2.2 },
     }),
   ], { reverbMix: 0.15, reverbSize: 0.3, reverbDamping: 0.65, width: 0.8, tone: 0.3 },
-     { gain: 0.4291 }, [
+     { gain: 0.216729 }, [
        { enabled: true, shape: 'square', rate: 15, depth: 0.9, phase: 0.2, target: 'layers[2].gain' },
        { enabled: true, shape: 'triangle', rate: 15, depth: 0.18, phase: 0.2, target: 'layers[1].cutoff' },
      ])
@@ -547,7 +547,7 @@ export function progressTick(): AudioPatch {
       resonator: { amount: 0.9, frequency: 560, spread: 0.4, decay: 0.05, partials: 3 },
       amp: { attack: 0.0004, hold: 0.001, decay: 0.003, sustain: 0, release: 0.001, curve: 2.8 },
     }),
-  ], { reverbMix: 0.08, reverbSize: 0.18, reverbDamping: 0.8, width: 0.6, tone: 0.25 }, { gain: 0.7507 }, [])
+  ], { reverbMix: 0.08, reverbSize: 0.18, reverbDamping: 0.8, width: 0.6, tone: 0.25 }, { gain: 0.3788 }, [])
 }
 
 /** Work finishing: a last tick, and two struck bells an octave apart left to ring out. */
@@ -578,7 +578,7 @@ export function progressComplete(): AudioPatch {
       amp: { attack: 0.002, hold: 0.015, decay: 0.35, sustain: 0.08, release: 0.4, curve: 2.4 },
     }),
   ], { reverbMix: 0.3, reverbSize: 0.7, reverbDamping: 0.4, width: 0.9, tone: 0.3 },
-     { gain: 1.104 }, [{ enabled: true, shape: 'sine', rate: 4.5, depth: 0.008, target: 'layers[1].pitch' }])
+     { gain: 0.559627 }, [{ enabled: true, shape: 'sine', rate: 4.5, depth: 0.008, target: 'layers[1].pitch' }])
 }
 
 /**
@@ -615,7 +615,7 @@ export function rewardCredit(): AudioPatch {
       amp: { attack: 0.0003, hold: 0.001, decay: 0.0028, sustain: 0, release: 0.0012, curve: 2.8 },
     }),
   ], { delayMix: 0.1, delayTime: 0.049, delayFeedback: 0.3, reverbMix: 0.1, reverbSize: 0.3, reverbDamping: 0.72, width: 0.75, tone: 0.15 },
-     { gain: 0.5271 }, [{ enabled: true, shape: 'square', rate: 17, depth: 1, phase: 0.15, target: 'layers[1].gain' }])
+     { gain: 0.266907 }, [{ enabled: true, shape: 'square', rate: 17, depth: 1, phase: 0.15, target: 'layers[1].gain' }])
 }
 
 /**
@@ -655,7 +655,7 @@ export function rewardUnlock(): AudioPatch {
       amp: { attack: 0.09, hold: 0.05, decay: 0.28, sustain: 0.3, release: 0.32, curve: 1.6 },
     }),
   ], { reverbMix: 0.26, reverbSize: 0.6, reverbDamping: 0.45, delayMix: 0.12, delayTime: 0.13, delayFeedback: 0.3, width: 0.85, tone: 0.2 },
-     { gain: 0.7492 }, [{ enabled: true, shape: 'triangle', rate: 0.9, depth: 0.45, phase: 0.5, target: 'layers[2].cutoff' }])
+     { gain: 0.378565 }, [{ enabled: true, shape: 'triangle', rate: 0.9, depth: 0.45, phase: 0.5, target: 'layers[2].cutoff' }])
 }
 
 /**
@@ -691,7 +691,7 @@ export function rewardAchievement(): AudioPatch {
       amp: { attack: 0.4, hold: 0.12, decay: 0.5, sustain: 0.4, release: 0.6, curve: 1.35 },
     }),
   ], { reverbMix: 0.4, reverbSize: 0.88, reverbDamping: 0.32, delayMix: 0.16, delayTime: 0.165, delayFeedback: 0.36, width: 0.95, tone: 0.25 },
-     { gain: 1.503 }, [
+     { gain: 0.758933 }, [
        { enabled: true, shape: 'sine', rate: 0.55, depth: 0.22, target: 'layers[2].gain' },
        { enabled: true, shape: 'triangle', rate: 0.75, depth: 0.28, phase: 0.35, target: 'layers[2].cutoff' },
      ])
@@ -730,7 +730,7 @@ export function deleteItem(): AudioPatch {
       amp: { attack: 0.001, hold: 0.006, decay: 0.09, sustain: 0, release: 0.06, curve: 2.4 },
     }),
   ], { reverbMix: 0.12, reverbSize: 0.22, reverbDamping: 0.78, width: 0.7, tone: 0.3 },
-     { gain: 0.5058 }, [{ enabled: true, shape: 'noise', rate: 40, depth: 1, target: 'layers[1].gain' }])
+     { gain: 0.255104 }, [{ enabled: true, shape: 'noise', rate: 40, depth: 1, target: 'layers[1].gain' }])
 }
 
 /**
@@ -773,7 +773,7 @@ export function discardDraft(): AudioPatch {
       amp: { attack: 0.0006, hold: 0.002, decay: 0.006, sustain: 0, release: 0.012, curve: 3 },
     }),
   ], { reverbMix: 0.16, reverbSize: 0.3, reverbDamping: 0.68, width: 0.8, tone: 0.25 },
-     { gain: 0.7379 }, [
+     { gain: 0.372639 }, [
        { enabled: true, shape: 'noise', rate: 30, depth: 0.5, target: 'layers[1].cutoff' },
        { enabled: true, shape: 'triangle', rate: 9, depth: 0.7, phase: 0.25, target: 'layers[1].gain' },
      ])
@@ -816,5 +816,5 @@ export function wipeAll(): AudioPatch {
       amp: { attack: 0.0006, hold: 0.002, decay: 0.004, sustain: 0, release: 0.002, curve: 2.8 },
     }),
   ], { reverbMix: 0.22, reverbSize: 0.55, reverbDamping: 0.6, width: 0.85, tone: 0.05 },
-     { gain: 0.6329 }, [{ enabled: true, shape: 'saw', rate: 5.5, depth: 0.9, phase: 0.45, target: 'layers[1].gain' }])
+     { gain: 0.3209 }, [{ enabled: true, shape: 'saw', rate: 5.5, depth: 0.9, phase: 0.45, target: 'layers[1].gain' }])
 }

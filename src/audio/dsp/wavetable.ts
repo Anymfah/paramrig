@@ -123,15 +123,22 @@ export type Wavetable = { frames: Float32Array; limits: readonly number[] }
  * thousand transcendental calls. The rounding of the recurrence is far below the level a table is
  * played back at.
  */
-function fill(frames: Float32Array, at: number, spectrum: Spectrum, position: number, harmonics: number): void {
-  let loudest = 0
+function fill(frames: Float32Array, at: number, spectrum: Spectrum, position: number, harmonics: number, loudest: number): void {
   const amplitudes = new Float64Array(harmonics + 1)
   for (let h = 1; h <= harmonics; h += 1) {
     const amplitude = spectrum(h, position)
     amplitudes[h] = Number.isFinite(amplitude) ? amplitude : 0
-    loudest += Math.abs(amplitudes[h] ?? 0)
   }
-  // Normalised by the sum of the harmonics, so a table's level does not lurch as the knob turns.
+  /*
+   * Normalised by the sum of the harmonics of the *widest* band, not of this one.
+   *
+   * Each band used to be scaled by its own sum, which meant the 32-harmonic frame and the
+   * 64-harmonic frame of the same position were two different levels — so crossing a band
+   * boundary, which happens at fixed pitches as a note slides, stepped the level by up to six
+   * decibels and put a discontinuity in the waveform. A downward laser, which is the thing tables
+   * are here for, walked down a staircase. Scaled together, dropping a band only removes the
+   * harmonics that no longer fit, which is all it was ever supposed to do.
+   */
   const scale = loudest > 1e-9 ? 1 / loudest : 0
   for (let h = 1; h <= harmonics; h += 1) {
     const amplitude = (amplitudes[h] ?? 0) * scale
@@ -158,9 +165,16 @@ export function wavetable(name: TableName): Wavetable {
   if (kept) return kept
   const spectrum = TABLES[name]?.spectrum ?? TABLES.sweep!.spectrum
   const frames = new Float32Array(POSITIONS * BANDS.length * FRAME)
+  const widest = BANDS[BANDS.length - 1] ?? 1
   for (let p = 0; p < POSITIONS; p += 1) {
+    const position = p / (POSITIONS - 1)
+    let loudest = 0
+    for (let h = 1; h <= widest; h += 1) {
+      const amplitude = spectrum(h, position)
+      loudest += Number.isFinite(amplitude) ? Math.abs(amplitude) : 0
+    }
     for (let b = 0; b < BANDS.length; b += 1) {
-      fill(frames, (p * BANDS.length + b) * FRAME, spectrum, p / (POSITIONS - 1), BANDS[b] ?? 1)
+      fill(frames, (p * BANDS.length + b) * FRAME, spectrum, position, BANDS[b] ?? 1, loudest)
     }
   }
   const made = { frames, limits: BANDS }
@@ -176,11 +190,26 @@ export function wavetable(name: TableName): Wavetable {
  * the tallest band allowed holds `0.5 / dt` harmonics.
  */
 export function tableAt(table: Wavetable, phase: number, position: number, dt: number): number {
+  const bands = table.limits.length
   const allowed = dt > 0 ? 0.5 / dt : Infinity
   let band = 0
-  for (let b = 0; b < table.limits.length; b += 1) {
+  for (let b = 0; b < bands; b += 1) {
     if ((table.limits[b] ?? 1) <= allowed) band = b
   }
+  /*
+   * And the band above it, faded in as the pitch falls towards being able to carry it.
+   *
+   * Position is interpolated between two frames; the band used to be a hard switch, which put a
+   * step in the waveform at fixed pitches — one sample, and a click. The two are blended the same
+   * way now, over the whole octave between one band's harmonic count and the next's, so what is
+   * left of the change is spread across an octave of the slide instead of landing on one sample.
+   */
+  const wide = Math.min(bands - 1, band + 1)
+  const lower = table.limits[band] ?? 1
+  const upper = table.limits[wide] ?? lower
+  const rise = wide === band || upper <= lower || !Number.isFinite(allowed)
+    ? 0
+    : Math.min(1, Math.max(0, (allowed - lower) / (upper - lower)))
   const held = Math.min(1, Math.max(0, position)) * (POSITIONS - 1)
   const low = Math.floor(held)
   const high = Math.min(POSITIONS - 1, low + 1)
@@ -190,9 +219,16 @@ export function tableAt(table: Wavetable, phase: number, position: number, dt: n
   const i0 = Math.floor(along)
   const frac = along - i0
   const i1 = (i0 + 1) % FRAME
-  const a = (low * table.limits.length + band) * FRAME
-  const b = (high * table.limits.length + band) * FRAME
+  const a = (low * bands + band) * FRAME
+  const b = (high * bands + band) * FRAME
   const first = (table.frames[a + i0] ?? 0) + ((table.frames[a + i1] ?? 0) - (table.frames[a + i0] ?? 0)) * frac
   const second = (table.frames[b + i0] ?? 0) + ((table.frames[b + i1] ?? 0) - (table.frames[b + i0] ?? 0)) * frac
-  return first + (second - first) * blend
+  const under = first + (second - first) * blend
+  if (rise <= 0) return under
+  const c = (low * bands + wide) * FRAME
+  const d = (high * bands + wide) * FRAME
+  const third = (table.frames[c + i0] ?? 0) + ((table.frames[c + i1] ?? 0) - (table.frames[c + i0] ?? 0)) * frac
+  const fourth = (table.frames[d + i0] ?? 0) + ((table.frames[d + i1] ?? 0) - (table.frames[d + i0] ?? 0)) * frac
+  const over = third + (fourth - third) * blend
+  return under + (over - under) * rise
 }
