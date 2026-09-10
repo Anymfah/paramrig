@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createFilter, filterSample } from '@/audio/dsp/filter'
+import type { FilterKind } from '@/audio/types'
 
 const SAMPLE_RATE = 44100
 
 /** Root-mean-square of a steady sine pushed through the filter, after letting the state settle. */
-function through(kind: 'lowpass' | 'highpass' | 'bandpass', tone: number, cutoff: number, resonance = 0): number {
-  const state = createFilter()
+function through(kind: FilterKind, tone: number, cutoff: number, resonance = 0): number {
+  const state = createFilter(kind, SAMPLE_RATE)
   let sum = 0
   const total = 4096
   for (let i = 0; i < total * 2; i += 1) {
@@ -60,6 +61,61 @@ describe('filterSample', () => {
     const state = createFilter()
     for (let i = 0; i < 500; i += 1) {
       const out = filterSample(state, 'lowpass', Math.sin(i / 3), 900000, 0.5, SAMPLE_RATE)
+      expect(Number.isFinite(out)).toBe(true)
+    }
+  })
+})
+
+describe('the models that come out of the same two integrators', () => {
+  it('takes out what a band-pass keeps, and keeps what it takes out', () => {
+    // A notch is quiet at its corner and loud either side; a band-pass is the other way round.
+    expect(through('notch', 1000, 1000, 0.7)).toBeLessThan(through('notch', 200, 1000, 0.7))
+    expect(through('notch', 1000, 1000, 0.7)).toBeLessThan(through('notch', 6000, 1000, 0.7))
+    expect(through('bandpass', 1000, 1000, 0.7)).toBeGreaterThan(through('bandpass', 200, 1000, 0.7))
+  })
+
+  it('lifts its corner as a peak, and leaves the level alone as an allpass', () => {
+    expect(through('peak', 1000, 1000, 0.8)).toBeGreaterThan(through('peak', 200, 1000, 0.8))
+    // An allpass passes everything: what it changes is the phase, which a level cannot read.
+    for (const tone of [200, 1000, 5000]) {
+      expect(Math.abs(through('allpass', tone, 1000, 0.5) - Math.SQRT1_2)).toBeLessThan(0.08)
+    }
+  })
+})
+
+describe('the ladder', () => {
+  it('falls away far faster than one pair of poles', () => {
+    const octaveUp = through('ladder', 2000, 1000) / through('ladder', 1000, 1000)
+    const twoPole = through('lowpass', 2000, 1000) / through('lowpass', 1000, 1000)
+    expect(octaveUp).toBeLessThan(twoPole)
+    expect(through('ladder', 200, 1000)).toBeGreaterThan(0.5)
+  })
+
+  it('stays finite through a five-octave sweep at the top of its resonance', () => {
+    const state = createFilter('ladder', SAMPLE_RATE)
+    let worst = 0
+    for (let i = 0; i < 20000; i += 1) {
+      const cutoff = 100 * Math.pow(2, 5 * (i / 20000))
+      const out = filterSample(state, 'ladder', Math.sin(i * 0.05), cutoff, 0.95, SAMPLE_RATE)
+      expect(Number.isFinite(out)).toBe(true)
+      worst = Math.max(worst, Math.abs(out))
+    }
+    expect(worst).toBeLessThan(12)
+  })
+})
+
+describe('the comb', () => {
+  it('is loud at the note its length names and quiet between two of them', () => {
+    const onTune = through('comb', 500, 500, 0.85)
+    const between = through('comb', 750, 500, 0.85)
+    expect(onTune).toBeGreaterThan(between * 1.5)
+  })
+
+  it('is a bypass with nothing fed back, and stays finite fed back hard', () => {
+    expect(through('comb', 1000, 400, 0)).toBeCloseTo(Math.SQRT1_2, 1)
+    const state = createFilter('comb', SAMPLE_RATE)
+    for (let i = 0; i < 20000; i += 1) {
+      const out = filterSample(state, 'comb', Math.sin(i * 0.05), 100 * Math.pow(2, 5 * (i / 20000)), 1, SAMPLE_RATE)
       expect(Number.isFinite(out)).toBe(true)
     }
   })

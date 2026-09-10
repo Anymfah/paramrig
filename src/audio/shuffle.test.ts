@@ -50,13 +50,22 @@ describe('randomPatch', () => {
    * The claim the file makes about itself. A uniform draw lands outside every musical range at
    * once and produces silence or noise; these have to be audible and not clipped, every time.
    */
-  it('makes an audible, unclipped sound on every seed', () => {
-    for (let seed = 0; seed < 40; seed += 1) {
+  /**
+   * The promise the button makes, over enough seeds to mean it.
+   *
+   * Forty was not enough: the dice draw a cutoff and a pitch that have to suit each other, and a
+   * lone noise layer behind a steep filter comes out twenty-five decibels below the same draw with
+   * a tone in front of it. About one press in thirty landed on something nobody could hear, and
+   * which forty seeds happened to miss. The patch is levelled against what it actually renders now,
+   * so this can ask for a band rather than for a floor.
+   */
+  it('makes a sound you can hear and cannot clip, on two hundred seeds', () => {
+    for (let seed = 0; seed < 200; seed += 1) {
       const loudest = peak(monoSum(renderPatch(randomPatch(seed), SAMPLE_RATE)))
       expect(loudest, `seed ${seed} is silent`).toBeGreaterThan(0.05)
       expect(loudest, `seed ${seed} clips`).toBeLessThanOrEqual(1)
     }
-  })
+  }, 60_000)
 
   it('stays inside a length worth calling an effect', () => {
     for (let seed = 0; seed < 60; seed += 1) {

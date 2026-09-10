@@ -3,6 +3,7 @@ import { makeLayer, makePatch, silentLayer } from './patch.ts'
 import { mulberry32 } from './dsp/rng.ts'
 import { EASE_OUT, LINEAR } from './dsp/curve.ts'
 import type { AudioPatch, Layer, NoiseColour, WaveShape } from './types.ts'
+import { monoSum, renderPatch } from './dsp/render.ts'
 
 /**
  * Two ways to arrive at a sound without setting a hundred fields.
@@ -28,9 +29,54 @@ const chance = (random: () => number, odds: number) => random() < odds
 const WAVES: WaveShape[] = ['sine', 'triangle', 'saw', 'square']
 const COLOURS: NoiseColour[] = ['white', 'pink', 'metallic']
 
+/**
+ * What a drawn patch actually comes out at, and the make-up that lands it where it belongs.
+ *
+ * The dice cannot know how loud what they drew will be: a lone noise layer behind a four-pole
+ * filter is twenty-five decibels quieter than the same draw with a tone in front of it, and a
+ * button that hands back silence one press in a hundred is a button people stop trusting. So the
+ * patch is rendered once, at half the rate — a quarter of the work, and every peak that matters
+ * to a level is under eleven kilohertz — and the master gain is moved to put the result where a
+ * sound should sit. It is the one place in this file that listens to what it made.
+ */
+function fit(patch: AudioPatch): AudioPatch {
+  const heard = monoSum(renderPatch(patch, 22050))
+  let peak = 0
+  for (let i = 0; i < heard.length; i += 1) {
+    const size = Math.abs(heard[i] ?? 0)
+    if (size > peak) peak = size
+  }
+  if (peak <= 1e-6) return patch
+  const gain = Math.min(3, Math.max(0.05, (patch.master.gain * 0.75) / peak))
+  return { ...patch, master: { ...patch.master, gain } }
+}
+
+/**
+ * Where to put a corner, given the note it is cutting.
+ *
+ * Drawn on its own, a cutoff and a pitch make a silent sound about one time in thirty: a tone at
+ * two kilohertz behind a low-pass at four hundred, or a tone at ninety behind a high-pass at eight
+ * thousand, is a patch with nothing left in it. A corner belongs somewhere relative to the note it
+ * is working on — above it to darken, below it to thin, around it to colour — and noise, which has
+ * no fundamental, keeps the wide range because there is always something either side.
+ */
+function cutoffFor(random: () => number, kind: string, note: number): number {
+  const hold = (value: number) => Math.min(19000, Math.max(30, value))
+  // A ladder is four poles where the state-variable models are two, so it takes away twice as
+  // much per octave and has to start higher to leave anything — most of all on noise, which is
+  // broadband and has nothing to spare.
+  if (note <= 0) return kind === 'ladder' ? logBetween(random, 1600, 16000) : logBetween(random, 400, 14000)
+  if (kind === 'highpass') return hold(logBetween(random, note * 0.1, note * 1.2))
+  if (kind === 'ladder') return hold(logBetween(random, note * 2.5, note * 18))
+  if (kind === 'lowpass') return hold(logBetween(random, note * 1.6, note * 14))
+  return hold(logBetween(random, note * 0.6, note * 6))
+}
+
 /** The voice that carries the sound: a tone that moves, or a body of noise. */
 function leadLayer(random: () => number): Layer {
   const tone = chance(random, 0.65)
+  const start = logBetween(random, 90, 2600)
+  const kind = pick(random, ['lowpass', 'lowpass', 'lowpass', 'off', 'highpass', 'bandpass', 'ladder', 'comb', 'notch'] as const)
   return makeLayer({
     gain: between(random, 0.45, 0.8),
     source: {
@@ -40,7 +86,7 @@ function leadLayer(random: () => number): Layer {
       colour: pick(random, COLOURS),
     },
     pitch: {
-      start: logBetween(random, 90, 2600),
+      start,
       slide: between(random, -26, 16),
       slideCurve: chance(random, 0.6) ? EASE_OUT : LINEAR,
       vibratoRate: chance(random, 0.25) ? between(random, 3, 24) : 0,
@@ -50,8 +96,10 @@ function leadLayer(random: () => number): Layer {
       jitter: between(random, 0, 25),
     },
     filter: {
-      kind: pick(random, ['lowpass', 'lowpass', 'lowpass', 'off', 'highpass', 'bandpass'] as const),
-      cutoff: logBetween(random, 400, 14000),
+      // Weighted, not uniform: a low-pass is what most sounds want, and a ladder or a comb is a
+      // character the dice should offer now and then rather than half the time.
+      kind,
+      cutoff: cutoffFor(random, kind, tone ? start : 0),
       resonance: between(random, 0, 0.55),
       envAmount: between(random, -3.2, 1.8),
       envCurve: EASE_OUT,
@@ -96,7 +144,7 @@ function bodyLayer(random: () => number): Layer {
 export function randomPatch(seed: number): AudioPatch {
   const random = mulberry32(seed)
   const duration = logBetween(random, 0.09, 1.1)
-  return makePatch(
+  return fit(makePatch(
     duration,
     [
       leadLayer(random),
@@ -119,7 +167,7 @@ export function randomPatch(seed: number): AudioPatch {
     // everything it touches; the limiter keeps a dense one from going over.
     { gain: 1.6, limiter: 0.8, fadeOut: 0.01 },
     Math.floor(random() * 9999),
-  )
+  ))
 }
 
 type Branch = { table: Record<string, FieldSpec>; source: Record<string, unknown> }

@@ -75,7 +75,7 @@ function renderLayer(layer: Layer, patch: AudioPatch, index: number, out: Stereo
   const noiseB = createNoise(layer.source.colour, streamFor(patch.seed, index + 50))
   // One filter and one shaper a side: the voices are panned before either of them, so the two
   // channels are no longer the same signal by the time they get here.
-  const filters = [createFilter(), createFilter()]
+  const filters = [createFilter(layer.filter.kind, sampleRate), createFilter(layer.filter.kind, sampleRate)]
   const shapers = [createShaper(), createShaper()]
   const partials = Math.min(6, Math.max(1, Math.round(layer.resonator.partials)))
   const bodies = [createModal(partials), createModal(partials)]
