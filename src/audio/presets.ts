@@ -1076,6 +1076,8 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'wide-riser', label: 'Wide Riser', group: 'Morph', build: morph.wideRiser },
   { id: 'step-sequence', label: 'Step Sequence', group: 'Morph', build: morph.stepSequence },
   { id: 'crushed-table', label: 'Crushed Table', group: 'Morph', build: morph.crushedTable },
+  { id: 'vowel-sweep', label: 'Vowel Sweep', group: 'Morph', build: morph.vowelSweep },
+  { id: 'series-pluck', label: 'Series Pluck', group: 'Morph', build: morph.seriesPluck },
 ]
 
 export const PRESET_GROUPS: PresetGroup[] = [

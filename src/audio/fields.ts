@@ -71,6 +71,11 @@ const LAYER_FIELDS: Record<string, FieldSpec> = {
   pan: num('Pan', -1, 1),
   spread: num('Stereo spread', 0, 1),
   offset: num('Start offset', 0, 1, 0.001, SECONDS),
+  routing: {
+    type: 'option', label: 'Filter routing', options: ['single', 'series', 'parallel'],
+    optionLabels: { single: 'One filter', series: 'B after A', parallel: 'A and B at once' },
+  },
+  filterMix: num('Filter balance', 0, 1),
 }
 
 const SOURCE_FIELDS: Record<string, FieldSpec> = {
@@ -125,7 +130,7 @@ const PITCH_FIELDS: Record<string, FieldSpec> = {
 
 const FILTER_FIELDS: Record<string, FieldSpec> = {
   kind: {
-    type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass', 'notch', 'peak', 'ladder', 'comb'],
+    type: 'option', label: 'Filter', options: ['off', 'lowpass', 'highpass', 'bandpass', 'notch', 'peak', 'ladder', 'comb', 'formant'],
     // Four words that all start differently and end the same, ellipsised to 'Lowp…' and
     // 'Highp…' in a column this wide. The response curve is both shorter and clearer.
     previews: {
@@ -297,13 +302,14 @@ export const AUDIO_FIELDS = {
   master: MASTER_FIELDS,
 } as const
 
-export type LayerSection = 'root' | 'source' | 'pitch' | 'filter' | 'insertA' | 'insertB' | 'insertC' | 'amp'
+export type LayerSection = 'root' | 'source' | 'pitch' | 'filterA' | 'filterB' | 'insertA' | 'insertB' | 'insertC' | 'amp'
 
 export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
   root: LAYER_FIELDS,
   source: SOURCE_FIELDS,
   pitch: PITCH_FIELDS,
-  filter: FILTER_FIELDS,
+  filterA: FILTER_FIELDS,
+  filterB: FILTER_FIELDS,
   insertA: INSERT_FIELDS,
   insertB: INSERT_FIELDS,
   insertC: INSERT_FIELDS,
@@ -312,5 +318,8 @@ export const LAYER_SECTIONS: Record<LayerSection, Record<string, FieldSpec>> = {
 
 /** The three slots, in the order the sound meets them. */
 export const INSERT_SLOTS = ['insertA', 'insertB', 'insertC'] as const
+
+/** The two filters, in the order they are named. */
+export const FILTER_SLOTS = ['filterA', 'filterB'] as const
 
 /** How many layers a patch has. Fixed, and the parser refuses an index past it. */

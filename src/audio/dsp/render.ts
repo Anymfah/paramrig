@@ -85,9 +85,13 @@ function renderLayer(
   const detune = Math.pow(2, cents / 1200)
   const noiseA = createNoise(layer.source.colour, random)
   const noiseB = createNoise(layer.source.colour, streamFor(patch.seed, index + 50))
-  // One filter and one of every insert a side: the voices are panned before any of them, so the
+  // Two filters and one of every insert a side: the voices are panned before any of them, so the
   // two channels are no longer the same signal by the time they get here.
-  const filters = [createFilter(layer.filter.kind, sampleRate), createFilter(layer.filter.kind, sampleRate)]
+  const filters = [createFilter(layer.filterA.kind, sampleRate), createFilter(layer.filterA.kind, sampleRate)]
+  const second = [createFilter(layer.filterB.kind, sampleRate), createFilter(layer.filterB.kind, sampleRate)]
+  /** What B is for. `single` is the layer a patch had before there were two of them. */
+  const routing = layer.filterB.kind === 'off' ? 'single' : layer.routing
+  const across = Math.min(1, Math.max(0, layer.filterMix))
   /**
    * The three slots, split by which side of the amplifier they stand on and stripped of the ones
    * switched off, so the sample loop walks two short lists rather than asking three slots what
@@ -210,12 +214,33 @@ function renderLayer(
       rawR *= balance
     }
 
-    const sweep = Math.pow(2, layer.filter.envAmount * curveAt(layer.filter.envCurve, x) + swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff)
-    const cutoff = layer.filter.cutoff * sweep
-    const resonance = resoLfo.length === 0 ? layer.filter.resonance
-      : Math.min(1, Math.max(0, layer.filter.resonance + swingOf(resoLfo, clock) * LFO_RANGE.resonance))
-    let left = filterSample(filters[0]!, layer.filter.kind, rawL, cutoff, resonance, sampleRate)
-    let right = filterSample(filters[1]!, layer.filter.kind, rawR, cutoff, resonance, sampleRate)
+    /*
+     * One swing, both filters.
+     *
+     * A modulator pointed at the cutoff moves A and B by the same number of octaves rather than
+     * having a destination each: two resonances kept a fixed distance apart and swept together is
+     * what a formant pair or a phased comb is, and two destinations that have to be dialled to
+     * the same number is a way of getting that wrong.
+     */
+    const swing = swingOf(cutoffLfo, clock) * LFO_RANGE.cutoff
+    const lift = resoLfo.length === 0 ? 0 : swingOf(resoLfo, clock) * LFO_RANGE.resonance
+    const held = (settings: Layer['filterA']) => ({
+      cutoff: settings.cutoff * Math.pow(2, settings.envAmount * curveAt(settings.envCurve, x) + swing),
+      resonance: lift === 0 ? settings.resonance : Math.min(1, Math.max(0, settings.resonance + lift)),
+    })
+    const a = held(layer.filterA)
+    let left = filterSample(filters[0]!, layer.filterA.kind, rawL, a.cutoff, a.resonance, sampleRate)
+    let right = filterSample(filters[1]!, layer.filterA.kind, rawR, a.cutoff, a.resonance, sampleRate)
+    if (routing !== 'single') {
+      const b = held(layer.filterB)
+      if (routing === 'series') {
+        left = filterSample(second[0]!, layer.filterB.kind, left, b.cutoff, b.resonance, sampleRate)
+        right = filterSample(second[1]!, layer.filterB.kind, right, b.cutoff, b.resonance, sampleRate)
+      } else {
+        left = left * (1 - across) + filterSample(second[0]!, layer.filterB.kind, rawL, b.cutoff, b.resonance, sampleRate) * across
+        right = right * (1 - across) + filterSample(second[1]!, layer.filterB.kind, rawR, b.cutoff, b.resonance, sampleRate) * across
+      }
+    }
     for (let at = 0; at < before.length; at += 1) {
       const unit = before[at]!
       const amount = amountOf(unit, clock)

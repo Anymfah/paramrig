@@ -34,11 +34,44 @@ export function createFilter(kind: FilterKind = 'off', sampleRate = 44100): Filt
   return {
     ic1: 0,
     ic2: 0,
-    poles: new Float64Array(4),
+    // Four for the ladder's poles, six more for the formant's three band-passes: two integrators
+    // apiece, and a filter that is one of these is never the other.
+    poles: new Float64Array(10),
     fed: 0,
     line: kind === 'comb' ? new Float32Array(Math.ceil(sampleRate / LOWEST) + 2) : null,
     at: 0,
   }
+}
+
+/**
+ * The first three resonances of a mouth, per vowel, in hertz. Peterson and Barney's averages,
+ * which is the table every formant filter has used since 1952.
+ */
+const VOWELS: readonly (readonly number[])[] = [
+  [730, 1090, 2440], // a
+  [530, 1840, 2480], // e
+  [270, 2290, 3010], // i
+  [570, 840, 2410],  // o
+  [300, 870, 2240],  // u
+]
+/** The first formant carries the vowel, the third only its colour. */
+const FORMANT_GAIN = [1, 0.55, 0.2]
+
+/** One band-pass of the formant bank, on its own pair of integrators. */
+function band3(state: FilterState, index: number, input: number, hz: number, resonance: number, sampleRate: number): number {
+  const g = Math.tan((Math.PI * hz) / sampleRate)
+  const k = 2 - 2 * Math.min(0.97, Math.max(0, resonance))
+  const a1 = 1 / (1 + g * (g + k))
+  const a2 = g * a1
+  const a3 = g * a2
+  const ic1 = state.poles[index] ?? 0
+  const ic2 = state.poles[index + 1] ?? 0
+  const v3 = input - ic2
+  const v1 = a1 * ic1 + a2 * v3
+  const v2 = ic2 + a2 * ic1 + a3 * v3
+  state.poles[index] = 2 * v1 - ic1
+  state.poles[index + 1] = 2 * v2 - ic2
+  return v1
 }
 
 /** One pole of the ladder, resolved in the moment rather than a sample late. */
@@ -89,6 +122,30 @@ export function filterSample(
     line[state.at] = value
     state.at = (state.at + 1) % line.length
     return value * (1 - feedback * 0.5)
+  }
+
+  /*
+   * Five vowels on one knob.
+   *
+   * Three band-passes at the frequencies a mouth puts its resonances at, summed. The cutoff dial
+   * does not tune a corner here — there isn't one — it walks along the vowels, which is the only
+   * honest thing for it to do and also the reason this model needs no field of its own: a formant
+   * filter with a Vowel control beside a Cutoff control would have one dial doing nothing.
+   */
+  if (kind === 'formant') {
+    const along = Math.min(1, Math.max(0, Math.log(fc / 20) / Math.log(20000 / 20))) * (VOWELS.length - 1)
+    const from = VOWELS[Math.min(VOWELS.length - 1, Math.floor(along))]!
+    const to = VOWELS[Math.min(VOWELS.length - 1, Math.floor(along) + 1)]!
+    const blend = along - Math.floor(along)
+    const sharp = 0.55 + Math.min(1, Math.max(0, resonance)) * 0.42
+    let sum = 0
+    for (let band = 0; band < 3; band += 1) {
+      // Between two vowels in log frequency, so the walk sounds like a mouth moving and not like
+      // two filters crossfading.
+      const hz = Math.exp(Math.log(from[band]!) * (1 - blend) + Math.log(to[band]!) * blend)
+      sum += band3(state, 4 + band * 2, input, Math.min(nyquist * 0.98, hz), sharp, sampleRate) * FORMANT_GAIN[band]!
+    }
+    return sum
   }
 
   const g = Math.tan((Math.PI * fc) / sampleRate)

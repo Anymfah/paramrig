@@ -88,7 +88,7 @@ describe('mutatePatch', () => {
     // Switches and options are what make a sound a different sound, so they are left alone.
     expect(after.layers[0]?.source.wave).toBe(before.layers[0]?.source.wave)
     expect(after.layers[0]?.enabled).toBe(before.layers[0]?.enabled)
-    expect(after.layers[1]?.filter.kind).toBe(before.layers[1]?.filter.kind)
+    expect(after.layers[1]?.filterA.kind).toBe(before.layers[1]?.filterA.kind)
   })
 
   it('never leaves a field outside its range, however much it is asked to move', () => {

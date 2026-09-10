@@ -114,6 +114,11 @@ export function carryAudioProperty(property: string, from: number): string {
     const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(carried)
     if (lfo) carried = `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
   }
+  if (from < 5) {
+    // Four to five: a layer's one filter became the first of two.
+    const filter = /^layers\[(\d+)\]\.filter\.(\w+)$/.exec(carried)
+    if (filter) carried = `layers[${filter[1]}].filterA.${filter[2]}`
+  }
   if (from < 4) {
     // Three to four: the master effects became three slots, in the order they always ran.
     const named: Record<string, string> = {

@@ -24,7 +24,7 @@ const slots = (patch: AudioPatch) => layers(patch).flatMap((layer) => [layer.ins
 describe('the Morph family', () => {
   it('is a family the browser can show, with a sound each', () => {
     expect(PRESET_GROUPS).toContain('Morph')
-    expect(morph.length).toBeGreaterThanOrEqual(12)
+    expect(morph.length).toBeGreaterThanOrEqual(14)
     expect(new Set(morph.map((preset) => preset.id)).size).toBe(morph.length)
   })
 
@@ -37,8 +37,13 @@ describe('the Morph family', () => {
   })
 
   it('reaches every one of the filter models the plate offers past the first three', () => {
-    const kinds = new Set(built.flatMap(({ patch }) => layers(patch).map((layer) => layer.filter.kind)))
-    for (const model of ['ladder', 'notch', 'peak']) expect(kinds, model).toContain(model)
+    const kinds = new Set(built.flatMap(({ patch }) => layers(patch).flatMap((layer) => [layer.filterA.kind, layer.filterB.kind])))
+    for (const model of ['ladder', 'notch', 'peak', 'formant']) expect(kinds, model).toContain(model)
+  })
+
+  it('puts the two filters in both of the arrangements that are not one filter', () => {
+    const ways = new Set(built.flatMap(({ patch }) => layers(patch).map((layer) => layer.routing)))
+    for (const way of ['series', 'parallel']) expect(ways, way).toContain(way)
   })
 
   it('holds every insert kind that is not a migrated one', () => {

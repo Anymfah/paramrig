@@ -1,6 +1,6 @@
 import { AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
-import type { AmpSettings, AudioPatch, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
+import type { AmpSettings, AudioPatch, FilterRouting, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
 
 /**
  * How a patch is built and how it is read back.
@@ -19,7 +19,12 @@ export type LayerInput = {
   offset?: number
   source?: Partial<SourceSettings>
   pitch?: Partial<PitchSettings>
+  /** The one filter a layer used to have, still written the short way; it becomes filter A. */
   filter?: Partial<FilterSettings>
+  filterA?: Partial<FilterSettings>
+  filterB?: Partial<FilterSettings>
+  routing?: FilterRouting
+  filterMix?: number
   /**
    * The drive and the resonator, still written the way a preset reads best.
    *
@@ -85,7 +90,10 @@ export function makeLayer(input: LayerInput = {}): Layer {
       start: 440, slide: 0, slideCurve: LINEAR, vibratoRate: 0, vibratoDepth: 0,
       arpeggioRatio: 1, arpeggioAt: 1, jitter: 0, ...input.pitch,
     },
-    filter: { kind: 'off', cutoff: 8000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filter },
+    routing: input.routing ?? 'single',
+    filterMix: input.filterMix ?? 0.5,
+    filterA: { kind: 'off', cutoff: 8000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filter, ...input.filterA },
+    filterB: { kind: 'off', cutoff: 2000, resonance: 0, envAmount: 0, envCurve: LINEAR, ...input.filterB },
     insertA: makeInsert({ ...drivenSlot(input.shaper), ...input.insertA }),
     insertB: makeInsert({ ...crushedSlot(input.shaper), ...input.insertB }),
     insertC: makeInsert({ ...bodySlot(input.resonator), ...input.insertC }),
@@ -321,7 +329,7 @@ function readLayer(value: unknown, base: Layer): Layer {
  * Each step carries a raw record from version n to n + 1, in order. There are none yet; the seam
  * is open so that the first change to the shape has somewhere to go.
  */
-export const PATCH_VERSION = 4
+export const PATCH_VERSION = 5
 
 /**
  * One to two: the free envelopes and the oscillators were two lists, and are one list of slots
@@ -392,7 +400,27 @@ function intoFxSlots(source: Record<string, unknown>): Record<string, unknown> {
   return { ...source, fx: carried }
 }
 
-const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts, intoFxSlots]
+/**
+ * Four to five: a layer had one filter and has two, which stand in one of three arrangements. The
+ * one that was there becomes A and the arrangement becomes `single`, so a patch saved yesterday is
+ * the patch it was and the second filter is something to reach for rather than something that
+ * happened to it.
+ */
+function intoTwoFilters(source: Record<string, unknown>): Record<string, unknown> {
+  const layers = Array.isArray(source.layers) ? source.layers : null
+  if (!layers) return source
+  const carried = layers.map((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+    const layer = value as Record<string, unknown>
+    if (layer.filterA || layer.filterB) return layer
+    const next: Record<string, unknown> = { ...layer, filterA: layer.filter ?? {}, routing: 'single' }
+    delete next.filter
+    return next
+  })
+  return { ...source, layers: carried }
+}
+
+const MIGRATIONS: ((source: Record<string, unknown>) => Record<string, unknown>)[] = [intoSlots, intoInserts, intoFxSlots, intoTwoFilters]
 
 function migrate(source: Record<string, unknown>): Record<string, unknown> {
   const claimed = typeof source.version === 'number' && Number.isFinite(source.version) ? Math.floor(source.version) : 1

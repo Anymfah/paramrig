@@ -31,8 +31,8 @@ describe('the board', () => {
 
   /** Defaults come from a blank patch, so resetting a field means something rather than nothing. */
   it('takes its defaults from a new patch, not from the one open', () => {
-    const cutoff = boardParameters().find((parameter) => parameter.id === 'layers[0].filter.cutoff')
-    expect(cutoff).toMatchObject({ defaultValue: defaultPatch().layers[0]?.filter.cutoff })
+    const cutoff = boardParameters().find((parameter) => parameter.id === 'layers[0].filterA.cutoff')
+    expect(cutoff).toMatchObject({ defaultValue: defaultPatch().layers[0]?.filterA.cutoff })
   })
 
   it('reads the values of the patch it is given', () => {

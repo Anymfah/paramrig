@@ -6,7 +6,7 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { FILTER_SLOTS, FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { warp } from '@/audio/dsp/osc'
@@ -84,8 +84,10 @@ const targetOf = (id: string): string | undefined => {
   // modulator dropped on either moves whichever of the two its source reads.
   const where: Record<string, string> = {
     'pitch.start': 'pitch',
-    'filter.cutoff': 'cutoff',
-    'filter.resonance': 'resonance',
+    'filterA.cutoff': 'cutoff',
+    'filterA.resonance': 'resonance',
+    'filterB.cutoff': 'cutoff',
+    'filterB.resonance': 'resonance',
     'source.pulseWidth': 'pulseWidth',
     'source.position': 'pulseWidth',
     'source.fmIndex': 'pm',
@@ -504,6 +506,11 @@ const PM_NAMES: Record<string, string> = {
 /** The three slots, as the panel head and the hints name them. */
 const INSERT_LETTERS = ['A', 'B', 'C'] as const
 
+/** And the two filters, on the same idiom. */
+const FILTER_LETTERS = ['A', 'B'] as const
+const ROUTINGS = ['single', 'series', 'parallel']
+const ROUTING_NAMES: Record<string, string> = { single: 'One filter', series: 'B after A', parallel: 'A and B at once' }
+
 /**
  * One slot read off the board.
  *
@@ -572,6 +579,7 @@ const FILTER_MODELS: { value: FilterKind; label: string; note: string }[] = [
   { value: 'peak', label: 'Peak', note: 'Lifts a band without touching the rest.' },
   { value: 'ladder', label: 'Ladder', note: 'Four poles. Falls twice as fast, and growls.' },
   { value: 'comb', label: 'Comb', note: 'The sound added to itself a moment later.' },
+  { value: 'formant', label: 'Vowel', note: 'Three mouth resonances. Cutoff walks the vowels.' },
 ]
 
 /**
@@ -982,8 +990,8 @@ const DEFAULT_MACROS: { label: string; id: string }[] = [
   { label: 'Level1', id: 'layers[0].gain' },
   { label: 'Pos2', id: 'layers[1].pitch.start' },
   { label: 'Level2', id: 'layers[1].gain' },
-  { label: 'Cutoff', id: 'layers[0].filter.cutoff' },
-  { label: 'Reso', id: 'layers[0].filter.resonance' },
+  { label: 'Cutoff', id: 'layers[0].filterA.cutoff' },
+  { label: 'Reso', id: 'layers[0].filterA.resonance' },
   { label: 'Attack', id: 'layers[0].amp.attack' },
   { label: 'Release', id: 'layers[0].amp.release' },
   // Not the insert slots: a macro pointed into a slot that is switched off is a dial that turns
@@ -1240,7 +1248,11 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     if (read(ctx, L(index, 'enabled')) === false) onChange(L(index, 'enabled'), true)
     onChange(L(index, 'source.kind'), mode)
   }
-  const filterKind = read(ctx, L(f, 'filter.kind'))
+  /** Which of the layer's two filters the panel is showing, and where its fields live. */
+  const [filterSlot, setFilterSlot] = useState(0)
+  const F = (field: string) => `layers[${f}].${FILTER_SLOTS[filterSlot] ?? 'filterA'}.${field}`
+  const filterKind = read(ctx, F('kind'))
+  const routing = String(read(ctx, `layers[${f}].routing`) ?? 'single')
   const inserted = slotAt(ctx, f, slot)
   const letter = INSERT_LETTERS[slot] ?? 'A'
   const I = (field: string) => `layers[${f}].${INSERT_SLOTS[slot] ?? 'insertA'}.${field}`
@@ -1504,20 +1516,33 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     ),
     filter: (
     <Panel x={857} y={54} w={160} h={288} label="Filter" gap={1.5}>
-      <SlotMenu x={875} y={58} w={124} label="Filter model"
+      <span role="tablist" aria-label="Filter slot" className="fp-tabs">
+        {FILTER_LETTERS.map((name, index) => (
+          <Badge key={name} x={866 + index * 19} y={65} kind="circle" tab selected={filterSlot === index} onClick={() => setFilterSlot(index)}
+            label={`Filter ${name}`} hint={`Show filter ${name}. What the two do to each other is the word under them.`}>{name}</Badge>
+        ))}
+      </span>
+      <SlotMenu x={905} y={58} w={100} label="Filter model" columns={3}
         value={typeof filterKind === 'string' ? filterKind : 'off'}
-        hint="Which filter this layer runs through. The picture beside each is its measured response."
+        hint="Which filter this is. The picture beside each is its measured response."
         options={FILTER_MODELS.map((model) => ({ ...model, mark: <FilterMark kind={model.value} /> }))}
-        onPick={(next) => onChange(L(f, 'filter.kind'), next)} />
+        onPick={(next) => onChange(F('kind'), next)} />
       <Text x={900.5} y={79.5}>Cutoff</Text>
       <Text x={972.4} y={80}>Reso</Text>
-      <Knob ctx={ctx} x={900.5} y={122} id={L(f, 'filter.cutoff')} label="Cutoff" />
-      <Knob ctx={ctx} x={972.4} y={121.2} id={L(f, 'filter.resonance')} label="Reso" />
-      <Text x={936.5} y={167.5}>Env</Text>
-      <Knob ctx={ctx} x={936.5} y={209.6} id={L(f, 'filter.envAmount')} label="Env" />
+      <Knob ctx={ctx} x={900.5} y={122} id={F('cutoff')} label="Cutoff" />
+      <Knob ctx={ctx} x={972.4} y={121.2} id={F('resonance')} label="Reso" />
+      <Text x={900.5} y={167.5}>Env</Text>
+      <Knob ctx={ctx} x={900.5} y={209.6} id={F('envAmount')} label="Env" />
+      <Text x={972.4} y={168}>Balance</Text>
+      <Knob ctx={ctx} x={972.4} y={209.6} id={`layers[${f}].filterMix`} label="Balance" />
+      <Text x={936.5} y={250} u onClick={() => onChange(`layers[${f}].routing`, ROUTINGS[(ROUTINGS.indexOf(routing) + 1) % ROUTINGS.length] ?? 'single')}
+        label={`Filter routing: ${ROUTING_NAMES[routing] ?? 'One filter'}`}
+        hint="What the two filters do to each other. One is A alone; B after A is one shape rather than two; both at once, balanced, is what makes vowels and phasing. Click to step to the next.">
+        {ROUTING_NAMES[routing] ?? 'One filter'}
+      </Text>
       {/* What the filter is doing, at the size the drive left behind when it moved out to a slot. */}
-      <Icon x={937} y={286} w={112} h={60} className="fp-face" hint="The model's measured response, standing at the corner the cutoff is set to.">
-        <FilterFace kind={typeof filterKind === 'string' ? filterKind as FilterKind : 'off'} cutoff={readNum(ctx, L(f, 'filter.cutoff'), 8000)} />
+      <Icon x={937} y={300} w={112} h={52} className="fp-face" hint="The model's measured response, standing at the corner the cutoff is set to.">
+        <FilterFace kind={typeof filterKind === 'string' ? filterKind as FilterKind : 'off'} cutoff={readNum(ctx, F('cutoff'), 8000)} />
       </Icon>
     </Panel>
     ),

@@ -49,8 +49,8 @@ describe('applyAudioBinding', () => {
   })
 
   it('holds a value to the range its field admits', () => {
-    const wild = applyAudioBinding(defaultPatch(), bind('layers[0].filter.cutoff'), 900000, () => 0)
-    expect(wild.layers[0]?.filter.cutoff).toBe(20000)
+    const wild = applyAudioBinding(defaultPatch(), bind('layers[0].filterA.cutoff'), 900000, () => 0)
+    expect(wild.layers[0]?.filterA.cutoff).toBe(20000)
     const low = applyAudioBinding(defaultPatch(), bind('master.gain'), -50, () => 0)
     expect(low.master.gain).toBe(0)
   })
@@ -63,8 +63,8 @@ describe('applyAudioBinding', () => {
   })
 
   it('accepts an option the field declares', () => {
-    const after = applyAudioBinding(defaultPatch(), bind('layers[0].filter.kind'), 'bandpass', () => 0)
-    expect(after.layers[0]?.filter.kind).toBe('bandpass')
+    const after = applyAudioBinding(defaultPatch(), bind('layers[0].filterA.kind'), 'bandpass', () => 0)
+    expect(after.layers[0]?.filterA.kind).toBe('bandpass')
   })
 })
 
@@ -118,7 +118,7 @@ describe('parameterForAudioProperty', () => {
 
   /** The point of the field table: exposing a cutoff gives a control a musician can use. */
   it('gives a frequency a logarithmic scale and its unit', () => {
-    expect(build('layers[0].filter.cutoff')).toMatchObject({ kind: 'number', min: 20, max: 20000, scale: 'log', unit: 'Hz' })
+    expect(build('layers[0].filterA.cutoff')).toMatchObject({ kind: 'number', min: 20, max: 20000, scale: 'log', unit: 'Hz' })
   })
 
   it('gives a time control milliseconds to read in', () => {
@@ -144,7 +144,7 @@ describe('parameterForAudioProperty', () => {
 
 describe('audioPropertyLabel', () => {
   it('says which layer a field belongs to', () => {
-    expect(audioPropertyLabel('layers[2].filter.cutoff')).toBe('Layer 3 · Cutoff')
+    expect(audioPropertyLabel('layers[2].filterA.cutoff')).toBe('Layer 3 · Cutoff')
     expect(audioPropertyLabel('master.gain')).toBe('Master gain')
     expect(audioPropertyLabel('nope')).toBe('nope')
   })

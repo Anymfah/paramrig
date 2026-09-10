@@ -227,6 +227,42 @@ export function stepSequence(): AudioPatch {
      }])
 }
 
+/** Two resonances at once, balanced: a mouth rather than a filter. */
+export function vowelSweep(): AudioPatch {
+  return patch(1.4, [
+    makeLayer({
+      gain: 1.05,
+      spread: 0.5,
+      source: { kind: 'table', table: 'stack', position: 0.3, voices: 2, detune: 11 },
+      pitch: { start: 120, jitter: 6 },
+      filterA: { kind: 'formant', cutoff: 400, resonance: 0.62 },
+      filterB: { kind: 'bandpass', cutoff: 2600, resonance: 0.5 },
+      routing: 'parallel',
+      filterMix: 0.35,
+      amp: { attack: 0.05, hold: 0.7, decay: 0.3, sustain: 0.8, release: 0.25, curve: 1 },
+    }),
+  ], { z: { kind: 'reverb', mode: 'send', mix: 0.14, size: 0.4, damping: 0.5 }, tone: 0.1, width: 0.7 },
+     { gain: 3 },
+     [{ enabled: true, shape: 'triangle', rate: 0.7, depth: 0.8, target: 'layers[0].cutoff' }])
+}
+
+/** One filter fed what the other left: a band inside a band, which is one shape and not two. */
+export function seriesPluck(): AudioPatch {
+  return patch(0.7, [
+    makeLayer({
+      gain: 0.95,
+      spread: 0.45,
+      source: { kind: 'table', table: 'bell', position: 0.5, voices: 2, detune: 8 },
+      pitch: { start: 260, slide: -3, slideCurve: EASE_OUT, jitter: 9 },
+      filterA: { kind: 'ladder', cutoff: 1500, resonance: 0.5, envAmount: -2.2, envCurve: EASE_OUT },
+      filterB: { kind: 'highpass', cutoff: 260, resonance: 0.2 },
+      routing: 'series',
+      amp: { attack: 0.002, hold: 0.02, decay: 0.4, sustain: 0.1, release: 0.15, curve: 2.2 },
+    }),
+  ], { y: { kind: 'delay', mode: 'send', mix: 0.16, time: 0.11, feedback: 0.3 }, tone: 0.15, width: 0.6 },
+     { gain: 3 })
+}
+
 /** Bits thrown away on purpose, and a table underneath to throw away. */
 export function crushedTable(): AudioPatch {
   return patch(0.7, [

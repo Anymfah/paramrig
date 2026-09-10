@@ -20,7 +20,8 @@ const SECTION_LABELS: Record<LayerSection, string> = {
   root: 'Layer',
   source: 'Source',
   pitch: 'Pitch',
-  filter: 'Filter',
+  filterA: 'Filter A',
+  filterB: 'Filter B',
   insertA: 'Insert A',
   insertB: 'Insert B',
   insertC: 'Insert C',
@@ -38,7 +39,7 @@ export const MODULATION_CATEGORIES: InspectorCategory[] = [
   ...Array.from({ length: MOD_COUNT }, (_, index) => ({ id: `mod${index}`, label: `Modulator ${index + 2}` })),
 ]
 
-const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filter', 'insertA', 'insertB', 'insertC', 'amp']
+const SECTION_ORDER: LayerSection[] = ['root', 'source', 'pitch', 'filterA', 'filterB', 'insertA', 'insertB', 'insertC', 'amp']
 
 export function boardGroups(): ParamGroup[] {
   const layers = Array.from({ length: LAYER_COUNT }, (_, index) =>

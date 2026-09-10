@@ -13,7 +13,7 @@ import type { BezierCurve } from '../rigs/types.ts'
 
 export type WaveShape = 'sine' | 'triangle' | 'saw' | 'square'
 export type NoiseColour = 'white' | 'pink' | 'metallic'
-export type FilterKind = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'peak' | 'ladder' | 'comb'
+export type FilterKind = 'off' | 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'peak' | 'ladder' | 'comb' | 'formant'
 export type SourceKind = 'tone' | 'noise' | 'table'
 
 export type SourceSettings = {
@@ -84,6 +84,8 @@ export type PitchSettings = {
    */
   jitter: number
 }
+
+export type FilterRouting = 'single' | 'series' | 'parallel'
 
 export type FilterSettings = {
   kind: FilterKind
@@ -198,9 +200,22 @@ export type Layer = {
   /** Seconds of silence before this layer starts. A transient is a layer that starts on time and
    * ends quickly while the others are still arriving. */
   offset: number
+  /**
+   * How the two filters stand to each other.
+   *
+   * `single` is filter A alone, which is what a layer written before there were two of them says.
+   * `series` puts B after A, which is how a resonant low-pass in front of a band-pass becomes one
+   * shape rather than two. `parallel` runs both off the same signal and balances them with
+   * `filterMix`, which is the arrangement that makes vowels and phasing: two resonances at
+   * different heights, heard at once, is not the same sound as one after the other.
+   */
+  routing: FilterRouting
+  /** In parallel, where the balance sits: 0 is all of A, 1 is all of B. Ignored otherwise. */
+  filterMix: number
   source: SourceSettings
   pitch: PitchSettings
-  filter: FilterSettings
+  filterA: FilterSettings
+  filterB: FilterSettings
   /** Three effects in a row, each saying what it is and where it stands. */
   insertA: InsertSlot
   insertB: InsertSlot

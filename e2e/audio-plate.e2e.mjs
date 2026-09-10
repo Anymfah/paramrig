@@ -59,13 +59,24 @@ export default run('audio-plate', async ({ page, check, log }) => {
     }
   })
   log(`MEASURE filter picker: ${JSON.stringify(picker)}`)
-  check('the filter offers all eight models', picker.cells === 8, String(picker.cells))
+  check('the filter offers all nine models', picker.cells === 9, String(picker.cells))
   check('the menu stays inside the window', picker.inside, JSON.stringify(picker))
   check('and each cell draws its response at a size you can read', picker.mark >= 50, String(picker.mark))
-  await page.click('.fp-picker__cell:nth-child(7)')
+  await page.click('.fp-picker__cell:nth-child(9)')
   await page.waitForTimeout(250)
   const chosen = await page.textContent('section[aria-label="Filter"] button[aria-label="Filter model"]')
-  check('choosing one takes', chosen?.trim() === 'Ladder', String(chosen))
+  check('choosing one takes', chosen?.trim() === 'Vowel', String(chosen))
+
+  // 2b. The second filter is its own filter, and the word under them says what they do together.
+  await page.click('section[aria-label="Filter"] [role="tab"][aria-label="Filter B"]')
+  await page.waitForTimeout(200)
+  const onB = await page.textContent('section[aria-label="Filter"] button[aria-label="Filter model"]')
+  check('B holds its own model, not a second view of A', onB?.trim() === 'Off', String(onB))
+  const way = page.locator('section[aria-label="Filter"] button[aria-label^="Filter routing"]')
+  check('and the two start as one filter', (await way.textContent())?.trim() === 'One filter', String(await way.textContent()))
+  await way.click()
+  await page.waitForTimeout(200)
+  check('which is one click from being two', (await way.textContent())?.trim() === 'B after A', String(await way.textContent()))
 
   // 3. A modulator dropped on a dial lands, and the dial says so.
   const drag = async (from, to) => {

@@ -225,14 +225,14 @@ describe('AudioEditorPage', () => {
     expect(within(panel()).getByRole('button', { name: 'Insert A kind' })).toHaveTextContent('Comb')
   })
 
-  it('offers every filter the engine can run, and gives the choice to the one layer', async () => {
+  it('offers every filter the engine can run, and gives the choice to the one slot of the one layer', async () => {
     const user = userEvent.setup()
     open(arcadeCoin().id)
     const model = () => within(screen.getByRole('region', { name: 'Filter' })).getByRole('button', { name: 'Filter model' })
     await user.click(model())
-    // The engine has answered to eight models for a while; the plate offered three of them.
+    // The engine has answered to nine models for a while; the plate offered three of them.
     expect(screen.getAllByRole('menuitem').map((cell) => cell.getAttribute('aria-label'))).toEqual(
-      ['Off', 'Low', 'High', 'Band', 'Notch', 'Peak', 'Ladder', 'Comb'],
+      ['Off', 'Low', 'High', 'Band', 'Notch', 'Peak', 'Ladder', 'Comb', 'Vowel'],
     )
     await user.click(screen.getByRole('menuitem', { name: 'Ladder' }))
     expect(model()).toHaveTextContent('Ladder')
@@ -393,7 +393,7 @@ describe('AudioEditorPage', () => {
     // The rig reaches storage with the patch, bound under the macro's number.
     await waitFor(() => {
       const saved = getAudioDocument(doc.id)
-      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].filter.cutoff')
+      expect(saved?.rig?.bindings.find((binding) => binding.id === 'macro-10')?.property).toBe('layers[0].filterA.cutoff')
       expect(saved?.rig?.bindings.some((binding) => binding.id === 'macro-5')).toBe(false)
     })
   })
