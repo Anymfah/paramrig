@@ -2031,6 +2031,63 @@ button.fp-badge { cursor: pointer; touch-action: manipulation; }
   min-block-size: 58px;
   align-content: start;
 }
+/*
+ * What is on a control, and what the whole patch is doing.
+ *
+ * Both are portalled out of the plate, which carries a `transform: scale()`: a menu inside it
+ * would be drawn at the plate's scale rather than the app's, and a fixed anchor inside a
+ * transformed ancestor is not fixed to the window at all.
+ */
+.fp-at-point { position: fixed; inline-size: 1px; block-size: 1px; padding: 0; border: 0; background: none; opacity: 0; pointer-events: none; }
+/*
+ * The dots carry the source colours, and the plate's tokens do not reach here: they live on the
+ * stage and these menus are portalled to the document. The colours that mean something keep their
+ * hue whatever the look, so the app's values are the right ones to repeat — and they deepen on a
+ * light theme for the same reason everything else does.
+ */
+.fp-routed, .fp-routes {
+  min-inline-size: 210px;
+  --fp-src-p: #efa807; --fp-src-e: #5b8def; --fp-src-l: #7ccf5a;
+}
+:root[data-theme='light'] :is(.fp-routed, .fp-routes) { --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) :is(.fp-routed, .fp-routes) { --fp-src-p: #c47f00; --fp-src-e: #2f63c9; --fp-src-l: #3f9a1e; }
+}
+.fp-routed .menu__label, .fp-routes .menu__label {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.fp-routed .menu__item, .fp-routes .menu__item { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: var(--space-2); }
+.fp-routes .menu__item { grid-template-columns: 10px auto 1fr auto; }
+.fp-routed .menu__item.fp-routed__clear { display: flex; }
+.fp-routed__dot { inline-size: 8px; block-size: 8px; border-radius: 50%; }
+.fp-routed__depth { color: var(--text-muted); font-variant-numeric: tabular-nums; font-size: var(--text-xs); }
+.fp-routes__to { color: var(--text-muted); font-size: var(--text-xs); text-align: end; }
+.fp-routes__empty { margin: 0; padding: var(--space-2); color: var(--text-muted); font-size: var(--text-xs); max-inline-size: 24ch; text-wrap: pretty; }
+/* The way in, at the end of the routing bar: quiet until it is wanted, like the bar's own words. */
+.fp-routes__open {
+  position: relative;
+  margin-inline-start: 14px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--fp-wheel);
+  color: var(--fp-text);
+  font: inherit;
+  font-size: calc(10px * var(--fp-text-scale));
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: background-color var(--duration-instant) var(--ease-out), color var(--duration-instant) var(--ease-out);
+}
+.fp-routes__open:hover, .fp-routes__open[data-state='open'] { background: var(--fp-wheel-hover); color: var(--fp-text-hover); }
+.fp-routes__open:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 2px; }
+
 .fp-picker__name { color: var(--text-primary); font-size: var(--text-sm); font-weight: 500; }
 .fp-picker__note { color: var(--text-muted); font-size: var(--text-xs); line-height: 1.3; text-wrap: pretty; }
 

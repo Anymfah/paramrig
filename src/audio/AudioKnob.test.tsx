@@ -7,7 +7,7 @@ const cutoff: Extract<ParameterDef, { kind: 'number' }> = { kind: 'number', id: 
 
 describe('AudioKnob', () => {
   it('wears a modulator as a coloured stretch of its arc, and says so', () => {
-    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mod={{ colour: '#6fb904', depth: 0.3, onDepth: () => undefined }} />)
+    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mods={[{ id: 'mods[0]', name: 'L4', colour: '#6fb904', depth: 0.3, onDepth: () => undefined }]} />)
     const arc = container.querySelector('.fp-knob__mod')
     expect(arc).not.toBeNull()
     expect(arc?.getAttribute('style')).toMatch(/6fb904|111, 185, 4/)
@@ -25,7 +25,7 @@ describe('AudioKnob', () => {
   it('moves the swing, not the value, when Alt is held with an arrow', () => {
     const onDepth = vi.fn()
     const onChange = vi.fn()
-    render(<AudioKnob param={cutoff} value={0.5} onChange={onChange} mod={{ colour: '#6fb904', depth: 0.3, onDepth }} />)
+    render(<AudioKnob param={cutoff} value={0.5} onChange={onChange} mods={[{ id: 'mods[0]', name: 'L4', colour: '#6fb904', depth: 0.3, onDepth }]} />)
     const dial = screen.getByRole('slider', { name: 'Cutoff' })
     fireEvent.keyDown(dial, { key: 'ArrowUp', altKey: true })
     expect(onDepth).toHaveBeenCalledWith(0.32)
@@ -41,7 +41,7 @@ describe('the modulation slot', () => {
     const slot = container.querySelector('.fp-knob__slot')
     expect(slot).not.toBeNull()
     expect(slot?.textContent).toBe('')
-    rerender(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mod={{ colour: '#6fb904', depth: 0.7, onDepth: () => undefined }} />)
+    rerender(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mods={[{ id: 'mods[0]', name: 'L4', colour: '#6fb904', depth: 0.7, onDepth: () => undefined }]} />)
     expect(container.querySelector('.fp-knob__slot')?.textContent).toBe('0.70')
     expect(container.querySelector('.fp-knob__slot')?.getAttribute('style')).toMatch(/6fb904|111, 185, 4/)
   })
@@ -53,7 +53,7 @@ describe('the modulation slot', () => {
 
   it('empties on a double-click, and pushes one way for an envelope', () => {
     const onClear = vi.fn()
-    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mod={{ colour: '#4576c4', depth: -0.5, bipolar: false, onDepth: () => undefined, onClear }} />)
+    const { container } = render(<AudioKnob param={cutoff} value={0.5} onChange={() => undefined} target="layers[0].cutoff" mods={[{ id: 'mods[0]', name: 'L4', colour: '#4576c4', depth: -0.5, bipolar: false, onDepth: () => undefined, onClear }]} />)
     fireEvent.doubleClick(container.querySelector('.fp-knob__slot') as Element)
     expect(onClear).toHaveBeenCalled()
     // A negative envelope depth draws its stretch before the value, none after it.

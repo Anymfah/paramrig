@@ -12,18 +12,18 @@ import type { KnobMod } from '@/audio/AudioKnob'
  * handle's height is the reading. The whole box is the drag target, and a press starts from where
  * the value already is rather than jumping to the pointer.
  */
-export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, target, property, mod, onGestureStart, onGestureEnd }: {
+export function AudioFader({ param, value, onChange, kind = 'osc', digit, style, target, property, mods = [], onGestureStart, onGestureEnd }: {
   param: Extract<ParameterDef, { kind: 'number' }>
   value: number
   onChange: (next: number) => void
   kind?: 'osc' | 'noise'
   digit?: string | number
   style?: CSSProperties
-  /** The modulation target this level stands for, and the modulator pointed at it. */
+  /** The modulation target this level stands for, and the modulators pointed at it. */
   target?: string
   /** The parameter it edits, so a macro may be dropped on it. */
   property?: string
-  mod?: KnobMod
+  mods?: KnobMod[]
   onGestureStart?: () => void
   onGestureEnd?: () => void
 }) {
@@ -60,14 +60,11 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
     onGestureEnd?.()
   }
 
-  // The modulator's swing, as a bar beside the groove: either side of the cap for an LFO, one
-  // side for an envelope, the sign of its depth saying which.
+  // Each modulator's swing, as a bar beside the groove: either side of the cap for an oscillator,
+  // one side for an envelope, the sign of its depth saying which. One bar a source, stepping away.
   const centre = 7.5 + (1 - fraction) * travel
-  const reach = mod ? Math.abs(mod.depth) * travel : 0
+  const mod = mods[0]
   const oneWay = mod?.bipolar === false
-  const barTop = Math.max(7.5, oneWay ? (mod && mod.depth >= 0 ? centre - reach : centre) : centre - reach / 2)
-  const barBottom = Math.min(7.5 + travel, oneWay ? (mod && mod.depth >= 0 ? centre : centre + reach) : centre + reach / 2)
-  const half = reach / 2
   // A drag on the slot under the groove sets the swing.
   const slotOrigin = useRef({ y: 0, depth: 0 })
   const slotDragging = useRef(false)
@@ -87,10 +84,11 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       aria-valuemin={param.min}
       aria-valuemax={param.max}
       aria-valuenow={value}
-      aria-valuetext={`${value}${param.unit ?? ''}${mod ? `, modulated ${Math.round(mod.depth * 100)} per cent` : ''}`}
+      aria-valuetext={`${value}${param.unit ?? ''}${mods.length === 0 ? '' : mods.length === 1 ? `, modulated ${Math.round(mod!.depth * 100)} per cent by ${mod!.name}` : `, modulated by ${mods.length} sources`}`}
       data-target={target}
       data-property={property}
       data-mod={mod ? '' : undefined}
+      data-mods={mods.length > 1 ? mods.length : undefined}
       style={{ ...style, '--fill': String(fraction) } as CSSProperties}
       onPointerDown={down}
       onPointerMove={move}
@@ -106,7 +104,16 @@ export function AudioFader({ param, value, onChange, kind = 'osc', digit, style,
       }}
     >
       <span className="fp-fader__track" aria-hidden="true" />
-      {mod && half > 0.25 ? <span className="fp-fader__mod" aria-hidden="true" style={{ top: barTop, height: barBottom - barTop, background: mod.colour }} /> : null}
+      {/* One bar a source, stepping away from the groove, so two of them are two of them. */}
+      {mods.map((held, at) => {
+        const span = Math.abs(held.depth) * travel
+        const one = held.bipolar === false
+        const from = Math.max(7.5, one ? (held.depth >= 0 ? centre - span : centre) : centre - span / 2)
+        const to = Math.min(7.5 + travel, one ? (held.depth >= 0 ? centre : centre + span) : centre + span / 2)
+        if (to - from <= 0.5) return null
+        return <span key={held.id} className="fp-fader__mod" aria-hidden="true"
+          style={{ top: from, height: to - from, background: held.colour, insetInlineStart: `calc(50% + ${4.5 + at * 3}px)` }} />
+      })}
       <span className="fp-fader__handle" aria-hidden="true">{digit}</span>
       {target || property ? (
         <span className="fp-fader__slot" aria-hidden="true" style={mod ? { '--slot': mod.colour } as CSSProperties : undefined}

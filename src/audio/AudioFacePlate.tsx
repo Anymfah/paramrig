@@ -6,7 +6,7 @@ import { AudioKnob, type KnobMod, type KnobSize, type KnobTone } from '@/audio/A
 import { AudioFader } from '@/audio/AudioFader'
 import { AudioEnvelope } from '@/audio/AudioEnvelope'
 import { ParameterField } from '@/ui/ParameterField'
-import { FX_SLOTS, INSERT_SLOTS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
+import { FX_SLOTS, INSERT_SLOTS, LFO_TARGET_LABELS, MOD_COUNT, PERFORMER_COUNT, PM_SOURCES, SCENE_COUNT, STEP_COUNT } from '@/audio/fields'
 import { AudioPattern } from '@/audio/AudioPattern'
 import { waveAt } from '@/audio/dsp/osc'
 import { warp } from '@/audio/dsp/osc'
@@ -100,29 +100,40 @@ const targetOf = (id: string): string | undefined => {
 }
 
 /**
- * The source pointed at a target, if one is, as the arc the control will wear: a free envelope in
- * its blue, an LFO in its green. Two sources on one control add in the engine; the arc shows the
- * first.
+ * Every source pointed at a target, as the rings the control will wear: a performer in its amber,
+ * a free envelope in its blue, an oscillator in its green.
+ *
+ * Several may point at one control and the engine adds their swings, so the plate has to answer
+ * with several. It used to answer with the first, which was not a shorthand — it was a picture
+ * that said the other two were not there.
  */
-const modOf = (ctx: Ctx, target: string | undefined): KnobMod | undefined => {
-  if (!target) return undefined
+function modsOf(ctx: Ctx, target: string | undefined): KnobMod[] {
+  if (!target) return []
+  const found: KnobMod[] = []
   for (let index = 0; index < PERFORMER_COUNT; index += 1) {
     const id = `performers[${index}]`
     if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
-    return { colour: SOURCE_COLOUR.p, depth: readNum(ctx, `${id}.depth`), bipolar: read(ctx, `${id}.bipolar`) === true, onDepth: (next) => ctx.onChange(`${id}.depth`, next), onClear: () => ctx.onChange(`${id}.target`, 'off') }
+    found.push({
+      id, name: `P${index + 1}`, colour: SOURCE_COLOUR.p,
+      depth: readNum(ctx, `${id}.depth`),
+      bipolar: read(ctx, `${id}.bipolar`) === true,
+      onDepth: (next) => ctx.onChange(`${id}.depth`, next),
+      onClear: () => ctx.onChange(`${id}.target`, 'off'),
+    })
   }
   for (let index = 0; index < MOD_COUNT; index += 1) {
     const id = `mods[${index}]`
     if (read(ctx, `${id}.enabled`) === false || read(ctx, `${id}.target`) !== target) continue
     const envelope = read(ctx, `${id}.kind`) === 'envelope'
-    return {
+    found.push({
+      id, name: `${envelope ? 'E' : 'L'}${index + 2}`,
       colour: envelope ? SOURCE_COLOUR.e : SOURCE_COLOUR.l,
       depth: readNum(ctx, `${id}.depth`),
       onDepth: (next) => ctx.onChange(`${id}.depth`, next),
       onClear: () => ctx.onChange(`${id}.target`, 'off'),
-    }
+    })
   }
-  return undefined
+  return found
 }
 
 /* ── Hints ───────────────────────────────────────────────────────────────────────────────────── */
@@ -224,7 +235,7 @@ function Knob({ ctx, x, y, id, label, size = 'std', tone, digit, face, param, in
       face={face}
       target={target}
       property={size === 'macro' ? undefined : id}
-      mod={modOf(ctx, target)}
+      mods={modsOf(ctx, target)}
       style={at(x, y)}
       onChange={(next) => ctx.onChange(id, next)}
       onGestureStart={ctx.onGestureStart}
@@ -255,7 +266,7 @@ function Fader({ ctx, x, top, id, label, kind, digit }: { ctx: Ctx; x: number; t
   const current = read(ctx, id)
   const target = targetOf(id)
   return (
-    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit ?? macroDigit(ctx, id)} target={target} property={id} mod={modOf(ctx, target)} style={at(x, top)}
+    <AudioFader param={{ ...parameter, label }} value={typeof current === 'number' ? current : parameter.min} kind={kind} digit={digit ?? macroDigit(ctx, id)} target={target} property={id} mods={modsOf(ctx, target)} style={at(x, top)}
       onChange={(next) => ctx.onChange(id, next)} onGestureStart={ctx.onGestureStart} onGestureEnd={ctx.onGestureEnd} />
   )
 }
@@ -391,6 +402,52 @@ const FX_KNOBS: Record<string, { field: string; label: string }[]> = {
   delay: [{ field: 'time', label: 'Time' }, { field: 'mix', label: 'Mix' }, { field: 'feedback', label: 'Feed' }],
   reverb: [{ field: 'size', label: 'Size' }, { field: 'mix', label: 'Mix' }, { field: 'damping', label: 'Damp' }],
   widener: [{ field: 'width', label: 'Spread' }, { field: 'mix', label: 'Mix' }, { field: 'rate', label: 'Rate' }],
+}
+
+/**
+ * What is pointed at one control, on a right-click.
+ *
+ * A ring can be dragged and double-clicked, which is enough for one source and not enough for
+ * three: the outermost ring is the one under the pointer whatever you meant, and there is no
+ * gesture at all for "which of these is the amber one". So the control answers the question in
+ * words — who is on it, how far each swings, and a way to send any of them away.
+ *
+ * It is portalled to the document because the plate carries a `transform: scale()`, and a fixed
+ * anchor inside a transformed ancestor is not fixed to the window at all.
+ */
+function Routed({ at, mods, onShow, onClose }: {
+  at: { x: number; y: number; label: string } | null
+  mods: KnobMod[]
+  onShow: (id: string) => void
+  onClose: () => void
+}) {
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <DropdownMenu.Root open={at !== null} onOpenChange={(open) => { if (!open) onClose() }}>
+      <DropdownMenu.Trigger asChild>
+        <button type="button" className="fp-at-point" tabIndex={-1} aria-hidden style={{ left: at?.x ?? 0, top: at?.y ?? 0 }} />
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content className="menu fp-routed" align="start" side="bottom" sideOffset={4} collisionPadding={8} aria-label={`What moves ${at?.label ?? 'this control'}`}>
+          <DropdownMenu.Label className="menu__label">{at?.label ?? ''}</DropdownMenu.Label>
+          {mods.map((held) => (
+            <DropdownMenu.Item key={`show-${held.id}`} className="menu__item" onSelect={() => onShow(held.id)}>
+              <span className="fp-routed__dot" style={{ background: held.colour }} aria-hidden="true" />
+              <span>Show {held.name}</span>
+              <span className="fp-routed__depth">{held.depth.toFixed(2)}</span>
+            </DropdownMenu.Item>
+          ))}
+          <DropdownMenu.Separator className="menu__sep" />
+          {mods.map((held) => (
+            <DropdownMenu.Item key={`clear-${held.id}`} className="menu__item fp-routed__clear" onSelect={() => held.onClear?.()}>
+              <span>Take {held.name} off it</span>
+            </DropdownMenu.Item>
+          ))}
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>,
+    document.body,
+  )
 }
 
 /** What each phase-modulation source is called on the plate, where a word has to fit under a dial. */
@@ -1046,6 +1103,34 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
     }),
   ]
   const [shown, setShown] = useState(AMP_AT)
+  /** The control a right-click asked about, in window coordinates, and what it is called. */
+  const [routed, setRouted] = useState<{ x: number; y: number; label: string; target: string } | null>(null)
+  const askRouting = (event: React.MouseEvent<HTMLElement>) => {
+    const control = (event.target as HTMLElement | null)?.closest?.('[data-target]') as HTMLElement | null
+    const target = control?.getAttribute('data-target')
+    if (!target || modsOf(ctx, target).length === 0) return
+    event.preventDefault()
+    setRouted({ x: event.clientX, y: event.clientY, label: control?.getAttribute('aria-label') ?? 'This control', target })
+  }
+  /** Where a source's own panel is in the bar, so the menu and the overlay can send you to it. */
+  const slotOf = (id: string) => {
+    const performer = /^performers\[(\d+)\]$/.exec(id)
+    if (performer) return Number(performer[1])
+    const mod = /^mods\[(\d+)\]$/.exec(id)
+    return mod ? PERFORMER_COUNT + 1 + Number(mod[1]) : null
+  }
+  /** Every live routing in the patch, in the order the bar shows them. */
+  const routes = SOURCES.flatMap((source, index) => {
+    const id = source.performer !== undefined ? `performers[${source.performer}]` : source.mod !== undefined ? `mods[${source.mod}]` : null
+    if (!id) return []
+    if (read(ctx, `${id}.enabled`) === false) return []
+    const target = String(read(ctx, `${id}.target`) ?? 'off')
+    if (target === 'off') return []
+    return [{
+      id, index, name: source.id, kind: source.kind,
+      target, depth: readNum(ctx, `${id}.depth`),
+    }]
+  })
   const page = Math.floor(shown / 3)
   /** Which row the performers play, held on the patch. */
   const scene = Math.min(SCENE_COUNT - 1, Math.max(0, Math.round(readNum(ctx, 'scene', 0))))
@@ -1461,6 +1546,35 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
             </li>
           ))}
         </ul>
+        {/*
+         * Every routing in the patch, in one list.
+         *
+         * The bar says who exists and the controls say what is on them, and neither answers "what
+         * is this patch actually doing" without walking the whole plate. Twelve sources and forty
+         * destinations is more than anybody holds in their head.
+         */}
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button type="button" className="fp-routes__open" data-hint="Every routing in this patch at once: which source moves which control, and how far.">
+              {routes.length === 0 ? 'Nothing routed' : `${routes.length} routed`}
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="menu fp-routes" align="start" side="top" sideOffset={6} collisionPadding={8} aria-label="Every routing">
+              <DropdownMenu.Label className="menu__label">Every routing</DropdownMenu.Label>
+              {routes.length === 0 ? (
+                <p className="fp-routes__empty">Nothing is pointed at anything yet. Drag a handle from the bar onto a dial.</p>
+              ) : routes.map((route) => (
+                <DropdownMenu.Item key={route.id} className="menu__item" onSelect={() => setShown(route.index)}>
+                  <span className="fp-routed__dot" style={{ background: SOURCE_COLOUR[route.kind] }} aria-hidden="true" />
+                  <span>{route.name}</span>
+                  <span className="fp-routes__to">{LFO_TARGET_LABELS[route.target] ?? route.target}</span>
+                  <span className="fp-routed__depth">{route.depth.toFixed(2)}</span>
+                </DropdownMenu.Item>
+              ))}
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
       </Origin.Provider>
     </div>
   )
@@ -1635,8 +1749,12 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
       <div className="fp-sizer" style={{ width: box.w * scale, height: box.h * scale }}>
       <div className="fp" role="group" aria-label="Face-plate" ref={plateRef} data-layout={layout} data-assigning={assigning ? (assigning.kind === 'm' ? 'macro' : 'source') : undefined} style={{ width: box.w, height: box.h, '--assign': SOURCE_COLOUR[assigning?.kind ?? 'l'] } as CSSProperties}
         onPointerOver={hintFrom} onPointerOut={(event) => { const next = hintOf(event.relatedTarget); if (next !== hinted) setHinted(next) }}
-        onPointerDown={() => setHinted(null)} onFocus={hintFrom} onBlur={() => setHinted(null)}>
+        onPointerDown={() => setHinted(null)} onFocus={hintFrom} onBlur={() => setHinted(null)}
+        onContextMenu={askRouting}>
         <Hint target={hinted} />
+        <Routed at={routed} mods={routed ? modsOf(ctx, routed.target) : []}
+          onShow={(id) => { const slot = slotOf(id); if (slot !== null) setShown(slot); setRouted(null) }}
+          onClose={() => setRouted(null)} />
         <span className="fp-ghost" ref={ghostRef} aria-hidden="true">{assigning?.id ?? ''}</span>
         {/* ═══ Macro band: the seed, then the macros in two groups of eight that wrap as units ═══ */}
         <div className="fp-band" role="group" aria-label="Macros">

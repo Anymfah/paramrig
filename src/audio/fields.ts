@@ -237,7 +237,8 @@ export const LFO_TARGETS: string[] = [
   ...Array.from({ length: LAYER_COUNT }, (_, layer) => LFO_DESTINATIONS.map((where) => `layers[${layer}].${where}`)).flat(),
 ]
 
-const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
+/** What a target is called in words, for the picker, the overlay and the screen reader. */
+export const LFO_TARGET_LABELS: Record<string, string> = Object.fromEntries(
   LFO_TARGETS.map((target) => {
     if (target === 'off') return [target, 'Off']
     const [, layer, where] = /^layers\[(\d)\]\.(\w+)$/.exec(target) ?? []

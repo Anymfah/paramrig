@@ -312,6 +312,55 @@ describe('AudioEditorPage', () => {
     expect(where('Oscillators', 'Fall')).not.toHaveAttribute('data-target')
   })
 
+  /** One arc said the first source was the only one, which was a picture that lied about the sound. */
+  it('wears one ring a source when two are pointed at the same dial, and says so', () => {
+    open(arcadeCoin().id)
+    const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
+    const drop = (handle: string) => {
+      const grab = screen.getByRole('button', { name: `Drag ${handle} onto a control to modulate it` })
+      const under = document.elementFromPoint
+      document.elementFromPoint = () => cutoff
+      try {
+        fireEvent.pointerDown(grab, { clientX: 10, clientY: 10 })
+        fireEvent.pointerUp(grab, { clientX: 20, clientY: 20 })
+      } finally {
+        document.elementFromPoint = under
+      }
+    }
+    drop('L4')
+    expect(cutoff.querySelectorAll('.fp-knob__mod')).toHaveLength(1)
+    drop('L5')
+    expect(cutoff.querySelectorAll('.fp-knob__mod')).toHaveLength(2)
+    expect(cutoff).toHaveAttribute('aria-valuetext', expect.stringContaining('modulated by 2 sources'))
+  })
+
+  it('lists every routing in the patch, and what is on one control when asked', async () => {
+    const user = userEvent.setup()
+    open(arcadeCoin().id)
+    const cutoff = within(screen.getByRole('region', { name: 'Filter' })).getByRole('slider', { name: 'Cutoff' })
+    const grab = screen.getByRole('button', { name: 'Drag L4 onto a control to modulate it' })
+    const under = document.elementFromPoint
+    document.elementFromPoint = () => cutoff
+    try {
+      fireEvent.pointerDown(grab, { clientX: 10, clientY: 10 })
+      fireEvent.pointerUp(grab, { clientX: 20, clientY: 20 })
+    } finally {
+      document.elementFromPoint = under
+    }
+    // The bar keeps the count, and the list names the source, the control and how far it swings.
+    const overlay = screen.getByRole('button', { name: /routed$/ })
+    expect(overlay).toHaveTextContent('1 routed')
+    await user.click(overlay)
+    expect(screen.getByRole('menuitem')).toHaveTextContent('Layer 1 cutoff')
+    await user.keyboard('{Escape}')
+    // And the control itself answers who is on it, and lets one of them go.
+    fireEvent.contextMenu(cutoff, { clientX: 40, clientY: 40 })
+    expect(await screen.findByRole('menuitem', { name: /Show L4/ })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Take L4 off it' }))
+    expect(cutoff.querySelectorAll('.fp-knob__mod')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: /routed$/ })).toHaveTextContent('Nothing routed')
+  })
+
   /** A macro is a control of the rig: dropped on a dial, it exposes that dial to Tune and the SDK. */
   it('assigns a macro by dropping its number on a control, and that is the document rig', async () => {
     // A fresh document has no rig yet, so its macros are the default table.
