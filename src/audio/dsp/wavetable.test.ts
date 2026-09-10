@@ -102,3 +102,24 @@ describe('the wavetable library', () => {
     }
   })
 })
+
+describe('a table played where its harmonics do not fit', () => {
+  it('says so in its note when it keeps nothing low, since the sound is then silence', () => {
+    // A band-limited table plays only the harmonics that fit under the ceiling. One whose energy
+    // is all high is silent at a low pitch or a low rate, which is right — and a trap unless the
+    // picker says so, because a sound that plays nothing looks like a broken sound.
+    for (const name of TABLE_NAMES) {
+      const table = TABLES[name]!
+      let lowest = 65
+      for (let position = 0; position <= 1; position += 0.05) {
+        for (let harmonic = 1; harmonic <= 64; harmonic += 1) {
+          if (table.spectrum(harmonic, position) > 0.02) { lowest = Math.min(lowest, harmonic); break }
+        }
+      }
+      // Either it has something in the first four harmonics somewhere along its dial, or its own
+      // note warns that it has not.
+      const speaks = lowest <= 4
+      expect(speaks || /nothing low/i.test(table.note), `${name}: lowest harmonic ${lowest}, note "${table.note}"`).toBe(true)
+    }
+  })
+})

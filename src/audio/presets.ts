@@ -4,6 +4,7 @@ import type { FxInput } from './patch.ts'
 import { makeLayer, makePatch } from './patch.ts'
 import * as ui from './presets-interface.ts'
 import * as fx from './presets-series.ts'
+import * as morph from './presets-morph.ts'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -954,7 +955,7 @@ export function crystal(): AudioPatch {
 export type PresetGroup =
   | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
   | 'Touch' | 'Surfaces' | 'Signals'
-  | 'Element' | 'Weapon'
+  | 'Element' | 'Weapon' | 'Morph'
 
 export const PRESETS: { id: string; label: string; group: PresetGroup; build: () => AudioPatch }[] = [
   { id: 'coin', label: 'Coin', group: 'Arcade', build: coin },
@@ -1061,10 +1062,25 @@ export const PRESETS: { id: string; label: string; group: PresetGroup; build: ()
   { id: 'impact-snap', label: 'Impact Snap', group: 'Weapon', build: fx.impactSnap },
   { id: 'impact-strike', label: 'Impact Strike', group: 'Weapon', build: fx.impactStrike },
   { id: 'impact-slam', label: 'Impact Slam', group: 'Weapon', build: fx.impactSlam },
+
+  // The family that could not be written before: one sound a subsystem the engine gained.
+  { id: 'table-sweep', label: 'Table Sweep', group: 'Morph', build: morph.tableSweep },
+  { id: 'glass-bell', label: 'Glass Bell', group: 'Morph', build: morph.glassBell },
+  { id: 'growl-engine', label: 'Growl Engine', group: 'Morph', build: morph.growlEngine },
+  { id: 'ring-alarm', label: 'Ring Alarm', group: 'Morph', build: morph.ringAlarm },
+  { id: 'fold-buzz', label: 'Fold Buzz', group: 'Morph', build: morph.foldBuzz },
+  { id: 'notch-sweep', label: 'Notch Sweep', group: 'Morph', build: morph.notchSweep },
+  { id: 'cross-bell', label: 'Cross Bell', group: 'Morph', build: morph.crossBell },
+  { id: 'chorus-pad', label: 'Chorus Pad', group: 'Morph', build: morph.chorusPad },
+  { id: 'phaser-sweep', label: 'Phaser Sweep', group: 'Morph', build: morph.phaserSweep },
+  { id: 'wide-riser', label: 'Wide Riser', group: 'Morph', build: morph.wideRiser },
+  { id: 'step-sequence', label: 'Step Sequence', group: 'Morph', build: morph.stepSequence },
+  { id: 'crushed-table', label: 'Crushed Table', group: 'Morph', build: morph.crushedTable },
 ]
 
 export const PRESET_GROUPS: PresetGroup[] = [
   'Interface', 'Element', 'Weapon',
   'Touch', 'Surfaces', 'Signals',
   'Arcade', 'Impact', 'Motion', 'Sci-fi', 'Inharmonic',
+  'Morph',
 ]
