@@ -290,6 +290,35 @@ function Modes({ x, y, w, label, options }: {
 }
 
 /**
+ * What a table looks like across its knob, drawn by the function that plays it.
+ *
+ * Five readings of it, from the near end of the position dial to the far one, stacked back to
+ * front the way every wavetable has been drawn since the first one — because a single trace says
+ * what the wave is and a stack says what the dial will do to it, which is the thing being chosen.
+ * A picker of eight names is a picker nobody uses.
+ */
+function TableMark({ name }: { name: string }) {
+  const built = wavetable(tableOf(name))
+  const frames = 5
+  const points = 96
+  return (
+    <svg className="fp-menu__mark" viewBox="0 0 64 34" aria-hidden="true">
+      {Array.from({ length: frames }, (_, frame) => {
+        const position = frame / (frames - 1)
+        const base = 8 + frame * 5
+        const shift = (frames - 1 - frame) * 3
+        const d = Array.from({ length: points + 1 }, (_, at) => {
+          const along = at / points
+          const value = tableAt(built, along, position, 1 / 512)
+          return `${at === 0 ? 'M' : 'L'}${(shift + along * 52).toFixed(2)} ${(base - value * 4.8).toFixed(2)}`
+        }).join(' ')
+        return <path key={frame} d={d} opacity={0.3 + frame * 0.175} />
+      })}
+    </svg>
+  )
+}
+
+/**
  * The name of what is in a slot, and the menu that changes it.
  *
  * One pattern for every slot on the plate: which wavetable an oscillator reads, and — as the rest
@@ -300,7 +329,7 @@ function Modes({ x, y, w, label, options }: {
  */
 function SlotMenu({ x, y, w, label, value, options, onPick, hint }: {
   x: number; y: number; w: number; label: string; value: string
-  options: { value: string; label: string; note?: string }[]
+  options: { value: string; label: string; note?: string; mark?: ReactNode }[]
   onPick: (next: string) => void; hint?: string
 }) {
   const at = useAt()
@@ -318,8 +347,12 @@ function SlotMenu({ x, y, w, label, value, options, onPick, hint }: {
           <DropdownMenu.Label className="menu__label">{label}</DropdownMenu.Label>
           {options.map((option) => (
             <DropdownMenu.Item key={option.value} className="menu__item fp-menu__item" data-current={option.value === value || undefined} onSelect={() => onPick(option.value)}>
-              <span className="fp-menu__name">{option.label}</span>
-              {option.note ? <span className="fp-menu__note">{option.note}</span> : null}
+              {option.mark ? <span className="fp-menu__figure">{option.mark}</span> : null}
+              <span className="fp-menu__said">
+                <span className="fp-menu__name">{option.label}</span>
+                {option.note ? <span className="fp-menu__note">{option.note}</span> : null}
+              </span>
+              <svg className="fp-menu__tick" viewBox="0 0 10 8" aria-hidden="true"><path d="M0.8 4.2 L3.6 6.8 L9.2 1" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </DropdownMenu.Item>
           ))}
         </DropdownMenu.Content>
@@ -920,7 +953,7 @@ export function AudioFacePlate({ parameters, values, duration, onChange, onGestu
         <SlotMenu x={left} y={53} w={124} label={`Oscillator ${index + 1} wavetable`}
           value={String(read(ctx, L(index, 'source.table')) ?? 'sweep')}
           hint="Which wavetable this oscillator reads. The big dial walks along it."
-          options={TABLE_NAMES.map((name) => ({ value: name, label: TABLES[name]?.label ?? name, note: TABLES[name]?.note }))}
+          options={TABLE_NAMES.map((name) => ({ value: name, label: TABLES[name]?.label ?? name, note: TABLES[name]?.note, mark: <TableMark name={name} /> }))}
           onPick={(next) => onChange(L(index, 'source.table'), next)} />
       )
     }
