@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { FIELD_FORM_BRAND_ID, FIELD_FORM_MARK, fieldFormBrandDocument } from '@/rigs/examples/field-form-brand'
 import { getVectorDocument, sanitizeVectorDocument, vectorManifest } from '@/vector/document'
-import { clearRigCache, resolveRigValues, rigDefaults } from '@/vector/rig'
+import { resolveRigValues, rigDefaults } from '@/vector/rig'
 import { DEFAULT_EXPORT, exportBounds, exportElements, exportMarkup } from '@/vector/export'
 
 function luminance(hex: string): number {
@@ -66,7 +66,6 @@ describe('the bundled graphic charter rig', () => {
   it('makes every exposed control effective after reading, with no default appearance jump', () => {
     const document = sanitizeVectorDocument(fieldFormBrandDocument)!
     const defaults = rigDefaults(document.rig!)
-    clearRigCache()
     const baseline = resolveRigValues(document, defaults)
     // Proportional transforms may differ by machine epsilon (56 × 1 becomes 56.00000000000001).
     for (const element of document.elements) {
@@ -78,7 +77,6 @@ describe('the bundled graphic charter rig', () => {
     }
     for (const parameter of document.rig!.parameters) {
       const value = parameter.kind === 'number' ? parameter.min : parameter.kind === 'select' ? parameter.options[1]!.value : parameter.kind === 'color' ? '#875A45' : 'New wording'
-      clearRigCache()
       const changed = resolveRigValues(document, { ...defaults, [parameter.id]: value, ...(parameter.kind === 'preset' ? parameter.options[1]!.values : {}) })
       expect(changed, parameter.id).not.toEqual(baseline)
       if (parameter.kind === 'color' && parameter.id !== 'workspace-background') {
