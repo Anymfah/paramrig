@@ -1,0 +1,11 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Controls SDK consumer</title>
+<link rel="stylesheet" href="__SDK_STYLES__"><style>body{margin:24px;font:18px Georgia,serif;background:white;color:#1b2530}#controls{max-width:380px;background:#171d1d;padding:16px;border-radius:8px}#host-button{padding:12px;font:inherit;color:#1b2530;background:#fff;border:2px solid #1b2530}output{display:block;margin:16px 0}</style>
+<h1>Controls SDK consumer</h1><p id="host-copy">The host keeps its own typography, colours and button styles.</p><button id="host-button">Host button</button><div id="controls"></div><output id="status">Starting</output>
+<script type="module">
+import { createElement as h, useState, createRoot, RigControls, createControlRegistry } from '__SDK_ENTRY__';
+const status=document.getElementById('status'); let gestures=0;
+const parameters=[{kind:'number',id:'gain',label:'Gain',group:'main',min:0,max:1,step:.01,defaultValue:.5},{kind:'color',id:'tint',label:'Tint',group:'main',defaultValue:'#34826c'},{kind:'text',id:'name',label:'Name',group:'main',defaultValue:'Example'},{kind:'select',id:'shape',label:'Shape',group:'main',defaultValue:'cube',options:[{value:'cube',label:'Cube'},{value:'sphere',label:'Sphere'},{value:'cone',label:'Cone'}]}];
+const registry=createControlRegistry();
+function App(){const [values,setValues]=useState({gain:.5,tint:'#34826c',name:'Example',shape:'cube'});return h(RigControls,{parameters,values,registry,onChange:(id,value)=>{setValues(old=>({...old,[id]:value}));status.textContent=`Changed ${id}: ${typeof value==='string'?value:JSON.stringify(value)} · ${gestures} completed gestures`},onGestureStart:()=>{status.textContent='Gesture started'},onGestureEnd:()=>{gestures++;status.textContent=`Gesture ended: ${gestures}`},onGestureCancel:()=>{status.textContent='Gesture cancelled'}})}
+createRoot(document.getElementById('controls')).render(h(App));status.textContent='Controlled inputs ready';document.getElementById('host-button').onclick=()=>{status.textContent='Host interaction still works'};
+</script></html>

@@ -66,28 +66,7 @@ export function pdfNumber(value: number): string {
   return Object.is(rounded, -0) ? '0' : String(rounded)
 }
 
-/** An sRGB hex colour as the three numbers PDF wants, 0 to 1. */
-export function pdfColor(hex: string): [number, number, number] {
-  const clean = hex.replace('#', '')
-  const channel = (at: number) => (Number.parseInt(clean.slice(at, at + 2), 16) || 0) / 255
-  return [channel(0), channel(2), channel(4)]
-}
-
-/**
- * A naive sRGB to CMYK conversion, for a print-minded read-out and an optional DeviceCMYK
- * export. There is no ICC profile behind it: it is indicative, not colour-managed.
- */
-export function cmykOf(hex: string): [number, number, number, number] {
-  const [r, g, b] = pdfColor(hex)
-  const k = 1 - Math.max(r, g, b)
-  if (k >= 1) return [0, 0, 0, 1]
-  return [
-    round((1 - r - k) / (1 - k)),
-    round((1 - g - k) / (1 - k)),
-    round((1 - b - k) / (1 - k)),
-    round(k),
-  ]
-}
+export { rgbChannels as pdfColor, cmykOf } from '@/color/space'
 
 export function encode(value: string): Uint8Array {
   const bytes = new Uint8Array(value.length)
@@ -104,8 +83,4 @@ export function concat(parts: Uint8Array[]): Uint8Array {
     offset += part.length
   }
   return result
-}
-
-function round(value: number): number {
-  return Math.round(value * 1000) / 1000
 }

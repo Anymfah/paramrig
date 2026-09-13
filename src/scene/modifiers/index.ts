@@ -1,28 +1,39 @@
-/**
- * Every modifier this build has.
- *
- * Registration is a side effect of importing a module, so something has to import them all; this
- * file is that something, and it is imported once by the editor's entry point. Keeping the list
- * here rather than in the panel means the registry is complete before anything asks it a question —
- * a document loaded with a subdivision modifier on it draws subdivided on the first frame rather
- * than after the panel has been opened.
- */
+/** Explicit initialization, shared by the editor, viewers and exports. */
+import { getModifier, registerModifier } from './types'
+import { simpleDeformModifier } from './simpleDeform'
+import { arrayModifier } from './array'
+import { edgeSplitModifier } from './edgeSplit'
+import { smoothModifier } from './smooth'
+import { triangulateModifier } from './triangulate'
+import { subsurfModifier } from './subsurf'
+import { bevelModifier } from './bevel'
+import { booleanModifier } from './boolean'
+import { weldModifier } from './weld'
+import { displaceModifier } from './displace'
+import { screwModifier } from './screw'
+import { mirrorModifier } from './mirror'
+import { decimateModifier } from './decimate'
+import { castModifier } from './cast'
+import { solidifyModifier } from './solidify'
+import { wireframeModifier } from './wireframe'
 
-import '@/scene/modifiers/array'
-import '@/scene/modifiers/bevel'
-import '@/scene/modifiers/boolean'
-import '@/scene/modifiers/cast'
-import '@/scene/modifiers/decimate'
-import '@/scene/modifiers/displace'
-import '@/scene/modifiers/edgeSplit'
-import '@/scene/modifiers/mirror'
-import '@/scene/modifiers/screw'
-import '@/scene/modifiers/simpleDeform'
-import '@/scene/modifiers/smooth'
-import '@/scene/modifiers/solidify'
-import '@/scene/modifiers/subsurf'
-import '@/scene/modifiers/triangulate'
-import '@/scene/modifiers/weld'
-import '@/scene/modifiers/wireframe'
+export function initializeBuiltinModifiers(): void {
+  if (!getModifier(simpleDeformModifier.kind)) registerModifier(simpleDeformModifier)
+  if (!getModifier(arrayModifier.kind)) registerModifier(arrayModifier)
+  if (!getModifier(edgeSplitModifier.kind)) registerModifier(edgeSplitModifier)
+  if (!getModifier(smoothModifier.kind)) registerModifier(smoothModifier)
+  if (!getModifier(triangulateModifier.kind)) registerModifier(triangulateModifier)
+  if (!getModifier(subsurfModifier.kind)) registerModifier(subsurfModifier)
+  if (!getModifier(bevelModifier.kind)) registerModifier(bevelModifier)
+  if (!getModifier(booleanModifier.kind)) registerModifier(booleanModifier)
+  if (!getModifier(weldModifier.kind)) registerModifier(weldModifier)
+  if (!getModifier(displaceModifier.kind)) registerModifier(displaceModifier)
+  if (!getModifier(screwModifier.kind)) registerModifier(screwModifier)
+  if (!getModifier(mirrorModifier.kind)) registerModifier(mirrorModifier)
+  if (!getModifier(decimateModifier.kind)) registerModifier(decimateModifier)
+  if (!getModifier(castModifier.kind)) registerModifier(castModifier)
+  if (!getModifier(solidifyModifier.kind)) registerModifier(solidifyModifier)
+  if (!getModifier(wireframeModifier.kind)) registerModifier(wireframeModifier)
+}
 
-export { getModifier, listModifiers, modifierCount, type ModifierCategory, type ModifierModule } from '@/scene/modifiers/types'
+export { getModifier, listModifiers, modifierCount, type ModifierCategory, type ModifierModule } from './types'

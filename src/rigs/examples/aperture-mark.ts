@@ -1,5 +1,6 @@
 import type { VectorDocument } from '@/vector/types'
 import { aperturePosterDocument } from '@/rigs/examples/aperture-poster'
+import { fieldFormBrandDocument } from '@/rigs/examples/field-form-brand'
 
 /**
  * A vector document that carries its own controls: a ring with an opening, a rounded core, and one
@@ -73,4 +74,4 @@ export const apertureMarkDocument: VectorDocument = {
 }
 
 /** The vector documents that ship with the app, offered until they are edited and stored. */
-export const BUNDLED_DOCUMENTS: VectorDocument[] = [apertureMarkDocument, aperturePosterDocument]
+export const BUNDLED_DOCUMENTS: VectorDocument[] = [apertureMarkDocument, aperturePosterDocument, fieldFormBrandDocument]

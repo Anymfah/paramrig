@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { changedIds, countedLabel, DEFAULT_STEP_LABEL, START_LABEL, type HistoryStep } from '@/editor/history'
-import { collectionHidden, collectionSelectable, getSceneDocument, MAX_VERSIONS, saveSceneDocument, uniqueName } from '@/scene/document'
+import { collectionHidden, collectionSelectable, MAX_VERSIONS, uniqueName } from '@/scene/model'
+import { getSceneDocument, saveSceneDocument } from '@/scene/document'
 import { cameraPlacement } from '@/scene/operators/view'
 import { runOperator as runRegisteredOperator } from '@/scene/operators/registry'
 import type { OperatorContext, OperatorParams } from '@/scene/operators/types'

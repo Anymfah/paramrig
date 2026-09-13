@@ -1,0 +1,46 @@
+name: release SDKs
+
+on:
+  push:
+    tags: ['sdk-v*']
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-sdk-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test -- --maxWorkers=2
+      - run: npm run build:sdks
+      - run: node scripts/generate-sdk-examples.mjs
+      - run: npm run test:sdks
+      - run: npm run build:modules -- --matrix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-${{ github.sha }}
+          path: .local/modularity/tarballs/*.tgz
+          include-hidden-files: true
+          if-no-files-found: error
+      - run: npm install -g npm@11
+      - name: Publish validated artifacts in dependency order
+        run: node scripts/publish-sdks.mjs
+      - name: Install and verify the exact artifacts from npm
+        run: npm run test:sdks -- --registry

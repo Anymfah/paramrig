@@ -4,12 +4,18 @@ import { applyTransform, type BindingTransform } from '@/rigs/binding'
 import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
 import { fillsOf, fillsPatch, strokesOf, strokesPatch, summaryColor } from '@/vector/paints'
 import { BLEND_MODES } from '@/vector/effects'
+import { TEXT_FACES } from '@/vector/text'
+import { fontValueFamily, fontValueFont } from '@/vector/fontValue'
+import { supportedWeight } from '@/vector/fontCapabilities'
 import type { VectorBlendMode, VectorDocument, VectorElement, VectorPaint } from '@/vector/types'
 
 // The transform, the id maker and the arithmetic between a control and a property are shared with
 // the scene's rig: a rig file written for one editor has to mean the same thing to the other.
 export { applyTransform, controlId, type BindingTransform } from '@/rigs/binding'
 export { sanitizeParameter } from '@/rigs/sanitize'
+
+/** Reserved target for properties of the workspace, not a drawable object. */
+export const DOCUMENT_TARGET = '@document'
 
 /** One control writing to one property of one object. */
 export type VectorBinding = {
@@ -18,6 +24,8 @@ export type VectorBinding = {
   property: string
   parameterId: string
   transform?: BindingTransform
+  /** Optional scope for a shared document font, such as body text. */
+  elementIds?: string[]
 }
 
 /** What a vector document adds to become a rig: the controls, and where they write. */
@@ -34,7 +42,7 @@ export const SIMPLE_PROPERTIES = {
   opacity: 'number', visible: 'boolean',
   fill: 'color', stroke: 'color', strokeWidth: 'number', strokeDash: 'number',
   cornerRadius: 'number', cornerSmoothing: 'number',
-  text: 'text', fontSize: 'number', fontWeight: 'number', letterSpacing: 'number',
+  text: 'text', fontFamily: 'text', fontSize: 'number', fontWeight: 'number', letterSpacing: 'number', lineHeight: 'number',
   sides: 'number', innerRatio: 'number', arcStart: 'number', arcSweep: 'number',
   blendMode: 'option',
 } as const
@@ -90,7 +98,7 @@ export const KINDS_FOR_TYPE: Record<PropertyType, string[]> = {
   number: ['number', 'vector', 'curve'],
   boolean: ['switch'],
   color: ['color'],
-  text: ['text', 'select'],
+  text: ['text', 'select', 'number'],
   option: ['select', 'text'],
   gradient: ['gradient'],
 }
@@ -134,7 +142,12 @@ export function applyBinding(element: VectorElement, binding: VectorBinding, val
         ? { ...element, fill: value, fills: element.fills ? withPaint(element.fills, 0, { color: value, type: 'solid' }) ?? element.fills : undefined }
         : { ...element, stroke: value, strokes: element.strokes ? withPaint(element.strokes, 0, { color: value, type: 'solid' }) ?? element.strokes : undefined }
     }
-    if (path.type === 'text') return typeof value === 'string' ? { ...element, text: value } : element
+    if (path.type === 'text') {
+      if (typeof value === 'string') return { ...element, [path.key]: value }
+      if (path.key === 'fontFamily') return element
+      const next = number()
+      return next !== null && Number.isFinite(next) ? { ...element, text: String(Math.round(next * 1000) / 1000) } : element
+    }
     if (path.type === 'option') {
       return typeof value === 'string' && (BLEND_MODES as readonly string[]).includes(value)
         ? { ...element, blendMode: value === 'normal' ? undefined : (value as VectorBlendMode) }
@@ -193,19 +206,14 @@ export function applyBinding(element: VectorElement, binding: VectorBinding, val
   }
 }
 
-let cacheKey = ''
-let cacheValue: VectorDocument | null = null
-
 /**
  * The document as its controls say it should look. Pure: the editor always writes to the raw
- * document, and this is what the canvas, the thumbnails and the export draw. The result is kept
- * for the last set of values, since a drag asks for the same one many times a second.
+ * document, and this is what the canvas, the thumbnails and the export draw. There is no shared
+ * document cache: two hosts can use the same project ID and persistence timestamp independently.
  */
 export function resolveRigValues(document: VectorDocument, values: Record<string, ParamValue>): VectorDocument {
   const rig = document.rig
   if (!rig || rig.bindings.length === 0) return document
-  const key = `${document.id}:${document.updatedAt}:${document.elements.length}:${JSON.stringify(values)}`
-  if (key === cacheKey && cacheValue) return cacheValue
   const known = new Set(rig.parameters.map((parameter: ParameterDef) => parameter.id))
   const resolve = (id: string) => {
     const value = values[id]
@@ -217,24 +225,47 @@ export function resolveRigValues(document: VectorDocument, values: Record<string
     if (!known.has(binding.parameterId)) continue
     byElement.set(binding.elementId, [...(byElement.get(binding.elementId) ?? []), binding])
   }
+  const fonts = [...(document.fonts ?? [])]
+  for (const param of rig.parameters) {
+    if (param.kind !== 'select' || param.view !== 'font-library') continue
+    const font = fontValueFont(values[param.id])
+    if (font) { const i = fonts.findIndex(item => item.family === font.family); if (i < 0) fonts.push(font); else fonts[i] = font }
+  }
+  const familyBindings = (byElement.get(DOCUMENT_TARGET) ?? []).filter(binding => binding.property === 'fontFamily')
+  const bindingValue = (id: string) => {
+    const param = rig.parameters.find(item => item.id === id)
+    if (param?.kind === 'number' && param.fontParameter) return supportedWeight(values[param.fontParameter], Number(values[id] ?? param.defaultValue))
+    return param?.kind === 'select' && param.view === 'font-library' ? fontValueFamily(values[id]) : values[id] ?? null
+  }
   const resolved: VectorDocument = {
     ...document,
+    ...(fonts.length ? { fonts } : {}),
     elements: document.elements.map((element) => {
+      // A document font is a shared base; a binding on an individual text can override it.
+      let base = element
+      if (element.kind === 'text') for (const binding of familyBindings) {
+        if (binding.elementIds && !binding.elementIds.includes(element.id)) continue
+        const family = fontValueFamily(values[binding.parameterId])
+        if (family && (TEXT_FACES.some(face => face.value === family) || fonts.some(font => font.family === family))) {
+          const font = fontValueFont(values[binding.parameterId])
+          const settings = Object.fromEntries((font?.axes ?? []).filter(axis => axis.tag !== 'wght').map(axis => [axis.tag, font?.variations?.[axis.tag] ?? axis.default]))
+          base = { ...base, fontFamily: family, fontVariations: Object.keys(settings).length ? settings : undefined }
+        }
+      }
       const bindings = byElement.get(element.id)
-      if (!bindings) return element
       // The last binding on a property wins, which is what writing them in order gives.
-      return bindings.reduce((current, binding) => applyBinding(current, binding, values[binding.parameterId] ?? null, resolve), element)
+      const result = (bindings ?? []).reduce((current, binding) => applyBinding(current, binding, bindingValue(binding.parameterId), resolve), base)
+      if (result.kind !== 'text' || !familyBindings.length) return result
+      return { ...result, fontWeight: supportedWeight(fonts.find(font => font.family === result.fontFamily) ?? result.fontFamily, result.fontWeight ?? 400) }
     }),
   }
-  cacheKey = key
-  cacheValue = resolved
+  for (const binding of byElement.get(DOCUMENT_TARGET) ?? []) {
+    const value = values[binding.parameterId]
+    if (binding.property === 'background' && typeof value === 'string' && (value === 'none' || /^#[\da-f]{6}$/i.test(value))) {
+      resolved.background = value
+    }
+  }
   return resolved
-}
-
-/** Drops the memo, so a test can watch the work happen. */
-export function clearRigCache(): void {
-  cacheKey = ''
-  cacheValue = null
 }
 
 /** The default value of every control the document defines. */
@@ -258,7 +289,7 @@ const LABELS: Partial<Record<SimpleProperty, string>> = {
   opacity: 'Opacity', visible: 'Visible', fill: 'Fill', stroke: 'Stroke',
   strokeWidth: 'Stroke width', strokeDash: 'Dash', cornerRadius: 'Corner radius',
   cornerSmoothing: 'Corner smoothing', text: 'Text', fontSize: 'Font size',
-  fontWeight: 'Font weight', letterSpacing: 'Letter spacing', sides: 'Sides',
+  fontFamily: 'Font family', fontWeight: 'Font weight', lineHeight: 'Line height', letterSpacing: 'Letter spacing', sides: 'Sides',
   innerRatio: 'Star points', arcStart: 'Arc start', arcSweep: 'Arc sweep', blendMode: 'Blend mode',
 }
 
@@ -270,8 +301,9 @@ function sanitizeBinding(value: unknown, elementIds: Set<string>, parameterIds: 
   const parameterId = text(source.parameterId, 60)
   const property = text(source.property, 120)
   if (!elementId || !parameterId || !property) return null
-  if (!elementIds.has(elementId) || !parameterIds.has(parameterId)) return null
-  if (!parseBindableProperty(property)) return null
+  const workspace = elementId === DOCUMENT_TARGET && (property === 'background' || property === 'fontFamily')
+  if ((!workspace && !elementIds.has(elementId)) || !parameterIds.has(parameterId)) return null
+  if (!workspace && !parseBindableProperty(property)) return null
   const raw = source.transform && typeof source.transform === 'object' ? source.transform as Record<string, unknown> : null
   const transform: BindingTransform = {}
   if (raw) {
@@ -286,6 +318,7 @@ function sanitizeBinding(value: unknown, elementIds: Set<string>, parameterIds: 
     elementId,
     property,
     parameterId,
+    ...(workspace && property === 'fontFamily' && Array.isArray(source.elementIds) ? { elementIds: source.elementIds.filter((id): id is string => typeof id === 'string' && elementIds.has(id)) } : {}),
     ...(Object.keys(transform).length ? { transform } : {}),
   }
 }
@@ -376,6 +409,7 @@ export function parameterForProperty(options: {
   if (!path) return null
   const base = { id: options.id, label: options.label, group: options.group }
   const value = currentValue(options.element, options.property)
+  if (options.property === 'fontFamily') return { ...base, kind: 'select', defaultValue: typeof value === 'string' ? value : 'Public Sans', options: TEXT_FACES.map(face => ({ value: face.value, label: face.label })) }
   if (path.type === 'number') {
     const min = options.min ?? 0
     const max = options.max ?? Math.max(min + 1, typeof value === 'number' ? value * 2 : 100)

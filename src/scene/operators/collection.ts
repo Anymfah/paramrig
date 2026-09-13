@@ -1,5 +1,5 @@
 import type { ParameterDef } from '@/rigs/types'
-import { collectionById, rootCollection, uniqueName, uniqueObjectName } from '@/scene/document'
+import { collectionById, rootCollection, uniqueName, uniqueObjectName } from '@/scene/model'
 import { registerOperator } from '@/scene/operators/registry'
 import { selectParam, switchParam, type OperatorContext } from '@/scene/operators/types'
 import type { Collection, SceneDocument, SceneObject, SceneSelection } from '@/scene/types'

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vector SDK consumer</title>
+<style>body{font:16px system-ui;margin:2rem;max-width:60rem;background:#17191b;color:#eef3f0}button{font:inherit;margin:.4rem;padding:.7rem}output{display:block;margin:1rem 0}#view{height:320px;border:1px solid #777}img{max-width:100%;height:220px}iframe{width:100%;height:400px;border:0}</style>
+<h1>Vector SDK consumer</h1><p>Host-provided fonts, SVG rendering and exports without React.</p>
+<button id="update">Update document</button><button id="svg">Export SVG</button><button id="png">Export PNG</button><button id="pdf">Export PDF</button><button id="destroy">Destroy renderer</button>
+<output id="status" role="status">Loading</output><div id="view"></div><img id="export" alt="Exported vector document" hidden><iframe id="pdf-view" title="Exported PDF" hidden></iframe><a id="download" hidden>Download export</a>
+<script type="module">
+import { createVectorDocument, createVectorElement, createVectorRenderer, exportPdf, pdfPages } from '__SDK_ENTRY__'
+const status = document.querySelector('#status'), project = createVectorDocument()
+project.width = 600; project.height = 300; project.background = '#F1EFE8'
+project.elements.push(createVectorElement('rectangle', {x:30,y:30,width:240,height:240}, {fill:'#36866D'}))
+project.elements.push(createVectorElement('text', {x:295,y:75,width:280,height:160}, {text:'Shared engine',fontFamily:'Source Serif 4',fontSize:44,fill:'#172B25'}))
+const font = async ({ purpose, signal }) => {
+  const response = await fetch(`/fonts/SourceSerif4.${purpose === 'outline' ? 'ttf' : 'woff2'}`, { signal })
+  return response.ok ? response.arrayBuffer() : null
+}
+const view = createVectorRenderer({ container: document.querySelector('#view'), document: project, resources: {font} })
+let url
+const show = (blob, extension) => {
+  if (url) URL.revokeObjectURL(url)
+  url = URL.createObjectURL(blob)
+  const link = document.querySelector('#download'); link.href = url; link.download = `vector.${extension}`; link.hidden = false
+  const image = document.querySelector('#export'), pdf = document.querySelector('#pdf-view')
+  image.hidden = extension === 'pdf'; pdf.hidden = extension !== 'pdf'
+  if (extension === 'pdf') pdf.src = url; else image.src = url
+  status.textContent = `${extension.toUpperCase()} ready: ${blob.size} bytes`
+}
+const action = (id, callback) => { document.querySelector(id).onclick = () => Promise.resolve().then(callback).catch(error => { status.textContent = error.message }) }
+await view.ready; status.textContent = 'Rendered with host font'
+action('#update', async () => { project.elements[0].fill = '#AE553C'; project.elements[1].text = 'Updated document'; await view.update(project); status.textContent = 'Document updated' })
+action('#svg', async () => show(new Blob([await view.exportSvg()], {type:'image/svg+xml'}), 'svg'))
+action('#png', async () => {
+  const blob = await view.exportPng(2), header = new Uint8Array(await blob.slice(0,8).arrayBuffer())
+  if (header.join(',') !== '137,80,78,71,13,10,26,10') throw Error('Invalid PNG signature')
+  show(blob, 'png')
+})
+action('#pdf', async () => {
+  const result = await exportPdf(pdfPages(project,false), {background:project.background,resolveFont:font})
+  if (result.notes.skipped.length) throw Error(`PDF skipped: ${result.notes.skipped.join(', ')}`)
+  show(new Blob([result.bytes], {type:'application/pdf'}), 'pdf')
+})
+action('#destroy', () => { view.destroy(); status.textContent = `Renderer destroyed; owned views: ${document.querySelector('#view').children.length}` })
+window.addEventListener('pagehide', () => { view.destroy(); if(url) URL.revokeObjectURL(url) })
+</script></html>

@@ -2,7 +2,7 @@ import type { EditMesh } from '@/scene/mesh/editMesh'
 import {
   chosenOf,
   numberOf,
-  registerModifier,
+  defineModifier,
   switchOf,
   wholeOf,
   type ModifierOutcome,
@@ -113,7 +113,7 @@ function bevelByWeight(mesh: EditMesh, params: BevelParams): ModifierOutcome {
   return undefined
 }
 
-registerModifier<BevelModifierParams>({
+export const bevelModifier = defineModifier<BevelModifierParams>({
   kind: 'bevel',
   label: 'Bevel',
   category: 'generate',

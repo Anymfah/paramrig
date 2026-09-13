@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { listModifiers, modifierCount } from '@/scene/modifiers'
+import { initializeBuiltinModifiers, listModifiers, modifierCount } from '@/scene/modifiers'
 import { MODIFIER_KINDS } from '@/scene/types'
 
 /**
  * The registry is what the Add menu, the panel and the stack all read, so what matters is that
- * importing it once puts every kind the document can hold into it: a modifier that exists in the
+ * explicit, repeated initialization puts every kind the document can hold into it: a modifier that exists in the
  * source and not in this list is one a saved file can name and the editor cannot draw.
  */
 describe('the modifier registry', () => {
+  initializeBuiltinModifiers()
+  initializeBuiltinModifiers()
   it('has a module for every kind a document can name', () => {
     const registered = new Set(listModifiers().map((module) => module.kind))
     expect([...MODIFIER_KINDS].filter((kind) => !registered.has(kind))).toEqual([])

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createSceneDocument, ROOT_COLLECTION_ID } from '@/scene/document'
 import { boxMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { resolveSceneValues, sceneRigDefaults } from '@/scene/rig'
 import { addControl, bindExisting, exposeProperty, removeControl, unbindProperty, updateControl } from '@/scene/rigEdits'
 import type { SceneDocument, SceneObject } from '@/scene/types'

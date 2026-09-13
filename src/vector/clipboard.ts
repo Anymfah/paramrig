@@ -1,5 +1,5 @@
-import { serializeVectorDocument } from '@/vector/document'
-import { sanitizeVectorDocument } from '@/vector/document'
+import { serializeVectorDocument } from '@/vector/serialization'
+import { sanitizeVectorDocument } from '@/vector/model'
 import { importSvg } from '@/vector/svgImport'
 import { DEFAULT_RIG_GROUP, parseBindableProperty, sanitizeRig, type VectorBinding } from '@/vector/rig'
 import type { VectorDocument, VectorElement } from '@/vector/types'

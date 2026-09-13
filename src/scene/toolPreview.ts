@@ -1,4 +1,4 @@
-import { meshOf } from '@/scene/document'
+import { meshOf } from '@/scene/model'
 import { readOnlyAdjacency } from '@/scene/mesh/adjacency'
 import { editedObjectIds } from '@/scene/mesh/selection'
 import { worldMatrix, worldPointOf } from '@/scene/objects'

@@ -462,9 +462,6 @@ function withMaterial(material: Material, path: Extract<SceneProperty, { kind: '
 
 /* --------------------------------------------------------------- resolution */
 
-let cacheKey = ''
-let cacheValue: SceneDocument | null = null
-
 /**
  * The document as its controls say it should look.
  *
@@ -472,17 +469,13 @@ let cacheValue: SceneDocument | null = null
  * exports and Tune mode — while everything that *edits* one writes to the raw document. That split
  * is what makes a rig re-tunable without touching the model.
  *
- * The answer is kept for the last set of values, because a control being dragged asks for it many
- * times a second, and the key is everything the answer depends on: which document, when it last
- * changed, and what every control is set to. The modifier and material caches downstream are keyed
- * on the *resolved* mesh and material, so a control that moves one object re-evaluates that object
- * and nothing else.
+ * Callers may memoize immutable document revisions. This public resolver keeps no shared document
+ * cache: a host can update a view or replace objects before changing a persistence timestamp.
+ * Modifier and material caches downstream still reuse unchanged mesh and material inputs.
  */
 export function resolveSceneValues(document: SceneDocument, values: Record<string, ParamValue>): SceneDocument {
   const rig = document.rig
   if (!rig || rig.bindings.length === 0) return document
-  const key = `${document.id}:${document.updatedAt}:${document.objects.length}:${JSON.stringify(values)}`
-  if (key === cacheKey && cacheValue) return cacheValue
 
   const known = new Set(rig.parameters.map((parameter) => parameter.id))
   const resolve = (id: string): number => {
@@ -563,16 +556,7 @@ export function resolveSceneValues(document: SceneDocument, values: Record<strin
     }
   }
 
-  const resolved: SceneDocument = { ...document, objects, meshes, materials, world, cursor }
-  cacheKey = key
-  cacheValue = resolved
-  return resolved
-}
-
-/** Drops the memo, so a test can watch the work happen. */
-export function clearSceneRigCache(): void {
-  cacheKey = ''
-  cacheValue = null
+  return { ...document, objects, meshes, materials, world, cursor }
 }
 
 /** The default value of every control the document defines. */

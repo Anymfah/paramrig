@@ -7,7 +7,9 @@ import { Tooltip } from '@/ui/Tooltip'
 import { EXPORT_SCALES, type ExportSettings, type ExportTargetKind } from '@/vector/export'
 import type { VectorExportPreset } from '@/vector/types'
 
-export function VectorExportMenu({ settings, onSettings, frameName, selectionCount, presets, onExport, onSavePreset, onDeletePreset }: {
+export function VectorExportMenu({ settings, onSettings, frameName, selectionCount, presets, onExport, onSavePreset, onDeletePreset, onBrandKit, brandKitBusy }: {
+  onBrandKit?: () => void
+  brandKitBusy?: boolean
   settings: ExportSettings
   onSettings: (settings: ExportSettings) => void
   frameName: string | null
@@ -34,6 +36,7 @@ export function VectorExportMenu({ settings, onSettings, frameName, selectionCou
       </Tooltip>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className="menu vector-export-menu" side="bottom" align="end" sideOffset={8} collisionPadding={8} aria-label="Export">
+          {onBrandKit ? <><DropdownMenu.Item className="menu__item" disabled={brandKitBusy} onSelect={onBrandKit}>{brandKitBusy ? 'Preparing brand kit…' : 'Download brand kit · ZIP'}</DropdownMenu.Item><DropdownMenu.Separator className="menu__sep" /></> : null}
           <p className="vector-export__label">What</p>
           <DropdownMenu.RadioGroup value={settings.target} onValueChange={(value) => update('target', value as ExportTargetKind)}>
             {targets.map((target) => (

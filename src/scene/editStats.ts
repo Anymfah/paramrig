@@ -1,5 +1,5 @@
 import { curveCage } from '@/scene/curve/cage'
-import { meshOf } from '@/scene/document'
+import { meshOf } from '@/scene/model'
 import { editedObjectIds } from '@/scene/mesh/selection'
 import { cachedTriangulation } from '@/scene/mesh/triangulate'
 import type { SceneDocument, SceneSelection } from '@/scene/types'

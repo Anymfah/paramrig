@@ -1,7 +1,8 @@
 import { useNavColumn } from '@/shell/useLayout'
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getRig, listRigs } from '@/rigs/registry'
+import type { RendererKind } from '@/rigs/types'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
@@ -13,35 +14,22 @@ import { ExportAction } from '@/workspace/ExportAction'
 import { Inspector } from '@/workspace/Inspector'
 import { RigPreview } from '@/workspace/RigPreview'
 import { Timeline } from '@/workspace/Timeline'
-import { modeOf, readInspectorPrefs, withMode, writeInspectorPrefs, type VectorMode } from '@/vector/inspectorPrefs'
-import { modeOf as sceneModeOf, readScenePrefs, withMode as withSceneMode, writeScenePrefs } from '@/scene/prefs'
-
-/*
- * Both editors are deferred, and for the same reason: a workspace opens one document, so the other
- * editor is dead weight in front of the first frame. The drawing editor used to be static while the
- * scene editor was not, which is why opening a scene parsed the whole vector editor first — 57
- * modules and 13,760 lines, measured, none of them ever read.
- */
-const VectorEditorPage = lazy(async () => ({ default: (await import('@/vector/VectorEditorPage')).VectorEditorPage }))
-const SceneEditorPage = lazy(() => import('@/scene/SceneEditorPage').then((mod) => ({ default: mod.SceneEditorPage })))
-const WebWorkspace = lazy(() => import('@/web/WebWorkspace').then(mod => ({ default: mod.WebWorkspace })))
+import { useDomain } from '@/modules/context'
+import type { EditorMode } from '@/modules/types'
 
 export function WorkspacePage() {
   const { rigId = '' } = useParams()
+  const domain = useDomain()
   const manifest = getRig(rigId)
   const { session, snapshot } = useSession(manifest?.renderer === 'web' ? undefined : manifest?.id)
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
-  // A scene remembers Edit or Tune in its own store, a vector document in the inspector's.
-  const isScene = manifest?.renderer === 'scene'
-  const [mode, setModeState] = useState<VectorMode>(() => (isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId)))
-  useEffect(() => {
-    setModeState(isScene ? sceneModeOf(readScenePrefs(), rigId) : modeOf(readInspectorPrefs(), rigId))
-  }, [isScene, rigId])
-  const setMode = useCallback((next: VectorMode) => {
+  const readMode = useCallback((): EditorMode => domain?.readMode?.(rigId) ?? 'tune', [domain, rigId])
+  const [mode, setModeState] = useState<EditorMode>(readMode)
+  useEffect(() => { setModeState(readMode()) }, [readMode])
+  const setMode = useCallback((next: EditorMode) => {
     setModeState(next)
-    if (isScene) writeScenePrefs(withSceneMode(readScenePrefs(), rigId, next))
-    else writeInspectorPrefs(withMode(readInspectorPrefs(), rigId, next))
-  }, [isScene, rigId])
+    domain?.writeMode?.(rigId, next)
+  }, [domain, rigId])
   useEffect(() => { setMobilePanel('main') }, [rigId])
 
   useEffect(() => {
@@ -62,7 +50,7 @@ export function WorkspacePage() {
   // before a lazily-loaded editor's, so without this guard it would answer first and swallow the
   // key on its way to the editor that actually owns the document.
   const editing = !!manifest
-    && (manifest.renderer === 'vector' || manifest.renderer === 'scene')
+    && (manifest.renderer === 'vector' || manifest.renderer === 'scene' || manifest.renderer === 'audio')
     && (mode === 'edit' || manifest.parameters.length === 0)
 
   useEffect(() => {
@@ -87,24 +75,9 @@ export function WorkspacePage() {
     return <UnknownRig />
   }
 
-  if (manifest.renderer === 'web') return <Suspense fallback={<p className="status-msg">Opening the web workspace</p>}><WebWorkspace rigId={manifest.id} /></Suspense>
-
-  // A drawing opens in the editor; a document that exposes controls opens the way it was left.
-  if (manifest.renderer === 'vector' && (mode === 'edit' || manifest.parameters.length === 0)) {
-    return (
-      <Suspense fallback={<p className="status-msg">Opening the drawing editor</p>}>
-        <VectorEditorPage manifest={manifest} mode={mode} onMode={setMode} />
-      </Suspense>
-    )
-  }
-
-  // The same rule for a scene: no controls, or last left on Edit, and it opens in the 3D editor.
-  if (manifest.renderer === 'scene' && (mode === 'edit' || manifest.parameters.length === 0)) {
-    return (
-      <Suspense fallback={<p className="status-msg">Opening the scene editor</p>}>
-        <SceneEditorPage documentId={manifest.id} mode={mode} onMode={setMode} />
-      </Suspense>
-    )
+  if (domain && (manifest.renderer === 'web' || editing)) {
+    const Editor = domain.Editor
+    return <Editor manifest={manifest} mode={mode} onMode={setMode}/>
   }
 
   if (!session || !snapshot) return null
@@ -134,7 +107,7 @@ export function WorkspacePage() {
     >
       <h1 className="visually-hidden">{manifest.name}</h1>
       <div className="workspace-toolbar">
-        {manifest.renderer === 'vector' || manifest.renderer === 'scene' ? (
+        {manifest.renderer === 'vector' || manifest.renderer === 'scene' || manifest.renderer === 'audio' ? (
           <div className="workspace-toolbar__group">
             <Button variant="quiet" size="sm" onClick={() => setMode('edit')}>Edit</Button>
           </div>
@@ -152,6 +125,18 @@ export function WorkspacePage() {
           </Tooltip>
         </div>
         <div className="workspace-toolbar__group">
+          {/* The baseline's name and the count were a line of prose across the foot of the window.
+              They belong to this control, so they are what it says when you ask it. */}
+          <Tooltip content={`Compare against ${session.baselineName()} · ${session.changedSinceBaseline().length || 'no'} changed`}>
+            <div className="compare-toggle" role="group" aria-label={`Compare against ${session.baselineName()}`}>
+              <button type="button" aria-pressed={snapshot.compare === 'original'} onClick={() => session.setCompare('original')}>
+                Reference
+              </button>
+              <button type="button" aria-pressed={snapshot.compare === 'current'} onClick={() => session.setCompare('current')}>
+                Current
+              </button>
+            </div>
+          </Tooltip>
           <Tooltip content="Snapshot">
             <IconButton
               label="Snapshot"
@@ -163,7 +148,7 @@ export function WorkspacePage() {
           <ExportAction session={session} />
         </div>
       </div>
-      <div className={`preview-stage${manifest.renderer === 'three' || manifest.renderer === 'scene' ? ' preview-stage--scene' : ''}`} id="main" tabIndex={-1}>
+      <div className={`preview-stage${stageModifier(manifest.renderer)}`} id="main" tabIndex={-1}>
         <RigPreview
           rigId={manifest.id}
           renderer={manifest.renderer}
@@ -197,21 +182,20 @@ export function WorkspacePage() {
         ) : null}
 
       </div>
-      <div className="workspace-status">
-        <div className="compare-toggle" role="group" aria-label={`Compare against ${session.baselineName()}`}>
-          <button type="button" aria-pressed={snapshot.compare === 'original'} onClick={() => session.setCompare('original')}>
-            Reference
-          </button>
-          <button type="button" aria-pressed={snapshot.compare === 'current'} onClick={() => session.setCompare('current')}>
-            Current
-          </button>
-        </div>
-        <span className="workspace-status__baseline">Reference: {session.baselineName()}</span>
-        <span className="workspace-status__changes">{session.changedSinceBaseline().length ? `${session.changedSinceBaseline().length} changed` : 'Matches reference'}</span>
-        <span className="workspace-status__notice" role="status">{snapshot.notice}</span>
-      </div>
+      <p className="editor-notice" role="status" data-empty={snapshot.notice.length === 0}>{snapshot.notice}</p>
     </WorkspaceShell>
   )
+}
+
+/**
+ * Which stage a renderer sits on. Three of them do not draw on paper: a scene, a three.js rig and
+ * a patch all want the dark surface, and a patch wants it in Tune as much as in Edit — the light
+ * canvas left its transport at about 1.6:1 against its own background.
+ */
+function stageModifier(renderer: RendererKind): string {
+  if (renderer === 'three' || renderer === 'scene') return ' preview-stage--scene'
+  if (renderer === 'audio') return ' preview-stage--audio'
+  return ''
 }
 
 function UnknownRig() {
@@ -228,8 +212,8 @@ function UnknownRig() {
     >
       <RigNavigation rigs={listRigs()} compact={compact} />
       <main id="main" className="library-main scroll-area">
-        <h1>This rig is not in the example registry</h1>
-        <p className="lede">The URL does not match a bundled example. Nothing was loaded from disk.</p>
+        <h1>This document could not be opened</h1>
+        <p className="lede">The document is missing or could not be read by this tool. Stored data has not been removed.</p>
         <Button onClick={() => navigate('/')}>Back to library</Button>
       </main>
       <ShellNavResize />

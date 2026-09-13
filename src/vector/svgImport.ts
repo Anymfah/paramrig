@@ -1,5 +1,5 @@
 import { applyAffine, IDENTITY, type Affine } from '@/vector/affine'
-import { createVectorElement } from '@/vector/document'
+import { createVectorElement } from '@/vector/model'
 import { networkFromRuns, normalizeWorld, type RunPoint } from '@/vector/network'
 import type { VectorElement, VectorPoint } from '@/vector/types'
 

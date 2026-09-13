@@ -1,3 +1,4 @@
+import { indexSuccessfulWrite } from '@/library/projectIndex'
 import type { RigManifest } from '../rigs/types'
 import { parseManifest, safeId, type WebProjectManifest } from './contracts'
 
@@ -9,7 +10,7 @@ export function listWebProjects(): WebProjectManifest[] {
 }
 export function rememberWebProject(manifest: WebProjectManifest) {
   const projects = [manifest, ...listWebProjects().filter(p => p.id !== manifest.id)].slice(0, 24)
-  try { localStorage.setItem(KEY, JSON.stringify(projects)) } catch { /* The connected document remains usable. */ }
+  try { const raw = JSON.stringify(projects); localStorage.setItem(KEY, raw); indexSuccessfulWrite(KEY, raw) } catch { /* The connected document remains usable. */ }
 }
 /**
  * A web rig this browser has not opened before. The registry cannot describe it — nothing on disk

@@ -1,24 +1,19 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
-import { NavLink, Link } from 'react-router-dom'
+import { NavLink } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
 import { ancestorPaths, buildNavTree, compactNavItems, type NavFolderNode, type NavNode } from '@/rigs/nav-tree'
 import { loadCollapsedFolders, saveCollapsedFolders } from '@/state/persistence'
-import { updatePrefs, useWorkspace } from '@/state/workspace'
+import { NavRailHead } from '@/shell/NavRailHead'
 import { collectionIcon } from '@/ui/collectionIcons'
-import { Lockup } from '@/ui/BrandMark'
 import { ThemeToggle } from '@/ui/ThemeToggle'
 import {
   IconChevronRight,
   IconDoc,
-  IconGear,
   IconFolder,
   IconFolderOpen,
 
   IconGrid,
-  IconPanelLeft,
-  IconPanelLeftClose,
-  IconSliders,
 } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
 
@@ -31,7 +26,6 @@ type RigNavigationProps = {
 }
 
 export function RigNavigation({ rigs, activeId, compact = false, onNavigate, inert }: RigNavigationProps) {
-  const { prefs } = useWorkspace()
   const tree = buildNavTree(rigs)
   const [collapsed, setCollapsed] = useState(loadCollapsedFolders)
 
@@ -61,27 +55,7 @@ export function RigNavigation({ rigs, activeId, compact = false, onNavigate, ine
 
   return (
     <nav className="nav-rail" aria-label="Rigs" inert={inert} onClick={(event) => { if ((event.target as Element).closest('a[href]')) onNavigate?.() }}>
-      <div className="nav-rail__head">
-        <Tooltip content="ParamRig" side="right" disabled={!compact}>
-          <Link to="/" className="nav-brand" aria-label="ParamRig home">
-            <Lockup />
-          </Link>
-        </Tooltip>
-        <div className="nav-rail__tools">
-          <NavSettings compact={compact} />
-          <Tooltip content={compact ? 'Expand navigation' : 'Compact navigation'} side={compact ? 'right' : 'top'}>
-            <button
-              type="button"
-              className="icon-btn icon-btn--ghost nav-rail__compact"
-              aria-pressed={prefs.navCompact}
-              aria-label={compact ? 'Expand navigation' : 'Compact navigation'}
-              onClick={() => updatePrefs({ navCompact: !prefs.navCompact, navCollapsed: false })}
-            >
-              {compact ? <IconPanelLeft /> : <IconPanelLeftClose />}
-            </button>
-          </Tooltip>
-        </div>
-      </div>
+      <NavRailHead compact={compact} />
       <div className="nav-rail__body scroll-area">
         {compact ? (
           <ul className="nav-tree">
@@ -115,42 +89,6 @@ export function RigNavigation({ rigs, activeId, compact = false, onNavigate, ine
   )
 }
 
-function NavSettings({ compact }: { compact: boolean }) {
-  return (
-    <DropdownMenu.Root modal={false}>
-      <Tooltip content="Settings" side={compact ? 'right' : 'top'}>
-        <DropdownMenu.Trigger asChild>
-          <button type="button" className="icon-btn icon-btn--ghost nav-rail__gear" aria-label="Settings">
-            <IconGear />
-          </button>
-        </DropdownMenu.Trigger>
-      </Tooltip>
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className="menu"
-          side={compact ? 'right' : 'bottom'}
-          align="start"
-          sideOffset={8}
-          collisionPadding={8}
-          aria-label="Settings"
-        >
-          <DropdownMenu.Item asChild>
-            <NavLink to="/docs" className="menu__item">
-              <IconDoc />
-              <span>Documentation</span>
-            </NavLink>
-          </DropdownMenu.Item>
-          <DropdownMenu.Item asChild>
-            <NavLink to="/docs/controls" className="menu__item">
-              <IconSliders />
-              <span>Controllers</span>
-            </NavLink>
-          </DropdownMenu.Item>
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  )
-}
 
 function NavHint({ label, children }: { label: string; children: ReactNode }) {
   return (

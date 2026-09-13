@@ -1,9 +1,11 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, planeMesh } from '@/scene/mesh/primitives'
 import { getModifier } from '@/scene/modifiers/types'
 import { euler, isClosed, isWellFormed } from '@/scene/operators/editHarness'
-import '@/scene/modifiers/edgeSplit'
+
 
 /**
  * Edge split, judged by what stops being shared.

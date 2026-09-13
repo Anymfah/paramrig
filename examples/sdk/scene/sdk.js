@@ -1,0 +1,1 @@
+export { createSceneDocument, importProject } from '@paramrig/scene'; export { createSceneInstance } from '@paramrig/scene/engine'; export { createSceneViewer } from '@paramrig/scene/browser'; import { Scene, WebGLRenderer } from 'three'; export const THREE = { Scene, WebGLRenderer };

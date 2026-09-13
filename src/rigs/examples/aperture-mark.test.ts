@@ -1,3 +1,6 @@
+import { beforeAll } from 'vitest'
+import { loadModule } from '@/modules/registry'
+beforeAll(async () => { await loadModule('vector') })
 import { describe, expect, it } from 'vitest'
 import { apertureMarkDocument, APERTURE_MARK_ID } from '@/rigs/examples/aperture-mark'
 import { getVectorDocument, isBundledDocument, listVectorDocuments, saveVectorDocument, sanitizeVectorDocument, vectorManifest } from '@/vector/document'

@@ -21,9 +21,13 @@ describe('text properties', () => {
   it('knows which faces the app can outline', () => {
     expect(canOutline('Public Sans')).toBe(true)
     expect(canOutline('Georgia')).toBe(false)
-    expect(canOutline('Unknown face')).toBe(true)
+    expect(canOutline('Unknown face')).toBe(false)
     expect(fontStack('Georgia')).toContain('Georgia')
-    expect(TEXT_FACES.filter((face) => face.outlineUrl)).toHaveLength(1)
+    expect(TEXT_FACES.filter((face) => face.outline).map(face => face.value)).toEqual([
+      'Public Sans', 'Space Grotesk', 'Source Serif 4',
+    ])
+    expect(canOutline('Space Grotesk')).toBe(true)
+    expect(canOutline('Source Serif 4')).toBe(true)
   })
 })
 

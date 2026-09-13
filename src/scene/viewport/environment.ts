@@ -8,7 +8,7 @@ import {
 } from 'three'
 import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { loadResource } from '@/state/resources'
+import type { SceneResourceResolver } from '@/scene/resources'
 import type { World } from '@/scene/types'
 
 /**
@@ -35,16 +35,19 @@ export type SceneEnvironment = {
   forWorld: (world: World, wantsStudio: boolean) => Texture | null
   /** The unfiltered image, for drawing behind the scene. Null unless the world shows one. */
   backgroundFor: (world: World) => Texture | null
+  whenIdle: () => Promise<void>
   dispose: () => void
 }
 
 /** A Radiance file starts with this signature; the rest are decoded by the browser. */
 const RADIANCE = '#?RADIANCE'
 
-export function createSceneEnvironment(renderer: WebGLRenderer, options: { onLoaded?: () => void } = {}): SceneEnvironment {
+export function createSceneEnvironment(renderer: WebGLRenderer, options: { onLoaded?: () => void; resolveResource?: SceneResourceResolver; onError?: (error: Error) => void } = {}): SceneEnvironment {
   const maker = new PMREMGenerator(renderer)
   let studio: Texture | null = null
   let disposed = false
+  const abort = new AbortController()
+  const pending = new Set<Promise<void>>()
   /** By resource id: the image as loaded, and the pre-filtered environment made from it. */
   const built = new Map<string, { source: Texture | null; environment: Texture | null }>()
 
@@ -65,16 +68,17 @@ export function createSceneEnvironment(renderer: WebGLRenderer, options: { onLoa
   const load = (id: string): void => {
     if (built.has(id)) return
     built.set(id, { source: null, environment: null })
-    void loadResource(id)
+    const request = Promise.resolve().then(() => options.resolveResource?.(id, abort.signal) ?? null)
       .then(async (blob) => {
-        if (!blob || disposed) return
+        if (disposed) return
+        if (!blob) throw new Error(`Scene resource is unavailable: ${id}`)
         const bytes = new Uint8Array(await blob.slice(0, RADIANCE.length).arrayBuffer())
         const header = String.fromCharCode(...bytes)
         const texture = header.startsWith(RADIANCE)
           ? radiance(new Uint8Array(await blob.arrayBuffer()))
           : await bitmap(blob)
         if (disposed) {
-          texture.dispose()
+          releaseTexture(texture)
           return
         }
         texture.mapping = EquirectangularReflectionMapping
@@ -84,9 +88,9 @@ export function createSceneEnvironment(renderer: WebGLRenderer, options: { onLoa
         entry.environment = maker.fromEquirectangular(texture).texture
         options.onLoaded?.()
       })
-      .catch(() => {
-        /* An unreadable image leaves the world lit by its colour rather than the scene unlit. */
-      })
+      .catch(error => { if (!disposed) options.onError?.(error instanceof Error ? error : new Error(String(error))) })
+      .finally(() => pending.delete(request))
+    pending.add(request)
   }
 
   const entryFor = (world: World): { source: Texture | null; environment: Texture | null } | null => {
@@ -106,12 +110,14 @@ export function createSceneEnvironment(renderer: WebGLRenderer, options: { onLoa
       if (world.visibleAsBackground === false) return null
       return entryFor(world)?.source ?? null
     },
+    whenIdle: async () => { await Promise.all([...pending]) },
     dispose: () => {
       disposed = true
+      abort.abort()
       studio?.dispose()
       studio = null
       for (const entry of built.values()) {
-        entry.source?.dispose()
+        if (entry.source) releaseTexture(entry.source)
         entry.environment?.dispose()
       }
       built.clear()
@@ -142,4 +148,9 @@ async function bitmap(blob: Blob): Promise<Texture> {
   texture.colorSpace = SRGBColorSpace
   texture.needsUpdate = true
   return texture
+}
+
+function releaseTexture(texture: Texture): void {
+  const image = texture.image as { close?: () => void } | undefined
+  image?.close?.(); texture.dispose()
 }

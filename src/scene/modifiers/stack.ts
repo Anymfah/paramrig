@@ -1,13 +1,4 @@
-/*
- * Loading the stack loads the modifiers themselves.
- *
- * Registration is a side effect of importing a module, and the stack is what every drawing path
- * goes through — the viewport, a thumbnail, a render, the preview in Tune mode. Leaving the import
- * to the editor page meant that a scene drawn anywhere else was drawn without its modifiers, which
- * looks exactly like a scene that has none.
- */
-import '@/scene/modifiers'
-import { meshOf } from '@/scene/document'
+import type { OutlineFontLookup } from '@/scene/curve/font'
 import { clearGeneratedCache, objectMesh } from '@/scene/curve/evaluate'
 import { meshFingerprint } from '@/scene/mesh/data'
 import { shapedMesh } from '@/scene/mesh/shapeKeys'
@@ -62,6 +53,7 @@ export function modifierCacheSize(): number {
 
 export type EvaluateOptions = {
   /** Use the render-time settings of each modifier rather than the viewport's. */
+  fontFor?: OutlineFontLookup
   forRender?: boolean
   /** The object is open for editing, so the modifiers that stand aside for that do. */
   editing?: boolean
@@ -72,7 +64,7 @@ export type EvaluateOptions = {
  * unchanged and uncopied — which is what makes the stack free for the scenes that have none.
  */
 export function evaluateObject(document: SceneDocument, object: SceneObject, options: EvaluateOptions = {}): EvaluatedMesh | null {
-  const stored = objectMesh(document, object)
+  const stored = objectMesh(document, object, options.fontFor)
   if (!stored) return null
   /*
    * The shape keys are mixed in before anything else sees the mesh — before the modifiers, before
@@ -88,7 +80,7 @@ export function evaluateObject(document: SceneDocument, object: SceneObject, opt
   ))
   if (wanted.length === 0) return { mesh: data, cage: data, applied: 0, errors: [] }
 
-  const key = signature(document, object, data, wanted, forRender, editing)
+  const key = signature(document, object, data, wanted, forRender, editing, options.fontFor)
   const kept = cache.get(key)
   if (kept) {
     // Least recently used, kept honest: reading it moves it back to the end.
@@ -108,7 +100,7 @@ export function evaluateObject(document: SceneDocument, object: SceneObject, opt
       continue
     }
     const outcome = module.apply(mesh, withModifierDefaults(modifier), {
-      inputs: modifierInputs(document, object, modifier, module.objectInputs ?? []),
+      inputs: modifierInputs(document, object, modifier, module.objectInputs ?? [], options.fontFor),
       forRender,
       editing,
     })
@@ -131,7 +123,7 @@ export function evaluateObject(document: SceneDocument, object: SceneObject, opt
 
 /** The mesh to draw for an object: the evaluated one, or its own when it has no stack. */
 export function drawnMesh(document: SceneDocument, object: SceneObject, options: EvaluateOptions = {}): MeshData | null {
-  return evaluateObject(document, object, options)?.mesh ?? objectMesh(document, object)
+  return evaluateObject(document, object, options)?.mesh ?? objectMesh(document, object, options.fontFor)
 }
 
 /**
@@ -148,6 +140,7 @@ function signature(
   modifiers: Modifier[],
   forRender: boolean,
   editing: boolean,
+  fontFor?: OutlineFontLookup,
 ): string {
   const parts: string[] = [object.id, meshFingerprint(data), forRender ? 'render' : 'view', editing ? 'edit' : 'object']
   // The keys are in the mesh's fingerprint already — they moved its vertices — so they need no
@@ -157,7 +150,7 @@ function signature(
     parts.push(modifier.kind, JSON.stringify(withModifierDefaults(modifier)), modifier.enabled.onCage ? 'cage' : '')
     const module = getModifier(modifier.kind)
     for (const name of module?.objectInputs ?? []) {
-      const input = inputFor(document, object, modifier.params[name])
+      const input = inputFor(document, object, modifier.params[name], fontFor)
       parts.push(input ? `${input.id}:${input.matrix.map(round).join(',')}:${input.mesh ? meshFingerprint(input.mesh) : '-'}` : '-')
     }
   }
@@ -179,9 +172,10 @@ export function modifierInputs(
   object: SceneObject,
   modifier: Modifier,
   names: string[],
+  fontFor?: OutlineFontLookup,
 ): Record<string, ModifierInput | null> {
   const inputs: Record<string, ModifierInput | null> = {}
-  for (const name of names) inputs[name] = inputFor(document, object, modifier.params[name])
+  for (const name of names) inputs[name] = inputFor(document, object, modifier.params[name], fontFor)
   return inputs
 }
 
@@ -192,11 +186,11 @@ export function modifierInputs(
  * other object's place in the world, then back through this one's. That composition is why the
  * modules are handed a matrix rather than an object — they do not need to know what a scene is.
  */
-function inputFor(document: SceneDocument, object: SceneObject, value: unknown): ModifierInput | null {
+function inputFor(document: SceneDocument, object: SceneObject, value: unknown, fontFor?: OutlineFontLookup): ModifierInput | null {
   if (typeof value !== 'string' || value === '') return null
   const other = document.objects.find((candidate) => candidate.id === value)
   if (!other) return null
   const into = invert(worldMatrix(document, object).toArray())
   const matrix = multiply(into, worldMatrix(document, other).toArray())
-  return { id: other.id, name: other.name, matrix, mesh: meshOf(document, other) }
+  return { id: other.id, name: other.name, matrix, mesh: objectMesh(document, other, fontFor) }
 }

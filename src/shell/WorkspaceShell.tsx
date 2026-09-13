@@ -21,6 +21,8 @@ type WorkspaceShellProps = {
   hideInspector?: boolean
   hideNavigation?: boolean
   renderNavigation?: (options: { compact: boolean; inert: boolean; onNavigate: () => void }) => ReactNode
+  /** A floor under the navigation column, for a rail whose contents need the room; compact and collapsed still win. */
+  minNavWidth?: number
 }
 
 export function WorkspaceShell({
@@ -37,11 +39,12 @@ export function WorkspaceShell({
   hideInspector = false,
   hideNavigation = false,
   renderNavigation,
+  minNavWidth,
 }: WorkspaceShellProps) {
   const { prefs } = useWorkspace()
   const view = useViewport()
   const compact = isNavCompact(prefs, view.width)
-  const navW = hideNavigation ? 0 : navColumnWidth(prefs, view.width)
+  const navW = hideNavigation ? 0 : minNavWidth !== undefined && !prefs.navCollapsed && !compact ? Math.max(navColumnWidth(prefs, view.width), minNavWidth) : navColumnWidth(prefs, view.width)
   const inspectorMax = Math.min(
     INSPECTOR_WIDTH_MAX,
     Math.max(INSPECTOR_WIDTH_MIN, view.width - navW - CANVAS_MIN_WIDTH),
@@ -88,7 +91,7 @@ export function WorkspaceShell({
           Inspector
         </button> : null}
       </div>
-      {hideNavigation ? null : <ShellNavResize />}
+      {hideNavigation ? null : <ShellNavResize width={navW} />}
       {hideInspector ? null : prefs.inspectorCollapsed ? (
         <EdgeReveal label="Show inspector" side="end" onClick={() => updatePrefs({ inspectorCollapsed: false })} />
       ) : (

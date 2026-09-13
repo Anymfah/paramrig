@@ -1,5 +1,5 @@
 import type { ParameterDef } from '@/rigs/types'
-import { meshOf, meshUsers, objectById, withMesh } from '@/scene/document'
+import { meshOf, meshUsers, objectById, withMesh } from '@/scene/model'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { keyFromShape } from '@/scene/mesh/shapeKeys'
 import { modifierInputs } from '@/scene/modifiers/stack'

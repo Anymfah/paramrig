@@ -1,4 +1,4 @@
-import { objectById } from '@/scene/document'
+import { objectById } from '@/scene/model'
 import { objectMesh } from '@/scene/modifiers/stack'
 import { textCurveData } from '@/scene/curve/text'
 import { registerOperator } from '@/scene/operators/registry'

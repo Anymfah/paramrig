@@ -64,12 +64,39 @@ docker compose run --rm app npm run build
 | Route | What is there |
 | --- | --- |
 | `/` | The library |
+| `/audio`, `/vector`, `/3d` | Sound, drawing/layout and scene libraries |
 | `/r/contour-bloom`, `/r/tidal-planet` | Example rigs |
 | `/r/controller-lab` | Every controller family in one rig |
 | `/docs` | Documentation inside the app |
 | `/docs/controls` | The controller catalog |
 | `/web` | Connected web projects |
 | `/?fixture=empty`, `/?fixture=error`, `/?fixture=loading`, `/?fixture=long` | Library states for QA |
+
+## Use one engine
+
+The repository is an npm workspace with independent public packages. Engines do not require the
+ParamRig editor. React controls are optional; the 3D host supplies its own Three.js dependency.
+
+| Package | Integration guide |
+| --- | --- |
+| `@paramrig/core` | [Rig contracts, values and validation](packages/core/README.md) |
+| `@paramrig/audio` | [Synthesis, blocks, WAV and wavetables](packages/audio/README.md) |
+| `@paramrig/audio-labs` | [Generation, variation and fusion](packages/audio-labs/README.md) |
+| `@paramrig/audio-browser` | [Independent Web Audio players](packages/audio-browser/README.md) |
+| `@paramrig/vector` | [Drawing, layout, browser rendering and exports](packages/vector/README.md) |
+| `@paramrig/scene` | [Scene engine, host renderer and optional viewer](packages/scene/README.md) |
+| `@paramrig/controls` | [Controlled React inputs and explicit styles](packages/controls/README.md) |
+| `@paramrig/web` | [Connected web projects](packages/web-sdk/README.md) |
+
+[Standalone examples](examples/sdk) install only the packages they use. The
+[Vector + React example](examples/sdk/vector-controls) demonstrates optional controls alongside
+an engine. Separate packages reduce installation; sub-entries select what a bundler loads.
+
+Build only the application domains you need with
+`docker compose run --rm app npm run build:modules -- --modules=audio,vector`.
+The normal build still produces the complete suite in `dist`. See
+[module boundaries and build budgets](docs/modular-packages.md) and the
+[release process](docs/modular-releases.md).
 
 ## Tune a project you are building
 
@@ -120,15 +147,24 @@ Numbers, position and dimensions, color and appearance, choices, text and typogr
 profiles, resources, scene instruments, actions, collections, value sources and animation.
 [`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) has the contracts and the limits.
 
-### Two editors that carry their own controls
+### Three editors that carry their own controls
 
 A document can be a drawing, or a drawing that carries a rig. Bind an element's property to a
-parameter and the document becomes tunable without leaving it.
+parameter and the document becomes tunable without leaving it. The same is true of a 3D scene and
+of a sound.
 
 | Vector documents | 3D scenes |
 | --- | --- |
 | <img src="assets/readme/vector.webp" alt="The vector editor on a poster document, one shape selected, and the poster's own controllers on the right"> | <img src="assets/readme/scene.webp" alt="The 3D scene editor on the desk study, with its bindings and the scene's own controllers on the right"> |
 | Paths, networks and planar regions, text, frames, guides, boolean operations, export presets. Fills, strokes, effects and node positions can all be bound to a controller. | Objects, modifiers, lights, cameras, materials and world settings, with the same binding vocabulary. Edit and Tune share one WebGL context. |
+
+**Sound effects.** Four layers — two oscillators, two noise generators — each with wavetables or
+plain shapes, a filter of eight models, three insert slots and an amplifier envelope; eight
+modulation slots that are each an envelope or an oscillator; three performers with a drawn row of
+sixteen steps; three master effects. The engine is a pure function of a patch and a sample rate,
+with no Web Audio in it, so what you hear while tuning and what lands in the exported file cannot
+drift apart. [`/docs/audio-rigs`](https://app.paramrig.com/docs/audio-rigs) has the paths a control
+can be bound to.
 
 ### Timeline, snapshots, history
 

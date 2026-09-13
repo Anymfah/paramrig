@@ -1,0 +1,11 @@
+{
+  "name": "paramrig-example-core",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@paramrig/core": "0.1.0"
+  }
+}

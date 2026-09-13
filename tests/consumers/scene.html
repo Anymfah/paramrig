@@ -1,0 +1,24 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Scene SDK consumer</title>
+<style>body{font:16px system-ui;background:#17191b;color:#eee;margin:24px}button{font:inherit;padding:10px;margin:4px}.views{display:flex;gap:16px;flex-wrap:wrap}.view{width:480px;height:360px;border:1px solid #666}output{display:block;margin:16px 0}canvas{display:block;width:100%;height:100%}</style>
+<h1>Scene SDK consumer</h1><p>The optional viewer and an independent host renderer use the same scene engine. No React.</p>
+<button id="solid">Solid</button><button id="material">Material</button><button id="rendered">Rendered</button><button id="update">Update geometry</button><button id="destroy">Destroy viewer</button><button id="host">Render host again</button>
+<label>Open a saved scene <input id="project-file" type="file" accept=".json"></label><button id="gltf">Export GLB</button><a id="download" hidden>Download GLB</a>
+<output id="status">Starting</output><div class="views"><section><h2>Optional viewer</h2><div class="view" id="viewer"></div></section><section><h2>Host renderer</h2><div class="view" id="host-view"></div></section></div>
+<script type="module">
+import { createSceneDocument, importProject, createSceneInstance, createSceneViewer, THREE } from '__SDK_ENTRY__';
+let doc = createSceneDocument();
+const renderer = new THREE.WebGLRenderer({antialias:true}); renderer.setSize(480,360); document.querySelector('#host-view').append(renderer.domElement);
+const host = createSceneInstance({document:doc,renderer,width:480,height:360});
+const viewer = createSceneViewer({document:doc,container:document.querySelector('#viewer')});
+const status = document.querySelector('#status'); let destroyed=false;
+function draw(){host.configureRenderer(renderer);renderer.render(host.scene,host.camera)}
+await Promise.all([host.ready,viewer.ready]);draw();status.textContent=`Ready: shared Three.js identity ${host.scene instanceof THREE.Scene}`;
+for(const mode of ['solid','material','rendered'])document.getElementById(mode).onclick=async()=>{doc.view.shading=mode;await host.update(doc);if(!destroyed)await viewer.update(doc);draw();status.textContent=`${mode} rendered by both integrations`};
+document.getElementById('update').onclick=async()=>{doc.objects[0].transform.scale[2]=doc.objects[0].transform.scale[2]===1?1.7:1;await host.update(doc);if(!destroyed)await viewer.update(doc);draw();status.textContent='Geometry updated'};
+document.getElementById('destroy').onclick=()=>{viewer.destroy();destroyed=true;draw();status.textContent=`Viewer destroyed; host remains ${renderer.domElement.isConnected?'connected':'missing'}`};
+document.getElementById('host').onclick=()=>{draw();status.textContent=`Host rendered: ${renderer.info.render.triangles} triangles`};
+document.getElementById('project-file').onchange=async(event)=>{try{const file=event.target.files[0];if(!file)return;const result=importProject(await file.text());if(!result.ok)throw Error(result.error);doc=result.project.document;await host.update(doc);if(!destroyed)await viewer.update(doc);draw();status.textContent=`Opened ${doc.name}: ${doc.objects.length} objects${result.note ? '; '+result.note : ''}`}catch(error){status.textContent=error.message}};
+let exportUrl;
+document.getElementById('gltf').onclick=async()=>{try{const {exportGltf,importGltf}=await import('@paramrig/scene/gltf');const bytes=await exportGltf(doc,{applyModifiers:true});if(typeof bytes==='string')throw Error('Expected binary GLB');await importGltf(bytes);if(exportUrl)URL.revokeObjectURL(exportUrl);exportUrl=URL.createObjectURL(new Blob([bytes],{type:'model/gltf-binary'}));const link=document.getElementById('download');link.href=exportUrl;link.download='scene.glb';link.hidden=false;status.textContent=`GLB exported and re-imported: ${bytes.byteLength} bytes`}catch(error){status.textContent=error.message}};
+window.addEventListener('pagehide',()=>{viewer.destroy();host.destroy();renderer.dispose();if(exportUrl)URL.revokeObjectURL(exportUrl)},{once:true});
+</script></html>

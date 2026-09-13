@@ -1,6 +1,6 @@
 import { length, normalize } from '@/scene/mesh/normals'
 import { applyMatrix, IDENTITY, invert } from '@/scene/modifiers/matrix'
-import { numberOf, registerModifier, switchOf } from '@/scene/modifiers/types'
+import { numberOf, defineModifier, switchOf } from '@/scene/modifiers/types'
 import { bisectFaces } from '@/scene/operators/bisect'
 import { numberParam, selectParam, switchParam } from '@/scene/operators/types'
 import type { EditMesh } from '@/scene/mesh/editMesh'
@@ -146,7 +146,7 @@ function mirrorAxis(
   }
 }
 
-registerModifier<MirrorParams>({
+export const mirrorModifier = defineModifier<MirrorParams>({
   kind: 'mirror',
   label: 'Mirror',
   category: 'generate',

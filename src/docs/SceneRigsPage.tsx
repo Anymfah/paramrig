@@ -158,6 +158,8 @@ export function SceneRigsPage() {
         {' · '}
         <Link className="text-link" to="/docs/vector-rigs">Vector rigs</Link>
         {' · '}
+        <Link className="text-link" to="/docs/audio-rigs">Audio rigs</Link>
+        {' · '}
         <Link className="text-link" to="/docs/controls">Live controller catalog</Link>
         {' · '}
         <Link className="text-link" to="/">Back to the library</Link>

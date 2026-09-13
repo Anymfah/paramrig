@@ -81,3 +81,30 @@ library and in the navigation beside the example rigs with no registry entry to 
 - The mesh a person edits is not a soup of triangles: `MeshData` keeps polygons with stable vertex
   and face ids, so a selection survives an edit that renumbers everything. `src/scene/types.ts` is
   the contract, `sanitizeSceneDocument` is what enforces it on the way in.
+
+## Audio documents
+
+A sound is the third kind of document the workbench stores itself. `createAudioDocument()` writes
+one under `paramrig.audio-documents.v1` and `audioManifest(document)` presents it as a
+`RigManifest` with `renderer: 'audio'`, so it appears in the library beside the others with no
+registry entry to write.
+
+- **New sound** in the library titlebar makes one — a short blip, audible immediately — and
+  navigates to `/r/<id>`.
+- The engine is a pure function: `renderPatch(patch, sampleRate)` takes a patch and a rate and
+  returns two channels. There is no Web Audio in it and no clock, so it runs under Node — which is
+  what `scripts/audio-preview.mjs` and `scripts/audio-bench.mjs` use, and why the tests need no
+  browser. Playback, the waveform view and the exported file are all consumers of that one buffer,
+  so what you hear while tuning and what lands in the file cannot drift apart.
+- `src/audio/fields.ts` is the single table four things agree on: the property parser, the
+  generated documentation at `/docs/audio-rigs`, the control built when a field is exposed, and the
+  clamp applied to a patch read back off disk. A field added there is a documented, bindable,
+  bounded field on the same commit. It imports nothing but types and relative `.ts` paths, which is
+  what keeps the Node scripts working without a build step.
+- A patch carries the `version` it was written in, and `sanitizeAudioPatch` walks it forward
+  through `MIGRATIONS`. A rename that moved a field also names its old path in
+  `carryAudioProperty`, or the rig of every sound anybody built loses that binding in silence.
+- The slots — a modulation slot, an insert slot, a master effect slot — are flat records carrying
+  `kind` plus the fields of every kind they could be. The engine reads only the active kind's,
+  which is what makes a slot changed to another kind and back the slot it was.
+- A sound saved to disk is a `.paramrig.json` file marked `"format": "paramrig.audio"`.

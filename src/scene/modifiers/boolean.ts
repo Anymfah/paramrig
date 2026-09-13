@@ -1,7 +1,7 @@
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { dot, length, subtract } from '@/scene/mesh/normals'
 import { applyMatrix } from '@/scene/modifiers/matrix'
-import { chosenOf, registerModifier, switchOf, type ModifierInput } from '@/scene/modifiers/types'
+import { chosenOf, defineModifier, switchOf, type ModifierInput } from '@/scene/modifiers/types'
 import { booleanMeshes, type BooleanOperation } from '@/scene/operators/boolean'
 import { selectParam, switchParam } from '@/scene/operators/types'
 import type { MeshData, Vec3 } from '@/scene/types'
@@ -140,7 +140,7 @@ function materialCount(mesh: EditMesh): number {
   return highest + 1
 }
 
-registerModifier<BooleanModifierParams>({
+export const booleanModifier = defineModifier<BooleanModifierParams>({
   kind: 'boolean',
   label: 'Boolean',
   category: 'generate',

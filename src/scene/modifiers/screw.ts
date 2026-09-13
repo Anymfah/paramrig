@@ -1,6 +1,6 @@
 import { length, normalize } from '@/scene/mesh/normals'
 import { applyDirection, applyMatrix } from '@/scene/modifiers/matrix'
-import { registerModifier, chosenOf, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
+import { defineModifier, chosenOf, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
 import { weldVertices, withinDistance } from '@/scene/operators/merge'
 import { sweep, type SweepTarget } from '@/scene/operators/spin'
 import { numberParam, selectParam, switchParam } from '@/scene/operators/types'
@@ -42,7 +42,7 @@ function everySlot(count: number): Set<number> {
   return slots
 }
 
-registerModifier({
+export const screwModifier = defineModifier({
   kind: 'screw',
   label: 'Screw',
   category: 'generate',

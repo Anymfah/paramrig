@@ -1,0 +1,12 @@
+{
+  "name": "paramrig-example-audio-labs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@paramrig/audio": "0.1.0",
+    "@paramrig/audio-labs": "0.1.0"
+  }
+}

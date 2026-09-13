@@ -1,7 +1,7 @@
 import { fitSmoothNodes } from '@/vector/pencil'
 import { networkFromRuns, normalizeWorld, worldNetwork, type Run } from '@/vector/network'
 import { computeFaces, holeFaceKeys } from '@/vector/planar'
-import { createVectorElement } from '@/vector/document'
+import { createVectorElement } from '@/vector/model'
 import { PREVIEW_SIDE, traceBitmap, type TraceLayer } from '@/vector/trace'
 import type { VectorElement, VectorTraceOptions } from '@/vector/types'
 import type { TraceRequest, TraceResponse } from '@/vector/traceWorker'

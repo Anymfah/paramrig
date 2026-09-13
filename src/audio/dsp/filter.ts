@@ -1,0 +1,200 @@
+import type { FilterKind } from '../types.ts'
+
+/**
+ * A topology-preserving state variable filter, the Simper form.
+ *
+ * The reason it is this and not a biquad: every one of these filters has its cutoff swept per
+ * sample, sometimes across several octaves in a tenth of a second. A biquad recomputed that fast
+ * goes unstable and spits — its coefficients assume a cutoff that is holding still. This one is
+ * built to be re-tuned every sample, and it hands back low, band and high from the same two
+ * state variables.
+ */
+
+/**
+ * What a filter remembers.
+ *
+ * The state-variable models need two numbers; the ladder needs four, one per pole; the comb needs
+ * a buffer as long as its lowest note. They share one struct rather than
+ * a union because the renderer makes these once per layer per channel and never looks inside
+ * them, and a union would make every call site ask which shape it holds.
+ */
+export type FilterState = {
+  ic1: number
+  ic2: number
+  poles: Float64Array
+  line: Float32Array | null
+  at: number
+}
+
+/** A comb's line has to hold one cycle of its lowest note; twenty hertz is where the cutoff starts. */
+const LOWEST = 20
+
+export function createFilter(kind: FilterKind = 'off', sampleRate = 44100): FilterState {
+  return {
+    ic1: 0,
+    ic2: 0,
+    // Four for the ladder's poles, six more for the formant's three band-passes: two integrators
+    // apiece, and a filter that is one of these is never the other.
+    poles: new Float64Array(10),
+    line: kind === 'comb' ? new Float32Array(Math.ceil(sampleRate / LOWEST) + 2) : null,
+    at: 0,
+  }
+}
+
+/**
+ * The first three resonances of a mouth, per vowel, in hertz. Peterson and Barney's averages,
+ * which is the table every formant filter has used since 1952.
+ */
+const VOWELS: readonly (readonly number[])[] = [
+  [730, 1090, 2440], // a
+  [530, 1840, 2480], // e
+  [270, 2290, 3010], // i
+  [570, 840, 2410],  // o
+  [300, 870, 2240],  // u
+]
+/** The first formant carries the vowel, the third only its colour. */
+const FORMANT_GAIN = [1, 0.55, 0.2]
+
+/** One band-pass of the formant bank, on its own pair of integrators. */
+function band3(state: FilterState, index: number, input: number, hz: number, resonance: number, sampleRate: number): number {
+  const g = Math.tan((Math.PI * hz) / sampleRate)
+  const k = 2 - 2 * Math.min(0.97, Math.max(0, resonance))
+  const a1 = 1 / (1 + g * (g + k))
+  const a2 = g * a1
+  const a3 = g * a2
+  const ic1 = state.poles[index] ?? 0
+  const ic2 = state.poles[index + 1] ?? 0
+  const v3 = input - ic2
+  const v1 = a1 * ic1 + a2 * v3
+  const v2 = ic2 + a2 * ic1 + a3 * v3
+  state.poles[index] = 2 * v1 - ic1
+  state.poles[index + 1] = 2 * v2 - ic2
+  return v1
+}
+
+/** One pole of the ladder, resolved in the moment rather than a sample late. */
+function pole(state: FilterState, index: number, input: number, g: number): number {
+  const s = state.poles[index] ?? 0
+  const v = ((input - s) * g) / (1 + g)
+  const out = v + s
+  state.poles[index] = out + v
+  return out
+}
+
+/**
+ * `cutoff` is clamped below Nyquist because the tuning runs through tan(), which goes to infinity
+ * there. Resonance stops short of self-oscillation: a filter that rings on its own is a feature of
+ * an instrument, not of a generator meant to be predictable.
+ */
+export function filterSample(
+  state: FilterState,
+  kind: FilterKind,
+  input: number,
+  cutoff: number,
+  resonance: number,
+  sampleRate: number,
+): number {
+  if (kind === 'off') return input
+  const nyquist = sampleRate * 0.5
+  const fc = Math.min(nyquist * 0.98, Math.max(10, cutoff))
+
+  /*
+   * A comb is not a filter with a corner, it is the sound of a thing added to itself a moment
+   * later: the cutoff tunes the length of that moment, so the peaks land on its harmonics. It is
+   * what gives a short sound a pitch without an oscillator, which is exactly what a generator of
+   * clicks and impacts reaches for.
+   */
+  if (kind === 'comb') {
+    const line = state.line
+    if (!line) return input
+    const want = Math.min(line.length - 2, Math.max(1, sampleRate / fc))
+    const back = state.at - want
+    const from = back < 0 ? back + line.length : back
+    const i0 = Math.floor(from)
+    const frac = from - i0
+    const a = line[i0 % line.length] ?? 0
+    const b = line[(i0 + 1) % line.length] ?? 0
+    const delayed = a + (b - a) * frac
+    const feedback = Math.min(0.97, Math.max(0, resonance)) * 0.98
+    const value = input + delayed * feedback
+    line[state.at] = value
+    state.at = (state.at + 1) % line.length
+    return value * (1 - feedback * 0.5)
+  }
+
+  /*
+   * Five vowels on one knob.
+   *
+   * Three band-passes at the frequencies a mouth puts its resonances at, summed. The cutoff dial
+   * does not tune a corner here — there isn't one — it walks along the vowels, which is the only
+   * honest thing for it to do and also the reason this model needs no field of its own: a formant
+   * filter with a Vowel control beside a Cutoff control would have one dial doing nothing.
+   */
+  if (kind === 'formant') {
+    const along = Math.min(1, Math.max(0, Math.log(fc / 20) / Math.log(20000 / 20))) * (VOWELS.length - 1)
+    const from = VOWELS[Math.min(VOWELS.length - 1, Math.floor(along))]!
+    const to = VOWELS[Math.min(VOWELS.length - 1, Math.floor(along) + 1)]!
+    const blend = along - Math.floor(along)
+    const sharp = 0.55 + Math.min(1, Math.max(0, resonance)) * 0.42
+    let sum = 0
+    for (let band = 0; band < 3; band += 1) {
+      // Between two vowels in log frequency, so the walk sounds like a mouth moving and not like
+      // two filters crossfading.
+      const hz = Math.exp(Math.log(from[band]!) * (1 - blend) + Math.log(to[band]!) * blend)
+      sum += band3(state, 4 + band * 2, input, Math.min(nyquist * 0.98, hz), sharp, sampleRate) * FORMANT_GAIN[band]!
+    }
+    return sum
+  }
+
+  const g = Math.tan((Math.PI * fc) / sampleRate)
+
+  /*
+   * Four poles and a feedback path, which is the shape every ladder has had since 1965 — and the
+   * feedback is resolved in the moment, like the poles it runs around.
+   *
+   * It used to be a sample old and soft-clipped, on the reasoning that a delayed loop is the safe
+   * one. It is the opposite. A sample of delay is phase lag in proportion to the cutoff, so the
+   * loop reaches half a turn far below the gain this filter was designed against and the thing
+   * breaks into a whistle: at full resonance anything above 762 Hz oscillated forever, and the
+   * tanh only decided how loud the whistle was. Since the threshold moves with the sample rate,
+   * the randomiser's half-rate measurement and the library's 16 kHz thumbnails saw a self-
+   * oscillation the real render did not — a drawn sound was levelled against a phantom peak twice
+   * its own and came out six decibels quiet.
+   *
+   * Each pole is a one-pole with instantaneous gain G = g/(1+g), so the cascade has a closed form:
+   * with S the four poles' zero-input contribution, y = (G⁴·input + S)/(1 + k·G⁴). That is stable
+   * for every k below four, and the resonance stops at 3.6 — so the note above about a filter
+   * that never rings on its own is true now, rather than being what the code was aiming at.
+   */
+  if (kind === 'ladder') {
+    const amount = Math.min(1, Math.max(0, resonance)) * 3.6
+    const gain = g / (1 + g)
+    const squared = gain * gain
+    const quartic = squared * squared
+    const zeroIn = (1 - gain) * (squared * gain * (state.poles[0] ?? 0) + squared * (state.poles[1] ?? 0) + gain * (state.poles[2] ?? 0) + (state.poles[3] ?? 0))
+    const resolved = (quartic * input + zeroIn) / (1 + amount * quartic)
+    const u = input - amount * resolved
+    const y = pole(state, 3, pole(state, 2, pole(state, 1, pole(state, 0, u, g), g), g), g)
+    // Feedback takes the bottom out as it goes up — nine decibels of it at half resonance, which
+    // is the ladder everyone knows and also a filter that goes quiet when you turn a knob that
+    // says nothing about level. Put back what the feedback took.
+    return y * (1 + amount * 0.6)
+  }
+  const k = 2 - 2 * Math.min(0.97, Math.max(0, resonance))
+  const a1 = 1 / (1 + g * (g + k))
+  const a2 = g * a1
+  const a3 = g * a2
+  const v3 = input - state.ic2
+  const v1 = a1 * state.ic1 + a2 * v3
+  const v2 = state.ic2 + a2 * state.ic1 + a3 * v3
+  state.ic1 = 2 * v1 - state.ic1
+  state.ic2 = 2 * v2 - state.ic2
+  if (kind === 'lowpass') return v2
+  if (kind === 'bandpass') return v1
+  // The remaining models are sums of the three the two integrators already give: a notch is the
+  // high plus the low, a peak is the high minus it, and an allpass is the high, the low, and the
+  // band taken out twice. None of them costs another filter.
+  if (kind === 'notch') return input - k * v1
+  if (kind === 'peak') return input - k * v1 - 2 * v2
+  return input - k * v1 - v2
+}

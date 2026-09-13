@@ -1,8 +1,10 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { circleMesh } from '@/scene/mesh/primitives'
 import { rotation } from '@/scene/modifiers/matrix'
-import '@/scene/modifiers/screw'
+
 import {
   getModifier,
   type ModifierContext,

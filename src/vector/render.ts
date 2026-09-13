@@ -6,6 +6,8 @@ import { computeFaces, faceContainsPoint, holeFaceKeys, loopToRun, type Face } f
 import { displayRect, FULL_CROP, isFullCrop } from '@/vector/crop'
 import { gradientCircle, gradientLine } from '@/vector/gradient'
 import { canvasMeasure, fontFeatureSettings, fontStack, layoutText, textProperties } from '@/vector/text'
+import { fontMetricsRevision } from '@/vector/fontMetricsStore'
+import { variationSettings } from '@/vector/fontCapabilities'
 import { patternCell, patternTransform } from '@/vector/patterns'
 import { meshCells, meshSubdivisions } from '@/vector/mesh'
 import { backdropBlur, elementFilter, type FilterDef, type FilterPrimitive } from '@/vector/filters'
@@ -69,6 +71,7 @@ export type TextRender = {
   strokeWidth: number
   /** `font-feature-settings`, when the text asks for anything beyond the defaults. */
   features?: string
+  variations?: string
   /** Set when the text rides on an outline: the def to hang it on, and where it starts. */
   path?: { id: string; startOffset: string; side: 'left' | 'right' }
 }
@@ -180,7 +183,7 @@ export const renderStats = { hits: 0, misses: 0, get size() { return modelCache.
 export function renderModel(element: VectorElement, prefix: string, scene: VectorElement[] = []): RenderModel {
   // A pattern fill draws another object, so that object is part of what this model depends on.
   const sources = patternSources(element, scene)
-  const key = `${prefix}\u0000${JSON.stringify(element)}${sources.length ? `\u0000${JSON.stringify(sources)}` : ''}`
+  const key = `${prefix}\u0000${JSON.stringify(element)}${element.kind === 'text' ? `\u0000font:${fontMetricsRevision()}` : ''}${sources.length ? `\u0000${JSON.stringify(sources)}` : ''}`
   const cached = modelCache.get(key)
   if (cached) {
     renderStats.hits += 1
@@ -349,6 +352,7 @@ function buildTextModel(element: VectorElement, prefix: string): RenderModel {
     fontFamily: fontStack(properties.fontFamily),
     fontSize: properties.fontSize,
     fontWeight: properties.fontWeight,
+    ...(variationSettings(properties.fontVariations) ? { variations: variationSettings(properties.fontVariations) } : {}),
     letterSpacing: properties.letterSpacing,
     fill: fillReference ?? 'none',
     fillOpacity: fill?.opacity ?? 1,
@@ -568,6 +572,7 @@ function textToSvg(model: RenderModel, id: string): string {
     `fill-opacity="${text.fillOpacity}"`,
     text.stroke ? `stroke="${escapeAttribute(text.stroke)}" stroke-opacity="${text.strokeOpacity}" stroke-width="${text.strokeWidth}"` : '',
     text.features ? `font-feature-settings="${escapeAttribute(text.features)}"` : '',
+    `style="font-synthesis:none${text.variations ? `;font-variation-settings:${escapeAttribute(text.variations)}` : ''}"`,
     `xml:space="preserve"`,
     `transform="${model.transform}"`,
   ].filter(Boolean).join(' ')

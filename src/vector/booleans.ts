@@ -1,25 +1,29 @@
-import paper from 'paper/dist/paper-core'
+import paperCore from 'paper/dist/paper-core.js'
+import type paper from 'paper'
+// The .js path works in Node ESM; Paper declares its namespace on the package entry.
+const scope = paperCore as unknown as typeof paper
 import { rotatePoint } from '@/vector/directTransform'
 import { chains, chainToRun, networkFromRuns, normalizeWorld, worldNetwork, type Run, type RunPoint } from '@/vector/network'
 import { computeFaces, loopToRun } from '@/vector/planar'
 import { rectangleRun, roundCorners } from '@/vector/corners'
 import type { VectorElement, VectorPoint } from '@/vector/types'
 
-export type BooleanOperation = 'unite' | 'subtract' | 'intersect' | 'exclude'
+import type { BooleanOperation } from './booleanTypes'
+export type { BooleanOperation } from './booleanTypes'
 
 let ready = false
 function setup() {
   if (ready) return
-  paper.setup(new paper.Size(1, 1))
+  scope.setup(new scope.Size(1, 1))
   ready = true
 }
 
 function runToPath(run: Run): paper.Path {
-  const path = new paper.Path({ insert: false })
+  const path = new scope.Path({ insert: false })
   for (const point of run.points) {
     const handleIn = point.in ?? point.anchor
     const handleOut = point.out ?? point.anchor
-    path.add(new paper.Segment(new paper.Point(point.anchor.x, point.anchor.y), new paper.Point(handleIn.x - point.anchor.x, handleIn.y - point.anchor.y), new paper.Point(handleOut.x - point.anchor.x, handleOut.y - point.anchor.y)))
+    path.add(new scope.Segment(new scope.Point(point.anchor.x, point.anchor.y), new scope.Point(handleIn.x - point.anchor.x, handleIn.y - point.anchor.y), new scope.Point(handleOut.x - point.anchor.x, handleOut.y - point.anchor.y)))
   }
   path.closed = run.closed
   return path
@@ -61,12 +65,12 @@ export function toPaperItem(element: VectorElement): paper.PathItem {
       result.remove(); face.remove(); result = next
     }
   }
-  return result ?? new paper.Path({ insert: false })
+  return result ?? new scope.Path({ insert: false })
 }
 
 /** Converts a paper item back to a world-space network. */
 export function fromPaperItem(item: paper.PathItem) {
-  const paths: paper.Path[] = item instanceof paper.CompoundPath ? (item.children as paper.Path[]) : [item as paper.Path]
+  const paths: paper.Path[] = item instanceof scope.CompoundPath ? (item.children as paper.Path[]) : [item as paper.Path]
   const runs: Run[] = []
   for (const path of paths) {
     if (path.segments.length < 2) continue
@@ -98,7 +102,7 @@ function toResult(world: ReturnType<typeof fromPaperItem>): GeometryResult | nul
 export function resolveSelfIntersections(data: string): string {
   if (!data) return data
   setup()
-  const item = new paper.CompoundPath({ pathData: data, insert: false })
+  const item = new scope.CompoundPath({ pathData: data, insert: false })
   try {
     // `resolveCrossings` exists on every path item at runtime; the shipped typings miss it.
     const resolved = (item as unknown as { resolveCrossings: () => paper.PathItem }).resolveCrossings()
@@ -164,24 +168,24 @@ export function outlineStroke(element: VectorElement, tolerance = 0.25): Geometr
       const b = points[(index + 1) % points.length]!
       const direction = b.subtract(a)
       if (direction.length < 1e-6) continue
-      const normal = direction.normalize(half).rotate(90, new paper.Point(0, 0))
-      const extend = cap === 'square' && !flat.closed ? direction.normalize(half) : new paper.Point(0, 0)
+      const normal = direction.normalize(half).rotate(90, new scope.Point(0, 0))
+      const extend = cap === 'square' && !flat.closed ? direction.normalize(half) : new scope.Point(0, 0)
       const start = index === 0 && !flat.closed ? a.subtract(extend) : a
       const end = index === count - 1 && !flat.closed ? b.add(extend) : b
-      pieces.push(new paper.Path({ segments: [start.add(normal), end.add(normal), end.subtract(normal), start.subtract(normal)], closed: true, insert: false }))
+      pieces.push(new scope.Path({ segments: [start.add(normal), end.add(normal), end.subtract(normal), start.subtract(normal)], closed: true, insert: false }))
       const isJoin = flat.closed || index < count - 1
       if (isJoin) {
-        if (join === 'round') pieces.push(new paper.Path.Circle(b, half))
+        if (join === 'round') pieces.push(new scope.Path.Circle(b, half))
         else if (join === 'miter') {
           const next = points[(index + 2) % points.length]!
           const miter = miterPolygon(a, b, next, half)
-          if (miter) pieces.push(new paper.Path({ segments: miter, closed: true, insert: false }))
+          if (miter) pieces.push(new scope.Path({ segments: miter, closed: true, insert: false }))
         }
       }
     }
     if (!flat.closed && cap === 'round') {
-      pieces.push(new paper.Path.Circle(points[0]!, half))
-      pieces.push(new paper.Path.Circle(points[points.length - 1]!, half))
+      pieces.push(new scope.Path.Circle(points[0]!, half))
+      pieces.push(new scope.Path.Circle(points[points.length - 1]!, half))
     }
     flat.remove()
   }
@@ -217,8 +221,8 @@ function miterPolygon(a: paper.Point, b: paper.Point, c: paper.Point, half: numb
   const cross = incoming.x * outgoing.y - incoming.y * outgoing.x
   if (Math.abs(cross) < 1e-6) return null
   const outer = cross > 0 ? -90 : 90
-  const p1 = b.add(incoming.rotate(outer, new paper.Point(0, 0)).multiply(half))
-  const p2 = b.add(outgoing.rotate(outer, new paper.Point(0, 0)).multiply(half))
+  const p1 = b.add(incoming.rotate(outer, new scope.Point(0, 0)).multiply(half))
+  const p2 = b.add(outgoing.rotate(outer, new scope.Point(0, 0)).multiply(half))
   const bisector = incoming.subtract(outgoing).normalize()
   const angle = Math.acos(Math.max(-1, Math.min(1, incoming.dot(outgoing))))
   const miterLength = half / Math.cos(angle / 2)

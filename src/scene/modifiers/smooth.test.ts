@@ -1,8 +1,10 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { gridMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers/smooth'
+
 import { getModifier, type ModifierOutcome } from '@/scene/modifiers/types'
 import { isWellFormed } from '@/scene/operators/editHarness'
 import type { Modifier, Vec3 } from '@/scene/types'

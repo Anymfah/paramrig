@@ -1,4 +1,4 @@
-import { uniqueName, withMesh } from '@/scene/document'
+import { uniqueName, withMesh } from '@/scene/model'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { dot, subtract } from '@/scene/mesh/normals'
 import { editTargets, requireEdit, runOnMeshes, selectedVertices, type EditTarget } from '@/scene/operators/edit'

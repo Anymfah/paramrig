@@ -1,4 +1,4 @@
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { colourDomain } from '@/scene/paint/attribute'
 import { PaintSession, DEFAULT_PAINT_STATE, rgbOf } from '@/scene/paint/session'
 import { registerOperator } from '@/scene/operators/registry'

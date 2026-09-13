@@ -1,5 +1,5 @@
 import { activeUv, withActiveUv, withPinned } from '@/scene/mesh/uv'
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, selectParam, type OperatorContext, type OperatorResult } from '@/scene/operators/types'
 import {

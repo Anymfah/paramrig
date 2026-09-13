@@ -1,4 +1,4 @@
-# The verification chain agents run in Docker, run again on every push.
+# The Docker verification chain runs for every pull request and main-branch push.
 #
 # It is deliberately the same list of commands, in the same order, minus `npm run e2e`: those
 # scripts drive a headless GPU Chrome on the developer's own machine and need the running services
@@ -8,6 +8,7 @@ name: verify
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 # The chain only reads the repository. The account's default for workflow tokens is read-only
@@ -16,11 +17,22 @@ on:
 permissions:
   contents: read
 
+# Feature revisions are checked by their pull request. Running their push as well
+# leaves a cancelled required check when the two events share a concurrency group.
+# Main keeps its own check after integration; only obsolete branch runs are replaced.
+concurrency:
+  group: verify-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -36,3 +48,16 @@ jobs:
       - run: npm run build:web-sdk
       - run: npm pack --dry-run
         working-directory: packages/web-sdk
+      - run: npm run build:sdks
+      - run: node scripts/generate-sdk-examples.mjs
+      - run: npm run test:sdks
+      - run: npm run build:modules -- --matrix
+      - name: Keep the validated npm artifacts and distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: paramrig-modular-${{ env.SOURCE_REVISION }}
+          path: |
+            .local/modularity/tarballs/*.tgz
+            .local/modularity/archives/*.tar.gz
+          include-hidden-files: true
+          if-no-files-found: error

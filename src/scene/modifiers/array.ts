@@ -1,6 +1,6 @@
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { applyMatrix, IDENTITY, invert, multiply, translation } from '@/scene/modifiers/matrix'
-import { chosenOf, numberOf, registerModifier, switchOf, vectorOf, wholeOf } from '@/scene/modifiers/types'
+import { chosenOf, numberOf, defineModifier, switchOf, vectorOf, wholeOf } from '@/scene/modifiers/types'
 import { weldVertices, type WeldCluster } from '@/scene/operators/merge'
 import { numberParam, selectParam, switchParam, vectorParam } from '@/scene/operators/types'
 import type { ModifierInput } from '@/scene/modifiers/types'
@@ -184,7 +184,7 @@ function capPiece(input: ModifierInput | null): Piece | null {
   return pieceOf(EditMesh.from(input.mesh))
 }
 
-registerModifier<ArrayParams>({
+export const arrayModifier = defineModifier<ArrayParams>({
   kind: 'array',
   label: 'Array',
   category: 'generate',

@@ -1,5 +1,5 @@
 import { surfaceContact, walkDabs } from '@/scene/brushContact'
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { colourDomain } from '@/scene/paint/attribute'
 import { PaintSession, paintSettings, rgbOf } from '@/scene/paint/session'
 import type { HudChannel } from '@/scene/viewport/hud'

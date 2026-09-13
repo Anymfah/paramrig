@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { Lockup } from '@/ui/BrandMark'
 import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/ContextMenu'
 import { ThemeToggle } from '@/ui/ThemeToggle'
 import { Tooltip } from '@/ui/Tooltip'
-import { updatePrefs, useWorkspace } from '@/state/workspace'
-import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconMask, IconPanelLeft, IconPanelLeftClose, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
+import { NavRailHead } from '@/shell/NavRailHead'
+import { updatePrefs } from '@/state/workspace'
+import { IconBringForward, IconChevron, IconCopy, IconEllipse, IconEye, IconEyeOff, IconFolderLayer, IconFrame, IconGroup, IconLock, IconMask, IconPath, IconPencil, IconRectangle, IconSendBackward, IconText, IconTrash, IconUngroup, IconUnlock } from '@/ui/icons'
 import { SHORTCUTS } from '@/vector/commands'
 import { assetCount, type AssetGroup } from '@/vector/assets'
 import { VectorAssets, type AssetActions } from '@/vector/VectorAssets'
@@ -39,7 +38,6 @@ type VectorLayersProps = {
 type DropTarget = { id: string; edge: 'before' | 'after' | 'inside' }
 
 export function VectorLayers({ document, selectedIds, enteredGroupId, compact, inert, onNavigate, onSelect, onUpdate, onUpdateElements, onRemove, onReorder, onMoveInTree, onRename, onDuplicate, onGroup, onUngroup, onRenameMany, assets, assetActions }: VectorLayersProps) {
-  const { prefs } = useWorkspace()
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
@@ -95,20 +93,7 @@ export function VectorLayers({ document, selectedIds, enteredGroupId, compact, i
 
   return (
     <nav className="nav-rail vector-layers" aria-label="Layers" data-compact={compact || undefined} inert={inert}>
-      <div className="nav-rail__head">
-        <Tooltip content="ParamRig" side="right" disabled={!compact}>
-          <Link to="/" className="nav-brand" aria-label="ParamRig home" onClick={onNavigate}>
-            <Lockup />
-          </Link>
-        </Tooltip>
-        <div className="nav-rail__tools">
-          <Tooltip content={compact ? 'Expand layers' : 'Collapse layers'} side={compact ? 'right' : 'top'}>
-            <button type="button" className="icon-btn icon-btn--ghost nav-rail__compact" aria-pressed={prefs.navCompact} aria-label={compact ? 'Expand layers' : 'Collapse layers'} onClick={() => updatePrefs({ navCompact: !prefs.navCompact, navCollapsed: false })}>
-              {compact ? <IconPanelLeft /> : <IconPanelLeftClose />}
-            </button>
-          </Tooltip>
-        </div>
-      </div>
+      <NavRailHead compact={compact} noun="layers" onNavigate={onNavigate} />
       <div className="vector-layers__tabs" role="tablist" aria-label="Layers or assets">
         {(['layers', 'assets'] as const).map((value) => (
           <button

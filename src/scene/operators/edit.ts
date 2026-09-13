@@ -1,5 +1,5 @@
 import { curveCage } from '@/scene/curve/cage'
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { edgeKey } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { remapShapeKeys } from '@/scene/mesh/shapeKeys'

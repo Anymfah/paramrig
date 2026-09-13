@@ -3,7 +3,8 @@ import { createSceneDocument, meshOf, objectById, ROOT_COLLECTION_ID } from '@/s
 import { KEYMAP } from '@/scene/keymap'
 import { meshCounts } from '@/scene/mesh/data'
 import { boxMesh, gridMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import '@/scene/operators/modifier'
 import { operatorAvailability, runOperator } from '@/scene/operators/registry'
 import type { OperatorContext, OperatorParams } from '@/scene/operators/types'

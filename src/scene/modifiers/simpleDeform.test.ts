@@ -1,9 +1,11 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { cylinderMesh, gridMesh, planeMesh } from '@/scene/mesh/primitives'
 import { translation } from '@/scene/modifiers/matrix'
-import '@/scene/modifiers/simpleDeform'
+
 import { getModifier, type ModifierContext, type ModifierInput, type ModifierOutcome } from '@/scene/modifiers/types'
 import { euler, isClosed, isWellFormed } from '@/scene/operators/editHarness'
 import type { Modifier, Vec3 } from '@/scene/types'

@@ -1,7 +1,9 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, circleMesh, gridMesh, planeMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers/solidify'
+
 import { getModifier, type ModifierContext, type ModifierOutcome } from '@/scene/modifiers/types'
 import {
   euler,

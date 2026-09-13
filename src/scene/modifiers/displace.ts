@@ -1,6 +1,6 @@
 import { add, length, normalize, scale as scaled } from '@/scene/mesh/normals'
 import { applyMatrix, invert } from '@/scene/modifiers/matrix'
-import { chosenOf, numberOf, registerModifier, vectorOf, wholeOf, type ModifierInput } from '@/scene/modifiers/types'
+import { chosenOf, numberOf, defineModifier, vectorOf, wholeOf, type ModifierInput } from '@/scene/modifiers/types'
 import { numberParam, selectParam, vectorParam } from '@/scene/operators/types'
 import { sample } from '@/scene/textures/procedural'
 import type { Vec3 } from '@/scene/types'
@@ -73,7 +73,7 @@ function frameOf(input: ModifierInput | null): number[] | null {
   return input ? invert(input.matrix) : null
 }
 
-registerModifier<DisplaceParams>({
+export const displaceModifier = defineModifier<DisplaceParams>({
   kind: 'displace',
   label: 'Displace',
   category: 'deform',

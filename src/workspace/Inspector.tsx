@@ -8,6 +8,9 @@ import { describeValueSource } from '@/state/session'
 import { ValueSourceController } from '@/ui/BindingController'
 import type { RigSession } from '@/state/session'
 import { usePlayhead } from '@/state/workspace'
+import { fontValueFont } from '@paramrig/core/font-value'
+import { FontWeightController } from '@/typography/FontWeightController'
+import { supportedWeight } from '@/typography/capabilities'
 
 type InspectorProps = {
   session: RigSession
@@ -362,9 +365,24 @@ function Control({
 
 function SessionParameterField({param,session,value}:{param:ParameterDef;session:RigSession;value:ParamValue}) {
   usePlayhead(session)
-  const shown=param.kind==='number'?session.liveNumber(param.id):value
+  const shown=param.kind==='number'?session.liveNumber(param.id):param.kind==='preset'&&param.id==='type-pairing'
+    ? param.options.find(option=>Object.keys(option.values).length>0&&Object.entries(option.values).every(([id,next])=>session.viewValues()[id]===next))?.value??'custom':value
   const error=session.driverErrors()[param.id]
-  return <><ParameterField param={param.kind==='number'&&param.role==='playhead'?{...param,max:session.durationTime()}:param} value={shown} onChange={next=>session.setValue(param.id,next)}
+  const fonts=param.kind==='select'&&param.view==='font-library'?Object.values(session.viewValues()).flatMap(value=>{const font=fontValueFont(value);return font?[font]:[]}):undefined
+  const change = (next: ParamValue) => {
+    if (param.kind !== 'select' || param.view !== 'font-library') { session.setValue(param.id, next); return }
+    session.beginGesture(`Change ${param.label}`)
+    session.setValue(param.id, next)
+    for (const weight of session.parameters) if (weight.kind === 'number' && weight.fontParameter === param.id) {
+      session.setValue(weight.id, supportedWeight(next, Number(session.viewValues()[weight.id])))
+    }
+    session.endGesture()
+  }
+  if (param.kind==='number'&&param.fontParameter) return <FontWeightController param={param} font={session.viewValues()[param.fontParameter]} value={Number(shown)} onChange={change}
+    driven={describeValueSource(session.sourceFor(param.id),session.parameters)}
+    onGestureStart={()=>session.beginGesture(`Adjust ${param.label}`)} onGestureEnd={()=>session.endGesture()} onGestureCancel={()=>session.cancelGesture()}/>
+  return <><ParameterField param={param.kind==='number'&&param.role==='playhead'?{...param,max:session.durationTime()}:param} value={shown} onChange={change}
+    fonts={fonts}
     onAction={id=>session.runAction(id)} onPreset={(id,next)=>session.applyPreset(id,next)}
     resolveNumber={id=>{const v=session.viewValues()[id];if(typeof v!=='number')throw new Error(`Not a numeric parameter: ${id}`);return v}}
     parameters={session.parameters} animated={id=>Boolean(session.trackFor(id))} driven={id=>describeValueSource(session.sourceFor(id),session.parameters)}

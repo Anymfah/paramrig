@@ -1,0 +1,32 @@
+{
+  "name": "@paramrig/audio-labs",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "ParamRig sound generation, variation and fusion",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/src/audio/labs/sdk.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/audio-labs"
+  },
+  "dependencies": {
+    "@paramrig/core": "0.1.0",
+    "@paramrig/audio": "0.1.0"
+  }
+}

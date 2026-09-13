@@ -1,4 +1,4 @@
-import { registerModifier, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
+import { defineModifier, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
 import { wireableEdges, wireframeBars } from '@/scene/operators/shell'
 import { numberParam, switchParam } from '@/scene/operators/types'
 
@@ -17,7 +17,7 @@ const NEEDS_THICKNESS = 'Give Wireframe a thickness; nought has nothing to build
 const ALL_RIM = 'Every edge of this mesh is on its rim, and Boundary is switched off.'
 const TOO_SHORT = 'Every edge of this mesh is too short to carry a bar of that thickness.'
 
-registerModifier({
+export const wireframeModifier = defineModifier({
   kind: 'wireframe',
   label: 'Wireframe',
   category: 'generate',

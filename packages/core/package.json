@@ -1,0 +1,68 @@
+{
+  "name": "@paramrig/core",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Shared ParamRig contracts, validation and animated values",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/packages/core/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/packages/core/src/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./extended-types": {
+      "types": "./dist/types/packages/core/src/extended-types.d.ts",
+      "import": "./dist/extended-types.js"
+    },
+    "./binding": {
+      "types": "./dist/types/packages/core/src/binding.d.ts",
+      "import": "./dist/binding.js"
+    },
+    "./sanitize": {
+      "types": "./dist/types/packages/core/src/sanitize.d.ts",
+      "import": "./dist/sanitize.js"
+    },
+    "./expression": {
+      "types": "./dist/types/packages/core/src/expression.d.ts",
+      "import": "./dist/expression.js"
+    },
+    "./values": {
+      "types": "./dist/types/packages/core/src/values.d.ts",
+      "import": "./dist/values.js"
+    },
+    "./parameter-values": {
+      "types": "./dist/types/packages/core/src/parameter-values.d.ts",
+      "import": "./dist/parameter-values.js"
+    },
+    "./drivers": {
+      "types": "./dist/types/packages/core/src/drivers.d.ts",
+      "import": "./dist/drivers.js"
+    },
+    "./fonts": {
+      "types": "./dist/types/packages/core/src/fonts.d.ts",
+      "import": "./dist/fonts.js"
+    },
+    "./font-value": {
+      "types": "./dist/types/packages/core/src/font-value.d.ts",
+      "import": "./dist/font-value.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/core"
+  }
+}

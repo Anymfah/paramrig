@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Audio SDK consumer</title>
+<style>body{font:16px system-ui;margin:2rem;max-width:48rem;background:#17191b;color:#eef3f0}button{font:inherit;margin:.4rem;padding:.7rem}output,pre{display:block;white-space:pre-wrap;margin:1rem 0}</style>
+<h1>Audio SDK consumer</h1>
+<p>Two independent players sharing a host-owned AudioContext.</p>
+<button id="play">Play saved patch on two players</button><button id="first">Stop first player</button><button id="destroy">Destroy players</button><button id="wav">Export saved WAV</button>
+<output id="status" role="status">Ready</output><pre id="meters"></pre><audio id="replay" controls></audio><a id="download" hidden>Download WAV</a>
+<script type="module">
+import { createAudioPlayer, defaultPatch, renderPatch, encodeWav } from './sdk.js'
+const status = document.querySelector('#status'), meters = document.querySelector('#meters')
+const stored = localStorage.getItem('paramrig.sdk-test.audio.v1')
+const patch = stored ? JSON.parse(stored) : defaultPatch()
+patch.duration = .6
+localStorage.setItem('paramrig.sdk-test.audio.v1', JSON.stringify(patch))
+const context = new AudioContext()
+let players = [], peak = [0, 0], wavUrl
+document.querySelector('#play').onclick = async () => {
+  players.forEach(player => player.destroy()); peak = [0, 0]
+  players = [0, 1].map(index => {
+    const player = createAudioPlayer({ context, destination: context.destination, onError: error => { status.textContent = error.message } })
+    player.subscribe(meter => { peak[index] = Math.max(peak[index], meter.peak); meters.textContent = `Peak A: ${peak[0].toFixed(4)}\nPeak B: ${peak[1].toFixed(4)}` })
+    return player
+  })
+  const started = await Promise.all(players.map(player => player.start(patch, 'repeat')))
+  status.textContent = started.every(Boolean) ? `Both playing; saved patch ${stored ? 'restored' : 'created'}` : `Failed: ${players.map(player => player.getError()?.message).join('; ')}`
+}
+document.querySelector('#first').onclick = () => { players[0]?.stop(); status.textContent = `First stopped; second playing: ${players[1]?.isPlaying()}` }
+document.querySelector('#destroy').onclick = () => { players.forEach(player => player.destroy()); status.textContent = `Players destroyed; host context: ${context.state}` }
+document.querySelector('#wav').onclick = () => {
+  if (wavUrl) URL.revokeObjectURL(wavUrl)
+  const samples = renderPatch(patch, 48000, 128), bytes = encodeWav(samples, 48000)
+  wavUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }))
+  const link = document.querySelector('#download'); link.hidden = false; link.href = wavUrl; link.download = 'saved-patch.wav'
+  document.querySelector('#replay').src = wavUrl
+  status.textContent = `WAV ready: ${bytes.length} bytes; ${samples.left.length} frames`
+}
+window.addEventListener('pagehide', () => { players.forEach(player => player.destroy()); if (wavUrl) URL.revokeObjectURL(wavUrl); void context.close() })
+</script></html>

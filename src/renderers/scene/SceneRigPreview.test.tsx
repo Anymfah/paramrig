@@ -1,10 +1,10 @@
 import { act, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { SceneRigPreview } from '@/renderers/scene/SceneRigPreview'
 import { saveSceneDocument, sceneManifest } from '@/scene/document'
-import { clearSceneRigCache } from '@/scene/rig'
 import { dropSceneViewport } from '@/scene/viewport/keep'
 import type { SceneDocument } from '@/scene/types'
 import type { SceneViewport } from '@/scene/viewport/SceneViewport'
@@ -88,7 +88,6 @@ function show(document: SceneDocument) {
 beforeEach(() => {
   localStorage.clear()
   documents.length = 0
-  clearSceneRigCache()
   dropSceneViewport('example-paper-lantern')
 })
 

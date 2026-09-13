@@ -4,10 +4,13 @@ import { resolve } from 'node:path'
 import { listExampleRigs } from '@/rigs/registry'
 import { apertureMarkDocument } from '@/rigs/examples/aperture-mark'
 import { aperturePosterDocument } from '@/rigs/examples/aperture-poster'
+import { fieldFormBrandDocument } from '@/rigs/examples/field-form-brand'
 import { deskStudy } from '@/rigs/examples/desk-study'
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { vectorManifest } from '@/vector/document'
 import { sceneManifest } from '@/scene/document'
+import { audioManifest } from '@/audio/document'
+import { BUNDLED_PATCHES } from '@/rigs/examples/arcade-coin'
 import type { RigManifest } from '@/rigs/types'
 
 /*
@@ -22,8 +25,10 @@ const shipped = (): RigManifest[] => [
   ...listExampleRigs(),
   vectorManifest(apertureMarkDocument),
   vectorManifest(aperturePosterDocument),
+  vectorManifest(fieldFormBrandDocument),
   sceneManifest(paperLantern()),
   sceneManifest(deskStudy()),
+  ...BUNDLED_PATCHES.map((build) => audioManifest(build())),
 ]
 
 describe('the examples that ship with the app', () => {

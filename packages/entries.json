@@ -1,0 +1,59 @@
+{
+  "core": {
+    ".": "packages/core/src/index.ts",
+    "./types": "packages/core/src/types.ts",
+    "./extended-types": "packages/core/src/extended-types.ts",
+    "./binding": "packages/core/src/binding.ts",
+    "./sanitize": "packages/core/src/sanitize.ts",
+    "./expression": "packages/core/src/expression.ts",
+    "./values": "packages/core/src/values.ts",
+    "./parameter-values": "packages/core/src/parameter-values.ts",
+    "./drivers": "packages/core/src/drivers.ts",
+    "./fonts": "packages/core/src/fonts.ts",
+    "./font-value": "packages/core/src/font-value.ts"
+  },
+  "audio": {
+    ".": "packages/audio/src/index.ts",
+    "./wav": "src/audio/dsp/wav.ts",
+    "./wavetables": "src/audio/dsp/wavetable.ts",
+    "./bindings": "src/audio/rig.ts",
+    "./fields": "src/audio/fields.ts",
+    "./curves": "src/audio/dsp/curve.ts",
+    "./random": "src/audio/dsp/rng.ts"
+  },
+  "audio-labs": {
+    ".": "src/audio/labs/sdk.ts"
+  },
+  "audio-browser": {
+    ".": "src/audio/player.ts"
+  },
+  "vector": {
+    ".": "packages/vector/src/index.ts",
+    "./model": "src/vector/model.ts",
+    "./bindings": "src/vector/rig.ts",
+    "./geometry": "src/vector/geometry.ts",
+    "./svg": "src/vector/svg.ts",
+    "./project": "src/vector/project.ts",
+    "./export": "src/vector/exportRuntime.ts",
+    "./pdf": "src/vector/pdfRuntime.ts",
+    "./resources": "src/vector/resources.ts",
+    "./browser": "src/vector/browser.ts"
+  },
+  "scene": {
+    ".": "packages/scene/src/index.ts",
+    "./model": "src/scene/model.ts",
+    "./bindings": "src/scene/rig.ts",
+    "./modifiers": "src/scene/modifiers/index.ts",
+    "./engine": "src/scene/engine.ts",
+    "./browser": "src/scene/browser.ts",
+    "./resources": "src/scene/resources.ts",
+    "./project": "src/scene/project.ts",
+    "./gltf": "src/scene/io/gltfRuntime.ts",
+    "./obj": "src/scene/io/obj.ts",
+    "./stl": "src/scene/io/stl.ts"
+  },
+  "controls": {
+    ".": "src/controls/index.ts",
+    "./registry": "src/controls/registry.ts"
+  }
+}

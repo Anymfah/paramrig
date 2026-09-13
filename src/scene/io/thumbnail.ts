@@ -1,4 +1,4 @@
-import { meshOf } from '@/scene/document'
+import { meshOf } from '@/scene/model'
 import { clampNumber } from '@/scene/mesh/data'
 import type { SceneDocument, SceneObjectKind, Vec3 } from '@/scene/types'
 

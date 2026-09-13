@@ -1,6 +1,6 @@
 import { Euler, Matrix4, Vector3 } from 'three'
 import type { ParameterDef, ParamValue } from '@/rigs/types'
-import { collectionById, rootCollection, uniqueObjectName } from '@/scene/document'
+import { collectionById, rootCollection, uniqueObjectName } from '@/scene/model'
 import {
   boxMesh,
   circleMesh,

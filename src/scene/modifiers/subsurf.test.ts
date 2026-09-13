@@ -1,10 +1,12 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, circleMesh, gridMesh, planeMesh } from '@/scene/mesh/primitives'
 import { getModifier } from '@/scene/modifiers/types'
 import { euler, isClosed, isConsistentlyWound, isWellFormed, meshVolume } from '@/scene/operators/editHarness'
 import type { Vec3 } from '@/scene/types'
-import '@/scene/modifiers/subsurf'
+
 
 /**
  * Subdivision surface, judged by numbers worked out from the shape rather than copied from a run.

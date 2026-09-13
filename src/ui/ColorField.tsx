@@ -5,7 +5,7 @@ import { IconButton } from '@/ui/Button'
 import { FieldReset } from '@/ui/FieldReset'
 import { IconNone, IconPipette, IconPlus, IconScreenPick } from '@/ui/icons'
 import { Tooltip } from '@/ui/Tooltip'
-import { cmykLabel, outOfSrgbGamut } from '@/vector/colorSpace'
+import { cmykLabel, outOfSrgbGamut } from '@/color/space'
 
 type ColorFieldProps = {
   label: string
@@ -186,7 +186,7 @@ export function ColorField({
           ) : null}
         </div>
         <Popover.Portal>
-          <Popover.Content className="popover color-popover" sideOffset={8} align="end" aria-label={`${label} picker`}>
+          <Popover.Content className="popover color-popover paramrig-control-portal" sideOffset={8} align="end" aria-label={`${label} picker`}>
             <div
               className="sv-plane"
               style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hsvToHex(hsv.h, 1, 1)})` }}

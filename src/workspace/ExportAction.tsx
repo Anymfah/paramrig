@@ -5,6 +5,7 @@ import { IconCopy, IconDownload } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
 import * as Popover from '@radix-ui/react-popover'
+import { useDomain } from '@/modules/context'
 
 type ExportActionProps = {
   session: RigSession
@@ -13,6 +14,7 @@ type ExportActionProps = {
 export function ExportAction({ session }: ExportActionProps) {
   const [message, setMessage] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [fallback, setFallback] = useState<string | null>(null)
+  const Extras = useDomain()?.ExportExtras
 
   const jsonOf = () => JSON.stringify(session.toExport(), null, 2)
 
@@ -63,6 +65,7 @@ export function ExportAction({ session }: ExportActionProps) {
       </Tooltip>
       <Popover.Portal>
         <Popover.Content className="popover popover--export" sideOffset={8} align="end">
+          {Extras ? <Extras session={session}/> : null}
           <p className="lede">Copy or download the live values. This does not write back into project source.</p>
           <div className="export-actions">
             <Tooltip content="Copy JSON">

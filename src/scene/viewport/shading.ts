@@ -156,8 +156,8 @@ export function solidLookKey(look: SolidLook): string {
 /** The matcaps, made once each and kept: they are a quarter of a megabyte and never change. */
 const matcaps = new Map<string, Texture>()
 
-export function matcapTexture(name: string): Texture {
-  const kept = matcaps.get(name)
+export function matcapTexture(name: string, cache = matcaps): Texture {
+  const kept = cache.get(name)
   if (kept) return kept
   const size = 256
   const texture = new DataTexture(matcapPixels(name as MatcapName, size), size, size, RGBAFormat)
@@ -165,7 +165,7 @@ export function matcapTexture(name: string): Texture {
   texture.minFilter = LinearFilter
   texture.magFilter = LinearFilter
   texture.needsUpdate = true
-  matcaps.set(name, texture)
+  cache.set(name, texture)
   return texture
 }
 
@@ -181,7 +181,7 @@ export function disposeMatcaps(): void {
  * sphere's photograph looked up by the normal, and a flat colour. The colour itself is written by
  * the caller — it is a property of the object rather than of the look.
  */
-export function createSolidLook(look: SolidLook): MeshStandardMaterial | MeshMatcapMaterial | MeshBasicMaterial {
+export function createSolidLook(look: SolidLook, textureFor: (name: string) => Texture = matcapTexture): MeshStandardMaterial | MeshMatcapMaterial | MeshBasicMaterial {
   const shared = {
     side: look.backfaceCulling ? FrontSide : DoubleSide,
     transparent: look.xray,
@@ -190,7 +190,7 @@ export function createSolidLook(look: SolidLook): MeshStandardMaterial | MeshMat
     vertexColors: look.colourAttribute,
   }
   const material = look.lighting === 'matcap'
-    ? new MeshMatcapMaterial({ ...shared, color: new Color(SOLID_BASE_COLOUR), matcap: matcapTexture(look.matcap) })
+    ? new MeshMatcapMaterial({ ...shared, color: new Color(SOLID_BASE_COLOUR), matcap: textureFor(look.matcap) })
     : look.lighting === 'flat'
       ? new MeshBasicMaterial({ ...shared, color: new Color(SOLID_BASE_COLOUR) })
       : new MeshStandardMaterial({

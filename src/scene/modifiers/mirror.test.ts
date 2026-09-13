@@ -1,3 +1,5 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh } from '@/scene/mesh/primitives'
@@ -5,7 +7,7 @@ import { translation } from '@/scene/modifiers/matrix'
 import { getModifier, type ModifierInput } from '@/scene/modifiers/types'
 import { euler, isClosed, isConsistentlyWound, isWellFormed, meshVolume, signedVolume } from '@/scene/operators/editHarness'
 import type { Modifier, Vec3 } from '@/scene/types'
-import '@/scene/modifiers/mirror'
+
 
 /**
  * Mirror, judged by the solid it closes.

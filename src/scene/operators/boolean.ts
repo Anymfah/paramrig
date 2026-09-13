@@ -1,6 +1,6 @@
 import { BufferAttribute, BufferGeometry, Matrix4, Vector3 } from 'three'
 import { ADDITION, Brush, Evaluator, INTERSECTION, SUBTRACTION, type CSGOperation } from 'three-bvh-csg'
-import { meshOf, objectById, withMesh } from '@/scene/document'
+import { meshOf, objectById, withMesh } from '@/scene/model'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { cross, dot, length, normalize, subtract } from '@/scene/mesh/normals'

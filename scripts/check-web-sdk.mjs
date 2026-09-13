@@ -12,8 +12,9 @@
  * A declaration that imports a `.ts` path, or an `exports` map that names a file that is not there,
  * fails here rather than in someone else's repository.
  */
-import { spawnSync } from 'node:child_process'
-import { readdirSync, statSync, existsSync, mkdirSync, rmSync, symlinkSync, readFileSync } from 'node:fs'
+import { spawnSync, execFileSync } from 'node:child_process'
+import { readdirSync, statSync, existsSync, mkdirSync, rmSync, symlinkSync, readFileSync, mkdtempSync, copyFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -38,6 +39,7 @@ if (!existsSync(dist)) {
   const files = walk(dist).sort()
   const allowed = (file) => file === 'paramrig-web.js' || /^[\w.-]+\.js$/.test(file) || /\.d\.ts$/.test(file)
   for (const file of files.filter((f) => !allowed(f))) problems.push(`Unexpected file in the package: dist/${file}`)
+  for (const file of files.filter(file => file.endsWith('.d.ts'))) if (/['"](?:@\/|@paramrig\/core)/.test(readFileSync(join(dist, file), 'utf8'))) problems.push(`A private alias or external Core dependency leaked into ${file}`)
   if (!files.includes('paramrig-web.js')) problems.push('dist/paramrig-web.js is missing.')
   if (!files.some((f) => f.endsWith('.d.ts'))) problems.push('No declarations were emitted into dist.')
 
@@ -83,4 +85,16 @@ if (problems.length) {
   for (const problem of problems) console.error(`  ${problem}`)
   process.exit(1)
 }
+const isolated = mkdtempSync(join(tmpdir(), 'paramrig-web-consumer-'))
+const [artifact] = JSON.parse(execFileSync('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', isolated], { cwd: pkgDir, encoding: 'utf8' }))
+writeFileSync(join(isolated, 'package.json'), JSON.stringify({ name: 'paramrig-web-isolated-consumer', private: true, type: 'module' }))
+execFileSync('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', join(isolated, artifact.filename)], { cwd: isolated, stdio: 'pipe' })
+for (const file of ['index.ts', 'tsconfig.json', 'manifest.json']) copyFileSync(join(consumer, file), join(isolated, file))
+execFileSync(process.execPath, [tsc, '-p', isolated], { stdio: 'pipe', encoding: 'utf8' })
+execFileSync(process.execPath, ['--input-type=module', '-e', "import { parseManifest, connectWeb } from '@paramrig/web'; if(typeof parseManifest !== 'function' || typeof connectWeb !== 'function') throw Error('Public exports unavailable')"], { cwd: isolated, stdio: 'pipe' })
+const installed = Object.keys(JSON.parse(readFileSync(join(isolated, 'package-lock.json'), 'utf8')).packages).filter(Boolean)
+if (JSON.stringify(installed) !== JSON.stringify(['node_modules/@paramrig/web'])) throw Error('Web installed an unrelated dependency')
+const artifacts = join(root, '.local/modularity/tarballs')
+mkdirSync(artifacts, { recursive: true }); copyFileSync(join(isolated, artifact.filename), join(artifacts, artifact.filename))
+console.log('A clean Web tarball consumer passes strict NodeNext TypeScript and Node imports without Core or repository dependencies.')
 console.log('The SDK package holds exactly what it should.')

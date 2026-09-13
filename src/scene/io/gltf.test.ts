@@ -1,7 +1,8 @@
 import { Mesh, PerspectiveCamera } from 'three'
 import { describe, expect, it } from 'vitest'
 import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/document'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { animationClips, buildScene, readScene } from '@/scene/io/gltf'
 import { meshCounts } from '@/scene/mesh/data'
 import { boxMesh } from '@/scene/mesh/primitives'

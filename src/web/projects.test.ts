@@ -1,10 +1,14 @@
+import { beforeAll } from 'vitest'
+import { resetProjectIndexCache } from '@/library/projectIndex'
+import { loadModule } from '@/modules/registry'
+beforeAll(async () => { await loadModule('web') })
 import { beforeEach, describe, expect, it } from 'vitest'
 import { getRig, listRigs } from '../rigs/registry'
 import example from '../../examples/web/manifest.json'
 import { parseManifest } from './contracts'
 import { listWebProjects, pendingWebManifest, rememberWebProject, webProjectId, webRigId } from './projects'
 
-beforeEach(() => { localStorage.clear() })
+beforeEach(() => { localStorage.clear(); resetProjectIndexCache() })
 
 describe('a web link on a browser that has never opened the project', () => {
   it('resolves to a web rig the workspace can ask about', () => {

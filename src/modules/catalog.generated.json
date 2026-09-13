@@ -1,0 +1,207 @@
+[
+  {
+    "id": "vector-example-aperture-mark",
+    "module": "vector",
+    "name": "Aperture mark",
+    "summary": "Vector · 5 controls",
+    "description": "",
+    "renderer": "vector",
+    "rendererLabel": "Vector",
+    "collection": "examples",
+    "title": "Examples/Vector",
+    "sourceFile": "src/rigs/examples/aperture-mark.ts",
+    "tags": [
+      "vector",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-02T00:00:00.000Z",
+    "thumbnail": "/thumbnails/vector/vector-example-aperture-mark.svg"
+  },
+  {
+    "id": "vector-example-aperture-poster",
+    "module": "vector",
+    "name": "Aperture poster",
+    "summary": "Vector · 8 controls",
+    "description": "",
+    "renderer": "vector",
+    "rendererLabel": "Vector",
+    "collection": "examples",
+    "title": "Examples/Vector",
+    "sourceFile": "src/rigs/examples/aperture-poster.ts",
+    "tags": [
+      "vector",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-07T00:00:00.000Z",
+    "thumbnail": "/thumbnails/vector/vector-example-aperture-poster.svg"
+  },
+  {
+    "id": "vector-example-field-form-brand",
+    "module": "vector",
+    "name": "Field / Form brand system",
+    "summary": "Vector · 27 controls",
+    "description": "",
+    "renderer": "vector",
+    "rendererLabel": "Vector",
+    "collection": "examples",
+    "title": "Examples/Vector",
+    "sourceFile": "src/rigs/examples/field-form-brand.ts",
+    "tags": [
+      "vector",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-12T23:00:00.000Z",
+    "thumbnail": "/thumbnails/vector/vector-example-field-form-brand.svg"
+  },
+  {
+    "id": "example-paper-lantern",
+    "module": "scene",
+    "name": "Paper lantern",
+    "summary": "Scene · 5 controls",
+    "description": "",
+    "renderer": "scene",
+    "rendererLabel": "Scene",
+    "collection": "examples",
+    "title": "Examples/Scene",
+    "sourceFile": "src/rigs/examples/paper-lantern.ts",
+    "tags": [
+      "scene",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-04T00:00:00.000Z",
+    "thumbnail": "/thumbnails/scene/example-paper-lantern.svg"
+  },
+  {
+    "id": "example-desk-study",
+    "module": "scene",
+    "name": "Desk study",
+    "summary": "Scene · 6 controls",
+    "description": "",
+    "renderer": "scene",
+    "rendererLabel": "Scene",
+    "collection": "examples",
+    "title": "Examples/Scene",
+    "sourceFile": "src/rigs/examples/desk-study.ts",
+    "tags": [
+      "scene",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-07T00:00:00.000Z",
+    "thumbnail": "/thumbnails/scene/example-desk-study.svg"
+  },
+  {
+    "id": "audio-example-arcade-coin",
+    "module": "audio",
+    "name": "Arcade coin",
+    "summary": "Audio · 4 controls",
+    "description": "",
+    "renderer": "audio",
+    "rendererLabel": "Audio",
+    "collection": "examples",
+    "title": "Examples/Audio",
+    "sourceFile": "src/rigs/examples/arcade-coin.ts",
+    "tags": [
+      "audio",
+      "example",
+      "rig"
+    ],
+    "updatedAt": "2026-09-08T00:00:00.000Z",
+    "thumbnail": "/thumbnails/audio/audio-example-arcade-coin.svg"
+  },
+  {
+    "id": "contour-bloom",
+    "name": "Contour bloom",
+    "summary": "SVG · Shape, relief and motion",
+    "description": "A shape study with layered contours. Tune the silhouette, relief and motion.",
+    "renderer": "svg",
+    "rendererLabel": "SVG",
+    "collection": "examples",
+    "title": "Examples/SVG",
+    "sourceFile": "src/rigs/examples/contour-bloom.ts",
+    "tags": [
+      "svg",
+      "shape",
+      "relief"
+    ],
+    "module": "vector",
+    "thumbnail": "/thumbnails/vector/contour-bloom.svg"
+  },
+  {
+    "id": "tidal-planet",
+    "name": "Tidal planet",
+    "summary": "3D · Minimal procedural planet",
+    "description": "Helios Ray terrain architecture reduced to one restrained ParamRig surface.",
+    "renderer": "three",
+    "rendererLabel": "3D",
+    "collection": "examples",
+    "title": "Examples/3D",
+    "sourceFile": "src/rigs/examples/tidal-planet.ts",
+    "tags": [
+      "3d",
+      "procedural",
+      "terrain",
+      "minimal"
+    ],
+    "module": "scene",
+    "thumbnail": "/thumbnails/scene/tidal-planet.svg"
+  },
+  {
+    "id": "surface-studies",
+    "name": "Surface studies",
+    "summary": "HTML / CSS · Material and light",
+    "description": "Three material plates. Adjust light, radius and contrast without leaving the page.",
+    "renderer": "html",
+    "rendererLabel": "HTML / CSS",
+    "collection": "examples",
+    "title": "Examples/HTML",
+    "sourceFile": "src/rigs/examples/surface-studies.ts",
+    "tags": [
+      "html",
+      "material",
+      "light"
+    ],
+    "module": "web",
+    "thumbnail": "/thumbnails/web/surface-studies.svg"
+  },
+  {
+    "id": "type-specimen",
+    "name": "Type specimen",
+    "summary": "HTML / CSS · Rhythm and hierarchy",
+    "description": "A short reading block. Size, tracking and leading stay independent so you can feel the rhythm.",
+    "renderer": "html",
+    "rendererLabel": "HTML / CSS",
+    "collection": "examples",
+    "title": "Examples/HTML",
+    "sourceFile": "src/rigs/examples/type-specimen.ts",
+    "tags": [
+      "html",
+      "type",
+      "rhythm"
+    ],
+    "module": "web",
+    "thumbnail": "/thumbnails/web/type-specimen.svg"
+  },
+  {
+    "id": "controller-lab",
+    "name": "Controller lab",
+    "summary": "HTML / CSS · Every controller family at once",
+    "description": "Explore parameter types, reusable instruments, local resources and animation. Every edit shares the same undo history.",
+    "renderer": "html",
+    "rendererLabel": "HTML / CSS",
+    "collection": "examples",
+    "title": "Examples/HTML",
+    "sourceFile": "src/rigs/controller-catalog.ts",
+    "tags": [
+      "controllers",
+      "playground",
+      "parameters"
+    ],
+    "module": "web",
+    "thumbnail": "/thumbnails/web/controller-lab.svg"
+  }
+]

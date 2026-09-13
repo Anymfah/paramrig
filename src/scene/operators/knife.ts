@@ -1,4 +1,4 @@
-import { meshOf, objectById } from '@/scene/document'
+import { meshOf, objectById } from '@/scene/model'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { add, cross, dot, length, normalize, scale, subtract } from '@/scene/mesh/normals'
 import { requireEdit, runOnMeshes, type EditTarget } from '@/scene/operators/edit'

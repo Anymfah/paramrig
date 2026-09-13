@@ -1,0 +1,48 @@
+{
+  "name": "@paramrig/controls",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Optional controlled React inputs for ParamRig parameters",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/src/controls/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./registry": {
+      "types": "./dist/types/src/controls/registry.d.ts",
+      "import": "./dist/registry.js"
+    },
+    "./styles.css": {
+      "types": "./dist/styles.d.ts",
+      "default": "./dist/styles.css"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@paramrig/core": "0.1.0",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-popover": "^1.1.15",
+    "lucide-react": "^1.41.0",
+    "@types/react": "^19.1.13"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/controls"
+  },
+  "peerDependencies": {
+    "react": ">=19.2.0 <20",
+    "react-dom": ">=19.2.0 <20"
+  }
+}

@@ -9,7 +9,7 @@ import {
   Texture,
   type Material as ThreeMaterial,
 } from 'three'
-import { loadResource } from '@/state/resources'
+import type { SceneResourceResolver } from '@/scene/resources'
 import type { Material, TextureSlot } from '@/scene/types'
 
 /**
@@ -34,6 +34,7 @@ export type MaterialLibrary = {
   refresh: () => void
   /** How many are being kept, for the tests and the debug hatch. */
   size: () => number
+  whenIdle: () => Promise<void>
   dispose: () => void
 }
 
@@ -59,10 +60,12 @@ export function materialSignature(material: Material): string {
   ])
 }
 
-export function createMaterialLibrary(options: { onTextureLoaded?: () => void } = {}): MaterialLibrary {
+export function createMaterialLibrary(options: { onTextureLoaded?: () => void; resolveResource?: SceneResourceResolver; onError?: (error: Error) => void; clock?: { value: number } } = {}): MaterialLibrary {
   const built = new Map<string, { signature: string; material: MeshPhysicalMaterial }>()
   const textures = new Map<string, Texture>()
   let disposed = false
+  const abort = new AbortController()
+  const pending = new Set<Promise<void>>()
 
   /**
    * The image behind a slot. It is fetched once per resource and shared by every material that
@@ -76,9 +79,10 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
     const texture = new Texture()
     if (colour) texture.colorSpace = SRGBColorSpace
     textures.set(id, texture)
-    void loadResource(id)
+    const request = Promise.resolve().then(() => options.resolveResource?.(id, abort.signal) ?? null)
       .then(async (blob) => {
-        if (!blob || disposed) return
+        if (disposed) return
+        if (!blob) throw new Error(`Scene resource is unavailable: ${id}`)
         const bitmap = await createImageBitmap(blob)
         if (disposed) {
           bitmap.close()
@@ -88,9 +92,9 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
         texture.needsUpdate = true
         options.onTextureLoaded?.()
       })
-      .catch(() => {
-        /* A resource that cannot be read leaves the material plain rather than the scene broken. */
-      })
+      .catch(error => { if (!disposed) options.onError?.(error instanceof Error ? error : new Error(String(error))) })
+      .finally(() => pending.delete(request))
+    pending.add(request)
     return applySlot(texture, slot)
   }
 
@@ -115,7 +119,7 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
      * still written first: they are what the surface falls back to while the engine is fetched, and
      * what it goes back to the moment the switch is turned off.
      */
-    if (source.useNodes && source.graph) applyGraphMaterial(material, source.graph)
+    if (source.useNodes && source.graph) applyGraphMaterial(material, source.graph, options.clock)
     else clearGraphMaterial(material)
     material.map = textureFor(source.textures?.baseColor, true)
     material.roughnessMap = textureFor(source.textures?.roughness, false)
@@ -155,8 +159,10 @@ export function createMaterialLibrary(options: { onTextureLoaded?: () => void } 
       for (const entry of built.values()) entry.material.dispose()
       built.clear()
     },
+    whenIdle: async () => { await Promise.all([...pending]) },
     dispose: () => {
       disposed = true
+      abort.abort()
       for (const entry of built.values()) entry.material.dispose()
       built.clear()
       for (const texture of textures.values()) {
