@@ -1,4 +1,4 @@
-# The verification chain agents run in Docker, run again on every push.
+# The Docker verification chain runs for every pull request and main-branch push.
 #
 # It is deliberately the same list of commands, in the same order, minus `npm run e2e`: those
 # scripts drive a headless GPU Chrome on the developer's own machine and need the running services
@@ -8,6 +8,7 @@ name: verify
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 # The chain only reads the repository. The account's default for workflow tokens is read-only
@@ -16,8 +17,9 @@ on:
 permissions:
   contents: read
 
-# A branch push and its pull-request event validate the same revision. Keep one
-# full SDK/build matrix per source branch and replace only obsolete verification.
+# Feature revisions are checked by their pull request. Running their push as well
+# leaves a cancelled required check when the two events share a concurrency group.
+# Main keeps its own check after integration; only obsolete branch runs are replaced.
 concurrency:
   group: verify-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
   cancel-in-progress: true
