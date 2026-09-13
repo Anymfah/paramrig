@@ -51,24 +51,22 @@ describe('audible search selections', () => {
     expect(peaks(envelope(tone(750, 6)))).toBe(6)
   })
 
-  it('renders every texture across all families, with crossed material, movement and ending choices', () => {
-    const rejected: string[] = []
-    for (const [i, type] of LAB_TYPES.entries()) for (const [n, texture] of LAB_TEXTURES.entries()) {
+  it.each(LAB_TYPES.flatMap((type, i) => LAB_TEXTURES.map((texture, n) => ({ type, i, texture, n }))))(
+    'renders $type/$texture with crossed material, movement and ending choices', ({ type, i, texture, n }) => {
       const criteria: LabCriteria = { ...fixed, type, texture, gesture: labGestureOptions(type)[1]!.id,
         register: ['low', 'mid', 'high', 'full'][n % 4] as LabCriteria['register'], mass: ['light', 'balanced', 'heavy'][n % 3] as LabCriteria['mass'],
         material: LAB_MATERIALS[n % LAB_MATERIALS.length]!, character: LAB_CHARACTERS[n % LAB_CHARACTERS.length]!, motion: LAB_MOTIONS[n % LAB_MOTIONS.length]!,
         intensity: n / (LAB_TEXTURES.length - 1), density: 1 - n / (LAB_TEXTURES.length - 1), ending: LAB_ENDINGS[(i + n) % LAB_ENDINGS.length]! }
       const candidate = renderCandidate(generateSound(criteria, 171 + i * 997 + n * 7919), rate)
-      if (!candidate) { rejected.push(`${type}/${texture}`); continue }
+      expect(candidate, `${type}/${texture}`).not.toBeNull()
+      if (!candidate) return
       expect(candidate.peak).toBeLessThan(0.99)
       expect(candidate.rms).toBeGreaterThan(0.001)
       expect(candidate.samples.left).toHaveLength(16800)
       expect(candidate.spectrum.values.every(Number.isFinite)).toBe(true)
       expect(Math.abs(candidate.samples.left.at(-1)!)).toBeLessThan(0.01)
       expect(Math.abs(candidate.samples.right.at(-1)!)).toBeLessThan(0.01)
-    }
-    expect(rejected).toEqual([])
-  }, 60000)
+    })
 
   it('keeps exclusions and duration extremes valid with explicit selections', () => {
     for (const [i, type] of LAB_TYPES.entries()) for (const ms of [20, 4000]) {

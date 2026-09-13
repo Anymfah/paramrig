@@ -25,8 +25,12 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -49,7 +53,7 @@ jobs:
       - name: Keep the validated npm artifacts and distributions
         uses: actions/upload-artifact@v4
         with:
-          name: paramrig-modular-${{ github.sha }}
+          name: paramrig-modular-${{ env.SOURCE_REVISION }}
           path: |
             .local/modularity/tarballs/*.tgz
             .local/modularity/archives/*.tar.gz

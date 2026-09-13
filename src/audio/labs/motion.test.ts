@@ -144,23 +144,23 @@ describe('movement temporal identity', () => {
     }
   })
 
-  it('renders the full family/movement matrix and the new subtype movements without rejected first attempts', () => {
-    const failed: string[] = []
-    for (const [i, type] of SOUND_FAMILIES.entries()) for (const [m, motion] of LAB_MOTIONS.entries()) {
+  it.each(SOUND_FAMILIES.flatMap((type, i) => LAB_MOTIONS.map((motion, m) => ({ type, i, motion, m }))))(
+    'renders $type/$motion without rejecting the first attempt', ({ type, i, motion, m }) => {
       const sound = generateSound({ ...criteria, type, motion, minMs: 700, maxMs: 700,
         density: i % 3 === 0 ? 0 : i % 3 === 1 ? 1 : null,
         material: ['wood', 'glass', 'electrical', 'air'][i % 4] as LabCriteria['material'],
         character: ['clean', 'acoustic', 'corrupted', 'ethereal'][m % 4] as LabCriteria['character'] }, 171 + i * 997 + m * 7919)
       const result = renderCandidate(sound, rate)
-      if (!result) { failed.push(`${type}/${motion}`); continue }
+      expect(result, `${type}/${motion}`).not.toBeNull()
+      if (!result) return
       expect(result.peak).toBeLessThan(0.99); expect(result.samples.left).toHaveLength(11200)
-    }
-    for (const [i, { id: subtype }] of labSubtypeCatalog().entries()) for (const motion of ['accelerating', 'collapsing'] as const) {
+    })
+
+  it.each(labSubtypeCatalog().flatMap(({ id: subtype }, i) => (['accelerating', 'collapsing'] as const).map(motion => ({ subtype, i, motion }))))(
+    'renders $subtype/$motion without rejecting the first attempt', ({ subtype, i, motion }) => {
       const result = renderCandidate(generateSound({ ...criteria, type: 'any', subtype, motion, minMs: 700, maxMs: 700 }, 171 + i * 997), rate)
-      if (!result) failed.push(`${subtype}/${motion}`)
-    }
-    expect(failed).toEqual([])
-  }, 180000)
+      expect(result, `${subtype}/${motion}`).not.toBeNull()
+    })
 
   it('preserves movement timing through saved replay and variation', () => {
     for (const motion of ['accelerating', 'collapsing', 'continuous', 'alternating', 'stuttering'] as const) {

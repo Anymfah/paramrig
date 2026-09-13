@@ -511,7 +511,7 @@ describe('AudioEditorPage', () => {
     expect(within(browser).getAllByRole('button').length).toBeLessThan(all)
     expect(within(browser).getByRole('button', { name: /Laser/ })).toBeInTheDocument()
     await user.clear(within(browser).getByRole('searchbox', { name: 'Find a sound' }))
-    await user.type(within(browser).getByRole('searchbox', { name: 'Find a sound' }), 'nothing is called this')
+    await user.type(within(browser).getByRole('searchbox', { name: 'Find a sound' }), 'zzz')
     expect(within(browser).getByText(/Nothing here is called that/)).toBeInTheDocument()
   })
 

@@ -36,38 +36,23 @@ describe('renderPatch', () => {
     expect(render(patch, 48000)).toHaveLength(Math.round(0.25 * 48000))
   })
 
-  /*
-   * The three sweeps below render every preset in the library, so their cost grows with it — they
-   * went past the default five seconds when the library reached ninety-four. The timeout is
-   * explicit rather than global because these are the only tests that scale with the catalogue,
-   * and a sweep quietly taking a minute should still be a failure.
-   */
-  it('opens and closes on silence, so nothing clicks at either end', () => {
-    for (const preset of PRESETS) {
-      const samples = render(preset.build(), SCAN_RATE)
-      expect(Math.abs(samples[0] ?? 1)).toBe(0)
-      expect(Math.abs(samples[samples.length - 1] ?? 1)).toBe(0)
+  // Each preset gets a bounded case. Reuse its scan for boundary silence,
+  // finite samples, full scale and audibility instead of rendering it three times.
+  it.each(PRESETS)('$id is audible and finite within full scale, with silent boundaries', (preset) => {
+    const samples = render(preset.build(), SCAN_RATE)
+    expect(Math.abs(samples[0] ?? 1)).toBe(0)
+    expect(Math.abs(samples[samples.length - 1] ?? 1)).toBe(0)
+    let loudest = 0
+    let broken = 0
+    for (let i = 0; i < samples.length; i += 1) {
+      const value = samples[i] ?? 0
+      if (!Number.isFinite(value)) broken += 1
+      else if (Math.abs(value) > loudest) loudest = Math.abs(value)
     }
-  }, 30_000)
-
-  /**
-   * Scanned in a plain loop and asserted once a preset. Written with an `expect` a sample it made
-   * over a million assertion calls and timed out — the cost was the assertions, not the audio.
-   */
-  it('never leaves full scale and never goes non-finite', () => {
-    for (const preset of PRESETS) {
-      const samples = render(preset.build(), SCAN_RATE)
-      let loudest = 0
-      let broken = 0
-      for (let i = 0; i < samples.length; i += 1) {
-        const value = samples[i] ?? 0
-        if (!Number.isFinite(value)) broken += 1
-        else if (Math.abs(value) > loudest) loudest = Math.abs(value)
-      }
-      expect(broken, `${preset.id} has non-finite samples`).toBe(0)
-      expect(loudest, `${preset.id} goes past full scale`).toBeLessThanOrEqual(1)
-    }
-  }, 30_000)
+    expect(broken, `${preset.id} has non-finite samples`).toBe(0)
+    expect(loudest, `${preset.id} goes past full scale`).toBeLessThanOrEqual(1)
+    expect(loudest, `${preset.id} is inaudible`).toBeGreaterThan(0.05)
+  })
 
   /**
    * And the same question of each channel on its own, which is not the same question.
@@ -94,12 +79,6 @@ describe('renderPatch', () => {
     }
     expect(pinned, `${preset.id} is pinned to the clamp for ${pinned} samples of one channel`).toBe(0)
   })
-
-  it('makes a sound for every preset', () => {
-    for (const preset of PRESETS) {
-      expect(peak(render(preset.build(), SCAN_RATE))).toBeGreaterThan(0.05)
-    }
-  }, 30_000)
 
   it('renders silence when every layer is off', () => {
     const patch = { ...coin(), layers: [silentLayer(), silentLayer(), silentLayer()] }

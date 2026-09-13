@@ -31,30 +31,30 @@ describe('Labs SDK search contract', () => {
     }
   })
 
-  it('provides contextual, duration-aware gestures for every family and supports every advertised option', () => {
-    const seen = new Set<string>()
-    for (const type of SOUND_FAMILIES) {
-      const options = labGestureOptions(type)
-      const fingerprints = new Set<string>()
-      expect(options[0]?.id).toBe('auto'); expect(options.length).toBeGreaterThanOrEqual(3)
-      for (const { id: gesture, minMs } of options) {
-        seen.add(gesture)
-        const criteria = { ...fixed, type, gesture }
-        expect(() => validateLabCriteria(criteria)).not.toThrow()
-        const result = createLabBatch({ mode: 'create', count: 1, criteria, seed: 171 }, 16000)
-        expect(result.issue, `${type}/${gesture}`).toBe('')
-        expect(result.results).toHaveLength(1)
-        expect(result.results[0]!.sound.criteria.gesture).toBe(gesture)
-        if (gesture !== 'auto') fingerprints.add(generateSound(criteria, 171).fingerprint)
-        if (minMs > 20) expect(() => validateLabCriteria({ ...criteria, minMs: 20, maxMs: minMs - 1 })).toThrow('needs at least')
-      }
-      expect(fingerprints.size, `${type} explicit gestures must not be aliases`).toBe(options.length - 1)
-      // Callers cannot mutate the shared catalog by editing a returned label.
-      options[0]!.label = 'changed'
-      expect(labGestureOptions(type)[0]!.label).toBe('Auto')
-    }
+  it('advertises every supported gesture across the family catalogs', () => {
+    const seen = new Set(SOUND_FAMILIES.flatMap(type => labGestureOptions(type).map(option => option.id)))
     expect(seen).toEqual(new Set(LAB_GESTURES))
-  }, 60000)
+  })
+
+  it.each(SOUND_FAMILIES)('provides contextual, duration-aware gestures for %s', (type) => {
+    const options = labGestureOptions(type)
+    const fingerprints = new Set<string>()
+    expect(options[0]?.id).toBe('auto'); expect(options.length).toBeGreaterThanOrEqual(3)
+    for (const { id: gesture, minMs } of options) {
+      const criteria = { ...fixed, type, gesture }
+      expect(() => validateLabCriteria(criteria)).not.toThrow()
+      const result = createLabBatch({ mode: 'create', count: 1, criteria, seed: 171 }, 16000)
+      expect(result.issue, `${type}/${gesture}`).toBe('')
+      expect(result.results).toHaveLength(1)
+      expect(result.results[0]!.sound.criteria.gesture).toBe(gesture)
+      if (gesture !== 'auto') fingerprints.add(generateSound(criteria, 171).fingerprint)
+      if (minMs > 20) expect(() => validateLabCriteria({ ...criteria, minMs: 20, maxMs: minMs - 1 })).toThrow('needs at least')
+    }
+    expect(fingerprints.size, `${type} explicit gestures must not be aliases`).toBe(options.length - 1)
+    // Callers cannot mutate the shared catalog by editing a returned label.
+    options[0]!.label = 'changed'
+    expect(labGestureOptions(type)[0]!.label).toBe('Auto')
+  })
 
   it('keeps requested bounds while avoiding durations too short for the selected gesture', () => {
     const criteria: LabCriteria = { ...fixed, type: 'transformation', gesture: 'assemble-lock', minMs: 20, maxMs: 400 }
