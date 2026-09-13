@@ -432,6 +432,11 @@ export type MasterSettings = {
   limiter: number
   /** Seconds of ramp at the tail. Never zero: a sound cut mid-cycle is a click. */
   fadeOut: number
+  /**
+   * The whole sound's stereo width as a mid/side balance: 0 mono, 1 as designed, 2 doubled sides.
+   * Absent means 1, and a patch that never set it serialises as it always did.
+   */
+  width?: number
 }
 
 /**

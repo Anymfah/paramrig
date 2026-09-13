@@ -1,4 +1,4 @@
-import { AUDIO_FIELDS, FX_SLOTS, INSERT_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
+import { AUDIO_FIELDS, FX_SLOTS, INSERT_SLOTS, LAYER_COUNT, MASTER_WIDTH, MOD_COUNT, PERFORMER_COUNT, SCENE_COUNT, STEP_COUNT, LAYER_SECTIONS, type FieldSpec, type LayerSection } from './fields.ts'
 import { LINEAR } from './dsp/curve.ts'
 import { sanitizeGestures } from './gestures.ts'
 import type { AmpSettings, AudioPatch, FilterRouting, FilterSettings, FxSettings, FxSlot, InsertSlot, Layer, MasterSettings, ModKind, ModSlot, Performer, PitchSettings, ResonatorSettings, ShaperSettings, SourceSettings } from './types.ts'
@@ -244,6 +244,14 @@ export function makePatch(duration: number, layers: Layer[], fx: FxInput = {}, m
   })
   const drawn = Array.from({ length: PERFORMER_COUNT }, (_, index) => makePerformer(performers[index]))
   return { version: PATCH_VERSION, duration, seed, layers: three, mods, performers: drawn, scene: 0, fx: makeFx(fx), master: makeMaster(master), gestures: [] }
+}
+
+/** The master's fields, and its stereo width only when the patch set one. */
+function readMaster(value: unknown, base: MasterSettings): MasterSettings {
+  const master = readSection(AUDIO_FIELDS.master, value, base as unknown as Record<string, unknown>) as unknown as MasterSettings
+  const width = value && typeof value === 'object' ? (value as Record<string, unknown>).width : undefined
+  if (typeof width === 'number' && Number.isFinite(width)) master.width = Math.min(MASTER_WIDTH.max, Math.max(MASTER_WIDTH.min, width))
+  return master
 }
 
 /** The master's own two fields, and the three slots read the way a layer's sections are. */
@@ -495,7 +503,7 @@ export function sanitizeAudioPatch(value: unknown): AudioPatch {
       return { ...fields, patterns, curves } as unknown as Performer
     }),
     fx: readFx(source.fx, base.fx),
-    master: readSection(AUDIO_FIELDS.master, source.master, base.master as unknown as Record<string, unknown>) as unknown as MasterSettings,
+    master: readMaster(source.master, base.master),
     gestures: sanitizeGestures(source.gestures),
   }
 }

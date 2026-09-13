@@ -1,6 +1,8 @@
 import { createElement, Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import { boxMap, elementInLasso, pointInPolygon, transformElementAffine } from '@/vector/affine'
 import { createVectorElement } from '@/vector/document'
+import { bindWebKitPinch } from '@/vector/pinch'
+import { useFontMetricsRevision } from '@/vector/fontMetrics'
 import { resizeBounds, resizeCursor, resizeElement, rotatePoint, type DirectResizeHandle } from '@/vector/directTransform'
 import { boundsBetween, elementCenter, intersects, round, rulerStep, rulerTicks, selectionBounds, snapAngle, snapBounds, snapGeometryPatch, type Bounds } from '@/vector/geometry'
 import { boxForInk, inkBox, inkSelectionBounds } from '@/vector/ink'
@@ -513,6 +515,7 @@ export function VectorCanvas({
     if (!viewport) return
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
+      if (pinch.active()) return
       const current = camera.current
       const scale = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? 16 : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? viewport.clientHeight : 1
       if (event.ctrlKey || event.metaKey) {
@@ -551,8 +554,20 @@ export function VectorCanvas({
       }
       glide.raf = requestAnimationFrame(step)
     }
+    const pinch = bindWebKitPinch(viewport, (factor, x, y) => {
+      window.clearTimeout(glide.timer)
+      if (glide.raf !== null) { cancelAnimationFrame(glide.raf); glide.raf = null }
+      const current = camera.current
+      const rect = viewport.getBoundingClientRect()
+      const anchor = { x: x - rect.left - rect.width / 2, y: y - rect.top - rect.height / 2 }
+      const next = clamp(current.zoom * factor, MIN_ZOOM, MAX_ZOOM)
+      const ratio = next / current.zoom
+      onPanChange({ x: anchor.x - (anchor.x - current.pan.x) * ratio, y: anchor.y - (anchor.y - current.pan.y) * ratio })
+      onZoomChange(next)
+    })
     viewport.addEventListener('wheel', onWheel, { passive: false })
     return () => {
+      pinch.dispose()
       viewport.removeEventListener('wheel', onWheel)
       window.clearTimeout(glide.timer)
       if (glide.raf !== null) cancelAnimationFrame(glide.raf)
@@ -2254,7 +2269,7 @@ export function VectorCanvas({
       data-outlines={viewOptions.outlines === 'off' ? undefined : viewOptions.outlines}
       data-pixel-preview={viewOptions.pixelPreview === 'off' ? undefined : viewOptions.pixelPreview}
       data-rulers={viewOptions.rulers || undefined}
-      style={{ '--direct-cursor': directCursor ?? 'default', '--page-background': document.background, '--zoom': String(zoom) } as CSSProperties}
+      style={{ background: document.background === 'none' ? 'transparent' : document.background, '--direct-cursor': directCursor ?? 'default', '--page-background': document.background, '--zoom': String(zoom) } as CSSProperties}
       onPointerDownCapture={(event) => {
         if (event.button !== 1 && !(event.button === 0 && (spaceHeld.current || tool === 'hand'))) return
         event.preventDefault()
@@ -2736,6 +2751,7 @@ const VectorShape = memo(function VectorShape({ element, locked, zoom, coarse, p
   onPointerDown: (element: VectorElement, event: ReactPointerEvent<SVGElement>) => void
   onHover: (id: string | null) => void
 }) {
+  useFontMetricsRevision()
   const rendered = previewGeometry(element, pixelPreview)
   const hittable = isHittable({ ...element, locked }) && hitTarget
   const model = renderModel(rendered, 'canvas', scene)
@@ -2928,7 +2944,7 @@ function TextLayer({ text, transform }: { text: NonNullable<RenderModel['text']>
       strokeWidth={text.stroke ? text.strokeWidth : undefined}
       pointerEvents="none"
       xmlSpace="preserve"
-      style={text.features ? { fontFeatureSettings: text.features } : undefined}
+      style={{ fontFeatureSettings: text.features, fontVariationSettings: text.variations, fontSynthesis: 'none' }}
     >
       {text.path
         // `side` is not in React's SVG typings yet; the attribute is what the browser reads.
@@ -3786,4 +3802,3 @@ function normalizeDegrees(value: number): number {
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
-

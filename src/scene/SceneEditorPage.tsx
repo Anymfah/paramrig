@@ -83,7 +83,8 @@ import { useSceneFile } from '@/scene/useSceneFile'
 import type { PaintState, SceneDocument, SceneSelection, SceneTool, SculptBrush, SelectMode, ShaderEditorState, UvEditorState, ViewState } from '@/scene/types'
 import type { TransformMode } from '@/scene/transform/session'
 import type { SceneViewport, SceneViewportOptions } from '@/scene/viewport/SceneViewport'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import '@/scene/operators'
 import { operatorAvailability } from '@/scene/operators'
 import { isModalOperator } from '@/scene/modalSpecs'
@@ -332,7 +333,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
    * without this page knowing how.
    */
   const session = document?.rig ? ensureSession(documentId) : null
-  useSyncExternalStore(
+  const sessionRevision = useSyncExternalStore(
     useCallback((listener: () => void) => session?.subscribe(listener) ?? (() => undefined), [session]),
     () => session?.getRevision() ?? 0,
     () => 0,
@@ -342,7 +343,7 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
    * does not. Subscribing to it here is what makes an animation play in the viewport rather than
    * only in the workbench.
    */
-  useSyncExternalStore(
+  const sessionBeat = useSyncExternalStore(
     useCallback((listener: () => void) => session?.subscribeClock(listener) ?? (() => undefined), [session]),
     () => session?.displayPlayhead() ?? 0,
     () => 0,
@@ -352,13 +353,16 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
    * to the raw document. It is the whole idea of a rig, and it is why the viewport, the render and
    * the exports are handed `shown` while the operators are handed `document`.
    */
-  const rigValues = session?.previewValues() ?? NO_VALUES
+  const rigValues = useMemo(() => {
+    void sessionRevision; void sessionBeat
+    return session?.previewValues() ?? NO_VALUES
+  }, [session, sessionRevision, sessionBeat])
   /** The controls that carry keyframes: what the transport is for, and what a field is coloured by. */
   const animatedParameters = new Set(
     (document?.rig?.parameters ?? []).filter((parameter) => session?.trackFor(parameter.id)).map((parameter) => parameter.id),
   )
   const animated = animatedParameters.size > 0
-  const shown = document && document.rig && session ? resolveSceneValues(document, rigValues) : document
+  const shown = useMemo(() => document && document.rig && session ? resolveSceneValues(document, rigValues) : document, [document, rigValues, session])
 
   /*
    * A keyframe cannot be added until the control it goes on exists, and a control does not exist
@@ -705,9 +709,14 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
 
   const onKeyDown = useCallback((event: KeyboardEvent) => {
     if (event.defaultPrevented || !document) return
+    const leaveTool = () => {
+      if (document.view.mode === 'sculpt' || document.view.mode === 'vertex-paint') run('mode.object')
+      else if (document.view.tool !== 'select-box') patchView({ tool: 'select-box' })
+    }
     // A running modal tool gets first refusal on every key: X constrains an axis, it does not delete.
     if (stage.current?.handleKey(event)) {
       event.preventDefault()
+      if (event.key === 'Escape') leaveTool()
       return
     }
     const target = event.target
@@ -892,6 +901,9 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
         if (pie) {
           event.preventDefault()
           setPie(null)
+        } else if (!typing) {
+          event.preventDefault()
+          leaveTool()
         }
         return
       case 'pie.pivot':
@@ -1291,9 +1303,13 @@ export function SceneEditorPage({ documentId, mode, onMode, createViewport, view
                 mode={document.view.mode}
                 editData={editData}
                 onTool={(tool) => {
-                  if (document.view.mode === 'vertex-paint') patchView({ paint: { ...paint, brush: tool as PaintState['brush'] } })
-                  else if (document.view.mode === 'sculpt') patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
-                  else patchView({ tool: tool as SceneTool })
+                  if (document.view.mode === 'vertex-paint') {
+                    if (tool === paint.brush) run('mode.object')
+                    else patchView({ paint: { ...paint, brush: tool as PaintState['brush'] } })
+                  } else if (document.view.mode === 'sculpt') {
+                    if (tool === sculpt.brush) run('mode.object')
+                    else patchView({ sculpt: { ...sculpt, brush: tool as SculptBrush } })
+                  } else patchView({ tool: tool === document.view.tool ? 'select-box' : tool as SceneTool })
                 }}
                 onClose={() => patchView({ panels: { ...panels, toolbar: false } })}
               />

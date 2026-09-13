@@ -67,7 +67,11 @@ type LayerVoice = {
   pmLfo: Modulator[]
 }
 
+export type WavetableResolver = (id: string) => Wavetable | null
+export type VoiceOptions = { length?: number; live?: boolean; gate?: VoiceGate; resolveWavetable?: WavetableResolver }
+
 export type Voice = {
+  resolveWavetable: WavetableResolver
   patch: AudioPatch
   sounding: AudioPatch
   automation: Automation[]
@@ -197,7 +201,7 @@ function wireModulators(patch: AudioPatch): (Modulator & { layer: number })[] {
   ]
 }
 
-function createLayerVoice(layer: Layer, patch: AudioPatch, index: number, sampleRate: number, modulators: Modulator[], previous?: LayerVoice): LayerVoice {
+function createLayerVoice(layer: Layer, patch: AudioPatch, index: number, sampleRate: number, modulators: Modulator[], previous?: LayerVoice, resolveWavetable: WavetableResolver = wavetableOf): LayerVoice {
   const reuse = previous?.key === structuralKey(layer) ? previous : undefined
   const random = streamFor(patch.seed, index)
   const cents = (random() * 2 - 1) * layer.pitch.jitter
@@ -233,7 +237,7 @@ function createLayerVoice(layer: Layer, patch: AudioPatch, index: number, sample
     fitted: fitEnvelope(layer.amp, Math.max(0.001, life)),
     voices, ratios, sides, phases: Array<number>(MAX_VOICES).fill(0), fmPhases: Array<number>(MAX_VOICES).fill(0),
     balance: 1 / Math.sqrt(voices),
-    table: layer.source.kind === 'table' ? wavetableOf(layer.source.table) : null,
+    table: layer.source.kind === 'table' ? resolveWavetable(layer.source.table) : null,
     modulators, pitchLfo: on('pitch'), cutoffLfo: on('cutoff'), resoLfo: on('resonance'),
     widthLfo: on('pulseWidth'), gainLfo: on('gain'), panLfo: on('pan'), pmLfo: on('pm'),
   }
@@ -288,7 +292,7 @@ function liveRamps(previous: AudioPatch, next: AudioPatch, sampleRate: number): 
     for (const key of ['filterA', 'filterB'] as const) add(before[key], layer[key], ['cutoff', 'resonance'])
     for (const key of ['insertA', 'insertB', 'insertC'] as const) add(before[key], layer[key], ['amount'])
   })
-  add(previous.master, next.master, ['gain', 'limiter'])
+  add(previous.master, next.master, ['gain', 'limiter', 'width'])
   add(previous.fx, next.fx, ['width', 'tone'])
   for (const key of ['x', 'y', 'z'] as const) add(previous.fx[key], next.fx[key], ['mix', 'time'])
   return ramps
@@ -313,15 +317,16 @@ function soundingPatch(voice: Voice, clock: number): AudioPatch {
   return voice.sounding
 }
 
-export function createVoice(patch: AudioPatch, sampleRate: number, options: { length?: number; live?: boolean; gate?: VoiceGate } = {}): Voice {
+export function createVoice(patch: AudioPatch, sampleRate: number, options: VoiceOptions = {}): Voice {
   const length = options.length ?? Math.max(1, Math.round(Math.max(0.001, patch.duration) * sampleRate))
   const compiled = compileAutomation(patch, options.live)
   const wired = wireModulators(compiled.sounding)
   const { order, from } = pmOrder(patch.layers)
   const layers = compiled.sounding.layers.map((layer, index) =>
-    createLayerVoice(layer, compiled.sounding, index, sampleRate, wired.filter((entry) => entry.layer === index)))
+    createLayerVoice(layer, compiled.sounding, index, sampleRate, wired.filter((entry) => entry.layer === index), undefined, options.resolveWavetable))
   return {
     patch, ...compiled, ramps: [], sampleRate, note: 0, clock: 0, length,
+    resolveWavetable: options.resolveWavetable ?? wavetableOf,
     gate: options.gate ?? 'oneshot',
     releasedAt: null,
     live: options.live === true,
@@ -352,7 +357,7 @@ export function updateVoice(voice: Voice, patch: AudioPatch): void {
   voice.from = from
   voice.layers = compiled.sounding.layers.map((layer, index) => {
     const previous = voice.layers[index]
-    const next = createLayerVoice(layer, compiled.sounding, index, voice.sampleRate, wired.filter((entry) => entry.layer === index), previous)
+    const next = createLayerVoice(layer, compiled.sounding, index, voice.sampleRate, wired.filter((entry) => entry.layer === index), previous, voice.resolveWavetable)
     if (previous && previous.key === next.key) {
       next.phases = previous.phases
       next.fmPhases = previous.fmPhases
@@ -389,7 +394,7 @@ function retrigger(voice: Voice): void {
   voice.stopGain = 1
   const wired = wireModulators(voice.sounding)
   voice.layers = voice.sounding.layers.map((layer, index) =>
-    createLayerVoice(layer, voice.sounding, index, voice.sampleRate, wired.filter((entry) => entry.layer === index)))
+    createLayerVoice(layer, voice.sounding, index, voice.sampleRate, wired.filter((entry) => entry.layer === index), undefined, voice.resolveWavetable))
 }
 
 function layerSample(
@@ -556,6 +561,14 @@ export function processVoice(voice: Voice, left: Float32Array, right: Float32Arr
     voice.dcInR = wet.right
     let valueL = voice.dcOutL * patch.master.gain
     let valueR = voice.dcOutR * patch.master.gain
+    // The sound's stereo width, as mid and side: the only width that belongs to the whole sound.
+    const width = patch.master.width ?? 1
+    if (width !== 1) {
+      const mid = (valueL + valueR) * 0.5
+      const side = (valueL - valueR) * 0.5 * Math.max(0, width)
+      valueL = mid + side
+      valueR = mid - side
+    }
     if (limiter > 0) {
       valueL = valueL * (1 - limiter) + Math.tanh(valueL) * limiter
       valueR = valueR * (1 - limiter) + Math.tanh(valueR) * limiter

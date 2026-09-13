@@ -1,0 +1,11 @@
+{
+  "name": "paramrig-example-audio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "dependencies": {
+    "@paramrig/audio": "0.1.0"
+  }
+}

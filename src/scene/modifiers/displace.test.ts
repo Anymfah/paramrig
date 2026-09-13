@@ -1,8 +1,10 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { length, subtract } from '@/scene/mesh/normals'
 import { boxMesh, planeMesh, uvSphereMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers/displace'
+
 import { IDENTITY, translation } from '@/scene/modifiers/matrix'
 import { getModifier, type ModifierContext, type ModifierInput } from '@/scene/modifiers/types'
 import { isClosed, isWellFormed } from '@/scene/operators/editHarness'

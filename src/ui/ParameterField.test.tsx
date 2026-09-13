@@ -55,6 +55,7 @@ describe('shared parameter instruments',()=>{
     fireEvent.change(input,{target:{value:'Draft'}});expect(s.canUndo()).toBe(false)
     fireEvent.keyDown(input,{key:'Escape'});fireEvent.blur(input);expect(s.storedValue('title')).toBe('Make it move.')
     fireEvent.change(input,{target:{value:'Saved'}});fireEvent.blur(input);expect(s.storedValue('title')).toBe('Saved')
+    expect(screen.getByRole('textbox',{name:'Text'})).toBe(input)
     act(()=>s.undo());expect(input).toHaveValue('Make it move.')
   })
   it('adds and reorders list entries with undo',()=>{

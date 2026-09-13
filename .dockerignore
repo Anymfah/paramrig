@@ -9,3 +9,7 @@ coverage
 .env
 .env.*
 workproduct
+.local
+output
+e2e/output
+packages/*/dist

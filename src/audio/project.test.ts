@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { importAudioProject, serializeAudioProject } from '@/audio/project'
 import { createAudioDocument } from '@/audio/document'
 import { aetherGate, aetherGateRig } from '@/audio/presets-signature'
+import { generateSound } from './labs/generate'
+import { DEFAULT_CRITERIA, emptyLabSession } from './labs/model'
 
 describe('audio project files', () => {
   it('round-trip a patch, its macros and a recorded gesture', () => {
@@ -26,6 +28,22 @@ it('includes tables referenced only by snapshots and refuses an incomplete expor
   const patch = aetherGate()
   patch.layers[0]!.source.table = 'user:missing-table'
   document.snapshots = [{ id: 'snap', name: 'Imported', createdAt: '', patch }]
+  expect(() => serializeAudioProject(document)).toThrow(/missing/i)
+})
+
+it('round-trips research state and checks tables used only by reserved sounds or saved ancestry', () => {
+  const document = createAudioDocument()
+  const sound = generateSound(DEFAULT_CRITERIA, 49)
+  document.labs = { ...emptyLabSession(), reserve: [sound], reference: sound }
+  const imported = importAudioProject(serializeAudioProject(document))
+  expect(imported.ok).toBe(true)
+  if (imported.ok) expect(imported.project.document.labs?.reserve[0]?.rig).toEqual(sound.rig)
+  sound.patch.layers[0]!.source.table = 'user:only-in-reserve'
+  expect(() => serializeAudioProject(document)).toThrow(/missing/i)
+  document.labs = undefined
+  const saved = generateSound(DEFAULT_CRITERIA, 71)
+  saved.parents = [sound]
+  document.snapshots = [{ id: 'lab-snap', name: 'Lab snapshot', createdAt: '', patch: saved.patch, rig: saved.rig, lab: saved }]
   expect(() => serializeAudioProject(document)).toThrow(/missing/i)
 })
 

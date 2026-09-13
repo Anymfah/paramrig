@@ -1,0 +1,16 @@
+{
+  "name": "paramrig-example-audio-browser",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@paramrig/audio": "0.1.0",
+    "@paramrig/audio-browser": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "8.2.2"
+  }
+}

@@ -1,5 +1,5 @@
 import { applyMatrix, invert } from '@/scene/modifiers/matrix'
-import { chosenOf, numberOf, registerModifier, switchOf } from '@/scene/modifiers/types'
+import { chosenOf, numberOf, defineModifier, switchOf } from '@/scene/modifiers/types'
 import { numberParam, selectParam, switchParam } from '@/scene/operators/types'
 import type { Vec3 } from '@/scene/types'
 
@@ -63,7 +63,7 @@ function clamp(value: number, low: number, high: number): number {
   return Math.min(high, Math.max(low, value))
 }
 
-registerModifier({
+export const simpleDeformModifier = defineModifier({
   kind: 'simpleDeform',
   label: 'Simple deform',
   category: 'deform',

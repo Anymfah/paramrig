@@ -1,0 +1,77 @@
+{
+  "name": "@paramrig/scene",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "ParamRig 3D documents, scene runtime and optional browser viewer",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/packages/scene/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/types/src/scene/model.d.ts",
+      "import": "./dist/model.js"
+    },
+    "./bindings": {
+      "types": "./dist/types/src/scene/rig.d.ts",
+      "import": "./dist/bindings.js"
+    },
+    "./modifiers": {
+      "types": "./dist/types/src/scene/modifiers/index.d.ts",
+      "import": "./dist/modifiers.js"
+    },
+    "./engine": {
+      "types": "./dist/types/src/scene/engine.d.ts",
+      "import": "./dist/engine.js"
+    },
+    "./browser": {
+      "types": "./dist/types/src/scene/browser.d.ts",
+      "import": "./dist/browser.js"
+    },
+    "./resources": {
+      "types": "./dist/types/src/scene/resources.d.ts",
+      "import": "./dist/resources.js"
+    },
+    "./project": {
+      "types": "./dist/types/src/scene/project.d.ts",
+      "import": "./dist/project.js"
+    },
+    "./gltf": {
+      "types": "./dist/types/src/scene/io/gltfRuntime.d.ts",
+      "import": "./dist/gltf.js"
+    },
+    "./obj": {
+      "types": "./dist/types/src/scene/io/obj.d.ts",
+      "import": "./dist/obj.js"
+    },
+    "./stl": {
+      "types": "./dist/types/src/scene/io/stl.d.ts",
+      "import": "./dist/stl.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@paramrig/core": "0.1.0",
+    "three-mesh-bvh": "^0.9.14",
+    "opentype.js": "^2.0.0",
+    "@types/three": "^0.185.4",
+    "three-bvh-csg": "^0.0.18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/scene"
+  },
+  "peerDependencies": {
+    "three": ">=0.185.1 <0.186.0"
+  }
+}

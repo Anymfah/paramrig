@@ -1,5 +1,5 @@
 import { createVoice, processVoice, setVoiceGate, triggerVoice, updateVoice, type Voice, type VoiceGate } from './engine.ts'
-import { registerWavetable } from './wavetable.ts'
+import { wavetableOf, type Wavetable } from './wavetable.ts'
 import type { AudioPatch } from '../types.ts'
 
 /**
@@ -16,15 +16,17 @@ type TrigMsg = { type: 'trig'; gate?: VoiceGate }
 type TablesMsg = { type: 'tables'; tables: TableMsg[] }
 type Msg = Boot | PatchMsg | GateMsg | TrigMsg | TablesMsg
 
-function takeTables(tables: TableMsg[] | undefined): void {
+function takeTables(target: Map<string, Wavetable>, tables: TableMsg[] | undefined): void {
   if (!tables) return
   for (const table of tables) {
-    registerWavetable(table.id, { frames: table.frames, limits: table.limits })
+    target.set(table.id, { frames: table.frames, limits: table.limits })
   }
 }
 
 class ParamRigVoice extends AudioWorkletProcessor {
   voice: Voice | null = null
+  tables = new Map<string, Wavetable>()
+  resolveWavetable = (id: string): Wavetable | null => this.tables.get(id) ?? (id.startsWith('user:') ? null : wavetableOf(id))
   meter = 0
   quiet = 0
   scratch = new Float32Array(128)
@@ -34,12 +36,12 @@ class ParamRigVoice extends AudioWorkletProcessor {
     this.port.onmessage = (event: MessageEvent<Msg>) => {
       const data = event.data
       if (data.type === 'tables') {
-        takeTables(data.tables)
+        takeTables(this.tables, data.tables)
         return
       }
       if (data.type === 'boot') {
-        takeTables(data.tables)
-        this.voice = createVoice(data.patch, sampleRate, { live: true, gate: data.gate })
+        takeTables(this.tables, data.tables)
+        this.voice = createVoice(data.patch, sampleRate, { live: true, gate: data.gate, resolveWavetable: this.resolveWavetable })
         return
       }
       if (!this.voice) return

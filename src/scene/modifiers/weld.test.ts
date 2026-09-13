@@ -1,3 +1,5 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { emptyMesh } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
@@ -5,7 +7,7 @@ import { planeMesh } from '@/scene/mesh/primitives'
 import { getModifier } from '@/scene/modifiers/types'
 import { isWellFormed } from '@/scene/operators/editHarness'
 import type { Vec3 } from '@/scene/types'
-import '@/scene/modifiers/weld'
+
 
 /**
  * Weld, judged on a plane whose four corners were each doubled.

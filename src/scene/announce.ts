@@ -1,4 +1,4 @@
-import { meshOf } from '@/scene/document'
+import { meshOf } from '@/scene/model'
 import { meshCounts } from '@/scene/mesh/data'
 import type { EditorMode, SceneDocument, SceneSelection, SceneTool, SelectMode } from '@/scene/types'
 

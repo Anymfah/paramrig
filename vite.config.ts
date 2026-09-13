@@ -1,13 +1,16 @@
 import { fileURLToPath, URL } from 'node:url'
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
+import { sourceAliases } from './scripts/sdk-entries.mjs'
+import { appPreviewPlugin } from './scripts/app-preview.mjs'
+import { appAssetsPlugin } from './scripts/app-assets.mjs'
+import { appBundleReport } from './scripts/app-bundle-report.mjs'
+import { appModulesPlugin } from './scripts/app-modules.mjs'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), appModulesPlugin(), appBundleReport(), appAssetsPlugin(), appPreviewPlugin()],
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [...sourceAliases, { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) }],
     // three-bvh-csg and three-mesh-bvh each pull three in; two copies of it in one bundle would
     // mean two class identities and an `instanceof` that quietly answers false.
     dedupe: ['three'],

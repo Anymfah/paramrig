@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { createVectorElement } from '@/vector/document'
 import {
-  applyBinding, applyTransform, clearRigCache, emptyRig, kindForProperty, parseBindableProperty,
+  applyBinding, applyTransform, emptyRig, kindForProperty, parseBindableProperty,
   propertyLabel, resolveRigValues, rigDefaults, sanitizeParameter, sanitizeRig, type VectorBinding, type VectorRig,
 } from '@/vector/rig'
 import type { ParameterDef } from '@/rigs/types'
 import type { VectorDocument, VectorElement } from '@/vector/types'
+import { normalizeValue } from '@/state/parameter-values'
 
 const rect = (id: string, patch: Partial<VectorElement> = {}): VectorElement => ({
   ...createVectorElement('rectangle', { x: 10, y: 20, width: 100, height: 80 }),
@@ -26,6 +27,35 @@ function documentWith(elements: VectorElement[], rig?: VectorRig): VectorDocumen
 const noResolve = () => { throw new Error('no parameters') }
 
 describe('reading a property path', () => {
+  it('lets a document-wide family be overridden by an individual text binding', () => {
+    const a = rect('a', { kind: 'text', fontFamily: 'Public Sans', text: 'Aa' })
+    const b = rect('b', { kind: 'text', fontFamily: 'Public Sans', text: 'Bb' })
+    const rig = sanitizeRig({ groups: [{ id: 'controls', label: 'Controls' }], parameters: [
+      { kind: 'select', id: 'font', label: 'Font family', group: 'controls', defaultValue: 'Space Grotesk', options: [{ value: 'Space Grotesk', label: 'Space Grotesk' }] },
+      { kind: 'select', id: 'body', label: 'Body font', group: 'controls', defaultValue: 'Source Serif 4', options: [{ value: 'Source Serif 4', label: 'Source Serif 4' }] },
+    ], bindings: [
+      { id: 'all', elementId: '@document', property: 'fontFamily', parameterId: 'font' },
+      { id: 'one', elementId: 'b', property: 'fontFamily', parameterId: 'body' },
+    ] }, new Set(['a', 'b']))!
+    expect(rig.bindings).toHaveLength(2)
+    const result = resolveRigValues(documentWith([a, b, rect('c')], rig), rigDefaults(rig))
+    expect(result.elements[0]).toMatchObject({ fontFamily: 'Space Grotesk', text: 'Aa' })
+    expect(result.elements[1]).toMatchObject({ fontFamily: 'Source Serif 4', text: 'Bb' })
+    expect(result.elements[2]).not.toHaveProperty('fontFamily')
+  })
+  it('keeps transparent workspace bindings through import and refuses unknown document properties', () => {
+    const parameter: ParameterDef = { kind: 'color', id: 'bg', label: 'Background', group: 'controls', defaultValue: 'none', allowNone: true }
+    const rig = sanitizeRig({ groups: [{ id: 'controls', label: 'Controls' }], parameters: [parameter], bindings: [
+      { id: 'valid', elementId: '@document', property: 'background', parameterId: 'bg' },
+      { id: 'invalid', elementId: '@document', property: 'width', parameterId: 'bg' },
+    ] }, new Set())!
+    expect(rig.parameters[0]).toEqual(parameter)
+    expect(rig.bindings.map(binding => binding.id)).toEqual(['valid'])
+    expect(normalizeValue(parameter, 'none')).toBe('none')
+    expect(normalizeValue({ ...parameter, allowNone: false, defaultValue: '#FFFFFF' }, 'none')).toBe('#FFFFFF')
+    expect(resolveRigValues(documentWith([], rig), { bg: '#ABCDEF' }).background).toBe('#ABCDEF')
+    expect(resolveRigValues(documentWith([], rig), { bg: 'none' }).background).toBe('none')
+  })
   it('knows the plain properties and their kinds', () => {
     expect(parseBindableProperty('width')).toEqual({ kind: 'simple', key: 'width', type: 'number' })
     expect(parseBindableProperty('fill')).toEqual({ kind: 'simple', key: 'fill', type: 'color' })
@@ -139,7 +169,6 @@ describe('the transform between a control and a property', () => {
 })
 
 describe('resolving a document against its controls', () => {
-  beforeEach(() => clearRigCache())
 
   it('gives back the same document when there is no rig', () => {
     const document = documentWith([rect('a')])
@@ -173,10 +202,15 @@ describe('resolving a document against its controls', () => {
     expect(resolveRigValues(documentWith([rect('a')], rig), { a: 100, b: 200 }).elements[0]?.width).toBe(200)
   })
 
-  it('hands the same document back for the same values', () => {
+  it('keeps hosts independent and observes edits without a new persistence timestamp', () => {
     const rig: VectorRig = { groups: [{ id: 'controls', label: 'Controls' }], parameters: [number('w')], bindings: [{ id: 'b', elementId: 'a', parameterId: 'w', property: 'width' }] }
     const document = documentWith([rect('a')], rig)
-    expect(resolveRigValues(document, { w: 200 })).toBe(resolveRigValues(document, { w: 200 }))
+    const first = resolveRigValues(document, { w: 200 })
+    document.elements[0] = { ...document.elements[0]!, fill: '#123456' }
+    expect(resolveRigValues(document, { w: 200 }).elements[0]!.fill).toBe('#123456')
+    expect(first.elements[0]!.fill).not.toBe('#123456')
+    const other = { ...document, background: '#fedcba' }
+    expect(resolveRigValues(other, { w: 200 }).background).toBe('#fedcba')
   })
 
   it('reads another control inside a transform expression', () => {

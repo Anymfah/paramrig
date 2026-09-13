@@ -1,5 +1,5 @@
 import { surfaceContact, walkDabs, type SurfaceContact } from '@/scene/brushContact'
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { keysActive, keyValue, shapedMesh } from '@/scene/mesh/shapeKeys'
 import { dabSettings, DEFAULT_SCULPT_STATE, SculptSession } from '@/scene/sculpt/session'
 import type { HudChannel } from '@/scene/viewport/hud'

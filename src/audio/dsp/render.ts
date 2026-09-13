@@ -10,7 +10,7 @@ import { renderVoice } from './engine.ts'
  */
 
 export { createVoice, pmOrder, processVoice, renderVoice, setVoiceGate, triggerVoice, updateVoice } from './engine.ts'
-export type { Voice, VoiceGate } from './engine.ts'
+export type { Voice, VoiceGate, VoiceOptions, WavetableResolver } from './engine.ts'
 
 export function renderPatch(patch: AudioPatch, sampleRate: number, blockSize = 0): Stereo {
   return renderVoice(patch, sampleRate, blockSize)

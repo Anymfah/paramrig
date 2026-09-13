@@ -4,7 +4,8 @@ import { exportProject, importProject, projectFileName, serializeProject } from 
 import { listRigs } from '@/rigs/registry'
 import { paperLantern } from '@/rigs/examples/paper-lantern'
 import { resolveSceneValues, sceneRigDefaults } from '@/scene/rig'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 
 beforeEach(() => {
   localStorage.clear()

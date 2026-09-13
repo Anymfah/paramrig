@@ -1,7 +1,9 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, circleMesh, gridMesh, uvSphereMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers/decimate'
+
 import { getModifier, type ModifierOutcome } from '@/scene/modifiers/types'
 import { isClosed, isWellFormed } from '@/scene/operators/editHarness'
 import type { Modifier, Vec3 } from '@/scene/types'

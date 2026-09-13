@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { uiClick } from '@/audio/presets'
 const mocks = vi.hoisted(() => ({ context: null as unknown, stopPlayback: vi.fn() }))
 vi.mock('@/audio/playback', () => ({ audioContext: () => mocks.context, stopPlayback: mocks.stopPlayback }))
-import { isLive, startLive, stopLive, watchLiveMeter } from '@/audio/live'
+import { disposeLive, isLive, startLive, stopLive, watchLiveMeter } from '@/audio/live'
 class Node {
   static made: Node[] = []
   port = { postMessage: vi.fn(), close: vi.fn(), onmessage: null as ((event: { data: unknown }) => void) | null }
@@ -12,8 +12,23 @@ class Node {
 }
 const context = () => ({ state: 'running', resume: vi.fn().mockResolvedValue(undefined), audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) }, destination: {} })
 beforeEach(() => { vi.stubGlobal('AudioWorkletNode', Node); mocks.context = context(); Node.made = [] })
-afterEach(() => { stopLive(); watchLiveMeter(null); vi.unstubAllGlobals() })
+afterEach(() => { disposeLive(); watchLiveMeter(null); vi.useRealTimers(); vi.unstubAllGlobals() })
 describe('live playback lifecycle', () => {
+  it('lets a stopped voice fade before releasing it and disposes every retiring player on exit', async () => {
+    vi.useFakeTimers()
+    await startLive(uiClick())
+    const first = Node.made[0]!
+    stopLive()
+    expect(first.port.postMessage).toHaveBeenLastCalledWith({ type: 'gate', gate: 'stop' })
+    expect(first.disconnect).not.toHaveBeenCalled()
+    await startLive(uiClick())
+    vi.advanceTimersByTime(30)
+    expect(first.disconnect).toHaveBeenCalledOnce()
+    expect(Node.made[1]!.disconnect).not.toHaveBeenCalled()
+    disposeLive()
+    expect(Node.made[1]!.disconnect).toHaveBeenCalledOnce()
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it('loads the processor into every new AudioContext', async () => {
     const first = mocks.context as ReturnType<typeof context>
     expect(await startLive(uiClick())).toBe(true)

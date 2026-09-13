@@ -6,7 +6,7 @@ Options -Indexes
   RewriteCond %{REQUEST_FILENAME} !-d
   # Every route src/App.tsx declares, so a reload or a shared link answers with the application
   # rather than with Apache's 404. src/App.routes.test.ts fails when a route is added without one.
-  RewriteRule ^(?:r/[^/]+/?|web/?|docs(?:/controls|/vector-rigs|/scene-rigs|/audio-rigs)?/?)$ index.html [L]
+  RewriteRule ^(?:r/[^/]+/?|audio/?|vector/?|3d/?|web/?|docs(?:/controls|/vector-rigs|/scene-rigs|/audio-rigs)?/?)$ index.html [L]
 </IfModule>
 
 <IfModule mod_headers.c>
@@ -14,4 +14,10 @@ Options -Indexes
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set X-Robots-Tag "noindex, nofollow"
   Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "^(index\.html|distribution\.json|release\.json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
 </IfModule>

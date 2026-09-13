@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <g id="ring"><path id="ring" d="M 340 200 C 340 136.64 297.44 81.17 236.23 64.77 C 175.03 48.37 110.44 75.12 78.76 130 C 47.07 184.88 56.2 254.19 101.01 298.99 C 145.81 343.8 215.12 352.93 270 321.24 L 200 200 L 340 200 Z" fill="none" stroke="#8CBDA8" stroke-opacity="1" stroke-width="24" stroke-linecap="round" stroke-linejoin="miter" transform="rotate(-30 200 200)"/></g>
+  <g id="core"><path id="core" d="M 150 185.52 C 150 155.97 155.97 150 185.52 150 L 238.48 150 C 268.03 150 274 155.97 274 185.52 L 274 238.48 C 274 268.03 268.03 274 238.48 274 L 185.52 274 C 155.97 274 150 268.03 150 238.48 L 150 185.52 Z" fill="#D4E7E1" fill-opacity="1" fill-rule="evenodd" stroke="none" transform="rotate(0 212 212)"/></g>
+</svg>

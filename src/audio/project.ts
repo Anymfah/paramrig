@@ -2,6 +2,7 @@ import { sanitizeAudioDocument, saveAudioDocument, storageMessage, type AudioDoc
 import { isTableName, registerWavetable, wavetableFromCycles, WAVETABLE_FRAME, WAVETABLE_MAX_CYCLES } from '@/audio/dsp/wavetable'
 import { decodeWav, type DecodedWav } from '@/audio/dsp/wav'
 import { loadResource, storeResource } from '@/state/resources'
+import { labSources } from './labs/model'
 
 /**
  * How an audio document leaves the browser and comes back, including the wavetables it needs.
@@ -92,7 +93,9 @@ function isBuiltIn(id: string): boolean {
 
 function referencedTables(document: AudioDocument): string[] {
   const ids = new Set<string>()
-  for (const patch of [document.patch, ...(document.snapshots ?? []).map((entry) => entry.patch)]) for (const layer of patch.layers) {
+  const kept = document.snapshots ?? []
+  const patches = [document.patch, ...kept.map((entry) => entry.patch), ...labSources(document.labs).map((entry) => entry.patch), ...kept.flatMap((entry) => entry.lab?.parents.map((parent) => parent.patch) ?? [])]
+  for (const patch of patches) for (const layer of patch.layers) {
     if (layer.source.table.startsWith('user:')) ids.add(layer.source.table)
   }
   return [...ids]

@@ -6,7 +6,7 @@ import type { VectorElement } from '@/vector/types'
 const CACHE_SIZE = 60
 const results = createLruCache<GeometryResult | null>(CACHE_SIZE)
 
-export const BOOLEAN_OPERATIONS: BooleanOperation[] = ['unite', 'subtract', 'intersect', 'exclude']
+export { BOOLEAN_OPERATIONS } from './booleanTypes'
 
 export function booleanLabel(operation: BooleanOperation): string {
   return operation === 'unite' ? 'Union' : operation === 'subtract' ? 'Subtract' : operation === 'intersect' ? 'Intersect' : 'Exclude'

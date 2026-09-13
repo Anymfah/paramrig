@@ -1,0 +1,55 @@
+{
+  "name": "@paramrig/audio",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "Headless deterministic ParamRig sound engine",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/packages/audio/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./wav": {
+      "types": "./dist/types/src/audio/dsp/wav.d.ts",
+      "import": "./dist/wav.js"
+    },
+    "./wavetables": {
+      "types": "./dist/types/src/audio/dsp/wavetable.d.ts",
+      "import": "./dist/wavetables.js"
+    },
+    "./bindings": {
+      "types": "./dist/types/src/audio/rig.d.ts",
+      "import": "./dist/bindings.js"
+    },
+    "./package.json": "./package.json",
+    "./fields": {
+      "types": "./dist/types/src/audio/fields.d.ts",
+      "import": "./dist/fields.js"
+    },
+    "./curves": {
+      "types": "./dist/types/src/audio/dsp/curve.d.ts",
+      "import": "./dist/curves.js"
+    },
+    "./random": {
+      "types": "./dist/types/src/audio/dsp/rng.d.ts",
+      "import": "./dist/random.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/audio"
+  },
+  "dependencies": {
+    "@paramrig/core": "0.1.0"
+  }
+}

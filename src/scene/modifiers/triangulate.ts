@@ -1,4 +1,4 @@
-import { chosenOf, registerModifier, wholeOf } from '@/scene/modifiers/types'
+import { chosenOf, defineModifier, wholeOf } from '@/scene/modifiers/types'
 import { faceTriples, rewriteFace } from '@/scene/operators/subdivide'
 import { numberParam, selectParam } from '@/scene/operators/types'
 
@@ -26,7 +26,7 @@ type TriangulateParams = {
   minVertices: number
 }
 
-registerModifier<TriangulateParams>({
+export const triangulateModifier = defineModifier<TriangulateParams>({
   kind: 'triangulate',
   label: 'Triangulate',
   category: 'generate',

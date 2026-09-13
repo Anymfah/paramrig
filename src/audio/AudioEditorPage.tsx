@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { ParamValue } from '@/rigs/types'
 import { listRigs } from '@/rigs/registry'
 import { WorkspaceShell } from '@/shell/WorkspaceShell'
+import { useViewport } from '@/shell/useLayout'
+import { updatePrefs } from '@/state/workspace'
 import { Button, IconButton } from '@/ui/Button'
 import { IconExport, IconRedo, IconSliders, IconUndo } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
@@ -31,6 +33,10 @@ import { layerProfiles } from '@/audio/profiles'
 import { disposePlayback, playbackRate, audioContext } from '@/audio/playback'
 import type { AudioPatch } from '@/audio/types'
 import type { VoiceGate } from '@/audio/dsp/engine'
+const AudioLabs = lazy(() => import('./labs/AudioLabs').then(module => ({ default: module.AudioLabs })))
+import { LabsPalette } from './labs/LabsPalette'
+import { useLabs } from './labs/useLabs'
+import { emptyLabSession, fingerprint, labSources, type LabSound } from './labs/model'
 
 const HISTORY_LIMIT = 100
 
@@ -38,16 +44,17 @@ const HISTORY_LIMIT = 100
 const EMPTY = { left: new Float32Array(0), right: new Float32Array(0) }
 
 /**
- * The instrument, or the library. Two places, not three.
+ * Instrument, Sounds and Labs: editing, browsing and procedural research.
  *
  * Modulation used to be a view of its own, which put giving a sound movement and shaping the voice
  * it moves in two places you could not occupy at once. It is a drawer under the instrument now, on
  * screen while you work, the way every synthesiser worth copying arranges it.
  */
-type ViewId = 'instrument' | 'sounds'
+type ViewId = 'instrument' | 'sounds' | 'labs'
 const VIEWS: { id: ViewId; label: string }[] = [
   { id: 'instrument', label: 'Instrument' },
   { id: 'sounds', label: 'Sounds' },
+  { id: 'labs', label: 'Labs' },
 ]
 
 /**
@@ -102,7 +109,11 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const [dirty, setDirty] = useState(false)
   const [preset, setPreset] = useState('')
   const [view, setView] = useState<ViewId>('instrument')
+  const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const [snapshots, setSnapshots] = useState<AudioSnapshot[]>(() => loaded?.snapshots ?? [])
+  const [labs, setLabs] = useState(() => loaded?.labs ?? emptyLabSession())
+  // The palette takes a fifth of the window, as the mockup gives it, within bounds its tiles read at.
+  const windowWidth = useViewport().width
   const [touched, setTouched] = useState(false)
   const gestureRef = useRef(false)
   const capturedRef = useRef(false)
@@ -134,7 +145,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const transport = useTransport(samples, rate, false)
   const autoHeard = useRef(heard)
   const pendingSave = useRef<AudioDocument | null>(null)
-  pendingSave.current = loaded && patch && dirty ? { ...loaded, name, patch: recording && takeRef.current ? takeRef.current.before.patch : patch, snapshots, rig: recording && takeRef.current ? takeRef.current.before.rig : rig, updatedAt: new Date().toISOString() } : null
+  pendingSave.current = loaded && patch && dirty ? { ...loaded, name, patch: recording && takeRef.current ? takeRef.current.before.patch : patch, snapshots, labs, rig: recording && takeRef.current ? takeRef.current.before.rig : rig, updatedAt: new Date().toISOString() } : null
   useEffect(() => {
     const flush = () => {
       if (pendingSave.current && saveAudioDocument(pendingSave.current).ok) pendingSave.current = null
@@ -147,7 +158,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
 
   useEffect(() => () => { playRequest.current += 1; stopLive(); disposePlayback() }, [])
   useEffect(() => {
-    if (!loaded || ![loaded.patch, ...(loaded.snapshots ?? []).map((entry) => entry.patch)].some((one) => one.layers.some((layer) => layer.source.table.startsWith('user:')))) return
+    if (!loaded || ![loaded.patch, ...(loaded.snapshots ?? []).map((entry) => entry.patch), ...labSources(loaded.labs).map((entry) => entry.patch), ...(loaded.snapshots ?? []).flatMap((entry) => entry.lab?.parents.map((parent) => parent.patch) ?? [])].some((one) => one.layers.some((layer) => layer.source.table.startsWith('user:')))) return
     let cancelled = false
     void restoreAudioAssets(loaded).then((missing) => {
       if (cancelled) return
@@ -161,12 +172,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     if (!loaded || !patch || !dirty || recording) return
     // Written on a delay so a drag lands once, not on every frame of itself.
     const timer = setTimeout(() => {
-      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, rig, updatedAt: new Date().toISOString() })
+      const result = saveAudioDocument({ ...loaded, name, patch, snapshots, rig, labs, updatedAt: new Date().toISOString() })
       if (result.ok) { pendingSave.current = null; setDirty(false) }
       setNotice(storageMessage(result) ?? '')
     }, 400)
     return () => clearTimeout(timer)
-  }, [dirty, loaded, name, patch, rig, snapshots, recording])
+  }, [dirty, loaded, name, patch, rig, snapshots, labs, recording])
 
   /**
    * Every one of these writes state from the callback rather than from inside another updater.
@@ -285,7 +296,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const meta = event.metaKey || event.ctrlKey
-      if (event.defaultPrevented || !meta || !['z', 'y'].includes(event.key.toLowerCase())) return
+      if (view === 'labs' || event.defaultPrevented || !meta || !['z', 'y'].includes(event.key.toLowerCase())) return
       const target = event.target
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
       event.preventDefault()
@@ -294,7 +305,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [undo, redo])
+  }, [undo, redo, view])
 
   /** The sound you are on, kept aside under whatever it is currently called. */
   const keep = useCallback(() => {
@@ -456,7 +467,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     }
     const bundled = PRESETS.find((entry) => entry.id === id)
     const snap = snapshots.find((entry) => entry.id === id)
-    const applied = snap ? next : { ...next, seed }
+    const applied = snap || bundled?.group === 'Labs' ? next : { ...next, seed }
     setPreset(id)
     setTouched(false)
     setRig(bundled?.rig?.(applied) ?? snap?.rig)
@@ -537,6 +548,12 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
       const target = event.target
       if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return
       if (tableImport) { event.preventDefault(); setTableImport(null); return }
+      if (mobilePanel === 'nav') {
+        event.preventDefault()
+        setMobilePanel('main')
+        document.querySelector<HTMLButtonElement>('.mobile-dock button')?.focus()
+        return
+      }
       if (recording) {
         event.preventDefault()
         playRequest.current += 1
@@ -555,7 +572,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [recording, hearing, liveOn, stopSound, step, tableImport])
+  }, [recording, hearing, liveOn, stopSound, step, tableImport, mobilePanel])
 
   const changeHearing = useCallback((next: HearingMode) => {
     setHearing(next)
@@ -645,8 +662,8 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
   const exportProject = useCallback(async () => {
     if (!loaded || !patch) return
     try {
-    await restoreAudioAssets({ ...loaded, patch, snapshots })
-    const blob = new Blob([serializeAudioProject({ ...loaded, name, patch, snapshots, rig })], { type: 'application/json' })
+    await restoreAudioAssets({ ...loaded, patch, snapshots, labs })
+    const blob = new Blob([serializeAudioProject({ ...loaded, name, patch, snapshots, rig, labs })], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = window.document.createElement('a')
     link.href = url
@@ -654,7 +671,37 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
     link.click()
     setTimeout(() => URL.revokeObjectURL(url), 0)
     } catch (error) { setNotice(error instanceof Error ? error.message : 'The project could not be exported.') }
-  }, [loaded, name, patch, snapshots, rig])
+  }, [loaded, name, patch, snapshots, rig, labs])
+  /*
+   * The research bench. Its state is part of the document and its controls live in two columns of
+   * the shell — the palette on the left, the bench in the middle — so the hook sits here, where
+   * both can reach it, rather than inside either.
+   */
+  const lab = useLabs({
+    session: labs,
+    onChange: (next) => { setLabs(next); setDirty(true) },
+    instrument: patch, rig, name, rate,
+    active: view === 'labs',
+    onBeforePlay: cutVoice,
+    onShowPalette: () => {
+      updatePrefs({ navCompact: false, navCollapsed: false })
+      if (windowWidth < 1024) setMobilePanel('nav')
+    },
+    onOpen: (sound: LabSound) => {
+      cutVoice()
+      const next = structuredClone(sound.patch)
+      commit(next, sound.rig)
+      mutateRef.current = next
+      setPreset(''); setTouched(true); setView('instrument')
+    },
+    onSave: (sound: LabSound) => {
+      if (snapshots.some((snapshot) => snapshot.name === sound.name && fingerprint(snapshot.patch) === sound.fingerprint && JSON.stringify(snapshot.rig) === JSON.stringify(sound.rig))) return 'This sound is already saved.'
+      if (snapshots.length >= MAX_SNAPSHOTS) return 'Saved sounds are full. Remove a saved sound in Sounds before adding another.'
+      setSnapshots([...snapshots, { id: `snap-${crypto.randomUUID()}`, name: sound.name, createdAt: new Date().toISOString(), patch: structuredClone(sound.patch), rig: structuredClone(sound.rig), lab: structuredClone(sound) }])
+      setDirty(true)
+      return null
+    },
+  })
   const patterns = useMemo(() => patch?.performers.map((performer) => performer.patterns) ?? [], [patch])
   const curves = useMemo(() => patch?.performers.map((performer) => performer.curves) ?? [], [patch])
   const shownPatch = heard ?? patch
@@ -682,9 +729,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
       rigs={listRigs()}
       activeId={documentId}
       hideInspector
+      mobilePanel={mobilePanel}
+      onMobilePanel={(next) => setMobilePanel((current) => next === current ? 'main' : next)}
       mainLabel="Sound"
-      navLabel="Sounds"
-      renderNavigation={({ compact, inert, onNavigate }) => (
+      navLabel={view === 'labs' ? 'Palette' : 'Sounds'}
+      minNavWidth={view === 'labs' ? Math.round(Math.min(328, Math.max(272, windowWidth * 0.196))) : undefined}
+      renderNavigation={({ compact, inert, onNavigate }) => view === 'labs' ? (
+        <LabsPalette lab={lab} compact={compact} inert={inert} onNavigate={onNavigate} snapshots={snapshots} instrumentName={name} />
+      ) : (
         <AudioSoundList
           current={preset}
           snapshots={snapshots}
@@ -806,7 +858,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
           value={name}
           onChange={(event) => { setDirty(true); setName(event.target.value.slice(0, 120)) }}
         />
-        <AudioTransport
+        {view !== 'labs' ? <AudioTransport
           compact
           play={false}
           transport={hearingTransport}
@@ -879,7 +931,7 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             />
             </>
           }
-        />
+        /> : null}
         <div className="audio-views" role="tablist" aria-label="Views">
           {VIEWS.map((entry) => (
             <button
@@ -890,13 +942,14 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
               aria-selected={view === entry.id}
               aria-controls="audio-view-panel"
               tabIndex={view === entry.id ? 0 : -1}
-              onClick={() => setView(entry.id)}
+              onClick={() => { if (entry.id === 'labs') { cutVoice(); if (recording) toggleRecord() } setView(entry.id) }}
               onKeyDown={(event) => {
                 const at = VIEWS.findIndex((item) => item.id === view)
                 const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
                 if (!step) return
                 event.preventDefault()
                 const next = VIEWS[(at + step + VIEWS.length) % VIEWS.length]!
+                if (next.id === 'labs') { cutVoice(); if (recording) toggleRecord() }
                 setView(next.id)
                 queueMicrotask(() => window.document.getElementById(`audio-view-${next.id}`)?.focus())
               }}
@@ -905,18 +958,25 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
             </button>
           ))}
         </div>
-        <div className="audio-bar__history">
+        {view !== 'labs' ? <div className="audio-bar__history">
           <Tooltip content={past.length ? 'Undo (⌘Z / Ctrl+Z)' : 'Nothing to undo'}>
             <IconButton label="Undo" onClick={undo} disabled={past.length === 0}><IconUndo /></IconButton>
           </Tooltip>
           <Tooltip content={future.length ? 'Redo (⌘⇧Z / Ctrl+Shift+Z)' : 'Nothing to redo'}>
             <IconButton label="Redo" onClick={redo} disabled={future.length === 0}><IconRedo /></IconButton>
           </Tooltip>
-        </div>
+        </div> : <div className="audio-bar__history">
+          <Tooltip content={lab.canUndo ? 'Undo Labs change (⌘Z / Ctrl+Z)' : 'Nothing to undo in Labs'}>
+            <IconButton label="Undo Labs change" onClick={lab.undo} disabled={!lab.canUndo}><IconUndo /></IconButton>
+          </Tooltip>
+          <Tooltip content={lab.canRedo ? 'Redo Labs change (⌘⇧Z / Ctrl+Shift+Z)' : 'Nothing to redo in Labs'}>
+            <IconButton label="Redo Labs change" onClick={lab.redo} disabled={!lab.canRedo}><IconRedo /></IconButton>
+          </Tooltip>
+        </div>}
         <Tooltip content="Save this patch, its macros and its wavetables as a project file">
           <IconButton label="Export project" onClick={exportProject}><IconExport /></IconButton>
         </Tooltip>
-        {exposed > 0 ? (
+        {exposed > 0 && view !== 'labs' ? (
           <Tooltip content={mode === 'tune' ? 'Back to the instrument' : 'Tune the exposed controls'}>
             <IconButton label="Tune" aria-pressed={mode === 'tune'} onClick={() => onMode(mode === 'edit' ? 'tune' : 'edit')}>
               <IconSliders />
@@ -950,7 +1010,9 @@ export function AudioEditorPage({ documentId, mode, onMode }: {
       ) : null}
       <div className="audio-body" id="main" tabIndex={-1}>
         <div className="audio-view" id="audio-view-panel" role="tabpanel" aria-labelledby={`audio-view-${view}`}>
-          {view === 'sounds' ? (
+          {view === 'labs' ? (
+            <Suspense fallback={<p className="status-msg" role="status">Opening Sound Labs</p>}><AudioLabs lab={lab} /></Suspense>
+          ) : view === 'sounds' ? (
             <AudioPresetsView
               current={preset}
               snapshots={snapshots}

@@ -16,17 +16,6 @@ import type { MeshData } from '@/scene/types'
  * drag is a straight write into one array with no index indirection to chase.
  */
 
-// The accelerated raycast is opt-in per prototype; installing it here means every geometry this
-// module builds can be hit-tested by a ray without the caller knowing about the BVH at all.
-let installed = false
-function installBVH(): void {
-  if (installed) return
-  installed = true
-  BufferGeometry.prototype.computeBoundsTree = computeBoundsTree
-  BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree
-  Mesh.prototype.raycast = acceleratedRaycast
-}
-
 export type MeshGeometry = BufferGeometry & { boundsTree?: MeshBVH }
 
 export type MeshView = {
@@ -53,10 +42,13 @@ export type MeshView = {
 }
 
 /** The whole geometry, rebuilt. Called when the topology changes, not when a vertex moves. */
-export function buildMeshView(mesh: MeshData): MeshView {
-  installBVH()
+export function buildMeshView(mesh: MeshData, options: { picking?: boolean } = {}): MeshView {
   const triangulation = cachedTriangulation(mesh)
   const geometry = new BufferGeometry() as MeshGeometry
+  if (options.picking !== false) {
+    geometry.computeBoundsTree = computeBoundsTree
+    geometry.disposeBoundsTree = disposeBoundsTree
+  }
   const count = triangulation.triangleCount * 3
   const positions = new Float32Array(count * 3)
   const normals = new Float32Array(count * 3)
@@ -453,6 +445,7 @@ export function edgePositions(mesh: MeshData): Float32Array {
 
 export function createMesh(view: MeshView, material: Material | Material[]): Mesh {
   const object = new Mesh(view.geometry, material)
+  if (view.geometry.boundsTree) object.raycast = acceleratedRaycast
   object.matrixAutoUpdate = false
   return object
 }

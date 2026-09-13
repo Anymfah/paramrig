@@ -1,4 +1,4 @@
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { setVertexPosition, vertexPosition } from '@/scene/mesh/data'
 import { readOnlyAdjacency } from '@/scene/mesh/adjacency'
 import { EditMesh } from '@/scene/mesh/editMesh'

@@ -56,6 +56,9 @@ export type ModifierModule<Params extends Modifier['params'] = Modifier['params'
   apply: (mesh: EditMesh, params: Params, context: ModifierContext) => ModifierOutcome
 }
 
+/** Declare a built-in without mutating the registry during import. */
+export function defineModifier<Params extends Modifier['params']>(module: ModifierModule<Params>): ModifierModule<Params> { return module }
+
 const MODULES = new Map<ModifierKind, ModifierModule>()
 
 /**

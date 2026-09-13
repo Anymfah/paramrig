@@ -1,6 +1,6 @@
 import { booleanOperation, flattenElement, outlineStroke, type BooleanOperation } from '@/vector/booleans'
 import { booleanLabel } from '@/vector/booleanGroups'
-import { createVectorElement } from '@/vector/document'
+import { createVectorElement } from '@/vector/model'
 import { mergeNetworks, normalizeWorld, worldNetwork } from '@/vector/network'
 import type { VectorElement } from '@/vector/types'
 

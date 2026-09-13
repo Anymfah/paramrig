@@ -240,6 +240,14 @@ const MASTER_FIELDS: Record<string, FieldSpec> = {
   fadeOut: num('Fade out', 0.001, 0.5, 0.001, SECONDS),
 }
 
+/**
+ * The whole sound's stereo image, as a mid/side balance: 0 folds it to mono, 1 leaves it as the
+ * layers and effects made it, 2 doubles its sides. Kept out of the master table on purpose: a
+ * patch that never set it must serialise exactly as before, or every stored fingerprint — and
+ * the layer roles and previews keyed to them — would be invalidated by an upgrade.
+ */
+export const MASTER_WIDTH = { min: 0, max: 2 } as const
+
 /** How many oscillator copies a layer may run, and how many modulators a patch carries. */
 export const MAX_VOICES = 5
 /**

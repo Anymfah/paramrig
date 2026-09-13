@@ -10,6 +10,7 @@ import * as sign from './presets-signature.ts'
 import { MECHANICAL_PRESETS } from './presets-mechanical.ts'
 import { DRAWN_PRESETS } from './presets-drawn.ts'
 import type { AudioRig } from './rig.ts'
+import { LAB_PRESETS } from './labs/demos'
 
 export { makeFx, makeLayer, makeMaster, makePatch, silentLayer } from './patch.ts'
 
@@ -958,7 +959,7 @@ export function crystal(): AudioPatch {
 
 /** What a sound is for, which is how anyone looks for one. Twenty in a flat list is a wall. */
 export type PresetGroup =
-  | 'Signature' | 'Drawn' | 'Mechanical'
+  | 'Signature' | 'Drawn' | 'Mechanical' | 'Labs'
   | 'Arcade' | 'Interface' | 'Impact' | 'Motion' | 'Sci-fi' | 'Inharmonic'
   | 'Touch' | 'Surfaces' | 'Signals'
   | 'Element' | 'Weapon' | 'Morph' | 'Showpiece'
@@ -972,6 +973,7 @@ export type AudioPreset = {
 }
 
 export const PRESETS: AudioPreset[] = [
+  ...LAB_PRESETS.map((preset) => ({ ...preset, group: 'Labs' as const })),
   ...sign.SIGNATURE_PRESETS.map((preset) => ({ ...preset, group: 'Signature' as const })),
   ...DRAWN_PRESETS.map((preset) => ({ ...preset, group: 'Drawn' as const })),
   ...MECHANICAL_PRESETS.map((preset) => ({ ...preset, group: 'Mechanical' as const })),
@@ -1115,6 +1117,7 @@ export const PRESETS: AudioPreset[] = [
  * families follow, in the order somebody looking for a sound would think of them.
  */
 export const PRESET_GROUPS: PresetGroup[] = [
+  'Labs',
   'Signature',
   'Drawn',
   'Mechanical',

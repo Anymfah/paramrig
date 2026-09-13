@@ -1,0 +1,14 @@
+{
+  "vector": {
+    "gzipBytes": 192057,
+    "reason": "First validated isolated tarball consumer; includes host libraries and the export paths exercised by this fixture."
+  },
+  "scene": {
+    "gzipBytes": 390040,
+    "reason": "First validated isolated tarball consumer; includes host libraries and the export paths exercised by this fixture."
+  },
+  "controls": {
+    "gzipBytes": 156893,
+    "reason": "First validated isolated tarball consumer; includes host libraries and the export paths exercised by this fixture."
+  }
+}

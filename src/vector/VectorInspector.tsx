@@ -298,7 +298,8 @@ export function VectorInspector({
                 <NumberField label="H" value={document.height} min={1} max={MAX_DOCUMENT_SIZE} step={1} unit="px" variant="field" onChange={(height) => onUpdateDocument({ height: Math.round(height) })} {...gesture} />
               </div>
               <ColorField
-                label="Background"
+                label="Workspace background"
+                allowNone
                 value={document.background}
                 recent={palette?.recent}
                 swatches={palette?.swatches}

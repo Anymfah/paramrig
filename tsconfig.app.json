@@ -2,9 +2,16 @@
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "ES2023",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
-    "types": ["vite/client", "node"],
+    "types": [
+      "vite/client",
+      "node"
+    ],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -18,8 +25,141 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ],
+      "@paramrig/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@paramrig/core/types": [
+        "./packages/core/src/types.ts"
+      ],
+      "@paramrig/core/extended-types": [
+        "./packages/core/src/extended-types.ts"
+      ],
+      "@paramrig/core/binding": [
+        "./packages/core/src/binding.ts"
+      ],
+      "@paramrig/core/sanitize": [
+        "./packages/core/src/sanitize.ts"
+      ],
+      "@paramrig/core/expression": [
+        "./packages/core/src/expression.ts"
+      ],
+      "@paramrig/core/values": [
+        "./packages/core/src/values.ts"
+      ],
+      "@paramrig/core/parameter-values": [
+        "./packages/core/src/parameter-values.ts"
+      ],
+      "@paramrig/core/drivers": [
+        "./packages/core/src/drivers.ts"
+      ],
+      "@paramrig/core/fonts": [
+        "./packages/core/src/fonts.ts"
+      ],
+      "@paramrig/core/font-value": [
+        "./packages/core/src/font-value.ts"
+      ],
+      "@paramrig/audio": [
+        "./packages/audio/src/index.ts"
+      ],
+      "@paramrig/audio/wav": [
+        "./src/audio/dsp/wav.ts"
+      ],
+      "@paramrig/audio/wavetables": [
+        "./src/audio/dsp/wavetable.ts"
+      ],
+      "@paramrig/audio/bindings": [
+        "./src/audio/rig.ts"
+      ],
+      "@paramrig/audio-labs": [
+        "./src/audio/labs/sdk.ts"
+      ],
+      "@paramrig/audio/fields": [
+        "./src/audio/fields.ts"
+      ],
+      "@paramrig/audio/curves": [
+        "./src/audio/dsp/curve.ts"
+      ],
+      "@paramrig/audio/random": [
+        "./src/audio/dsp/rng.ts"
+      ],
+      "@paramrig/audio-browser": [
+        "./src/audio/player.ts"
+      ],
+      "@paramrig/vector": [
+        "./packages/vector/src/index.ts"
+      ],
+      "@paramrig/vector/model": [
+        "./src/vector/model.ts"
+      ],
+      "@paramrig/vector/bindings": [
+        "./src/vector/rig.ts"
+      ],
+      "@paramrig/vector/geometry": [
+        "./src/vector/geometry.ts"
+      ],
+      "@paramrig/vector/svg": [
+        "./src/vector/svg.ts"
+      ],
+      "@paramrig/vector/project": [
+        "./src/vector/project.ts"
+      ],
+      "@paramrig/vector/export": [
+        "./src/vector/exportRuntime.ts"
+      ],
+      "@paramrig/vector/pdf": [
+        "./src/vector/pdfRuntime.ts"
+      ],
+      "@paramrig/vector/resources": [
+        "./src/vector/resources.ts"
+      ],
+      "@paramrig/vector/browser": [
+        "./src/vector/browser.ts"
+      ],
+      "@paramrig/scene": [
+        "./packages/scene/src/index.ts"
+      ],
+      "@paramrig/scene/model": [
+        "./src/scene/model.ts"
+      ],
+      "@paramrig/scene/bindings": [
+        "./src/scene/rig.ts"
+      ],
+      "@paramrig/scene/modifiers": [
+        "./src/scene/modifiers/index.ts"
+      ],
+      "@paramrig/scene/engine": [
+        "./src/scene/engine.ts"
+      ],
+      "@paramrig/scene/browser": [
+        "./src/scene/browser.ts"
+      ],
+      "@paramrig/scene/resources": [
+        "./src/scene/resources.ts"
+      ],
+      "@paramrig/scene/project": [
+        "./src/scene/project.ts"
+      ],
+      "@paramrig/scene/gltf": [
+        "./src/scene/io/gltfRuntime.ts"
+      ],
+      "@paramrig/scene/obj": [
+        "./src/scene/io/obj.ts"
+      ],
+      "@paramrig/scene/stl": [
+        "./src/scene/io/stl.ts"
+      ],
+      "@paramrig/controls": [
+        "./src/controls/index.ts"
+      ],
+      "@paramrig/controls/registry": [
+        "./src/controls/registry.ts"
+      ]
     }
   },
-  "include": ["src"]
+  "include": [
+    "src"
+  ]
 }

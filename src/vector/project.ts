@@ -1,4 +1,4 @@
-import { sanitizeVectorDocument } from '@/vector/document'
+import { sanitizeVectorDocument } from '@/vector/model'
 import type { VectorDocument } from '@/vector/types'
 
 /** File format written by "Save as…"; the document plus the metadata a library entry needs. */

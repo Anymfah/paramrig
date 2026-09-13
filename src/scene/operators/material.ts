@@ -1,4 +1,4 @@
-import { DEFAULT_MATERIAL, meshOf, objectById, uniqueName, withMesh } from '@/scene/document'
+import { DEFAULT_MATERIAL, meshOf, objectById, uniqueName, withMesh } from '@/scene/model'
 import { cloneMesh } from '@/scene/mesh/data'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, type OperatorContext, type OperatorResult } from '@/scene/operators/types'

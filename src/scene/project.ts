@@ -1,4 +1,4 @@
-import { sanitizeSceneDocument } from '@/scene/document'
+import { sanitizeSceneDocument } from '@/scene/model'
 import type { SceneDocument } from '@/scene/types'
 
 /** File format written by "Save as…": the document plus the metadata a library entry needs. */

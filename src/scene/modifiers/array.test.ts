@@ -1,3 +1,5 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, planeMesh } from '@/scene/mesh/primitives'
@@ -5,7 +7,7 @@ import { multiply, rotation, translation } from '@/scene/modifiers/matrix'
 import { getModifier, type ModifierInput } from '@/scene/modifiers/types'
 import { euler, isClosed, isWellFormed, meshVolume } from '@/scene/operators/editHarness'
 import type { MeshData, Modifier } from '@/scene/types'
-import '@/scene/modifiers/array'
+
 
 /**
  * Array, judged by where the copies land and by what the seams cost.

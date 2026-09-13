@@ -3,7 +3,7 @@ import { dot, normalize, subtract } from '@/scene/mesh/normals'
 import {
   chosenOf,
   numberOf,
-  registerModifier,
+  defineModifier,
   switchOf,
   wholeOf,
   type ModifierOutcome,
@@ -113,7 +113,7 @@ function dissolveFlat(mesh: EditMesh, limit: number): ModifierOutcome {
   return undefined
 }
 
-registerModifier<DecimateModifierParams>({
+export const decimateModifier = defineModifier<DecimateModifierParams>({
   kind: 'decimate',
   label: 'Decimate',
   category: 'generate',

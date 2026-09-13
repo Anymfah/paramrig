@@ -1,4 +1,4 @@
-import { DEFAULT_UNITS, DEFAULT_VIEW, ROOT_COLLECTION_ID, ROOT_COLLECTION_NAME } from '@/scene/document'
+import { DEFAULT_UNITS, DEFAULT_VIEW, ROOT_COLLECTION_ID, ROOT_COLLECTION_NAME } from '@/scene/model'
 import { deskStudy } from '@/rigs/examples/desk-study'
 import { boxMesh } from '@/scene/mesh/primitives'
 import type { SceneDocument } from '@/scene/types'

@@ -1,5 +1,5 @@
 import { Vector3 } from 'three'
-import { meshOf, withMesh } from '@/scene/document'
+import { meshOf, withMesh } from '@/scene/model'
 import { worldMatrix } from '@/scene/objects'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, switchParam, type OperatorContext, type OperatorResult } from '@/scene/operators/types'

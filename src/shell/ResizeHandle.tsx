@@ -4,10 +4,10 @@ import { navColumnWidth, navResizeOrigin, snapNavResize, stepNavResize } from '@
 import { NAV_WIDTH_COMPACT, NAV_WIDTH_MAX } from '@/state/persistence'
 import { updatePrefs, useWorkspace } from '@/state/workspace'
 
-export function ShellNavResize() {
+export function ShellNavResize({ width }: { width?: number } = {}) {
   const { prefs } = useWorkspace()
   const view = useViewport()
-  const navW = navColumnWidth(prefs, view.width)
+  const navW = width ?? navColumnWidth(prefs, view.width)
   if (prefs.navCollapsed) {
     return <EdgeReveal label="Show navigation" side="start" onClick={() => updatePrefs({ navCollapsed: false })} />
   }

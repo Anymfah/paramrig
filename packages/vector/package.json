@@ -1,0 +1,69 @@
+{
+  "name": "@paramrig/vector",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "description": "ParamRig vector documents, bindings and rendering",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/types/packages/vector/src/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/types/src/vector/model.d.ts",
+      "import": "./dist/model.js"
+    },
+    "./bindings": {
+      "types": "./dist/types/src/vector/rig.d.ts",
+      "import": "./dist/bindings.js"
+    },
+    "./geometry": {
+      "types": "./dist/types/src/vector/geometry.d.ts",
+      "import": "./dist/geometry.js"
+    },
+    "./svg": {
+      "types": "./dist/types/src/vector/svg.d.ts",
+      "import": "./dist/svg.js"
+    },
+    "./project": {
+      "types": "./dist/types/src/vector/project.d.ts",
+      "import": "./dist/project.js"
+    },
+    "./export": {
+      "types": "./dist/types/src/vector/exportRuntime.d.ts",
+      "import": "./dist/export.js"
+    },
+    "./pdf": {
+      "types": "./dist/types/src/vector/pdfRuntime.d.ts",
+      "import": "./dist/pdf.js"
+    },
+    "./resources": {
+      "types": "./dist/types/src/vector/resources.d.ts",
+      "import": "./dist/resources.js"
+    },
+    "./browser": {
+      "types": "./dist/types/src/vector/browser.d.ts",
+      "import": "./dist/browser.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@paramrig/core": "0.1.0",
+    "paper": "^0.12.18",
+    "opentype.js": "^2.0.0",
+    "fontkit": "^2.0.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Anymfah/paramrig.git",
+    "directory": "packages/vector"
+  }
+}

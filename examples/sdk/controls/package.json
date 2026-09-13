@@ -1,0 +1,17 @@
+{
+  "name": "paramrig-example-controls",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@paramrig/controls": "0.1.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "vite": "8.2.2"
+  }
+}

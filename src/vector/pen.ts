@@ -1,4 +1,4 @@
-import { createVectorElement, DEFAULT_SHAPE_FILL } from '@/vector/document'
+import { createVectorElement, DEFAULT_SHAPE_FILL } from '@/vector/model'
 import { chains, chainToRun, commitWorld, extendNetwork, insertNodeOnSegment, newId, normalizeWorld, runPathData, worldNetwork, type AbsNetwork, type Box } from '@/vector/network'
 import { computeFaces } from '@/vector/planar'
 import type { VectorElement, VectorPoint } from '@/vector/types'

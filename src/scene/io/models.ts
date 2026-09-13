@@ -1,10 +1,10 @@
-import { sanitizeSceneDocument, uniqueName } from '@/scene/document'
+import { sanitizeSceneDocument, uniqueName } from '@/scene/model'
 import { exportGltf, importGltf, type ImportedScene } from '@/scene/io/gltf'
 import { readObj, writeObj } from '@/scene/io/obj'
 import { readStl, writeStl } from '@/scene/io/stl'
 import { worldMatrix } from '@/scene/objects'
 import { drawnMesh } from '@/scene/modifiers/stack'
-import { DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/document'
+import { DEFAULT_MATERIAL, ROOT_COLLECTION_ID } from '@/scene/model'
 import type { Material, SceneDocument, SceneObject, Vec3 } from '@/scene/types'
 
 /**

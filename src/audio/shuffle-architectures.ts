@@ -596,6 +596,17 @@ const ARCHITECTURES: Record<SoundFamily, ((random: Rng, seed: number) => Built)[
   impact: [impactHit, impactDebris],
 }
 
+/** Named recipes let Labs compose intent without creating a second bank of DSP builders. */
+export const RECIPE_BUILDERS = {
+  growl: organicGrowl, impact: impactHit, transformation: mechanicalRatchet, servo: mechanicalServo,
+  scan: digitalScan, glitch: digitalGlitch, pulse: digitalScan, drone: atmosphericPad,
+  rise: atmosphericPad, fall: atmosphericCollapse, burst: impactDebris, texture: metallicPlate,
+} as const
+
+export function buildLabArchitecture(type: keyof typeof RECIPE_BUILDERS, random: Rng, seed: number): AudioPatch {
+  return patchOf(RECIPE_BUILDERS[type](random, seed))
+}
+
 export function chooseFamily(random: Rng, requested: RandomFamily): SoundFamily {
   return requested === 'any' ? pick(random, SOUND_FAMILIES) : requested
 }

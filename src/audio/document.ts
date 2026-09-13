@@ -1,10 +1,12 @@
-import { readStore, writeStore, type StorageResult } from '@/editor/storage'
+import { readStore, writeDocument, storageMessage, type StorageResult } from '@/editor/storage'
 import type { RigManifest } from '@/rigs/types'
 import { rigText as text } from '@/rigs/sanitize'
 import { PATCH_VERSION, defaultPatch, sanitizeAudioPatch } from '@/audio/patch'
 import { carryAudioProperty, sanitizeAudioRig, type AudioRig } from '@/audio/rig'
 import type { AudioPatch } from '@/audio/types'
 import { BUNDLED_PATCHES } from '@/rigs/examples/arcade-coin'
+import type { LabSession, LabSound } from './labs/model'
+import { sanitizeLabSession, sanitizeLabSound } from './labs/session'
 
 export { STORAGE_BLOCKED_MESSAGE, STORAGE_FULL_MESSAGE, storageMessage, type StorageResult } from '@/editor/storage'
 
@@ -22,6 +24,7 @@ export type AudioSnapshot = {
   patch: AudioPatch
   /** The macros as they stood, so a snapshot is the instrument and not only the chain. */
   rig?: AudioRig
+  lab?: LabSound
 }
 
 /** Past this many the list stops being findable, and the oldest gives way. */
@@ -36,6 +39,7 @@ export type AudioDocument = {
   snapshots?: AudioSnapshot[]
   /** A patch with one is an instrument someone else can use without seeing the seventy fields. */
   rig?: AudioRig
+  labs?: LabSession
   createdAt: string
   updatedAt: string
 }
@@ -48,7 +52,7 @@ export type AudioDocument = {
  * asks for this list on every render, and so does the workspace shell behind the sound editor, so
  * it was being rebuilt on every frame of a knob drag. Keyed on the raw text rather than on a
  * timestamp: another tab writing changes the text, and nothing else can change it without going
- * through `writeAll` below.
+ * through a document write below.
  */
 let lastRaw: string | null = null
 let lastRead: Record<string, AudioDocument> = {}
@@ -71,9 +75,7 @@ function readAll(): Record<string, AudioDocument> {
 let lastShipped: AudioDocument[] | null = null
 const shipped = () => (lastShipped ??= BUNDLED_PATCHES.map((build) => build()))
 
-function writeAll(documents: Record<string, AudioDocument>): StorageResult {
-  return writeStore(STORAGE_KEY, documents)
-}
+
 
 export function createAudioDocument(): AudioDocument {
   const now = new Date().toISOString()
@@ -85,7 +87,8 @@ export function createAudioDocument(): AudioDocument {
     createdAt: now,
     updatedAt: now,
   }
-  saveAudioDocument(document)
+  const saved = saveAudioDocument(document)
+  if (!saved.ok) throw new Error(storageMessage(saved) ?? "The document could not be saved.")
   return document
 }
 
@@ -132,12 +135,14 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
       const snapshotId = text(row.id, 80)
       if (!snapshotId) return []
       const rig = sanitizeAudioRig(carriedRig(row.rig, claimedVersion(row.patch)))
+      const lab = sanitizeLabSound(row.lab)
       return [{
         id: snapshotId,
         name: text(row.name, 80) ?? 'Sound',
         createdAt: text(row.createdAt, 40) ?? new Date(0).toISOString(),
         patch: sanitizeAudioPatch(row.patch),
         ...(rig ? { rig } : {}),
+        ...(lab ? { lab } : {}),
       }]
     })
     // The end of the list, not the start. The strip appends and keeps the last twenty-four, so
@@ -152,6 +157,7 @@ export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
     patch: sanitizeAudioPatch(source.patch),
     ...(snapshots.length ? { snapshots } : {}),
     ...(rig ? { rig } : {}),
+    ...(source.labs ? { labs: sanitizeLabSession(source.labs) } : {}),
     createdAt: text(source.createdAt, 40) ?? now,
     updatedAt: text(source.updatedAt, 40) ?? now,
   }
@@ -193,13 +199,13 @@ export function saveAudioDocument(document: AudioDocument): StorageResult {
   // it into storage and the library would file it under this browser's projects.
   if (!documents[document.id] && unchangedBundle(document)) return { ok: true }
   documents[document.id] = sanitizeAudioDocument(document) ?? document
-  return writeAll(documents)
+  return writeDocument(STORAGE_KEY, document.id, documents[document.id])
 }
 
 export function deleteAudioDocument(id: string): StorageResult {
   const documents = readAll()
   delete documents[id]
-  return writeAll(documents)
+  return writeDocument(STORAGE_KEY, id, undefined)
 }
 
 /** How long a patch runs, phrased for a card rather than for a field. */

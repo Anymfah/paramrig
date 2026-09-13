@@ -1,3 +1,6 @@
+import { loadResource } from '@/state/resources'
+import { initializeSceneResources } from '@/scene/appResources'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
 import {
   ACESFilmicToneMapping,
   Box3,
@@ -32,7 +35,7 @@ import { outlineFont } from '@/scene/curve/font'
 import { layoutText } from '@/scene/curve/text'
 import { caretSegment, selectionBoxes } from '@/scene/curve/textEdit'
 import { curveLinePositions } from '@/scene/curve/geometry'
-import { collectionHidden, collectionSelectable, meshOf } from '@/scene/document'
+import { collectionHidden, collectionSelectable, meshOf } from '@/scene/model'
 import { drawnMesh, evaluateObject } from '@/scene/modifiers/stack'
 import { parseEdgeKey } from '@/scene/mesh/data'
 import type { MeshData, OverlayFlags, SceneDocument, SceneObject, SceneSelection, SelectMode, ShadingMode, Vec3, ViewState } from '@/scene/types'
@@ -304,6 +307,8 @@ export class SceneViewport {
   private readonly disposables: Array<() => void> = []
 
   constructor(container: HTMLElement, options: SceneViewportOptions = {}) {
+    initializeBuiltinModifiers()
+    initializeSceneResources()
     this.container = container
     this.options = options
     this.theme = readSceneTheme(container)
@@ -1616,7 +1621,7 @@ export class SceneViewport {
     const document = this.document
     if (!document) return this.views.get(object.id)?.material ?? createSolidMaterial()
     if (!this.materials) {
-      this.materials = createMaterialLibrary({ onTextureLoaded: () => this.invalidate() })
+      this.materials = createMaterialLibrary({ resolveResource: loadResource, onTextureLoaded: () => this.invalidate() })
       /*
        * The shader engine is fetched the first time a graph is drawn, so a material that was a
        * plain Principled for a frame becomes its graph the moment it lands — and the library has
@@ -1666,7 +1671,7 @@ export class SceneViewport {
     const renderer = this.renderer
     if (!renderer) return
     if (!this.environments) {
-      this.environments = createSceneEnvironment(renderer, { onLoaded: () => this.invalidate() })
+      this.environments = createSceneEnvironment(renderer, { resolveResource: loadResource, onLoaded: () => this.invalidate() })
       this.disposables.push(() => this.environments?.dispose())
     }
     const world = this.document?.world

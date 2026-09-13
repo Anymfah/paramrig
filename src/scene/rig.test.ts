@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createSceneDocument, DEFAULT_MATERIAL, ROOT_COLLECTION_ID, sanitizeSceneDocument } from '@/scene/document'
 import { bezierCircleData, DEFAULT_TEXT } from '@/scene/curve/data'
 import { boxMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { clearModifierCache, drawnMesh, modifierCacheSize } from '@/scene/modifiers/stack'
 import {
-  clearSceneRigCache,
   currentSceneValue,
   emptySceneRig,
   parameterForSceneProperty,
@@ -72,7 +72,6 @@ function binding(patch: Partial<SceneBinding> & { property: string; parameterId:
 }
 
 beforeEach(() => {
-  clearSceneRigCache()
 })
 
 describe('reading a property path', () => {
@@ -422,14 +421,20 @@ describe('resolving a document', () => {
     expect(modifierCacheSize()).toBe(2)
   })
 
-  it('answers the same object for the same values, so a drag costs one evaluation', () => {
+  it('observes view and object updates before a host changes its persistence timestamp', () => {
     const document = scene(
       [meshObject('object-1', 'Cube')],
       rigWith([binding({ objectId: 'object-1', property: 'transform.position.x', parameterId: 'slide' })], [numberParameter('slide')]),
     )
     const first = resolveSceneValues(document, { slide: 1 })
-    expect(resolveSceneValues(document, { slide: 1 })).toBe(first)
-    expect(resolveSceneValues(document, { slide: 2 })).not.toBe(first)
+    document.view = { ...document.view, shading: 'rendered', yaw: 1.25 }
+    const second = resolveSceneValues(document, { slide: 1 })
+    expect(second.view.shading).toBe('rendered')
+    expect(second.view.yaw).toBe(1.25)
+    expect(first.view.shading).not.toBe('rendered')
+    const other = { ...document, objects: document.objects.map(object => ({ ...object, name: 'Other host' })) }
+    expect(resolveSceneValues(other, { slide: 1 }).objects[0]!.name).toBe('Other host')
+    expect(resolveSceneValues(document, { slide: 2 }).objects[0]!.transform.position[0]).toBe(2)
   })
 })
 

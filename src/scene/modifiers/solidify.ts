@@ -1,4 +1,4 @@
-import { registerModifier, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
+import { defineModifier, numberOf, switchOf, wholeOf } from '@/scene/modifiers/types'
 import { solidifyFaces } from '@/scene/operators/shell'
 import { numberParam, switchParam } from '@/scene/operators/types'
 
@@ -19,7 +19,7 @@ import { numberParam, switchParam } from '@/scene/operators/types'
 const NEEDS_FACES = 'Solidify needs faces; this mesh has none.'
 const NEEDS_THICKNESS = 'Give Solidify a thickness; nought has nothing to build.'
 
-registerModifier({
+export const solidifyModifier = defineModifier({
   kind: 'solidify',
   label: 'Solidify',
   category: 'generate',

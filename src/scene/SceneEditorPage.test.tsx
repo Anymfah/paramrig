@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSceneDocument } from '@/scene/document'
@@ -91,6 +91,21 @@ beforeEach(() => {
 })
 
 describe('the scene editor page', () => {
+  it('leaves an active tool on a second click or Escape and keeps other controls usable', () => {
+    open(recorded, documentId)
+    const move = screen.getByRole('button', { name: 'Move', exact: true })
+    const select = screen.getByRole('button', { name: 'Select box', exact: true })
+    fireEvent.click(move)
+    expect(move).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(move)
+    expect(select).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(move)
+    fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' })
+    expect(select).toHaveAttribute('aria-pressed', 'true')
+    expect(move).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate', exact: true }))
+    expect(screen.getByRole('button', { name: 'Rotate', exact: true })).toHaveAttribute('aria-pressed', 'true')
+  })
   it('mounts a viewport once and tells it about the document', () => {
     open(recorded, documentId)
 

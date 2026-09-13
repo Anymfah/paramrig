@@ -1,0 +1,103 @@
+/* A project file dropped anywhere on the library opens it. */
+.shell[data-dropping] .library-main { outline: 2px dashed var(--accent); outline-offset: -8px; }
+.library-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-block-end: var(--space-5);
+}
+.library-main .library-titlebar h1 { margin: 0; }
+.library-create {
+  width: 36px;
+  height: 36px;
+  color: var(--text-on-accent);
+  background: var(--accent);
+}
+.library-create:hover,
+.library-create:focus-visible { color: var(--text-on-accent); background: var(--accent-hover); }
+.library-create:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* A scene's card picture is a whole image rather than markup to draw against a page. */
+.library-recent__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.library-recent { margin-block-end: var(--space-5); }
+.library-recent__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.library-recent__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.library-recent__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+.library-recent__item:hover { background: var(--surface-overlay); border-color: var(--border-default); }
+.library-recent__item:active { transform: scale(0.99); }
+.library-recent__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.library-recent__preview {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 40px;
+  flex: none;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+  box-shadow: inset 0 0 0 1px var(--border-hairline);
+}
+.library-recent__preview svg { width: 100%; height: 100%; }
+.library-recent__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.library-recent__name {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.library-recent__meta {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (pointer: coarse) {
+  .library-recent__item { min-height: 64px; }
+}
+
+.library-titlebar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rig-card__placeholder { height: 100%; display: grid; place-items: center; color: var(--text-muted); }
+.rig-card__placeholder svg { width: 32px; height: 32px; }
+@media (pointer: coarse) { .library-create { width: var(--hit-target-coarse); height: var(--hit-target-coarse); } }

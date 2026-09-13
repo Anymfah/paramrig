@@ -1,5 +1,5 @@
 import type { ParamValue, ParameterDef } from '@/rigs/types'
-import { collectionHidden, collectionSelectable, descendantObjectIds } from '@/scene/document'
+import { collectionHidden, collectionSelectable, descendantObjectIds } from '@/scene/model'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, selectParam, switchParam, type OperatorContext } from '@/scene/operators/types'
 import type { SceneObject, SceneObjectKind, SceneSelection } from '@/scene/types'
