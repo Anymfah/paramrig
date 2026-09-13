@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { RigManifest } from '@/rigs/types'
@@ -19,8 +19,12 @@ import type { VectorCanvasController } from '@/vector/VectorCanvas'
 import { Tooltip } from '@/ui/Tooltip'
 import { alignElements, distributeElements, type AlignMode, type DistributeAxis, type ElementPatch } from '@/vector/align'
 import { createVectorDocument, createVectorElement, MAX_EXPORT_PRESETS } from '@/vector/document'
-import { DEFAULT_EXPORT, embedFonts, exportBounds, exportFileName, exportMarkup, rasterize, type ExportSettings } from '@/vector/export'
+import { DEFAULT_EXPORT, embedFonts, exportBounds, exportElements, exportFileName, exportMarkup, rasterize, type ExportSettings } from '@/vector/export'
 import { VectorExportMenu } from '@/vector/VectorExportMenu'
+import { BrandReview } from '@/vector/BrandReview'
+import { BrandSpecimens } from '@/vector/BrandSpecimens'
+import { downloadBrandKit, isBrandDocument } from '@/vector/brandKit'
+import { canOutline } from '@/vector/text'
 import { ContextMenuRoot, ContextTarget, type ContextMenuItem } from '@/ui/ContextMenu'
 import {
   appearanceOf,
@@ -80,7 +84,7 @@ import { connectNodes, deleteNodes, toggleNodeSmooth, worldNetwork } from '@/vec
 import { VectorInspector } from '@/vector/VectorInspector'
 import { VectorLayers } from '@/vector/VectorLayers'
 import { documentAssets } from '@/vector/assets'
-import { controlId, DEFAULT_RIG_GROUP, emptyRig, parameterForProperty, resolveRigValues, type VectorBinding, type VectorRig } from '@/vector/rig'
+import { controlId, DEFAULT_RIG_GROUP, DOCUMENT_TARGET, emptyRig, parameterForProperty, resolveRigValues, type VectorBinding, type VectorRig } from '@/vector/rig'
 import { ExposeContext, type ExposeRequest } from '@/vector/exposeContext'
 import { VectorControls } from '@/vector/VectorControls'
 import { ensureSession } from '@/state/workspace'
@@ -127,6 +131,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
   const [mobilePanel, setMobilePanel] = useState<'nav' | 'main' | 'inspector'>('main')
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [brandKitBusy, setBrandKitBusy] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   /** Which of the inspector's three tabs this document was left on. */
   const [inspectorTab, setInspectorTabState] = useState<InspectorTab>(() => tabOf(readInspectorPrefs(), manifest.id))
@@ -196,14 +201,22 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
   const document = editor.document
   const rig = document?.rig ?? null
   const session = rig ? ensureSession(manifest.id) : null
-  useSyncExternalStore(
+  const sessionRevision = useSyncExternalStore(
     useCallback((listener: () => void) => session?.subscribe(listener) ?? (() => undefined), [session]),
     () => session?.getRevision() ?? 0,
     () => 0,
   )
-  const rigValues = session?.previewValues() ?? {}
+  const sessionBeat = useSyncExternalStore(
+    useCallback((listener: () => void) => session?.subscribeClock(listener) ?? (() => undefined), [session]),
+    () => session?.displayPlayhead() ?? 0,
+    () => 0,
+  )
+  const rigValues = useMemo(() => {
+    void sessionRevision; void sessionBeat
+    return session?.previewValues() ?? {}
+  }, [session, sessionRevision, sessionBeat])
   /** What is on screen: the document as its controls say. Editing still writes to the raw one. */
-  const shown = document && rig ? resolveRigValues(document, rigValues) : document
+  const shown = useMemo(() => document && rig ? resolveRigValues(document, rigValues) : document, [document, rig, rigValues])
   const selectedIds = editor.selectedIds
   const selectedElements = editor.selectedElements
   /** What the inspector describes: the objects as they are drawn, so a driven field reads true. */
@@ -583,8 +596,9 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
       const key = event.key.toLowerCase()
       if (meta && key === 'z') {
         event.preventDefault()
-        if (event.shiftKey) current.redo()
-        else current.undo()
+        const history = target instanceof HTMLElement && target.closest('#inspector-panel-controls') && session ? session : current
+        if (event.shiftKey) history.redo()
+        else history.undo()
         return
       }
       if (meta && key === 's') {
@@ -832,7 +846,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
       window.document.removeEventListener('cut', cutHandler)
       window.document.removeEventListener('paste', onPaste)
     }
-  }, [tool, chooseTool, applyNumericTransform, createComponent, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask])
+  }, [tool, chooseTool, applyNumericTransform, createComponent, group, ungroup, alignSelection, transformSelection, pasteElements, pasteStored, requestOpen, order, copyAppearance, pasteAppearance, pasteToReplace, walkSiblings, setOpacity, togglePanels, toggleFullscreen, toggleMask, session])
 
   /**
    * One live region for the canvas, 300ms behind the action so a run of small changes is spoken
@@ -840,7 +854,7 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
    * that just went into the history.
    */
   // The fonts a document carries have to be registered with the page before anything can be drawn.
-  useEffect(() => { void ensureFonts(document?.fonts) }, [document?.fonts])
+  useEffect(() => { void ensureFonts(shown?.fonts) }, [shown?.fonts])
 
   const spoken = useRef({ tool, ids: '', nodes: 0, depth: 0, ready: false })
   const pendingAnnounce = useRef(0)
@@ -891,14 +905,18 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
 
   const runExport = async (settings: ExportSettings) => {
     setExportError(null)
+    const exportDocument = shown ?? document
     const selection = { frameId: selectedFrame?.id ?? null, selectedIds }
-    const bounds = exportBounds(document, settings.target, selection)
-    const markup = exportMarkup(document, settings, selection)
+    const bounds = exportBounds(exportDocument, settings.target, selection)
+    const markup = exportMarkup(exportDocument, settings, selection)
     if (!markup || !bounds) {
       setExportError('There is nothing to export with those settings.')
       return
     }
-    const embedded = await embedFonts(markup, document.fonts ?? [])
+    const unsupported = settings.format === 'pdf' ? [...new Set(exportElements(exportDocument, settings.target, selection).filter(element => element.kind === 'text' && !canOutline(element.fontFamily ?? 'Public Sans', exportDocument.fonts)).map(element => element.fontFamily))] : []
+    if (unsupported.length) { setExportError(`PDF outlines are unavailable for ${unsupported.join(', ')}. Choose SVG or PNG, or import a TTF/OTF file.`); return }
+    await ensureFonts(exportDocument.fonts)
+    const embedded = await embedFonts(markup, exportDocument.fonts ?? [])
     const name = exportFileName(document, settings, selectedFrame?.name)
     if (settings.format === 'pdf') {
       // Anything the format cannot say — an effect, a pattern, a mesh, a picture — is rasterised
@@ -906,13 +924,15 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
       const rasteriseElement = async (element: VectorElement) => {
         const box = { x: element.x, y: element.y, width: element.width, height: element.height }
         const single = serializeVectorMarkup([{ ...element, rotation: 0 }], box)
-        const blob = await rasterize(await embedFonts(single, document.fonts ?? []), box, 2, 'image/jpeg')
+        const blob = await rasterize(await embedFonts(single, exportDocument.fonts ?? []), box, 2, 'image/jpeg')
         if (!blob) return null
         return { data: new Uint8Array(await blob.arrayBuffer()), width: Math.round(box.width * 2), height: Math.round(box.height * 2) }
       }
       const { bytes, notes } = await exportPdf(
-        pdfPages(document, settings.target === 'frame' || settings.target === 'document'),
-        { background: settings.transparent ? undefined : document.background, rasterise: rasteriseElement },
+        settings.target === 'selection'
+          ? [{ name: document.name, bounds, elements: exportElements(exportDocument, settings.target, selection) }]
+          : pdfPages(settings.target === 'frame' ? { ...exportDocument, elements: exportElements(exportDocument, settings.target, selection) } : exportDocument, true),
+        { fonts: exportDocument.fonts, background: settings.transparent || exportDocument.background === 'none' ? undefined : exportDocument.background, rasterise: rasteriseElement },
       )
       downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), name)
       if (notes.skipped.length) setExportError(`${notes.skipped.join(', ')} could not be written into the PDF.`)
@@ -1500,7 +1520,15 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
           tool={tool}
           selectedElements={shownSelection}
           selectedNodeIds={selectedNodeIds}
-          onUpdateDocument={editor.updateDocument}
+          onUpdateDocument={(patch, record) => {
+            const backgroundBinding = rig?.bindings.findLast(binding => binding.elementId === DOCUMENT_TARGET && binding.property === 'background')
+            if (patch.background !== undefined && backgroundBinding && session) {
+              session.setValue(backgroundBinding.parameterId, patch.background)
+              const rest = { ...patch }
+              delete rest.background
+              if (Object.keys(rest).length) editor.updateDocument(rest, record)
+            } else editor.updateDocument(patch, record)
+          }}
           onUpdate={editor.updateElement}
           onUpdateElements={editor.updateElements}
           onEditElements={editor.editElements}
@@ -1559,6 +1587,10 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
               disabled={disabledEntries}
               onChoose={(entry) => chooseTool(entry.tool, entry.id)}
               onActivate={(entry, keyboard) => {
+                if (tool === entry.tool) {
+                  chooseTool('select')
+                  return
+                }
                 chooseTool(entry.tool, entry.id)
                 if (!keyboard) return
                 if (entry.id === 'rectangle') editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
@@ -1598,7 +1630,14 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
             onFitSelection={() => controller.current?.fit(selectionBounds(leafElements(document.elements, selectedIds)), 96)}
           />
           <ViewOptionsMenu value={viewOptions} onChange={setViewOptions} fullscreen={fullscreen} onFullscreen={toggleFullscreen} />
+          {shown && isBrandDocument(shown) ? <><BrandSpecimens document={shown} /><BrandReview document={shown} /></> : null}
           <VectorExportMenu
+            onBrandKit={isBrandDocument(shown) ? () => {
+              if (!shown || brandKitBusy) return
+              setBrandKitBusy(true); setExportError(null)
+              void downloadBrandKit(shown).catch(error => setExportError(error instanceof Error ? error.message : 'The brand kit could not be exported.')).finally(() => setBrandKitBusy(false))
+            } : undefined}
+            brandKitBusy={brandKitBusy}
             settings={exportSettings}
             onSettings={setExportSettings}
             frameName={selectedFrame?.name ?? null}

@@ -1,0 +1,15 @@
+{
+  "name": "paramrig-example-vector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@paramrig/vector": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "8.2.2"
+  }
+}

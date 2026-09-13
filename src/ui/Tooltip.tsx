@@ -230,7 +230,7 @@ export function Tooltip({ content, children, side = 'top', instant = false, bloc
               ref={tipRef}
               id={id}
               role="tooltip"
-              className="tt"
+              className="tt paramrig-control-portal"
               data-side={coords?.side ?? side}
               data-placed={coords ? '' : undefined}
               style={style}

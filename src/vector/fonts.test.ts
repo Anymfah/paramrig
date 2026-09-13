@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { base64Bytes, fontFaceRule, googleCssUrl, MAX_FONT_BYTES, pickFontFileUrl, readFontFile, sanitizeFonts, searchGoogleFamilies } from '@/vector/fonts'
 
 const css = `
@@ -84,9 +85,11 @@ describe('importing a font file', () => {
   }) as unknown as File
 
   it('takes the family name from the file name', async () => {
-    const result = await readFontFile(file('Space_Grotesk-Regular.woff2', 1024))
+    const bytes = new Uint8Array(readFileSync('public/fonts/SpaceGrotesk.woff2'))
+    const result = await readFontFile({ name: 'Space_Grotesk-Regular.woff2', size: bytes.length, arrayBuffer: async () => bytes.buffer } as File)
 
     expect('font' in result && result.font).toMatchObject({ family: 'Space Grotesk Regular', source: 'file', format: 'woff2' })
+    expect('font' in result && result.font.weights).toEqual([300, 700])
   })
 
   it('refuses what is not a font', async () => {

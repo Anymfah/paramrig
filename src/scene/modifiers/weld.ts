@@ -1,5 +1,5 @@
 import type { EditMesh } from '@/scene/mesh/editMesh'
-import { chosenOf, numberOf, registerModifier } from '@/scene/modifiers/types'
+import { chosenOf, numberOf, defineModifier } from '@/scene/modifiers/types'
 import { weldVertices, withinDistance, type WeldCluster } from '@/scene/operators/merge'
 import { numberParam, selectParam } from '@/scene/operators/types'
 
@@ -79,7 +79,7 @@ function alongEdges(mesh: EditMesh, distance: number): WeldCluster[] {
   return clusters
 }
 
-registerModifier<WeldParams>({
+export const weldModifier = defineModifier<WeldParams>({
   kind: 'weld',
   label: 'Weld',
   category: 'generate',

@@ -78,7 +78,7 @@ export function SelectField({
           <IconChevron className="select-trigger__icon" />
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal>
-          <SelectPrimitive.Content className="select-content" position="popper" sideOffset={8} align="end">
+          <SelectPrimitive.Content className="select-content paramrig-control-portal" position="popper" sideOffset={8} align="end">
             <SelectPrimitive.Viewport>
               {options.map((option) => (
                 <SelectPrimitive.Item key={option.value} value={option.value} className="select-item">

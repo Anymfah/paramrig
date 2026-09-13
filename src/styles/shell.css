@@ -313,6 +313,29 @@
 .workspace-toolbar__group + .workspace-toolbar__group { margin-inline-start: auto; }
 .workspace-toolbar .icon-btn { width: 28px; height: 28px; }
 
+/*
+ * Kept in the tree so a screen reader keeps the live region, and given no height until there is
+ * something in it. What was here before was a permanent band across the foot of the window whose
+ * usual content was a report that nothing had gone wrong.
+ */
+.editor-notice {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--rule);
+  color: var(--warning);
+  font-size: var(--text-xs);
+}
+.editor-notice[data-empty='true'] {
+  padding: 0;
+  border: 0;
+  block-size: 0;
+  overflow: hidden;
+}
+
 .preview-stage {
   flex: 1;
   min-height: 0;
@@ -384,23 +407,21 @@
 }
 
 .compare-toggle {
-  position: absolute;
-  left: 50%;
-  bottom: var(--space-4);
-  transform: translateX(-50%);
-  z-index: 1;
   display: inline-flex;
-  padding: var(--space-1);
+  flex-shrink: 0;
+  padding: 2px;
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-default);
+  background: var(--surface-inset);
+  border: 1px solid var(--border-hairline);
+  user-select: none;
 }
 .compare-toggle button {
   border: 0;
   background: transparent;
   color: var(--text-muted);
-  min-height: 32px;
-  padding: 0 var(--space-4);
+  min-height: 24px;
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
   border-radius: var(--radius-sm);
   transition: background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out);
@@ -1113,7 +1134,7 @@ dialog.manifest-drawer[open]::backdrop {
 .search-field svg { color: var(--text-muted); }
 .rig-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
   gap: var(--space-5);
 }
 .rig-card {
@@ -1370,13 +1391,6 @@ dialog.manifest-drawer[open]::backdrop {
 .inspector-slot, .timeline-slot { display: contents; }
 .workspace-main { display: flex; flex-direction: column; min-height: 0; }
 .preview-stage { flex: 1; min-height: 0; }
-.workspace-status { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-3); min-height: 48px; padding: var(--space-2) var(--space-4); background: var(--surface-raised); border-top: 1px solid var(--rule); font-size: var(--text-xs); color: var(--text-secondary); }
-.workspace-status .compare-toggle { position: static; transform: none; flex-shrink: 0; padding: 0; border: 0; border-radius: var(--radius-sm); }
-.workspace-status .compare-toggle button { min-height: 32px; padding-inline: var(--space-3); }
-.workspace-status__baseline { overflow-wrap: anywhere; min-width: 0; }
-.workspace-status__changes { margin-inline-start: auto; white-space: nowrap; }
-.workspace-status__notice { flex-basis: 100%; font-size: var(--text-xs); }
-.workspace-status__notice:empty { display: none; }
 .inspector__tabs button { font-size: var(--text-xs); padding-inline: var(--space-2); }
 .section__panel > div { min-height: 0; }
 .preview-meta__name, .preview-meta__end { max-width: 100%; overflow-wrap: anywhere; }
@@ -1478,10 +1492,6 @@ dialog.manifest-drawer[open]::backdrop {
   .shell:not([data-mobile-panel='inspector']) .inspector { visibility: hidden; }
   .shell[data-mobile-panel='nav'] .nav-rail, .shell[data-mobile-panel='inspector'] .inspector { visibility: visible; }
   .nav-rail, .inspector { inset-block-end: calc(60px + env(safe-area-inset-bottom)); }
-  .workspace-status { gap: var(--space-1) var(--space-2); padding: var(--space-1) var(--space-2); }
-  .workspace-status__baseline { flex: 1 1 120px; min-width: 120px; }
-  .workspace-status__changes { margin-inline-start: 0; }
-  .workspace-status__notice { white-space: normal; }
   .tl-key { width: var(--hit-target-coarse); height: var(--hit-target-coarse); }
   .tl-key-editor .number-value__input { font-size: 16px; }
   .preview-meta__end { max-width: 100%; font-size: var(--text-xs); }

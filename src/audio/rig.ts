@@ -1,0 +1,461 @@
+import type { InspectorCategory, ParameterDef, ParamGroup, ParamValue } from '@/rigs/types'
+import { applyTransform, type BindingTransform } from '@/rigs/binding'
+// The controls are the workbench's own, so reading them back is shared with the other two editors.
+import { MAX_BINDINGS, MAX_PARAMETERS, rigText as text, sanitizeCategories, sanitizeGroups, sanitizeParameter } from '@/rigs/sanitize'
+import { LINEAR, mapAmount } from '@/audio/dsp/curve'
+import {
+  AUDIO_FIELDS, FX_SLOTS, LAYER_COUNT, MOD_COUNT, PERFORMER_COUNT, LAYER_SECTIONS, TIME_UNITS,
+  type AudioPropertyType, type FieldSpec, type LayerSection,
+} from '@/audio/fields'
+import type { AudioPatch, Layer } from '@/audio/types'
+
+export { applyTransform, controlId, type BindingTransform } from '@/rigs/binding'
+export { AUDIO_FIELDS, LAYER_COUNT, MOD_COUNT, LAYER_SECTIONS, type AudioPropertyType, type FieldSpec, type LayerSection } from '@/audio/fields'
+
+/**
+ * A patch is a fixed chain, so a path addresses its target completely on its own — there is no
+ * object id the way a drawing has an element and a scene has an object. `layers[0].pitch.start`
+ * names one number and there is only ever one of it. That is the fixed chain paying for itself a
+ * second time: the binding model is a field shorter than either of its siblings.
+ */
+export type AudioBinding = {
+  id: string
+  property: string
+  parameterId: string
+  transform?: BindingTransform
+}
+
+/** What a patch adds to become a rig: the controls, and where they write. */
+export type AudioRig = {
+  groups: ParamGroup[]
+  parameters: ParameterDef[]
+  inspectorCategories?: InspectorCategory[]
+  bindings: AudioBinding[]
+}
+
+export type AudioPath =
+  | { kind: 'patch'; field: string; spec: FieldSpec }
+  | { kind: 'mod'; index: number; field: string; spec: FieldSpec }
+  | { kind: 'performer'; index: number; field: string; spec: FieldSpec }
+  | { kind: 'layer'; index: number; section: LayerSection; field: string; spec: FieldSpec }
+  | { kind: 'fx'; slot: 'x' | 'y' | 'z' | null; field: string; spec: FieldSpec }
+  | { kind: 'master'; field: string; spec: FieldSpec }
+
+/**
+ * Reads a property path, or refuses it. A path this does not know is never guessed at: a binding
+ * that writes to something which does not exist is a binding that does nothing while looking as
+ * though it works.
+ */
+export function parseAudioProperty(property: string): AudioPath | null {
+  const patch = AUDIO_FIELDS.patch[property]
+  if (patch) return { kind: 'patch', field: property, spec: patch }
+
+  // The section is any word, not a lowercase one: the insert slots are insertA, insertB, insertC.
+  const layer = /^layers\[(\d+)\]\.(?:([a-zA-Z]+)\.)?([A-Za-z]+)$/.exec(property)
+  if (layer) {
+    const index = Number(layer[1])
+    if (!Number.isInteger(index) || index < 0 || index >= LAYER_COUNT) return null
+    const section = (layer[2] ?? 'root') as LayerSection
+    if (!Object.hasOwn(LAYER_SECTIONS, section)) return null
+    const field = layer[3] ?? ''
+    const spec = LAYER_SECTIONS[section][field]
+    return spec ? { kind: 'layer', index, section, field, spec } : null
+  }
+
+  const mod = /^mods\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
+  if (mod) {
+    const index = Number(mod[1])
+    if (!Number.isInteger(index) || index < 0 || index >= MOD_COUNT) return null
+    const spec = AUDIO_FIELDS.mod[mod[2] ?? '']
+    return spec ? { kind: 'mod', index, field: mod[2] ?? '', spec } : null
+  }
+
+  const performer = /^performers\[(\d+)\]\.([A-Za-z]+)$/.exec(property)
+  if (performer) {
+    const index = Number(performer[1])
+    if (!Number.isInteger(index) || index < 0 || index >= PERFORMER_COUNT) return null
+    const spec = AUDIO_FIELDS.performer[performer[2] ?? '']
+    return spec ? { kind: 'performer', index, field: performer[2] ?? '', spec } : null
+  }
+
+  // Either the master's own two fields, or one field of one of the three effect slots.
+  const fx = /^fx\.(?:([xyz])\.)?([A-Za-z]+)$/.exec(property)
+  if (fx) {
+    const slot = (fx[1] ?? null) as 'x' | 'y' | 'z' | null
+    const field = fx[2] ?? ''
+    const spec = slot ? AUDIO_FIELDS.fxSlot[field] : AUDIO_FIELDS.fx[field]
+    return spec ? { kind: 'fx', slot, field, spec } : null
+  }
+
+  const master = /^master\.([A-Za-z]+)$/.exec(property)
+  if (master) {
+    const spec = AUDIO_FIELDS.master[master[1] ?? '']
+    return spec ? { kind: 'master', field: master[1] ?? '', spec } : null
+  }
+
+  return null
+}
+
+/**
+ * What a property used to be called, so a binding that names an older path is moved rather than
+ * deleted.
+ *
+ * This is the half of a migration nobody sees coming. `sanitizeAudioPatch` carries the patch
+ * forward, but the controls someone exposed live on the document beside it, and `sanitizeAudioRig`
+ * drops every binding whose property no longer parses. Without this, renaming a field would
+ * quietly throw away the rig of every patch anyone had built.
+ */
+export function carryAudioProperty(property: string, from: number): string {
+  let carried = property
+  if (from < 2) {
+    // One to two: two lists of modulators became one list of slots, the envelopes first.
+    const envelope = /^envelopes\[(\d+)\]\.(.+)$/.exec(carried)
+    if (envelope) carried = `mods[${Number(envelope[1])}].${envelope[2]}`
+    const lfo = /^lfos\[(\d+)\]\.(.+)$/.exec(carried)
+    if (lfo) carried = `mods[${Number(lfo[1]) + 2}].${lfo[2]}`
+  }
+  if (from < 5) {
+    // Four to five: a layer's one filter became the first of two.
+    const filter = /^layers\[(\d+)\]\.filter\.(\w+)$/.exec(carried)
+    if (filter) carried = `layers[${filter[1]}].filterA.${filter[2]}`
+  }
+  if (from < 4) {
+    // Three to four: the master effects became three slots, in the order they always ran.
+    const named: Record<string, string> = {
+      'fx.flangerRate': 'fx.x.rate', 'fx.flangerDepth': 'fx.x.depth', 'fx.flangerMix': 'fx.x.mix',
+      'fx.delayTime': 'fx.y.time', 'fx.delayFeedback': 'fx.y.feedback', 'fx.delayMix': 'fx.y.mix',
+      'fx.reverbSize': 'fx.z.size', 'fx.reverbDamping': 'fx.z.damping', 'fx.reverbMix': 'fx.z.mix',
+    }
+    carried = named[carried] ?? carried
+  }
+  if (from < 3) {
+    // Two to three: the drive and the resonator became slots. Drive is the first, the two lo-fi
+    // fields the second, the body the third — the same order the patch migration puts them in.
+    const shaper = /^layers\[(\d+)\]\.shaper\.(\w+)$/.exec(carried)
+    if (shaper) carried = `layers[${shaper[1]}].insert${shaper[2] === 'drive' ? 'A' : 'B'}.${shaper[2]}`
+    const resonator = /^layers\[(\d+)\]\.resonator\.(\w+)$/.exec(carried)
+    if (resonator) carried = `layers[${resonator[1]}].insertC.${resonator[2]}`
+  }
+  return carried
+}
+
+/**
+ * Every path a binding may name, generated from the same tables the parser reads. The docs page
+ * renders this, so a field the synthesiser gains is a documented row on the same commit and a
+ * field it loses cannot linger in the documentation.
+ */
+export const AUDIO_PROPERTY_PATHS: { property: string; label: string; type: AudioPropertyType }[] = [
+  ...Object.entries(AUDIO_FIELDS.patch).map(([field, spec]) => ({ property: field, label: spec.label, type: spec.type })),
+  ...(Object.keys(LAYER_SECTIONS) as LayerSection[]).flatMap((section) =>
+    Object.entries(LAYER_SECTIONS[section]).map(([field, spec]) => ({
+      property: section === 'root' ? `layers[i].${field}` : `layers[i].${section}.${field}`,
+      label: spec.label,
+      type: spec.type,
+    })),
+  ),
+  ...Object.entries(AUDIO_FIELDS.mod).map(([field, spec]) => ({ property: `mods[i].${field}`, label: spec.label, type: spec.type })),
+  ...Object.entries(AUDIO_FIELDS.performer).filter(([, spec]) => !spec.editorOnly)
+    .map(([field, spec]) => ({ property: `performers[i].${field}`, label: spec.label, type: spec.type })),
+  ...Object.entries(AUDIO_FIELDS.fx).map(([field, spec]) => ({ property: `fx.${field}`, label: spec.label, type: spec.type })),
+  ...FX_SLOTS.flatMap((slot) =>
+    Object.entries(AUDIO_FIELDS.fxSlot).map(([field, spec]) => ({ property: `fx.${slot}.${field}`, label: spec.label, type: spec.type }))),
+  ...Object.entries(AUDIO_FIELDS.master).map(([field, spec]) => ({ property: `master.${field}`, label: spec.label, type: spec.type })),
+]
+
+/** The parameter kinds that can drive a field of that type. */
+export const KINDS_FOR_AUDIO_TYPE: Record<AudioPropertyType, string[]> = {
+  number: ['number', 'vector', 'curve'],
+  boolean: ['switch'],
+  option: ['select', 'text'],
+  curve: ['curve'],
+}
+
+export function kindForAudioProperty(type: AudioPropertyType): string {
+  return KINDS_FOR_AUDIO_TYPE[type][0]!
+}
+
+function asNumber(value: ParamValue): number | null {
+  if (typeof value === 'number') return value
+  if (typeof value === 'boolean') return value ? 1 : 0
+  if (Array.isArray(value) && typeof value[0] === 'number') return value[0]
+  return null
+}
+
+/** The value a field will take, already clamped to what the field admits. */
+function coerce(spec: FieldSpec, value: ParamValue, transform: BindingTransform | undefined, resolve: (id: string) => number): unknown {
+  if (spec.type === 'boolean') return Boolean(value)
+  if (spec.type === 'option') {
+    return typeof value === 'string' && (spec.options?.includes(value) || spec.accept?.(value)) ? value : null
+  }
+  if (spec.type === 'curve') {
+    return value && typeof value === 'object' && !Array.isArray(value) && (value as { type?: unknown }).type === 'cubic-bezier' ? value : null
+  }
+  const raw = asNumber(value)
+  if (raw === null) return null
+  const next = transform && typeof transform.from === 'number' && typeof transform.to === 'number'
+    ? mapAmount(raw, transform.from, transform.to, {
+      invert: transform.invert,
+      curve: transform.curve,
+      scale: spec.scale,
+    })
+    : applyTransform(raw, transform, resolve)
+  if (!Number.isFinite(next)) return null
+  const min = spec.min ?? -Infinity
+  const max = spec.max ?? Infinity
+  return Math.min(max, Math.max(min, next))
+}
+
+/**
+ * One binding written onto a patch. The structure is fixed and shallow, so this rebuilds only the
+ * branch it touches and returns the patch unchanged when the value cannot be applied.
+ */
+export function applyAudioBinding(patch: AudioPatch, binding: AudioBinding, value: ParamValue, resolve: (id: string) => number): AudioPatch {
+  const path = parseAudioProperty(binding.property)
+  if (!path) return patch
+  const next = coerce(path.spec, value, binding.transform, resolve)
+  if (next === null) return patch
+
+  if (path.kind === 'patch') return { ...patch, [path.field]: next }
+  if (path.kind === 'mod') {
+    const slot = patch.mods[path.index]
+    if (!slot) return patch
+    return { ...patch, mods: patch.mods.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
+  }
+  if (path.kind === 'performer') {
+    const performer = patch.performers[path.index]
+    if (!performer) return patch
+    return { ...patch, performers: patch.performers.map((entry, index) => (index === path.index ? { ...entry, [path.field]: next } : entry)) }
+  }
+  if (path.kind === 'fx') {
+    if (!path.slot) return { ...patch, fx: { ...patch.fx, [path.field]: next } }
+    return { ...patch, fx: { ...patch.fx, [path.slot]: { ...patch.fx[path.slot], [path.field]: next } } }
+  }
+  if (path.kind === 'master') return { ...patch, master: { ...patch.master, [path.field]: next } }
+
+  const layer = patch.layers[path.index]
+  if (!layer) return patch
+  // The section names one of the layer's own objects, and the parser has already checked it is
+  // one of them, so this narrow cast is the whole of the dynamic write.
+  const written = path.section === 'root'
+    ? { ...layer, [path.field]: next }
+    : { ...layer, [path.section]: { ...(layer[path.section] as object), [path.field]: next } }
+  return { ...patch, layers: patch.layers.map((entry, index) => (index === path.index ? written as Layer : entry)) }
+}
+
+let cachePatch: AudioPatch | null = null
+let cacheRig: AudioRig | undefined
+let cacheValues = ''
+let cacheResult: AudioPatch | null = null
+
+/**
+ * The patch as its controls say it should sound. Pure, and the twin of `resolveRigValues`: the
+ * editor always writes to the raw patch, and this is what the player, the waveform view and the
+ * exporter render. Memoised on the last set of values, because a drag asks for the same one many
+ * times a second and rendering a buffer is not free.
+ */
+export function resolveAudioValues(document: { id: string; updatedAt: string; patch: AudioPatch; rig?: AudioRig }, values: Record<string, ParamValue>): AudioPatch {
+  const rig = document.rig
+  if (!rig || rig.bindings.length === 0) return document.patch
+  // Keyed on the patch itself rather than on the document's timestamp. A patch can be replaced
+  // without its `updatedAt` moving — an editor writing state, a save that keeps the stamp — and a
+  // memo that trusted the stamp would go on serving the sound the patch used to make.
+  const key = JSON.stringify(values)
+  if (cachePatch === document.patch && cacheRig === rig && key === cacheValues && cacheResult) return cacheResult
+  const known = new Set(rig.parameters.map((parameter) => parameter.id))
+  const defaults = new Map(rig.parameters.map((parameter) => [parameter.id, parameter.defaultValue]))
+  const resolve = (id: string) => {
+    const value = values[id]
+    if (typeof value !== 'number') throw new Error(`Not a numeric control: ${id}`)
+    return value
+  }
+  // The last binding on a property wins, which is what writing them in order gives.
+  const resolved = rig.bindings.reduce(
+    (current, binding) => {
+      // Plate macros are already baked into the saved patch at their default values. A manual
+      // destination edit must survive opening Tune without moving any of those controls.
+      if (/^macro-\d+(?:-d\d+)?$/.test(binding.id) && values[binding.parameterId] === defaults.get(binding.parameterId)) return current
+      return known.has(binding.parameterId) ? applyAudioBinding(current, binding, values[binding.parameterId] ?? null, resolve) : current
+    },
+    document.patch,
+  )
+  cachePatch = document.patch
+  cacheRig = rig
+  cacheValues = key
+  cacheResult = resolved
+  return resolved
+}
+
+/** Drops the memo, so a test can watch the work happen. */
+export function clearAudioRigCache(): void {
+  cachePatch = null
+  cacheRig = undefined
+  cacheValues = ''
+  cacheResult = null
+}
+
+/** What a field reads right now, so a fresh control starts where the patch already is. */
+export function currentAudioValue(patch: AudioPatch, property: string): ParamValue {
+  const path = parseAudioProperty(property)
+  if (!path) return null
+  const read = (source: object, field: string): ParamValue => {
+    const value = (source as Record<string, unknown>)[field]
+    if (typeof value === 'number' || typeof value === 'string' || typeof value === 'boolean') return value
+    return value && typeof value === 'object' ? (value as ParamValue) : null
+  }
+  if (path.kind === 'patch') return read(patch, path.field)
+  if (path.kind === 'mod') {
+    const slot = patch.mods[path.index]
+    return slot ? read(slot, path.field) : null
+  }
+  if (path.kind === 'performer') {
+    const performer = patch.performers[path.index]
+    return performer ? read(performer, path.field) : null
+  }
+  if (path.kind === 'fx') return read(path.slot ? patch.fx[path.slot] : patch.fx, path.field)
+  if (path.kind === 'master') return read(patch.master, path.field)
+  const layer = patch.layers[path.index]
+  if (!layer) return null
+  return path.section === 'root' ? read(layer, path.field) : read(layer[path.section] as object, path.field)
+}
+
+/** A control built for a field, taking its bounds from the field and its default from the patch. */
+export function parameterForAudioProperty(options: {
+  id: string
+  label: string
+  group: string
+  property: string
+  patch: AudioPatch
+}): ParameterDef | null {
+  const path = parseAudioProperty(options.property)
+  if (!path) return null
+  const { spec } = path
+  // A field the engine never reads is not something to hand anybody a dial for: it would turn, be
+  // saved, be published in the docs, and change no sound. The plate still edits it directly.
+  if (spec.editorOnly) return null
+  const base = { id: options.id, label: options.label, group: options.group }
+  const value = currentAudioValue(options.patch, options.property)
+
+  if (spec.type === 'boolean') return { ...base, kind: 'switch', defaultValue: value !== false }
+  if (spec.type === 'option') {
+    const choices = spec.options ?? []
+    return {
+      ...base,
+      kind: 'select',
+      options: choices.map((choice) => ({
+        value: choice,
+        // A target is stored as a path; the table says how to say it out loud.
+        label: spec.optionLabels?.[choice] ?? choice.charAt(0).toUpperCase() + choice.slice(1),
+        ...(spec.previews?.[choice] ? { preview: spec.previews[choice] } : {}),
+      })),
+      defaultValue: typeof value === 'string' && choices.includes(value) ? value : (choices[0] ?? ''),
+      // A shape is recognised faster than the word for it, and these are shapes — but only when
+      // every option has one. A table that covers four of nine kinds used to turn the whole strip
+      // visual, and the five without a picture were drawn as five identical blank swatches, which
+      // is worse than the plain list of names it replaced.
+      ...(spec.previews && choices.every((choice) => spec.previews?.[choice]) ? { view: 'visual' as const } : {}),
+    }
+  }
+  if (spec.type === 'curve') {
+    const curve = value && typeof value === 'object' && !Array.isArray(value) ? value : LINEAR
+    return { ...base, kind: 'curve', defaultValue: curve as typeof LINEAR }
+  }
+  const min = spec.min ?? 0
+  const max = spec.max ?? 1
+  return {
+    ...base,
+    kind: 'number',
+    min,
+    max: max > min ? max : min + 1,
+    step: spec.step ?? 0.01,
+    defaultValue: typeof value === 'number' ? Math.min(max, Math.max(min, value)) : min,
+    ...(spec.unit ? { unit: spec.unit } : {}),
+    ...(spec.scale ? { scale: spec.scale } : {}),
+    ...(spec.unit === 'ms' ? { units: TIME_UNITS } : {}),
+    // The seed is a number you replace, not one you sweep. `boardParameters` has always had an
+    // exception for it — `view !== 'seed'` — but nothing ever set that view, so the exception was
+    // dead code and the seed came out of the board as a dial with ten thousand steps on it.
+    ...(options.property === 'seed' ? { view: 'seed' as const } : {}),
+  }
+}
+
+/** A readable name for a field, used when it is first exposed. */
+export function audioPropertyLabel(property: string): string {
+  const path = parseAudioProperty(property)
+  if (!path) return property
+  if (path.kind === 'layer') return `Layer ${path.index + 1} · ${path.spec.label}`
+  if (path.kind === 'mod') return `Modulator ${path.index + 2} · ${path.spec.label}`
+  if (path.kind === 'performer') return `Performer ${path.index + 1} · ${path.spec.label}`
+  return path.spec.label
+}
+
+/** A binding is kept only when both ends of it exist. */
+function sanitizeBinding(value: unknown, parameterIds: Set<string>): AudioBinding | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const parameterId = text(source.parameterId, 60)
+  const property = text(source.property, 120)
+  if (!parameterId || !property) return null
+  if (!parameterIds.has(parameterId)) return null
+  if (!parseAudioProperty(property)) return null
+  const raw = source.transform && typeof source.transform === 'object' ? source.transform as Record<string, unknown> : null
+  const transform: BindingTransform = {}
+  if (raw) {
+    for (const key of ['min', 'max', 'scale', 'offset'] as const) {
+      if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) transform[key] = raw[key] as number
+    }
+    if (raw.invert === true) transform.invert = true
+    if (typeof raw.from === 'number' && Number.isFinite(raw.from)) transform.from = raw.from
+    if (typeof raw.to === 'number' && Number.isFinite(raw.to)) transform.to = raw.to
+    if (raw.curve && typeof raw.curve === 'object' && !Array.isArray(raw.curve)) {
+      const curve = raw.curve as { type?: unknown }
+      if (curve.type === 'cubic-bezier') transform.curve = raw.curve as BindingTransform['curve']
+    }
+    const expression = text(raw.expression, 1000)
+    if (expression) transform.expression = expression
+  }
+  return {
+    id: text(source.id, 80) ?? crypto.randomUUID(),
+    property,
+    parameterId,
+    ...(Object.keys(transform).length ? { transform } : {}),
+  }
+}
+
+/**
+ * The rig a patch carries, read back from storage or from a file. Bindings naming a control that
+ * is not there, or a field that no longer exists, are dropped; the rest is kept.
+ */
+export function sanitizeAudioRig(value: unknown): AudioRig | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  const source = value as Record<string, unknown>
+  const groups = sanitizeGroups(source.groups)
+  if (groups.length === 0) return undefined
+  const groupIds = new Set(groups.map((group) => group.id))
+  const parameters = (Array.isArray(source.parameters) ? source.parameters : [])
+    .slice(0, MAX_PARAMETERS)
+    .flatMap((parameter) => {
+      const clean = sanitizeParameter(parameter, groupIds)
+      return clean ? [clean] : []
+    })
+  const seen = new Set<string>()
+  const unique = parameters.filter((parameter) => (seen.has(parameter.id) ? false : (seen.add(parameter.id), true)))
+  const bindings = (Array.isArray(source.bindings) ? source.bindings : [])
+    .slice(0, MAX_BINDINGS)
+    .flatMap((binding) => {
+      const clean = sanitizeBinding(binding, seen)
+      return clean ? [clean] : []
+    })
+  const categories = sanitizeCategories(source.inspectorCategories)
+  return { groups, parameters: unique, bindings, ...(categories.length ? { inspectorCategories: categories } : {}) }
+}
+
+export const DEFAULT_RIG_GROUP: ParamGroup = { id: 'main', label: 'Main' }
+
+/** The default value of every control the patch defines, which is how a rig rests. */
+export function audioRigDefaults(rig: AudioRig): Record<string, ParamValue> {
+  return Object.fromEntries(rig.parameters.map((parameter) => [parameter.id, structuredClone(parameter.defaultValue)]))
+}
+
+export function emptyAudioRig(): AudioRig {
+  return { groups: [DEFAULT_RIG_GROUP], parameters: [], bindings: [] }
+}

@@ -97,20 +97,8 @@ export type VectorTraceOptions = {
 /** How a document's colours are meant to be shown. They are stored as sRGB hex either way. */
 export type VectorColorSpace = 'srgb' | 'display-p3'
 
-export type VectorFontSource = 'system' | 'google' | 'file'
-
-/**
- * A font the document knows about. A file carries its own bytes so it travels with the document;
- * a Google family is fetched on demand and embedded only when the file is exported.
- */
-export type VectorFont = {
-  family: string
-  source: VectorFontSource
-  weights: number[]
-  /** Base64 of the font file, for an imported one. */
-  data?: string
-  format?: 'woff2' | 'ttf' | 'otf'
-}
+export type { Font as VectorFont, FontAxis as VectorFontAxis, FontSource as VectorFontSource } from '@paramrig/core/fonts'
+import type { Font as VectorFont } from '@paramrig/core/fonts'
 
 export type VectorTextAlign = 'left' | 'center' | 'right'
 
@@ -260,6 +248,7 @@ export type VectorElement = {
   fontFamily?: string
   fontSize?: number
   fontWeight?: number
+  fontVariations?: Record<string, number>
   /** Line advance as a multiple of the font size. */
   lineHeight?: number
   /** Extra advance between characters, in pixels at the current font size. */

@@ -1,6 +1,6 @@
 import type { EditMesh } from '@/scene/mesh/editMesh'
 import { applyMatrix } from '@/scene/modifiers/matrix'
-import { chosenOf, numberOf, registerModifier, switchOf } from '@/scene/modifiers/types'
+import { chosenOf, numberOf, defineModifier, switchOf } from '@/scene/modifiers/types'
 import { numberParam, selectParam, switchParam } from '@/scene/operators/types'
 import type { Vec3 } from '@/scene/types'
 
@@ -94,7 +94,7 @@ function offsetsFrom(mesh: EditMesh, centre: Vec3): Vec3[] {
   return offsets
 }
 
-registerModifier({
+export const castModifier = defineModifier({
   kind: 'cast',
   label: 'Cast',
   category: 'deform',

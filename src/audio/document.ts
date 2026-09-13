@@ -1,0 +1,242 @@
+import { readStore, writeDocument, storageMessage, type StorageResult } from '@/editor/storage'
+import type { RigManifest } from '@/rigs/types'
+import { rigText as text } from '@/rigs/sanitize'
+import { PATCH_VERSION, defaultPatch, sanitizeAudioPatch } from '@/audio/patch'
+import { carryAudioProperty, sanitizeAudioRig, type AudioRig } from '@/audio/rig'
+import type { AudioPatch } from '@/audio/types'
+import { BUNDLED_PATCHES } from '@/rigs/examples/arcade-coin'
+import type { LabSession, LabSound } from './labs/model'
+import { sanitizeLabSession, sanitizeLabSound } from './labs/session'
+
+export { STORAGE_BLOCKED_MESSAGE, STORAGE_FULL_MESSAGE, storageMessage, type StorageResult } from '@/editor/storage'
+
+const STORAGE_KEY = 'paramrig.audio-documents.v1'
+
+/**
+ * A sound kept aside. Sound design is comparison — you get somewhere, you try something else, and
+ * you need the somewhere back. These live on the document rather than in the browser's draft store
+ * so that they travel with the patch when it is exported.
+ */
+export type AudioSnapshot = {
+  id: string
+  name: string
+  createdAt: string
+  patch: AudioPatch
+  /** The macros as they stood, so a snapshot is the instrument and not only the chain. */
+  rig?: AudioRig
+  lab?: LabSound
+}
+
+/** Past this many the list stops being findable, and the oldest gives way. */
+export const MAX_SNAPSHOTS = 24
+
+/** A patch, its name, and the controls it chooses to expose. A patch with a rig is a rig. */
+export type AudioDocument = {
+  version: 1
+  id: string
+  name: string
+  patch: AudioPatch
+  snapshots?: AudioSnapshot[]
+  /** A patch with one is an instrument someone else can use without seeing the seventy fields. */
+  rig?: AudioRig
+  labs?: LabSession
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * The store, parsed once per state it is actually in.
+ *
+ * Every call sanitises every document in it, and sanitising a document sanitises its patch and all
+ * twenty-four of its kept sounds — hundreds of clamps against the field table. The library page
+ * asks for this list on every render, and so does the workspace shell behind the sound editor, so
+ * it was being rebuilt on every frame of a knob drag. Keyed on the raw text rather than on a
+ * timestamp: another tab writing changes the text, and nothing else can change it without going
+ * through a document write below.
+ */
+let lastRaw: string | null = null
+let lastRead: Record<string, AudioDocument> = {}
+
+function readAll(): Record<string, AudioDocument> {
+  let raw: string | null = null
+  try {
+    raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY) ?? ''
+  } catch { raw = null }
+  if (raw === null || raw !== lastRaw) {
+    lastRead = readStore(STORAGE_KEY, sanitizeAudioDocument)
+    lastRaw = raw
+  }
+  // A shallow copy, because `saveAudioDocument` writes into what this hands back. The documents
+  // inside it are shared and treated as immutable everywhere, as they already were.
+  return { ...lastRead }
+}
+
+/** The patches the app ships, built once: they are the same objects every time they are asked for. */
+let lastShipped: AudioDocument[] | null = null
+const shipped = () => (lastShipped ??= BUNDLED_PATCHES.map((build) => build()))
+
+
+
+export function createAudioDocument(): AudioDocument {
+  const now = new Date().toISOString()
+  const document: AudioDocument = {
+    version: 1,
+    id: `audio-${crypto.randomUUID()}`,
+    name: 'Untitled',
+    patch: defaultPatch(),
+    createdAt: now,
+    updatedAt: now,
+  }
+  const saved = saveAudioDocument(document)
+  if (!saved.ok) throw new Error(storageMessage(saved) ?? "The document could not be saved.")
+  return document
+}
+
+/** What shape a stored patch says it is in; anything unreadable is treated as the first. */
+function claimedVersion(patch: unknown): number {
+  if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return 1
+  const version = (patch as Record<string, unknown>).version
+  return typeof version === 'number' && Number.isFinite(version) ? Math.floor(version) : 1
+}
+
+/** The same rig, with every binding pointed at where its property lives now. */
+function carriedRig(rig: unknown, from: number): unknown {
+  if (from >= PATCH_VERSION || !rig || typeof rig !== 'object' || Array.isArray(rig)) return rig
+  const source = rig as Record<string, unknown>
+  if (!Array.isArray(source.bindings)) return rig
+  return {
+    ...source,
+    bindings: source.bindings.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry
+      const binding = entry as Record<string, unknown>
+      if (typeof binding.property !== 'string') return entry
+      return { ...binding, property: carryAudioProperty(binding.property, from) }
+    }),
+  }
+}
+
+/** A patch read back from storage or a file. The patch itself is clamped rather than refused. */
+export function sanitizeAudioDocument(value: unknown): AudioDocument | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const id = text(source.id, 80)
+  if (!id) return null
+  const now = new Date(0).toISOString()
+  // The rig is carried forward with the patch it belongs to: a binding naming a path that has moved
+  // is moved with it, where sanitising alone would have deleted it for no longer parsing.
+  const rig = sanitizeAudioRig(carriedRig(source.rig, claimedVersion(source.patch)))
+  const snapshots = (Array.isArray(source.snapshots) ? source.snapshots : [])
+    // A window rather than the whole file: every row costs a patch to sanitise, and a document
+    // that claims a hundred thousand of them should not be able to spend a minute proving it.
+    .slice(-MAX_SNAPSHOTS * 2)
+    .flatMap((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return []
+      const row = entry as Record<string, unknown>
+      const snapshotId = text(row.id, 80)
+      if (!snapshotId) return []
+      const rig = sanitizeAudioRig(carriedRig(row.rig, claimedVersion(row.patch)))
+      const lab = sanitizeLabSound(row.lab)
+      return [{
+        id: snapshotId,
+        name: text(row.name, 80) ?? 'Sound',
+        createdAt: text(row.createdAt, 40) ?? new Date(0).toISOString(),
+        patch: sanitizeAudioPatch(row.patch),
+        ...(rig ? { rig } : {}),
+        ...(lab ? { lab } : {}),
+      }]
+    })
+    // The end of the list, not the start. The strip appends and keeps the last twenty-four, so
+    // taking the first twenty-four of a longer file threw away the newest sounds and kept the
+    // ones the cap had already decided should give way. Cut after the unreadable rows are gone,
+    // so a file with a bad entry in it does not come back one short.
+    .slice(-MAX_SNAPSHOTS)
+  return {
+    version: 1,
+    id,
+    name: text(source.name, 120) ?? 'Untitled',
+    patch: sanitizeAudioPatch(source.patch),
+    ...(snapshots.length ? { snapshots } : {}),
+    ...(rig ? { rig } : {}),
+    ...(source.labs ? { labs: sanitizeLabSession(source.labs) } : {}),
+    createdAt: text(source.createdAt, 40) ?? now,
+    updatedAt: text(source.updatedAt, 40) ?? now,
+  }
+}
+
+/**
+ * Every patch this browser can open: the ones it has stored, plus the ones the app ships that have
+ * not been edited. A bundled patch becomes an ordinary stored one the moment it is changed.
+ */
+export function listAudioDocuments(): AudioDocument[] {
+  const stored = readAll()
+  const bundled = shipped().filter((document) => !stored[document.id])
+  return [...Object.values(stored), ...bundled].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+}
+
+export function getAudioDocument(id: string): AudioDocument | null {
+  const stored = readAll()[id]
+  if (stored) return stored
+  const bundled = shipped().find((document) => document.id === id)
+  return bundled ? sanitizeAudioDocument(bundled) : null
+}
+
+export function isBundledAudioDocument(id: string): boolean {
+  return shipped().some((entry) => entry.id === id) && !readAll()[id]
+}
+
+/** Whether a document is a bundled one that nothing has altered, down to the last number. */
+function unchangedBundle(document: AudioDocument): boolean {
+  const original = shipped().find((entry) => entry.id === document.id)
+  // Both sides sanitised: the comparison is of content, and one side arriving with its keys in
+  // another order is not a change. It used to compare the shipped patch against the raw document,
+  // so any change to what the sanitiser emits made an example start copying itself into storage.
+  return !!original && JSON.stringify(sanitizeAudioDocument(original)) === JSON.stringify(sanitizeAudioDocument(document))
+}
+
+export function saveAudioDocument(document: AudioDocument): StorageResult {
+  const documents = readAll()
+  // Opening a bundled patch is not editing it. Without this, listening to the example would copy
+  // it into storage and the library would file it under this browser's projects.
+  if (!documents[document.id] && unchangedBundle(document)) return { ok: true }
+  documents[document.id] = sanitizeAudioDocument(document) ?? document
+  return writeDocument(STORAGE_KEY, document.id, documents[document.id])
+}
+
+export function deleteAudioDocument(id: string): StorageResult {
+  const documents = readAll()
+  delete documents[id]
+  return writeDocument(STORAGE_KEY, id, undefined)
+}
+
+/** How long a patch runs, phrased for a card rather than for a field. */
+function durationLabel(seconds: number): string {
+  return seconds < 1 ? `${Math.round(seconds * 1000)} ms` : `${seconds.toFixed(2)} s`
+}
+
+/**
+ * The patch as the rest of the workbench sees it. A patch that exposes controls carries them here,
+ * so a `RigSession` built from this manifest works the way it does for every other rig.
+ */
+export function audioManifest(document: AudioDocument): RigManifest {
+  const rig = document.rig
+  const controls = rig?.parameters.length ?? 0
+  const layers = document.patch.layers.filter((layer) => layer.enabled).length
+  const bundled = isBundledAudioDocument(document.id)
+  return {
+    id: document.id,
+    name: document.name,
+    summary: controls > 0
+      ? `Audio · ${controls} ${controls === 1 ? 'control' : 'controls'}`
+      : `Audio · ${durationLabel(document.patch.duration)}, ${layers} ${layers === 1 ? 'layer' : 'layers'}`,
+    description: '',
+    renderer: 'audio',
+    rendererLabel: 'Audio',
+    collection: bundled ? 'examples' : 'project',
+    title: bundled ? 'Examples/Audio' : 'Projects/Audio',
+    sourceFile: bundled ? `src/rigs/examples/${document.id.replace(/^audio-example-/, '')}.ts` : 'Local document',
+    tags: ['audio', 'sound', bundled ? 'example' : 'project', ...(controls > 0 ? ['rig'] : [])],
+    groups: rig?.groups ?? [],
+    parameters: rig?.parameters ?? [],
+    ...(rig?.inspectorCategories ? { inspectorCategories: rig.inspectorCategories } : {}),
+  }
+}

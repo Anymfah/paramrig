@@ -1,30 +1,25 @@
 import { useNavColumn } from '@/shell/useLayout'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { RigNavigation } from '@/shell/RigNavigation'
 import { ShellNavResize } from '@/shell/ResizeHandle'
 import { listRigs, loadLibrary, listExampleRigs, parseFixture, searchRigs } from '@/rigs/registry'
 import type { RigManifest } from '@/rigs/types'
 import { Button } from '@/ui/Button'
-import { IconCube, IconPlus, IconSearch } from '@/ui/icons'
+import { IconCube, IconPlus, IconSearch, IconWave } from '@/ui/icons'
 import { StatusMessage } from '@/ui/StatusMessage'
 import { Tooltip } from '@/ui/Tooltip'
-import { ContourBloomMark } from '@/renderers/svg/ContourBloomPreview'
-import { ControllerMark } from '@/renderers/html/ControllerLabPreview'
-import { SurfaceMark } from '@/renderers/html/SurfaceStudiesPreview'
-import { WebProjectMark } from '@/renderers/html/WebProjectMark'
-import { TypeMark } from '@/renderers/html/TypeSpecimenPreview'
-import { PlanetMark } from '@/renderers/three/PlanetMark'
-import { createSceneDocument, getSceneDocument, saveSceneDocument } from '@/scene/document'
-import { importProject as importSceneProject } from '@/scene/project'
-import { SceneThumb } from '@/scene/SceneThumb'
-import { createVectorDocument, documentThumbnail, getVectorDocument, saveVectorDocument } from '@/vector/document'
-import { resolveSceneValues, sceneRigDefaults } from '@/scene/rig'
-import { resolveRigValues, rigDefaults } from '@/vector/rig'
-import { getProjectHandle, listRecentProjects, type RecentProject } from '@/vector/fileHandles'
-import { importProject } from '@/vector/project'
+import { getProjectHandle, listRecentProjects, type RecentProject } from '@/editor/fileHandles'
+import { findProjectMetadata, projectIndexRevision, subscribeProjectIndex } from './projectIndex'
+import { hasModule, loadModule, requiredModule, catalog } from '@/modules/registry'
+import { MODULE_LABELS, type ModuleId } from '@/modules/types'
+import { ModuleRoute } from '@/modules/ModuleRoute'
+import { openFileText } from '@/modules/openFile'
+import { readThumbnail, subscribeThumbnails } from './thumbnails'
 
-export function LibraryPage() {
+export function LibraryPage({ module: selected }: { module?: ModuleId }) {
+  const revision = useSyncExternalStore(subscribeProjectIndex, projectIndexRevision, () => 0)
+  const [opening, setOpening] = useState(false)
   const [params, setParams] = useSearchParams()
   const query = params.get('q') ?? ''
   const fixture = parseFixture(params.toString())
@@ -50,7 +45,7 @@ export function LibraryPage() {
 
   const openRecent = async (entry: RecentProject) => {
     setRecentError(null)
-    if (getVectorDocument(entry.id) || getSceneDocument(entry.id)) {
+    if (findProjectMetadata(entry.id)) {
       navigate(`/r/${entry.id}`)
       return
     }
@@ -64,7 +59,7 @@ export function LibraryPage() {
       setRecentError(`Reading “${entry.fileName ?? entry.name}” was not allowed.`)
       return
     }
-    const opened = openFileText(await (await handle.getFile()).text())
+    const opened = await openFileText(await (await handle.getFile()).text())
     if (!opened.ok) {
       setRecentError(opened.error)
       return
@@ -89,13 +84,13 @@ export function LibraryPage() {
     return () => {
       cancelled = true
     }
-  }, [fixture])
+  }, [fixture, revision])
 
   /** A project file dropped on the library opens as a document and, when it has one, its rig. */
   const openDropped = async (file: File) => {
     setRecentError(null)
     setNote(null)
-    const opened = openFileText(await file.text())
+    const opened = await openFileText(await file.text())
     if (!opened.ok) {
       setRecentError(opened.error)
       return
@@ -114,7 +109,16 @@ export function LibraryPage() {
   }
 
   const { dataNav, style, compact } = useNavColumn()
-  const visible = useMemo(() => searchRigs(rigs ?? [], query), [rigs, query])
+  const visible = useMemo(() => searchRigs((rigs ?? []).filter(rig => !selected || requiredModule(rig.id) === selected), query), [rigs, query, selected])
+  const create = async (id: ModuleId) => {
+    if (opening) return
+    setOpening(true); setRecentError(null)
+    try { const domain = await loadModule(id); const document = domain.create?.(); if (document) navigate(`/r/${document.id}`) }
+    catch (error) { setRecentError(error instanceof Error ? error.message : 'The tool could not be loaded.') }
+    finally { setOpening(false) }
+  }
+  if (selected && !hasModule(selected)) return <ModuleRoute module={selected} page="landing"/>
+  const show = (id: ModuleId) => hasModule(id) && (!selected || selected === id)
 
   return (
     <div
@@ -144,35 +148,42 @@ export function LibraryPage() {
       <RigNavigation rigs={fixture === 'loading' ? listExampleRigs() : (rigs ?? [])} activeId={undefined} compact={compact} onNavigate={() => setMobilePanel('main')} />
       <main id="main" className="library-main scroll-area">
         <div className="library-titlebar">
-          <h1>Your rigs</h1>
+          <h1>{selected ? MODULE_LABELS[selected] : 'Your rigs'}</h1>
           <div className="library-titlebar__actions">
-            <Link className="btn btn--ghost" to="/web">Web</Link>
-            <Tooltip content="New scene">
+            {show('web') ? <Link className="btn btn--ghost" to="/web">Web</Link> : null}
+            {show('audio') ? <Tooltip content="New sound">
+              <button
+                type="button"
+                className="icon-btn library-create"
+                aria-label="New sound"
+                disabled={opening}
+                onClick={() => void create('audio')}
+              >
+                <IconWave />
+              </button>
+            </Tooltip> : null}
+            {show('scene') ? <Tooltip content="New scene">
               <button
                 type="button"
                 className="icon-btn library-create"
                 aria-label="New scene"
-                onClick={() => {
-                  const document = createSceneDocument()
-                  navigate(`/r/${document.id}`)
-                }}
+                disabled={opening}
+                onClick={() => void create('scene')}
               >
                 <IconCube />
               </button>
-            </Tooltip>
-            <Tooltip content="New vector document">
+            </Tooltip> : null}
+            {show('vector') ? <Tooltip content="New vector document">
               <button
                 type="button"
                 className="icon-btn icon-btn--solid library-create"
                 aria-label="New vector document"
-                onClick={() => {
-                  const document = createVectorDocument()
-                  navigate(`/r/${document.id}`)
-                }}
+                disabled={opening}
+                onClick={() => void create('vector')}
               >
                 <IconPlus />
               </button>
-            </Tooltip>
+            </Tooltip> : null}
           </div>
         </div>
         {import.meta.env.MODE === 'app' && (
@@ -188,7 +199,7 @@ export function LibraryPage() {
             <h2 className="library-recent__title">Recent</h2>
             {recentError ? <StatusMessage tone="error">{recentError}</StatusMessage> : null}
             <ul className="library-recent__list">
-              {recent.map((entry) => (
+              {recent.filter(entry => !selected || requiredModule(entry.id) === selected).map((entry) => (
                 <li key={entry.id}>
                   <button type="button" className="library-recent__item" onClick={() => void openRecent(entry)}>
                     <span className="library-recent__preview" style={entry.background ? { background: entry.background } : undefined}>
@@ -306,55 +317,10 @@ function SkeletonCard() {
   )
 }
 
-/**
- * Reads a dropped or reopened project file with whichever editor claims it, stores it, and gives
- * back the id to open. A file that names neither format comes back with the reason.
- */
-function openFileText(text: string): { ok: true; id: string; name: string; note?: string } | { ok: false; error: string } {
-  const asScene = importSceneProject(text)
-  if (asScene.ok) {
-    saveSceneDocument(asScene.project.document)
-    const { id, name } = asScene.project.document
-    return { ok: true, id, name, ...(asScene.note ? { note: asScene.note } : {}) }
-  }
-  const asVector = importProject(text)
-  if (asVector.ok) {
-    saveVectorDocument(asVector.project.document)
-    const { id, name } = asVector.project.document
-    return { ok: true, id, name, ...(asVector.note ? { note: asVector.note } : {}) }
-  }
-  // The file said which editor it belongs to, so its own reader gives the better message.
-  return { ok: false, error: text.includes('"paramrig.scene"') ? asScene.error : asVector.error }
-}
-
 function RigThumb({ rig }: { rig: RigManifest }) {
-  const id = rig.id
-  if (rig.renderer === 'scene') {
-    const stored = getSceneDocument(id)
-    if (!stored) return null
-    // A rigged scene is shown the way its controls rest, which is what it looks like new.
-    const document = stored.rig ? resolveSceneValues(stored, sceneRigDefaults(stored.rig)) : stored
-    return <SceneThumb document={document} />
-  }
-  if (rig.renderer === 'vector') {
-    const stored = getVectorDocument(id)
-    if (!stored) return null
-    // A parametered document is shown the way its controls rest, which is what it looks like new.
-    const document = stored.rig ? resolveRigValues(stored, rigDefaults(stored.rig)) : stored
-    return (
-      <svg
-        className="vector-thumb"
-        viewBox={`0 0 ${document.width} ${document.height}`}
-        aria-hidden="true"
-        dangerouslySetInnerHTML={{ __html: documentThumbnail(document) }}
-      />
-    )
-  }
-  if (id === 'contour-bloom' || id === 'long-name-study') return <ContourBloomMark />
-  if (id === 'tidal-planet') return <PlanetMark />
-  if (id === 'surface-studies') return <SurfaceMark />
-  if (id === 'type-specimen') return <TypeMark />
-  if (rig.renderer === 'web') return <WebProjectMark />
-  if (rig.renderer === 'html') return <ControllerMark />
-  return null
+  const cached = useSyncExternalStore(subscribeThumbnails, () => readThumbnail(rig.id), () => undefined)
+  const url = cached ?? catalog.find(item => item.id === rig.id)?.thumbnail
+  if (url) return <img className="library-recent__image" src={url} alt="" loading="lazy"/>
+  const Icon = rig.renderer === 'audio' ? IconWave : rig.renderer === 'scene' || rig.renderer === 'three' ? IconCube : IconPlus
+  return <span className="rig-card__placeholder" aria-hidden="true"><Icon/></span>
 }

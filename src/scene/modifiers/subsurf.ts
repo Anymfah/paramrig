@@ -1,6 +1,6 @@
 import type { EditMesh } from '@/scene/mesh/editMesh'
 import { add, scale } from '@/scene/mesh/normals'
-import { chosenOf, registerModifier, switchOf, wholeOf } from '@/scene/modifiers/types'
+import { chosenOf, defineModifier, switchOf, wholeOf } from '@/scene/modifiers/types'
 import { numberParam, selectParam, switchParam } from '@/scene/operators/types'
 import type { Vec3 } from '@/scene/types'
 
@@ -256,7 +256,7 @@ function tooDense(level: number, faces: number): string {
   return `Subdivision stops at two million faces: level ${level} would build ${faces}. Use level ${level - 1} or fewer.`
 }
 
-registerModifier<SubsurfParams>({
+export const subsurfModifier = defineModifier<SubsurfParams>({
   kind: 'subsurf',
   label: 'Subdivision surface',
   category: 'generate',

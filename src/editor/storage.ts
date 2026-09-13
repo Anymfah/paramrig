@@ -1,3 +1,4 @@
+import { indexSuccessfulWrite } from '@/library/projectIndex'
 /** Outcome of a browser-storage write, so callers can tell the user when a draft did not land. */
 export type StorageResult = { ok: true } | { ok: false; reason: 'quota' | 'unavailable' }
 
@@ -35,10 +36,26 @@ export function readStore<Doc extends { id: string }>(key: string, sanitize: (va
 export function writeStore<Doc>(key: string, documents: Record<string, Doc>): StorageResult {
   if (typeof localStorage === 'undefined') return { ok: false, reason: 'unavailable' }
   try {
-    localStorage.setItem(key, JSON.stringify(documents))
+    const raw = JSON.stringify(documents)
+    localStorage.setItem(key, raw)
+    indexSuccessfulWrite(key, raw)
     return { ok: true }
   } catch (error) {
     /* Editing remains available in memory when storage is full or blocked. */
+    return { ok: false, reason: isQuotaError(error) ? 'quota' : 'unavailable' }
+  }
+}
+
+/** Change one document without sanitising or discarding any of its stored neighbours. */
+export function writeDocument<Doc>(key: string, id: string, document: Doc | undefined): StorageResult {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(key) ?? '{}')
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return { ok: false, reason: 'unavailable' }
+    const next = { ...stored } as Record<string, unknown>
+    if (document === undefined) delete next[id]
+    else Object.defineProperty(next, id, { value: document, enumerable: true, configurable: true, writable: true })
+    return writeStore(key, next)
+  } catch (error) {
     return { ok: false, reason: isQuotaError(error) ? 'quota' : 'unavailable' }
   }
 }

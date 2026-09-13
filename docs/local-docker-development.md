@@ -41,9 +41,11 @@ Agents and developers must use disposable containers:
 ```bash
 docker compose run --rm app npm test
 docker compose run --rm app npm run lint
-docker compose run --rm app npm run typecheck
-docker compose run --rm app npm run build
+docker compose run --rm -e NODE_OPTIONS=--max-old-space-size=1280 app npm run typecheck
+docker compose run --rm -e NODE_OPTIONS=--max-old-space-size=1280 app npm run build
 ```
+
+TypeScript needs the explicit heap budget above; Node's default under the 1536 MB container limit can run out of heap during compilation. This does not change the persistent development server.
 
 Do not add `--service-ports` to one-off tasks: that would try to bind `5174`
 a second time.
@@ -88,7 +90,21 @@ loop cannot take the whole machine. They are not reservations while idle.
 
 ## Other Compose projects
 
-Before `docker compose up`, list running Compose projects. If `site-anym`,
-`stellary`, `helios`, or another development stack is already up, warn and
-wait; never start both stacks or stop the other one silently. `stellary-ci`
-may remain active.
+Another development stack may run alongside this one. The published ports do not
+collide, and Docker Desktop has the headroom for both. Never stop another
+project silently.
+
+The exception is the 3D end-to-end campaign: `scene-cut` crashes the renderer on
+a machine that carries several Docker stacks at once. Before
+`node e2e/campaign.mjs scene-`, list running Compose projects and ask for
+`site-anym`, `stellary` or `helios` to be stopped. `stellary-ci` may remain
+active.
+
+## Restart policy
+
+Services use `restart: unless-stopped`, not `no`. Docker Desktop restarts its
+engine on its own — a settings change such as the macOS virtualisation backend,
+an update, or a resume from Resource Saver — and every container stops with it.
+Under `no` nothing came back, and a stack vanishing at the moment another one
+started looked exactly like one project killing the other. `unless-stopped`
+still honours an explicit `docker compose stop`.

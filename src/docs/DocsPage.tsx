@@ -36,6 +36,11 @@ export function DocsPage() {
         </Link>
       </p>
       <p>
+        <Link className="text-link" to="/docs/audio-rigs">
+          Audio rigs: a sound that carries its own controls
+        </Link>
+      </p>
+      <p>
         <Link className="text-link" to="/">
           Back to the library
         </Link>

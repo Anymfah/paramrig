@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vector with React controls</title>
+
+<style>body{margin:24px;font:18px Georgia,serif;color:#182c27;background:#f6f5ef}button{font:inherit;padding:10px}.layout{display:flex;flex-wrap:wrap;gap:24px}.controls{width:320px;background:#171d1d;padding:16px;border-radius:8px}.canvas{width:480px;max-width:100%;height:320px}output{display:block;margin:16px 0}</style>
+<h1>Vector with React controls</h1><p>The host owns the values, document, export and lifecycle.</p><div id="root"></div>
+<script type="module">
+import {createElement as h,useState,useEffect,useRef,createRoot,RigControls,createVectorDocument,createVectorElement,createVectorRenderer} from './sdk.js';
+const parameters=[{kind:'number',id:'width',label:'Width',group:'shape',min:40,max:360,step:10,defaultValue:200},{kind:'color',id:'fill',label:'Fill',group:'shape',defaultValue:'#34826c'}];
+function App(){
+ const [values,setValues]=useState({width:200,fill:'#34826c'}),[mounted,setMounted]=useState(true),[status,setStatus]=useState('Starting');
+ const container=useRef(null),engine=useRef(null),doc=useRef(null),url=useRef(null);
+ useEffect(()=>{if(!mounted)return;const document=createVectorDocument();document.width=480;document.height=320;document.background='#ffffff';document.elements.push(createVectorElement('rectangle',{x:40,y:60,width:values.width,height:200},{fill:values.fill}));doc.current=document;const instance=createVectorRenderer({container:container.current,document});engine.current=instance;instance.ready.then(()=>setStatus('Renderer ready'));return()=>{instance.destroy();engine.current=null}},[mounted]);
+ useEffect(()=>{if(!engine.current)return;const document=structuredClone(doc.current);document.elements[0].width=values.width;document.elements[0].fill=values.fill;doc.current=document;engine.current.update(document).then(()=>setStatus(`Rendered width ${values.width}, fill ${values.fill}`))},[values]);
+ useEffect(()=>()=>{if(url.current)URL.revokeObjectURL(url.current)},[]);
+ async function exportSvg(){if(!engine.current)return;const svg=await engine.current.exportSvg();if(url.current)URL.revokeObjectURL(url.current);url.current=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));const link=document.createElement('a');link.href=url.current;link.download='controlled-vector.svg';link.click();setStatus(`Exported width ${values.width}`)}
+ return h('main',null,h('div',{className:'layout'},h('div',{className:'controls'},h(RigControls,{parameters,values,onChange:(id,value)=>setValues(old=>({...old,[id]:value})),onGestureEnd:id=>setStatus(`Committed ${id}`)})),h('div',{className:'canvas',ref:container,'aria-label':'Vector preview'})),h('button',{onClick:exportSvg,disabled:!mounted},'Export SVG'),h('button',{onClick:()=>{setMounted(!mounted);setStatus(mounted?'Renderer destroyed; controls remain available':'Recreating renderer')}},mounted?'Destroy renderer':'Recreate renderer'),h('output',null,status))
+}
+createRoot(document.getElementById('root')).render(h(App));
+</script></html>

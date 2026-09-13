@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { exportPdf as exportPortablePdf } from './pdfRuntime'
 import { describe, expect, it } from 'vitest'
 import { cmykOf, encode, pdfColor, pdfNumber, pdfString, PdfWriter } from '@/vector/pdf'
 import { exportPdf, pathOperators, pdfPages } from '@/vector/pdfExport'
@@ -38,6 +40,20 @@ describe('the file it writes', () => {
     expect(text).toContain('f*')
   })
 
+  it('fills overlapping variable-font glyph contours with winding, preserving serifs', async () => {
+    const file = readFileSync('public/fonts/SourceSerif4.ttf')
+    const element = { ...createVectorElement('text', { x: 0, y: 0, width: 250, height: 60 }),
+      text: 'Shared engine', fontFamily: 'Source Serif 4', fontWeight: 400, fontSize: 40, fill: '#182522', stroke: 'none' }
+    const result = await exportPortablePdf(pdfPages(documentWith([element]), false), {
+      resolveFont: async () => file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength) as ArrayBuffer,
+    })
+    const text = read(result.bytes)
+    expect(result.notes.skipped).toEqual([])
+    expect(text).toMatch(/ rg\nf\n/)
+    expect(text).not.toContain('f*')
+    expect(text).toMatch(/ c\n/)
+  })
+
   it('flips the page so the drawing is the right way up', async () => {
     const text = read((await exportPdf(pdfPages(documentWith([]), false))).bytes)
 
@@ -66,6 +82,17 @@ describe('the file it writes', () => {
 
     expect(pages).toHaveLength(1)
     expect(pages[0]).toMatchObject({ name: 'Card', bounds: { x: 10, y: 10, width: 200, height: 100 } })
+  })
+
+  it('paints the page frame before its content, even with a transparent workspace', async () => {
+    const frame = { ...createVectorElement('frame', { x: 0, y: 0, width: 200, height: 100 }), id: 'f', fill: '#FF0000', stroke: 'none' }
+    const child = { ...createVectorElement('rectangle', { x: 10, y: 10, width: 20, height: 20 }), id: 'c', parentId: 'f', fill: '#0000FF', stroke: 'none' }
+    const text = read((await exportPdf(pdfPages(documentWith([child, frame]), true), { background: 'none' })).bytes)
+    expect(text).toContain('1 0 0 rg')
+    expect(text).toContain('0 0 1 rg')
+    expect(text.match(/1 0 0 rg/g)).toHaveLength(1)
+    expect(text.indexOf('1 0 0 rg')).toBeLessThan(text.indexOf('0 0 1 rg'))
+    expect(text).not.toContain(' re f')
   })
 
   it('says what it could not write in vector terms', async () => {

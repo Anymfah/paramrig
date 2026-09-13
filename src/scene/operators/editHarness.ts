@@ -1,4 +1,4 @@
-import { DEFAULT_MATERIAL, DEFAULT_UNITS, DEFAULT_VIEW, DEFAULT_WORLD, ROOT_COLLECTION_ID } from '@/scene/document'
+import { DEFAULT_MATERIAL, DEFAULT_UNITS, DEFAULT_VIEW, DEFAULT_WORLD, ROOT_COLLECTION_ID } from '@/scene/model'
 import { edgeKey } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import type { OperatorContext, OperatorResult } from '@/scene/operators/types'

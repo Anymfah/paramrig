@@ -1,6 +1,9 @@
 import type { LucideIcon, LucideProps } from 'lucide-react'
 import {
   Activity,
+  AudioLines,
+  AudioWaveform,
+  Save,
   ArrowRight,
   Dices,
   GripVertical,
@@ -43,6 +46,7 @@ import {
   FileText,
   Folder,
   FolderOpen,
+  FolderDown,
   LayoutGrid,
   ListRestart,
   Maximize2,
@@ -80,6 +84,9 @@ export const IconPipette = glyph(Pipette)
 export const IconGrid = glyph(LayoutGrid)
 export const IconDiamond = glyph(Diamond)
 export const IconCube = glyph(Box)
+export const IconWave = glyph(AudioWaveform)
+export const IconGesture = glyph(AudioLines)
+export const IconSave = glyph(Save)
 export const IconSliders = glyph(SlidersHorizontal)
 export const IconCode = glyph(Code)
 export const IconSearch = glyph(Search)
@@ -96,6 +103,7 @@ export const IconChevronUp = glyph(ChevronUp)
 export const IconChevronRight = glyph(ChevronRight)
 export const IconFolder = glyph(Folder)
 export const IconFolderOpen = glyph(FolderOpen)
+export const IconExport = glyph(FolderDown)
 export const IconMenu = glyph(Menu)
 export const IconExpand = glyph(Maximize2)
 export const IconMinus = glyph(Minus)

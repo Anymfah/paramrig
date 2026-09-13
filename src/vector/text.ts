@@ -1,25 +1,9 @@
 import type { VectorFontFeatures, VectorElement, VectorTextAlign, VectorTextSizing } from '@/vector/types'
+import { variationSettings } from './fontCapabilities'
+import { fontMetricsRevision } from './fontMetricsStore'
 
-/** Families offered in the inspector. Only the one shipped with the app can be outlined. */
-export type TextFace = {
-  value: string
-  label: string
-  /** CSS font stack used for measuring, on the canvas and in exports. */
-  stack: string
-  /** A font file the app ships, so "Outline text" can read its glyphs. */
-  outlineUrl?: string
-}
-
-export const TEXT_FACES: TextFace[] = [
-  { value: 'Public Sans', label: 'Public Sans', stack: "'Public Sans', 'Public Sans Fallback', ui-sans-serif, sans-serif", outlineUrl: '/fonts/PublicSans.ttf' },
-  { value: 'Helvetica', label: 'Helvetica / Arial', stack: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
-  { value: 'Verdana', label: 'Verdana', stack: 'Verdana, Geneva, sans-serif' },
-  { value: 'Trebuchet MS', label: 'Trebuchet', stack: "'Trebuchet MS', Tahoma, sans-serif" },
-  { value: 'Georgia', label: 'Georgia', stack: "Georgia, 'Times New Roman', serif" },
-  { value: 'Times New Roman', label: 'Times', stack: "'Times New Roman', Times, serif" },
-  { value: 'Courier New', label: 'Courier', stack: "'Courier New', Courier, monospace" },
-  { value: 'Menlo', label: 'Menlo / Consolas', stack: "Menlo, Consolas, 'Liberation Mono', monospace" },
-]
+import { TEXT_FACES, type TextFace } from '@/typography/faces'
+export { TEXT_FACES, type TextFace } from '@/typography/faces'
 
 export const TEXT_WEIGHTS = [300, 400, 500, 600, 700] as const
 
@@ -44,6 +28,7 @@ export type TextProperties = {
   fontFamily: string
   fontSize: number
   fontWeight: number
+  fontVariations?: Record<string, number>
   lineHeight: number
   letterSpacing: number
   textAlign: VectorTextAlign
@@ -57,6 +42,7 @@ export function textProperties(element: Partial<VectorElement>): TextProperties 
     fontFamily: element.fontFamily ?? DEFAULT_TEXT.fontFamily,
     fontSize: element.fontSize && element.fontSize > 0 ? element.fontSize : DEFAULT_TEXT.fontSize,
     fontWeight: element.fontWeight ?? DEFAULT_TEXT.fontWeight,
+    ...(element.fontVariations ? { fontVariations: element.fontVariations } : {}),
     lineHeight: element.lineHeight && element.lineHeight > 0 ? element.lineHeight : DEFAULT_TEXT.lineHeight,
     letterSpacing: element.letterSpacing ?? DEFAULT_TEXT.letterSpacing,
     textAlign: element.textAlign ?? DEFAULT_TEXT.textAlign,
@@ -82,12 +68,12 @@ export function fontStack(family: string): string {
  * Whether a family's glyph outlines can be read.
  *
  * The shipped face can, and so can an imported TrueType or OpenType file. A woff2 cannot: it is
- * compressed with Brotli in a way opentype.js does not undo, and every Google Fonts file is one.
+ * compressed with Brotli in a way opentype.js does not undo. Cached Google TrueType files can.
  */
-export function canOutline(family: string, fonts: Array<{ family: string; source: string; format?: string }> = []): boolean {
+export function canOutline(family: string, fonts: Array<{ family: string; source: string; format?: string; data?: string }> = []): boolean {
   const carried = fonts.find((font) => font.family === family)
-  if (carried) return carried.source === 'file' && carried.format !== 'woff2'
-  return !!faceOf(family).outlineUrl
+  if (carried) return !!carried.data && carried.format !== 'woff2'
+  return !!TEXT_FACES.find(face => face.value === family)?.outline
 }
 
 /** Measures one line's advance width in pixels for the given properties. */
@@ -206,9 +192,42 @@ export function approximateMeasure(line: string, properties: TextProperties): nu
 }
 
 let context: CanvasRenderingContext2D | null | undefined
+let variationProbe: SVGTextElement | undefined
+const variationWidths = new Map<string, number>()
+
+/** Canvas has no arbitrary-axis API. Measure variable text through the same
+ * SVG engine as the artwork, caching widths so repeated labels do not reflow. */
+function measureVariation(line: string, properties: TextProperties): number | null {
+  if (!globalThis.document?.body) return null
+  const settings = variationSettings(properties.fontVariations)
+  if (!settings) return null
+  const key = JSON.stringify([fontMetricsRevision(), properties.fontFamily, properties.fontWeight, properties.fontSize, settings, line])
+  if (variationWidths.has(key)) return variationWidths.get(key)!
+  if (!variationProbe?.isConnected) {
+    const svg = globalThis.document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('aria-hidden', 'true')
+    svg.style.cssText = 'position:fixed;left:-10000px;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none;'
+    variationProbe = globalThis.document.createElementNS(svg.namespaceURI, 'text') as SVGTextElement
+    svg.append(variationProbe); globalThis.document.body.append(svg)
+  }
+  if (typeof variationProbe.getComputedTextLength !== 'function') return null
+  variationProbe.style.fontFamily = fontStack(properties.fontFamily)
+  variationProbe.style.fontSize = `${properties.fontSize}px`
+  variationProbe.style.fontWeight = String(properties.fontWeight)
+  variationProbe.style.fontVariationSettings = settings
+  variationProbe.style.fontSynthesis = 'none'
+  variationProbe.style.whiteSpace = 'pre'
+  variationProbe.textContent = line
+  const width = variationProbe.getComputedTextLength()
+  if (variationWidths.size > 2048) variationWidths.clear()
+  variationWidths.set(key, width)
+  return width
+}
 
 /** Advance width measured by the browser, falling back to the estimate when there is no canvas. */
 export function canvasMeasure(line: string, properties: TextProperties): number {
+  const varied = measureVariation(line, properties)
+  if (varied !== null) return varied + properties.letterSpacing * Math.max(0, line.length - 1)
   if (context === undefined) {
     context = typeof globalThis.document === 'undefined' ? null : globalThis.document.createElement('canvas').getContext('2d')
   }

@@ -67,6 +67,12 @@ function loadEngine(): void {
   })
 }
 
+/** Explicit completion for SDK hosts that need a fully prepared first frame. */
+export async function ensureGraphEngine(): Promise<void> {
+  loadEngine()
+  if (!engine && !(await loading)) throw new Error('The material graph engine could not be loaded.')
+}
+
 export type GraphMaterialResult =
   /** The graph is drawn; the errors, if any, are the compiler's own. */
   | { state: 'compiled'; errors: string[]; nodes: number; uniforms: number }
@@ -82,7 +88,7 @@ export type GraphMaterialResult =
  * whose shape did not is a uniform patch rather than a recompile, which is what the copy's cache is
  * for and what keeps a scrubbed slider from stuttering.
  */
-export function applyGraphMaterial(material: MeshPhysicalMaterial, graph: unknown): GraphMaterialResult {
+export function applyGraphMaterial(material: MeshPhysicalMaterial, graph: unknown, clock = time): GraphMaterialResult {
   if (!engine) {
     loadEngine()
     return { state: 'loading' }
@@ -97,7 +103,7 @@ export function applyGraphMaterial(material: MeshPhysicalMaterial, graph: unknow
     inject(
       shader as unknown as Parameters<typeof inject>[0],
       compiled,
-      time,
+      clock,
       compiled.uniforms.map((binding) => ({ name: binding.name, kind: binding.kind, value: binding.value })),
       uniforms,
     )

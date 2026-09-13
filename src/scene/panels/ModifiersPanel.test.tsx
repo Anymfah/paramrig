@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import '@/scene/modifiers'
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { DEFAULT_MATERIAL, DEFAULT_VIEW, ROOT_COLLECTION_ID } from '@/scene/document'
 import { boxMesh } from '@/scene/mesh/primitives'
 import { ModifiersPanel } from '@/scene/panels/ModifiersPanel'

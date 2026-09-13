@@ -1,5 +1,5 @@
 import { Matrix3, Vector3 } from 'three'
-import { objectById } from '@/scene/document'
+import { objectById } from '@/scene/model'
 import { worldMatrix, worldPosition } from '@/scene/objects'
 import { registerOperator } from '@/scene/operators/registry'
 import { numberParam, switchParam, vectorParam, type OperatorContext } from '@/scene/operators/types'

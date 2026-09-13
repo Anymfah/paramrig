@@ -1,4 +1,4 @@
-import { DEFAULT_UNITS, DEFAULT_VIEW, ROOT_COLLECTION_ID, ROOT_COLLECTION_NAME } from '@/scene/document'
+import { DEFAULT_UNITS, DEFAULT_VIEW, ROOT_COLLECTION_ID, ROOT_COLLECTION_NAME } from '@/scene/model'
 import {
   boxMesh,
   coneMesh,

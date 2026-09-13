@@ -1,12 +1,7 @@
-import { controllerManifest } from '@/rigs/controller-catalog'
-import { contourBloomManifest } from '@/rigs/examples/contour-bloom'
-import { surfaceStudiesManifest } from '@/rigs/examples/surface-studies'
-import { tidalPlanetManifest } from '@/rigs/examples/tidal-planet'
-import { typeSpecimenManifest } from '@/rigs/examples/type-specimen'
 import type { RigManifest } from '@/rigs/types'
-import { getSceneDocument, listSceneDocuments, sceneManifest } from '@/scene/document'
-import { getVectorDocument, listVectorDocuments, vectorManifest } from '@/vector/document'
-import { listWebProjects, pendingWebManifest, webManifest } from '@/web/projects'
+import { readProjectIndex } from '@/library/projectIndex'
+import { catalog, getLoadedModule, hasModule, requiredModule } from '@/modules/registry'
+import type { ProjectMetadata } from '@/modules/types'
 
 export type LibraryFixture = 'ok' | 'empty' | 'error' | 'loading' | 'long'
 
@@ -16,50 +11,21 @@ export type LibraryLoad = {
   note: string
 }
 
-const EXAMPLES: RigManifest[] = [
-  contourBloomManifest,
-  tidalPlanetManifest,
-  surfaceStudiesManifest,
-  typeSpecimenManifest,
-  controllerManifest,
-]
-
+// Navigation never evaluates a rig. Only getRig exposes full parameters after its module loads.
+const asNavigationRig = (item: ProjectMetadata): RigManifest => ({ ...item, groups: [], parameters: [] })
+const EXAMPLES = catalog.map(asNavigationRig)
 function longNameStudy(): RigManifest {
-  return {
-    ...contourBloomManifest,
-    id: 'long-name-study',
-    name: 'Bartholomew Featherstonehaugh contour reconstruction',
-    summary: 'SVG · Extremely long source paths must wrap, not clip, in the library and inspector.',
-    title: 'Examples/SVG',
-    sourceFile: 'examples/projects/bartholomew-featherstonehaugh/contour-reconstruction.rig.tsx',
-  }
+  return { ...EXAMPLES.find(item => item.id === 'contour-bloom')!, id: 'long-name-study', name: 'Bartholomew Featherstonehaugh contour reconstruction', summary: 'SVG · Extremely long source paths must wrap, not clip, in the library and inspector.', title: 'Examples/SVG', sourceFile: 'examples/projects/bartholomew-featherstonehaugh/contour-reconstruction.rig.tsx' }
 }
-
-export function listExampleRigs(): RigManifest[] {
-  return EXAMPLES
-}
-
+export function listExampleRigs(): RigManifest[] { return EXAMPLES }
 export function listRigs(): RigManifest[] {
-  return [
-    ...listWebProjects().map(webManifest),
-    ...listSceneDocuments().map(sceneManifest),
-    ...listVectorDocuments().map(vectorManifest),
-    ...EXAMPLES,
-  ]
+  const stored = readProjectIndex().filter(item => hasModule(item.module))
+  const ids = new Set(stored.map(item => item.id))
+  return [...stored.map(asNavigationRig), ...EXAMPLES.filter(item => !ids.has(item.id))]
 }
-
 export function getRig(id: string): RigManifest | undefined {
-  if (id === 'long-name-study') return longNameStudy()
-  const web = listWebProjects().map(webManifest).find(p => p.id === id)
-  if (web) return web
-  const scene = getSceneDocument(id)
-  if (scene) return sceneManifest(scene)
-  const vector = getVectorDocument(id)
-  if (vector) return vectorManifest(vector)
-  // A web link opens even on a browser that has never seen the project: only the local service
-  // knows whether that identifier is the connected one, and the workspace is where it is asked.
-  // The library is untouched — `listRigs` still lists only the projects this browser has opened.
-  return EXAMPLES.find((rig) => rig.id === id) ?? pendingWebManifest(id)
+  const module = requiredModule(id)
+  return module ? getLoadedModule(module)?.getRig(id) : undefined
 }
 
 export function parseFixture(search: string): LibraryFixture {
@@ -89,7 +55,7 @@ export async function loadLibrary(fixture: LibraryFixture = 'ok'): Promise<Libra
       note: 'This empty state is a local fixture. Example rigs are bundled with the app, not discovered from disk.',
     }
   }
-  const local = listVectorDocuments().length + listSceneDocuments().length
+  const local = readProjectIndex().length
   return {
     rigs: listRigs(),
     source: local ? 'mixed' : 'examples',

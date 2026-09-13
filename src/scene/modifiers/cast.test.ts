@@ -1,8 +1,10 @@
+import { initializeBuiltinModifiers } from '@/scene/modifiers'
+initializeBuiltinModifiers()
 import { describe, expect, it } from 'vitest'
 import { meshFromPolygons } from '@/scene/mesh/data'
 import { EditMesh } from '@/scene/mesh/editMesh'
 import { boxMesh, gridMesh, torusMesh, uvSphereMesh } from '@/scene/mesh/primitives'
-import '@/scene/modifiers/cast'
+
 import { translation } from '@/scene/modifiers/matrix'
 import { getModifier, type ModifierContext, type ModifierOutcome } from '@/scene/modifiers/types'
 import { euler, isClosed, isWellFormed } from '@/scene/operators/editHarness'

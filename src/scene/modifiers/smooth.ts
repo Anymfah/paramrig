@@ -1,4 +1,4 @@
-import { numberOf, registerModifier, switchOf, wholeOf } from '@/scene/modifiers/types'
+import { numberOf, defineModifier, switchOf, wholeOf } from '@/scene/modifiers/types'
 import { smoothVertices, type SmoothAxes } from '@/scene/operators/spin'
 import { numberParam, switchParam } from '@/scene/operators/types'
 
@@ -14,7 +14,7 @@ import { numberParam, switchParam } from '@/scene/operators/types'
  * a modifier this cheap can sit anywhere in the stack without the ones after it having to care.
  */
 
-registerModifier({
+export const smoothModifier = defineModifier({
   kind: 'smooth',
   label: 'Smooth',
   category: 'deform',

@@ -40,25 +40,6 @@
 }
 :root[data-theme='light'] { --vector-halo: rgb(247 250 249 / 0.92); }
 
-/* A project file dropped anywhere on the library opens it. */
-.shell[data-dropping] .library-main { outline: 2px dashed var(--accent); outline-offset: -8px; }
-.library-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-block-end: var(--space-5);
-}
-.library-main .library-titlebar h1 { margin: 0; }
-.library-create {
-  width: 36px;
-  height: 36px;
-  color: var(--text-on-accent);
-  background: var(--accent);
-}
-.library-create:hover,
-.library-create:focus-visible { color: var(--text-on-accent); background: var(--accent-hover); }
-.library-create:focus-visible,
 .vector-tool:focus-visible,
 .vector-layer__select:focus-visible,
 .vector-zoom:focus-visible,
@@ -730,7 +711,26 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .vector-controls .inspector__hint { display: none; }
 .vector-controls .inspector__body { padding-block-start: 0; }
 .vector-controls .section__head { min-height: 32px; }
+/* Artwork alternatives load only when a document uses them; application chrome keeps Public Sans. */
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/SpaceGrotesk.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Source Serif 4';
+  src: url('/fonts/SourceSerif4.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+}
 .vector-rig-preview { width: 100%; height: 100%; object-fit: contain; }
+.vector-preview-viewport { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; overscroll-behavior: none; cursor: grab; }
+.vector-preview-viewport[data-dragging] { cursor: grabbing; }
+.vector-preview-viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.vector-preview-navigation { position: absolute; bottom: var(--space-3, 12px); right: var(--space-3, 12px); display: flex; gap: 4px; padding: 4px; background: var(--surface-raised); border: 1px solid var(--border-default); border-radius: var(--radius-sm); cursor: default; }
 
 .vector-empty {
   margin: 0;
@@ -938,7 +938,7 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 /* --- Editing chrome added with the pen, node, snapping and guide tools --- */
 .vector-page {
   fill: var(--page-background, var(--surface-preview));
-  stroke: var(--border-strong);
+  stroke: none;
   stroke-width: 1;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -1368,81 +1368,6 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 }
 
 .vector-inspector__notice { padding: var(--space-3) var(--space-4) 0; }
-
-/* A scene's card picture is a whole image rather than markup to draw against a page. */
-.library-recent__image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
-.library-recent { margin-block-end: var(--space-5); }
-.library-recent__title {
-  margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-.library-recent__list {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.library-recent__item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-height: 56px;
-  padding: var(--space-2);
-  border: 1px solid var(--border-hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
-  transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
-}
-.library-recent__item:hover { background: var(--surface-overlay); border-color: var(--border-default); }
-.library-recent__item:active { transform: scale(0.99); }
-.library-recent__item:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.library-recent__preview {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 40px;
-  flex: none;
-  overflow: hidden;
-  border-radius: var(--radius-xs);
-  box-shadow: inset 0 0 0 1px var(--border-hairline);
-}
-.library-recent__preview svg { width: 100%; height: 100%; }
-.library-recent__text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-.library-recent__name {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  -webkit-user-select: text;
-  user-select: text;
-}
-.library-recent__meta {
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-@media (pointer: coarse) {
-  .library-recent__item { min-height: 64px; }
-}
 
 /* In-place text editing: the editable sits exactly where the <text> would paint. */
 .vector-text-editor {
@@ -2234,6 +2159,9 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
   letter-spacing: 0.06em;
 }
 .vector-font__option {
+  appearance: none;
+  border: 0;
+  background: transparent;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -2247,7 +2175,17 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 }
 .vector-font__option:hover { background: var(--surface-overlay); }
 .vector-font__option:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.vector-font__option[data-selected] { background: var(--surface-overlay); }
+.vector-font__option[data-selected], .vector-font__option[data-active] { background: var(--surface-overlay); }
+.vector-font__option[data-active] { outline: 1px solid var(--accent); outline-offset: -1px; }
+.vector-font__option:active, .vector-font__trigger:active { background: var(--surface-inset); }
+.vector-font__popover { max-height: var(--radix-popover-content-available-height); overflow-y: auto; }
+.vector-font__list { flex-shrink: 1; min-height: 0; }
+.brand-review { width: min(26rem, calc(100vw - var(--space-4))); max-height: min(70vh, var(--radix-popover-content-available-height)); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); }
+.brand-review h2 { margin: 0; font-size: var(--text-base); }
+.brand-review p { margin: 0; }
+.brand-review__issues { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.brand-review__issues li { display: flex; flex-direction: column; gap: var(--space-1); }
+.brand-review__issues small { color: var(--text-muted); }
 .vector-font__name { font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vector-font__note { flex: none; font-size: var(--text-xs); color: var(--text-muted); }
 .vector-font__actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
@@ -2390,3 +2328,15 @@ line.vector-draft { fill: none; stroke-width: 1.5; stroke-linecap: round; }
 .color-popover__cmyk { color: var(--text-primary); font-family: var(--font-mono, ui-monospace, monospace); }
 .color-popover__note { margin-inline-start: auto; }
 .color-popover__gamut { margin: 0; font-size: var(--text-xs); color: var(--text-secondary); }
+/* Proofs remain in screen space, outside the zoomed artwork. */
+.brand-specimens { width: min(22rem, calc(100vw - 16px)); display: grid; gap: 12px; padding: 16px; }
+.brand-specimens h2 { font-size: 14px; margin: 0; }
+.brand-specimens__sizes, .brand-specimens__row { display: grid; grid-template-columns: 64px repeat(3, 1fr); align-items: center; text-align: center; font-size: 12px; }
+.brand-specimens__row { min-height: 72px; }
+.brand-specimens__row img { display: block; margin: auto; }
+.font-axes summary { display: flex; justify-content: space-between; align-items: center; min-height: var(--hit-target); cursor: pointer; font-size: 12px; list-style: none; }
+.font-axes summary::-webkit-details-marker { display: none; }
+.font-axes summary svg { width: 14px; height: 14px; }
+.font-axes[open] summary svg { transform: rotate(180deg); }
+.font-axes__controls { display: grid; gap: 8px; padding-block: 8px; }
+@media (pointer: coarse) { .font-axes summary { min-height: var(--hit-target-coarse); } }

@@ -79,15 +79,17 @@ describe('vector project files', () => {
   })
 
   it('reports a full browser storage instead of losing the change silently', () => {
+    const document = sample()
     const quota = new DOMException('exceeded', 'QuotaExceededError')
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw quota
     })
 
-    const result = saveVectorDocument(sample())
+    const result = saveVectorDocument(document)
 
     expect(result).toEqual({ ok: false, reason: 'quota' })
     expect(storageMessage(result)).toBe(STORAGE_FULL_MESSAGE)
+    expect(() => createVectorDocument()).toThrow(STORAGE_FULL_MESSAGE)
   })
 })
 

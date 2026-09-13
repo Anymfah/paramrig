@@ -1,4 +1,4 @@
-import { numberOf, registerModifier, switchOf } from '@/scene/modifiers/types'
+import { numberOf, defineModifier, switchOf } from '@/scene/modifiers/types'
 import { splitAlongEdges } from '@/scene/operators/subdivide'
 import { numberParam, switchParam } from '@/scene/operators/types'
 
@@ -31,7 +31,7 @@ type EdgeSplitParams = {
   useSharp: boolean
 }
 
-registerModifier<EdgeSplitParams>({
+export const edgeSplitModifier = defineModifier<EdgeSplitParams>({
   kind: 'edgeSplit',
   label: 'Edge split',
   category: 'generate',
