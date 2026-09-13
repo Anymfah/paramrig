@@ -84,16 +84,16 @@ describe('renderPatch', () => {
    * noise has a peak that is a draw rather than a number, and at 22 050 `ui-click` reaches the
    * clamp at any gain worth shipping. What a preset is levelled for is the export.
    */
-  it('leaves each channel its headroom, not only the sum of the two', () => {
-    for (const preset of PRESETS) {
-      const stereo = renderPatch(preset.build(), SAMPLE_RATE)
-      let pinned = 0
-      for (const channel of [stereo.left, stereo.right]) {
-        for (let i = 0; i < channel.length; i += 1) if (Math.abs(channel[i] ?? 0) >= 0.999) pinned += 1
-      }
-      expect(pinned, `${preset.id} is pinned to the clamp for ${pinned} samples of one channel`).toBe(0)
+  // Give each sound its own deadline and failure report. One shared 30-second
+  // deadline timed out as the catalogue grew, even when every render passed.
+  it.each(PRESETS)('$id leaves each channel its headroom, not only the sum of the two', (preset) => {
+    const stereo = renderPatch(preset.build(), SAMPLE_RATE)
+    let pinned = 0
+    for (const channel of [stereo.left, stereo.right]) {
+      for (let i = 0; i < channel.length; i += 1) if (Math.abs(channel[i] ?? 0) >= 0.999) pinned += 1
     }
-  }, 30_000)
+    expect(pinned, `${preset.id} is pinned to the clamp for ${pinned} samples of one channel`).toBe(0)
+  })
 
   it('makes a sound for every preset', () => {
     for (const preset of PRESETS) {

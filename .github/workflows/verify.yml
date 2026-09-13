@@ -16,6 +16,12 @@ on:
 permissions:
   contents: read
 
+# A branch push and its pull-request event validate the same revision. Keep one
+# full SDK/build matrix per source branch and replace only obsolete verification.
+concurrency:
+  group: verify-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
