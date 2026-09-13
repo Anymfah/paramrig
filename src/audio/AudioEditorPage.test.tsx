@@ -867,4 +867,4 @@ it('opens randomize from the keyboard and remembers the family', async () => {
   expect(screen.queryByRole('dialog', { name: 'Randomize' })).toBeNull()
   await user.click(screen.getByRole('button', { name: 'Randomize' }))
   expect(within(await screen.findByRole('dialog', { name: 'Randomize' })).getByRole('radio', { name: 'Mechanical' })).toBeChecked()
-})
+}, 30000)

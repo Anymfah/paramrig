@@ -26,6 +26,9 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: './src/test/setup.ts',
+    // DSP sweeps and full editor mounts compete for CPU and memory. Two isolated
+    // files at a time keep the same functional deadlines reliable in CI.
+    maxWorkers: 2,
     /*
      * Fifteen seconds, not five.
      *

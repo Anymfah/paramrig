@@ -16,4 +16,6 @@ const samples = renderPatch(sound.patch, 48000)
 
 Persist the returned sound, including its patch and identity metadata. Replay the saved patch directly; do not regenerate it from a recipe during migration. Use `fusionCompatibility` before fusion and surface its explanation. Criteria and request validators expose the existing generation limits.
 
+Generation is reproducible for the same inputs and JavaScript runtime. Transcendental math can differ in the last floating-point digits across architectures, so regenerated patch hashes are not a portable identifier. A saved patch retains its exact values and identity across machines.
+
 This package is synchronous and headless. Hosts choose their own worker, cancellation and playback integration. Node 22 and modern ESM browsers are supported. React controls and the Sound Labs editor are separate concerns.

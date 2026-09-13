@@ -173,7 +173,10 @@ draw a domain before a family, so a large domain does not crowd out smaller ones
 Recent recipes avoid the last two primary constructions of a family when possible,
 and recent layouts/domains where alternatives exist. There is no global random
 state. Identical criteria, seed and ordered recent-recipe context reproduce the
-same patch. Pool order has no effect; history order does.
+same patch in the same JavaScript runtime. Pool order has no effect; history order does.
+Transcendental math can differ in the last floating-point digits across CPU
+architectures; regenerated hashes are not portable identifiers. Persist the
+returned patch and identity metadata to replay the exact saved values.
 
 `describeLabRecipe()` decodes `discovery-v1` metadata into resolved family,
 construction, layout, material, character and gesture. `discovery-v2` adds the
@@ -389,7 +392,7 @@ When wiring the UI, filter recent generation metadata using `labCriteriaKey`.
 It includes all new selections, duration and exclusions, unlike the earlier
 six-field comparison. Pass the matched `recentRecipes` to the existing worker;
 engine avoidance remains active under selected intent. Identical criteria,
-seed and recent-recipe context reproduce the same patch.
+seed and recent-recipe context reproduce the same patch within the same runtime.
 
 ## UI integration still to do
 
