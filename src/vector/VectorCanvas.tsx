@@ -634,12 +634,14 @@ export function VectorCanvas({
   }, [clearInteraction])
 
   useEffect(() => {
+    cancelInteraction()
+    setMeasurements([])
     if (tool !== 'pen' && penDraftRef.current) commitPen()
     if (tool !== 'node' && tool !== 'bucket' && tool !== 'pen' && (selectedNodeIdsRef.current.length || selectedSegmentRef.current)) {
       callbacks.current.onSelectNodes([])
       setSelectedSegment(null)
     }
-  }, [tool, commitPen])
+  }, [tool, commitPen, cancelInteraction])
 
   useEffect(() => {
     if (!selectedGuideId) return
@@ -718,6 +720,7 @@ export function VectorCanvas({
           event.preventDefault()
           event.stopImmediatePropagation()
           finishModal(key === 'escape' ? 'cancel' : 'confirm')
+          if (key === 'escape') callbacks.current.onToolChange('select')
           return
         }
         if (active.mode !== 'rotate' && (key === 'x' || key === 'y')) {
@@ -741,6 +744,7 @@ export function VectorCanvas({
         if (target instanceof Element && target.closest('[data-radix-popper-content-wrapper], .popover, .menu, [role="dialog"]')) return
         event.preventDefault()
         event.stopImmediatePropagation()
+        callbacks.current.onToolChange('select')
         if (samplingRef.current) {
           callbacks.current.onSample?.(null)
           return
@@ -765,10 +769,9 @@ export function VectorCanvas({
           commitPen()
           return
         }
-        if (toolRef.current === 'node' || toolRef.current === 'bucket' || toolRef.current === 'scissors' || toolRef.current === 'width' || toolRef.current === 'hand' || toolRef.current === 'zoom' || toolRef.current === 'measure') {
+        if (toolRef.current !== 'select') {
           callbacks.current.onSelectNodes([])
           setSelectedSegment(null)
-          callbacks.current.onToolChange('select')
           return
         }
         if (selectedGuideRef.current) {

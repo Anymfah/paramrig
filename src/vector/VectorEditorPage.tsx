@@ -1587,6 +1587,10 @@ export function VectorEditorPage({ manifest, mode = 'edit', onMode }: {
               disabled={disabledEntries}
               onChoose={(entry) => chooseTool(entry.tool, entry.id)}
               onActivate={(entry, keyboard) => {
+                if (tool === entry.tool) {
+                  chooseTool('select')
+                  return
+                }
                 chooseTool(entry.tool, entry.id)
                 if (!keyboard) return
                 if (entry.id === 'rectangle') editor.addElement(createVectorElement('rectangle', centeredBounds(document, 160, 120)))
