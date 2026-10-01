@@ -53,7 +53,7 @@ jobs:
       - run: npm run test:sdks
       - run: npm run build:modules -- --matrix
       - name: Keep the validated npm artifacts and distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: paramrig-modular-${{ env.SOURCE_REVISION }}
           path: |
