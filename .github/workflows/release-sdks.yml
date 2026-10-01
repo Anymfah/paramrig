@@ -33,7 +33,7 @@ jobs:
       - run: node scripts/generate-sdk-examples.mjs
       - run: npm run test:sdks
       - run: npm run build:modules -- --matrix
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sdk-${{ github.sha }}
           path: .local/modularity/tarballs/*.tgz
