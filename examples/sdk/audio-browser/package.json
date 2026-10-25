@@ -11,6 +11,6 @@
     "@paramrig/audio-browser": "0.1.0"
   },
   "devDependencies": {
-    "vite": "8.2.2"
+    "vite": "8.2.4"
   }
 }
