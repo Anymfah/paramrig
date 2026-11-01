@@ -54,7 +54,7 @@
   ],
   "dependencies": {
     "@paramrig/core": "0.1.0",
-    "paper": "^0.12.18",
+    "paper": "^0.16.0",
     "opentype.js": "^2.0.0",
     "fontkit": "^2.0.4"
   },

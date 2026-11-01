@@ -58,9 +58,9 @@
   ],
   "dependencies": {
     "@paramrig/core": "0.1.0",
-    "three-mesh-bvh": "^0.9.14",
+    "three-mesh-bvh": "^0.9.17",
     "opentype.js": "^2.0.0",
-    "@types/three": "^0.185.4",
+    "@types/three": "^0.186.0",
     "three-bvh-csg": "^0.0.18"
   },
   "publishConfig": {
